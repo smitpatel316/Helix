@@ -44,6 +44,13 @@ A graph's palettes (`src/lib/palettes.ts`) are the authors' colors, in their ord
 | vlag | Michael Waskom | [Seaborn](https://seaborn.pydata.org) | BSD 3-Clause, © 2012-2023 Michael L. Waskom |
 | RdBu | Cynthia Brewer, Mark Harrower, The Pennsylvania State University | [ColorBrewer](https://colorbrewer2.org) | Apache 2.0, © 2002 |
 
+## Test data
+
+The `.pzfx` files in `tests/testdata/` (used only by the test suite, not shipped in
+the app) come from [pypzfx](https://github.com/yuejiang-nj/pypzfx) (MIT, © 2024
+Yue Jiang). The Prism importer itself (`src/lib/pzfx.ts`) was written from the
+`.pzfx` format as documented by pypzfx; it shares no code with it.
+
 ## Source code
 
 Helix's source code is at <https://github.com/mickaphd/Helix>. The source code of R is at

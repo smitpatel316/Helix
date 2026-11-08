@@ -4817,6 +4817,44 @@
    }
   ]
  },
+ "survival-log-rank survival {}": {
+  "testType": "survival-log-rank",
+  "subtitle": "Log-rank (Mantel-Cox) test",
+  "stats": [
+   {
+    "label": "Chi-square",
+    "value": 0.5280480582
+   },
+   {
+    "label": "df",
+    "value": 1
+   },
+   {
+    "label": "P value",
+    "value": 0.4674286543,
+    "p": true
+   }
+  ],
+  "groups": [
+   {
+    "name": "Treated",
+    "mean": null,
+    "sd": null,
+    "sem": null,
+    "median": 15,
+    "n": 5
+   },
+   {
+    "name": "Placebo",
+    "mean": null,
+    "sd": null,
+    "sem": null,
+    "median": 8,
+    "n": 5
+   }
+  ],
+  "notes": "Log-rank test comparing 2 survival curves (df = 1). The median shown per group is the Kaplan-Meier median survival. Treated: 5 subjects, 3 events, 2 censored, observed 3 vs expected 3.878, median survival 15; Placebo: 5 subjects, 4 events, 1 censored, observed 4 vs expected 3.122, median survival 8."
+ },
  "two-way-anova grouped {\"design\":\"ordinary\",\"posthoc\":\"none\",\"posthocTarget\":\"groups\"}": {
   "testType": "two-way-anova",
   "subtitle": "Ordinary two-way ANOVA",

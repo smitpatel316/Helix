@@ -12,6 +12,58 @@ import { xyLayout, type Paint } from "./plot-helpers";
 import { withOpacity } from "../../lib/palettes";
 import { kaplanMeier } from "../../lib/kaplan-meier";
 
+// Re-exported for existing importers (src/stats/survival/log-rank.ts): the lib
+// version returns the same steps plus the 95% band (lower/upper).
+export { kaplanMeier };
+
+// Our pre-rebase inline Kaplan-Meier, preserved verbatim at rebase time (renamed
+// so it doesn't collide with the lib import above). Same steps as the lib version,
+// no confidence band. The dedup commit decides whether it goes away.
+interface KaplanMeierLegacy {
+  t: number[]; // step vertices (t[0] = 0, s[0] = 1)
+  s: number[];
+  censorT: number[]; // tick marks: subjects censored without an event
+  censorS: number[];
+}
+
+export function kaplanMeierLegacy(times: number[], codes: number[]): KaplanMeierLegacy {
+  const order = times.map((_, i) => i).sort((a, b) => times[a] - times[b]);
+  const t = [0];
+  const s = [1];
+  const censorT: number[] = [];
+  const censorS: number[] = [];
+  let atRisk = times.length;
+  let survival = 1;
+  let i = 0;
+  while (i < order.length) {
+    const time = times[order[i]];
+    let events = 0;
+    let censored = 0;
+    while (i < order.length && times[order[i]] === time) {
+      if (codes[order[i]] === 1) events++;
+      else censored++;
+      i++;
+    }
+    if (events > 0) {
+      survival *= 1 - events / atRisk;
+      t.push(time);
+      s.push(survival);
+    }
+    if (censored > 0) {
+      censorT.push(time);
+      censorS.push(survival);
+    }
+    atRisk -= events + censored;
+  }
+  // The curve runs on to the last subject followed, as Prism draws it.
+  const last = times[order.at(-1)!];
+  if (last > t.at(-1)!) {
+    t.push(last);
+    s.push(survival);
+  }
+  return { t, s, censorT, censorS };
+}
+
 /** "counts" mode: cells are survivors remaining, plotted directly as percent-of-initial. */
 function survivorCountsStep(x: number[], counts: number[]): { t: number[]; s: number[] } {
   const order = x.map((_, i) => i).sort((a, b) => x[a] - x[b]);

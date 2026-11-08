@@ -199,6 +199,19 @@ fn choose_project(app: AppHandle, window: WebviewWindow) {
     });
 }
 
+/// File ▸ Import Prism File…: the Open panel for a Prism `.pzfx` file. The page
+/// reads it (read_prism_text) and imports its tables; the shell only picks it.
+#[tauri::command]
+fn choose_prism_file(app: AppHandle) -> Option<String> {
+    app.dialog()
+        .file()
+        .set_title("Import Prism File")
+        .add_filter("GraphPad Prism File", &["pzfx"])
+        .blocking_pick_file()
+        .and_then(|file| file.into_path().ok())
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
 /// A window refused to close (its user chose Cancel): Helix doesn't quit after all.
 #[tauri::command]
 fn cancel_quit(projects: State<Projects>) {
@@ -256,6 +269,13 @@ fn check_extension(path: &str, allowed: &[&str]) -> Result<(), String> {
 #[tauri::command]
 fn read_text(path: String) -> Result<String, String> {
     check_extension(&path, &["hlx"])?;
+    fs::read_to_string(path).map_err(|e| e.to_string())
+}
+
+/// A Prism `.pzfx` file's text, for import. Only `.pzfx`, as read_text is only `.hlx`.
+#[tauri::command]
+fn read_prism_text(path: String) -> Result<String, String> {
+    check_extension(&path, &["pzfx"])?;
     fs::read_to_string(path).map_err(|e| e.to_string())
 }
 
@@ -511,8 +531,10 @@ fn main() {
             open_sample,
             new_project,
             choose_project,
+            choose_prism_file,
             cancel_quit,
             read_text,
+            read_prism_text,
             write_file,
             read_my_palettes,
             write_my_palettes,

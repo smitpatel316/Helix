@@ -173,6 +173,12 @@ export const newProject = () => invoke("new_project");
 /** File ▸ Open…: the Open panel, then the chosen project opens as `openProjects` decides. */
 export const chooseProject = () => invoke("choose_project");
 
+/** File ▸ Import Prism File…: the Open panel for a Prism `.pzfx` file. */
+export const choosePrismFile = () => invoke<string | null>("choose_prism_file");
+
+/** A Prism `.pzfx` file's text, for import. */
+export const readPrismText = (path: string) => invoke<string>("read_prism_text", { path });
+
 /** In the engine window: calls `handler` when the last project window has closed. */
 export function onNoWindows(handler: () => void) {
   if (!isNative) return () => {};

@@ -2,7 +2,7 @@
 // TypeScript (the volcano's per-row tests, a graph's regression band) rather than in R.
 
 /** log Γ(x), Lanczos approximation. */
-function logGamma(x: number): number {
+export function logGamma(x: number): number {
   const g = [
     676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905,
     -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,

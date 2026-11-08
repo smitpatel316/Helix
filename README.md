@@ -53,7 +53,9 @@ And a spreadsheet that feels like one:
 - **Guided:** an assistant asks which data sets to analyze, whether they are
   paired and whether they follow a normal distribution (or checks it for you with
   Shapiro-Wilk), then runs the right test
-- **Every number comes from R**, the reference for statistics
+- **Every number comes from R**, the reference for statistics — except the
+  log-rank test, which is computed directly in TypeScript and checked against
+  independently computed reference values
 - **Two groups:** unpaired, Welch, paired and ratio t tests, Mann-Whitney, Wilcoxon
 - **More groups:** one-way ANOVA (or Welch's, without equal SDs), repeated-measures ANOVA with
   the Geisser-Greenhouse correction, Kruskal-Wallis, Friedman; then every pair (Tukey,
@@ -100,6 +102,9 @@ And a spreadsheet that feels like one:
 - Open projects: a Helix file (`.hlx`) is plain JSON, described in
   [FILE-FORMAT.md](FILE-FORMAT.md), so your data are never locked in
 - Open methods: how each analysis is computed and checked is in [METHODS.md](METHODS.md)
+- Import a GraphPad Prism file (`.pzfx`): File › Import Prism File… brings in its
+  data tables (analyses and graphs aren't stored in the file, so they don't come
+  over). The newer `.prism` format isn't supported yet
 
 **Try it:** Help › Sample Project opens a made-up study told as a paper's figures, from cells
 to mice to patients, with every kind of table ([also here](samples/Helix%20Sample.hlx)).

@@ -38,6 +38,7 @@ import { runMultipleRegression } from "./multiple/multiple-regression";
 import { runChiSquare } from "./contingency/chi-square";
 import { runSurvival } from "./survival/survival-analysis";
 import { runCox } from "./survival/cox-regression";
+import { runLogRank } from "./survival/log-rank";
 import type { TableData } from "../store/types";
 import { readTable, setColumns, type Column } from "../lib/dataset";
 
@@ -116,6 +117,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
   "chi-square": { label: "Chi-square or Fisher's exact test", minColumns: 2, run: (c) => runChiSquare(c) },
   survival: { label: "Survival analysis", minColumns: 3, run: (c, p) => runSurvival(c, p as SurvivalParams) },
   cox: { label: "Cox proportional hazards regression", minColumns: 3, run: (c, p) => runCox(c, p as CoxParams) },
+  "survival-log-rank": {
+    label: "Survival analysis (log-rank test)",
+    minColumns: 3,
+    run: (c) => runLogRank(c),
+  },
 };
 
 // One result per table version, test and params, shared by everyone who asks:

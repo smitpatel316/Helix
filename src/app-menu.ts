@@ -137,6 +137,7 @@ export function useAppMenu(doc: DocumentActions) {
             (path) => latest.current.doc.forgetRecent(path),
             () => latest.current.doc.clearRecents(),
           ),
+          { text: "Import Prism File…", action: () => void latest.current.doc.importPrism() },
           sep,
           { text: "Save", accelerator: "CmdOrCtrl+S", enabled: isDirty, action: () => latest.current.doc.save() },
           { text: "Save As…", accelerator: "CmdOrCtrl+Shift+S", action: () => latest.current.doc.save(true) },
