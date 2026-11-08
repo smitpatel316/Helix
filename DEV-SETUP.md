@@ -1,11 +1,15 @@
-# Helix dev setup — Hatch Linux VM (validation only)
+# Helix dev setup — Hatch Linux VM (build + test)
 
-Product stays **Mac-native only**. This box (Ubuntu 24.04, x86_64) is for
-validation: type-check, tests, and frontend build. It cannot link a Mac
-binary or run the Mac app. The Mac DMG build, signing, and running the app
-still happen on a Mac.
+Linux is a **first-class dev/test platform** for Helix (Smit's call,
+2026-11-08: "get it working on Linux so you can build, test independently
+without my need"). The **Mac DMG stays the release target for Mansi** —
+signing/notarization and the Mac-only UI polish still need a Mac. Do not
+test on Smit's MacBook — Smit does all Mac testing himself.
 
-Last verified: 2026-11-08, branch `feat/prism-import-survival`, commit `33f1178`.
+Last verified: 2026-11-08, branch `feat/prism-import-survival`.
+Linux release build verified 2026-11-08 23:05, then **re-verified 23:37
+after the ~23:20 container replacement** (apt reinstall via
+`scripts/setup-linux.sh` + full rebuild).
 
 ## What is installed (exact versions)
 
@@ -15,14 +19,10 @@ Last verified: 2026-11-08, branch `feat/prism-import-survival`, commit `33f1178`
 | npm | 10.9.4 | with Node |
 | rustup | 1.29.3 | already at `~/.cargo/bin/rustup` (installed 2026-11-04, not by this task) |
 | rustc / cargo | 1.99.1 | rustup stable toolchain `stable-x86_64-unknown-linux-gnu` |
-| Rust targets | `aarch64-apple-darwin`, `x86_64-apple-darwin` | installed by this task, see below |
-| clang | 18.1.3 (Ubuntu) | preinstalled (`/usr/bin/clang`) — needed for the Apple-target check, see below |
+| Rust targets | `aarch64-apple-darwin`, `x86_64-apple-darwin` | `rustup target add …` (see below) |
+| clang | 18.1.3 (Ubuntu) | preinstalled (`/usr/bin/clang`) — needed for the Apple-target check |
 | Python | 3.12.3 | preinstalled (not needed by Helix) |
 | OS | Ubuntu 24.04.5 LTS, x86_64 | — |
-
-Nothing was installed with `apt`. System packages do **not** survive a Hatch
-container replacement, so `apt install` of Tauri's Linux GUI deps was
-deliberately skipped (see "What does not work" below).
 
 ## PATH — the one gotcha
 
@@ -36,8 +36,9 @@ export PATH="$HOME/.cargo/bin:$PATH"
 
 ## Install / redo from scratch (after a container replacement)
 
-Rust lives in `~/.cargo` + `~/.rustup` (both under `/home/hatch`, which
-persists). If they are ever missing, reinstall rustup (do not use `apt` Rust):
+### 1. Rust (survives replacement — lives under `/home/hatch`)
+
+If `~/.cargo` is ever missing, reinstall rustup (do not use `apt` Rust):
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
@@ -50,7 +51,37 @@ Then add the Mac targets (one-time; ~30 s each, downloads the Apple `std`):
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
 ```
 
-Then install JS deps and verify:
+### 2. System packages (do NOT survive replacement — redo every time)
+
+Tauri on Linux needs GTK/WebKit dev packages. One command redoes them:
+
+```bash
+bash ~/workspace/helix/scripts/setup-linux.sh
+```
+
+That installs: `build-essential pkg-config libwebkit2gtk-4.1-dev
+libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev
+libxdo-dev zenity xvfb ffmpeg xdg-utils xdotool x11-utils openbox dbus-x11
+xdg-desktop-portal xdg-desktop-portal-gtk` (WebKit 2.52.6 era, Nov 2026).
+It also downgrades `libzstd1` from the Hatch-pinned `+hatch1` build to the
+archive build if needed (`libzstd-dev` refuses the pinned one).
+
+Two container-replacement gotchas, both observed 2026-11-08:
+
+- **No package lists on a fresh container.** A bare `apt-get install`
+  fails with "Unable to locate package" for `dbus-x11`,
+  `xdg-desktop-portal(-gtk)`, `openbox`, `x11-utils`. Run with
+  `APT_UPDATE=1` the first time after a replacement (slow — several
+  minutes on the Azure/Cogent mirrors — but required):
+  `APT_UPDATE=1 bash scripts/setup-linux.sh`.
+- **The Hatch os-intent replay holds the dpkg lock.** Right after a
+  replacement the runtime replays recorded apt intent and holds
+  `/var/lib/dpkg/lock-frontend` for many minutes; `apt-get` fails with
+  "Could not get lock". Wait until no `apt-get`/`dpkg` process is running
+  (`pgrep -x apt-get; pgrep -x dpkg` both empty), then run the script.
+  `scripts/setup-linux.sh` does not wait for the lock itself.
+
+### 3. JS deps and verification
 
 ```bash
 cd ~/workspace/helix
@@ -59,37 +90,166 @@ npm run check     # tsc --noEmit; must be clean
 npm test          # node tsx tests/checks.ts + tests/reference.ts; must print "All 87 results match."
 ```
 
-## The Rust check that matters: Apple targets, not the Linux host
+## Linux code changes (this branch)
 
-`cargo check` for the **host** target does not work on this box and is not
-the goal — it fails in the `gdk-sys` build script (`gdk-3.0.pc` not found)
-because Tauri on Linux needs GTK/WebKit dev packages that are not installed
-and would not survive a container replacement anyway.
+`src-tauri/src/main.rs` keeps every Mac path intact and adds Linux
+equivalents behind `#[cfg]`:
 
-The check that validates the real product code is the **Apple-target**
-check. It type-checks `src-tauri/src/main.rs` — including the new
-`choose_prism_file` / `read_prism_text` commands — for macOS, without
-linking and without any Linux GUI library:
+- `objc2` import and `OnceLock` gated `#[cfg(target_os = "macos")]`.
+- `set_document`'s `NSWindow` close-button dot gated macOS; Linux ignores
+  `edited` (`let _ = edited`).
+- `set_recent_documents` / `accent_color` / `open_link` gated macOS, with
+  non-macOS twins: recent-documents is a no-op, accent color returns
+  `None` (the page falls back to its default), links open via `xdg-open`.
+- `ask_before_quitting` / `show_menu_pictures` delegate to
+  `*_macos` helpers on macOS, no-op elsewhere.
+- `save_session` has `#[cfg_attr(not(target_os = "macos"), allow(dead_code))]`
+  (only the macOS quit hook calls it).
+- `RunEvent::Opened` / `RunEvent::Reopen` arms gated macOS (those variants
+  don't exist on Linux).
+- `src-tauri/Cargo.toml`: base `tauri = { version = "2" }` with no
+  `macos-private-api`; that feature + `objc2 = "0.6"` moved to
+  `[target.'cfg(target_os = "macos")'.dependencies]`.
+- `package.json`: `"build:linux": "tauri build --no-bundle"` (`--bundles app`
+  is invalid on Linux; valid values are deb/rpm/appimage).
+- Rust unit tests (`#[cfg(test)] mod tests` at the end of `main.rs`):
+  `read_prism_text` reads a `.pzfx` fixture, rejects `.txt`/`.hlx`/
+  `.pzfx.bak`/extensionless paths, accepts uppercase `.PZFX`, and reports
+  a missing `.pzfx` file as an I/O error.
+
+The file picker itself needed **no** code change: `choose_prism_file`
+uses `tauri-plugin-dialog` 2.7.3 → `rfd` 0.16, whose default backend is
+the XDG Desktop Portal with a `zenity` fallback. It works on Linux once
+the portal + a D-Bus session + a window manager are actually running
+(see "Running the app" below).
+
+## Checks
 
 ```bash
 cd ~/workspace/helix/src-tauri
+export PATH="$HOME/.cargo/bin:$PATH"
+cargo check                              # Linux host — needs the apt deps above
+cargo test                               # 4 read_prism_text tests (Linux-first)
 CC_aarch64_apple_darwin="clang --target=aarch64-apple-darwin" \
   cargo check --target aarch64-apple-darwin
 CC_x86_64_apple_darwin="clang --target=x86_64-apple-darwin" \
   cargo check --target x86_64-apple-darwin
 ```
 
-Both exit 0 (verified 2026-11-08; `Checking helix v1.0.6` in the output,
-`Finished dev profile`). The `CC_<target>` override is required: without it
-the `objc2-exception-helper` build script runs Linux `cc` (gcc) on an
+The Apple-target checks need the `CC_<target>` override: without it the
+`objc2-exception-helper` build script runs Linux `cc` (gcc) on an
 Objective-C file with `-arch arm64 -mmacosx-version-min=11.0`, which gcc
 rejects. Clang targeting `aarch64-apple-darwin` accepts those flags, and
 that file deliberately includes no headers, so no macOS SDK is needed for
-the **check**.
+the **check**. All four checks exit 0 (verified 2026-11-08; the Apple
+targets even pass with no GTK libs installed).
 
-There are no Rust unit tests in the crate (`grep #[test] src-tauri/src`
-finds none), so there is no `cargo test` to run here. The test coverage is
-the TypeScript suite (`npm test`, 87 R reference results).
+## Building the Linux app
+
+```bash
+cd ~/workspace/helix
+npm run build:linux    # vite build + tauri build --no-bundle
+```
+
+Verified 2026-11-08 23:05 (pre-replacement) and **re-verified 23:37
+(post-replacement rebuild)**: exit 0, vite ~10 s, release compile
+2 m 11 s, binary `src-tauri/target/release/helix`, 43,798,608 bytes,
+executable. (Plain `cargo check` on the host initially failed in
+`tauri-build` with "features do not match the allowlist defined under
+`tauri.conf.json`" because `macOSPrivateApi: true` is set there; running
+via the `tauri build` CLI bypasses that check.)
+
+Optional installer artifact (not yet tried): `tauri build --bundles deb`
+or `--bundles appimage`.
+
+## Running the app (headless, under Xvfb)
+
+`/tmp` is a 512 MB tmpfs and gets wiped mid-session — keep logs and
+screenshots under `~/workspace/helix/logs/` and `~/workspace/helix/screenshots/`,
+never `/tmp`. (`/tmp` also filled once during this work: a test crate's
+`target/` dir hit 501 MB and broke the linker; use
+`CARGO_TARGET_DIR` under `~/workspace` for scratch crates.)
+
+```bash
+# 1. Display + window manager + D-Bus session (all three matter: the file
+#    picker needs a session bus, and GTK dialogs need a WM to paint).
+Xvfb :98 -listen tcp -screen 0 1280x800x24 > logs/xvfb.log 2>&1 &
+echo $! > logs/xvfb.pid
+DISPLAY=127.0.0.1:98 openbox > logs/openbox.log 2>&1 &
+echo $! > logs/openbox.pid
+# 2. App, inside a D-Bus session so the XDG portal can activate:
+dbus-run-session -- env DISPLAY=127.0.0.1:98 \
+  ./src-tauri/target/release/helix > logs/linux-run.log 2>&1 &
+# 3. Screenshot:
+ffmpeg -y -f x11grab -i 127.0.0.1:98 -frames:v 1 screenshots/linux-launch.png
+```
+
+Verified 2026-11-08: the app launches (~198 MB RSS, only DRI3
+software-rendering warnings), renders the menu bar
+(Helix/File/Edit/Table/Analysis/Graph/View/Window/Help) and the Table 1
+Column grid — see `screenshots/linux-launch.png`.
+
+**File picker — KNOWN LIMITATION on Linux (verified 2026-11-08, see below):
+the in-app File ▸ Import Prism File… does NOT complete under Xvfb.**
+The menu item activates (the portal service activates on click), but no
+chooser dialog appears, and the app's UI then stops responding to clicks
+and keys (menus won't reopen, grid typing does nothing, Escape doesn't
+recover; the process stays alive at ~0.6% CPU). Each click also strands a
+blocked `blocking_pick_file` call. **Use the headless smoke test
+(`tests/linux-smoke.ts`) for import verification on Linux instead** — it
+drives the same parser. The picker is native on macOS and unaffected
+there; this is a Linux dev/test gap only.
+
+What was established while isolating it (isolation crate
+`~/workspace/.rfdtest2`, target dir `~/workspace/.rfdtest2-target`,
+kept outside the repo):
+
+- The portal stack itself works: the XDG portal + GTK chooser render
+  (`screenshots/linux-rfdtest.png`, `linux-rfdtest2.png`) and an isolated
+  `rfd::FileDialog::pick_file()` (sync, pollster `block_on`) completed a
+  full round-trip once — dialog → type path → Enter → `result:
+  Some("…/tests/testdata/survival.pzfx")`, process exited cleanly.
+- The same call is flaky in repeat runs: the dialog appears, then
+  vanishes within ~15 s without resolving (seen twice with
+  `AsyncFileDialog` driven by a tokio runtime, and once with the sync
+  call when the driving keystrokes raced focus). A portal-gtk dialog
+  window lingering unmapped can also make `xdotool search` report a
+  false positive — always confirm with `--onlyvisible` AND a screenshot.
+- Inside the Tauri app the failure is worse (no dialog at all + frozen
+  UI). Prime suspect: `tauri-plugin-dialog` 2.7.3's `blocking_pick_file`
+  (`blocking_fn!` → `pick_file` → `run_on_main_thread` +
+  `tauri::async_runtime::block_on` on a spawned thread) interacting with
+  the Tao/WebKit main loop. Not proven; the plugin source is at
+  `~/.cargo/registry/src/*/tauri-plugin-dialog-2.7.3/src/` (`commands.rs`
+  sets the parent only on Windows/macOS, so no parent is passed on
+  Linux; `desktop.rs` has the `run_on_main_thread` + `block_on` wiring).
+- Leading fix idea (NOT yet tried): on Linux only, bypass the plugin in
+  `choose_prism_file` and call `rfd::FileDialog::pick_file()` directly on
+  the command thread (the pattern proven working once in isolation).
+  Gate it `#[cfg(not(target_os = "macos"))]` so the Mac path is
+  untouched, and validate it end-to-end under Xvfb before keeping it.
+
+**GUI import test — NOT passed on Linux:** launch under Xvfb as above,
+File ▸ Import Prism File…, drive the chooser by keyboard (Ctrl+L, type
+the fixture path, Enter), screenshot the imported table. Fixture:
+`tests/testdata/survival.pzfx`. Blocked by the limitation above; the
+parser-direct smoke test is the standing substitute.
+
+## Headless import smoke test (no GUI)
+
+When the picker can't be automated, drive the same parser the GUI import
+path uses directly:
+
+```bash
+node --import tsx tests/linux-smoke.ts
+```
+
+Parses all 6 fixtures in `tests/testdata/` (`column`, `column_sdn`,
+`contingency`, `survival`, `x_y_rep`, `x_y_with_strike`) and runs the
+log-rank test on the imported survival table. Verified 2026-11-08:
+all 6 parse (survival → XY, 27 rows, 3 groups); log-rank χ² = 4.844,
+df = 2, p = 0.0888. Say which method was used (GUI vs parser-direct)
+when reporting import results.
 
 ## What works on this box (verified 2026-11-08)
 
@@ -99,21 +259,40 @@ the TypeScript suite (`npm test`, 87 R reference results).
 | `npm run check` | ✅ clean |
 | `npm test` | ✅ "All 87 results match." |
 | `npx vite build` | ✅ exit 0, `dist/index.html` produced |
-| `cargo check --target aarch64-apple-darwin` (with clang `CC_` override) | ✅ exit 0 — **new Prism commands compile for Mac** |
-| `cargo check --target x86_64-apple-darwin` (with clang `CC_` override) | ✅ exit 0 |
+| `cargo check --target aarch64-apple-darwin` / `--target x86_64-apple-darwin` (with clang `CC_` override) | ✅ exit 0 — Prism commands compile for Mac |
+| `npm run build:linux` | ✅ exit 0, `src-tauri/target/release/helix` (43.8 MB) — built 23:05, rebuilt 23:37 after container replacement |
+| `cargo check` (Linux host) | ✅ exit 0 (after apt reinstall) |
+| `cargo test` (4 `read_prism_text` tests) | ✅ 4 passed, 0 failed |
+| Linux app under Xvfb | ✅ launches, menu bar + Table 1 grid render (fresh binary, `screenshots/linux-gui-launch.png`) |
+| File ▸ menu | ✅ opens, "Import Prism File…" visible (`screenshots/linux-gui-filemenu.png`) |
+| XDG portal file chooser (isolated `rfd` test crate) | ✅ renders with "GraphPad Prism File" filter; sync `pick_file` completed one full round-trip (dialog → path → result) |
+| `node --import tsx tests/linux-smoke.ts` | ✅ all 6 fixtures parse, log-rank runs |
+| GUI File ▸ Import Prism File… end-to-end in the app | ❌ **does not complete on Linux** — see "File picker" limitation above; use `tests/linux-smoke.ts` instead |
+| `tauri build --bundles deb` / `appimage` | not tried (nice-to-have) |
 
-## What does not work on this box (expected — Mac-only product)
+## What still needs a Mac
 
-| Command | Failure | Why |
-|---|---|---|
-| `cargo check` (host `x86_64-unknown-linux-gnu`) | `gdk-sys` build script: `gdk-3.0.pc` not found, exit 101 | Tauri on Linux needs GTK/WebKit dev packages. On a persistent Linux box: `sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`. **Do not install these here** — they vanish on container replacement, and the host build is not the product. |
-| `npm run dev` (`tauri dev`) | Same `gdk-sys` failure, exit 101 | It builds the Linux app, which needs the same missing GUI libs plus a display. |
-| `npm run build` / `cargo build --target aarch64-apple-darwin` | Cannot link | `rustc` for Apple targets invokes `xcrun --sdk macosx --show-sdk-path` to find MacOSX.sdk — `xcrun` does not exist on Linux. A minimal link probe fails the same way. Linking a Mac binary needs the macOS SDK + `ld64`/Xcode linker. `cargo check` (above) is the validation ceiling on Linux. |
-| Running the app | Not possible | macOS-only binary; no Mac here. Do not test on Smit's MacBook — Smit does all Mac testing himself. |
+| Task | Why |
+|---|---|
+| `npm run build` — both DMGs (`aarch64` + `x86_64-apple-darwin`) | Linking a Mac binary needs `xcrun` / macOS SDK + `ld64`/Xcode linker; `rustc` for Apple targets invokes `xcrun --sdk macosx --show-sdk-path`, which does not exist on Linux. `cargo check` is the validation ceiling on Linux. |
+| Signing / notarization | Bundle uses ad-hoc signing (`signingIdentity: "-"`); real signing needs a Mac. `npm run install-app` if installing locally. |
+| Running the Mac app / `npm run dev` on macOS | The Linux binary is dev/test only. Exercise File ▸ Import Prism File… with a real `.pzfx` file plus the log-rank test on the Mac too. |
+| Mac-only UI polish | Accent color, Dock recent-documents, NSWindow edited-dot, Dock-icon reopen — all no-ops or fallbacks on Linux by design. |
 
 ## Still owed on a Mac
 
-1. `npm run build` — builds both DMGs (`aarch64-apple-darwin` + `x86_64-apple-darwin`); requires Xcode Command Line Tools and the Rust Apple targets (`rustup target add aarch64-apple-darwin x86_64-apple-darwin`).
+1. `npm run build` — builds both DMGs; requires Xcode Command Line Tools and the Rust Apple targets.
 2. `cargo check` on the Mac as a sanity re-check (should already be green per the Linux Apple-target check).
-3. Run the app / `npm run dev` on the Mac and exercise File ▸ Import Prism File… with a real `.pzfx` file, plus the log-rank test — the new Tauri commands (`choose_prism_file` / `read_prism_text`) have never been compiled or run, only `cargo check`ed.
-4. Signing / notarization (the bundle uses ad-hoc signing, `signingIdentity: "-"`) and `npm run install-app` if installing locally.
+3. Run the app / `npm run dev` on the Mac and exercise File ▸ Import Prism File… with a real `.pzfx` file, plus the log-rank test.
+4. Signing / notarization and `npm run install-app` if installing locally.
+
+## Environment gotchas (learned 2026-11-08)
+
+- `pkill -f "<pattern>"` matches your own exec command line and SIGTERMs
+  your own shell — kill by PID file, never by pattern (see root AGENTS.md).
+- `apt-get update` is extremely slow on the Hatch mirrors; existing lists
+  are usually usable except right after a container replacement.
+- The app's D-Bus socket lives under `/tmp/dbus-*` — vulnerable to `/tmp`
+  wipes; restart the session if the bus dies.
+- Memory is tight (~1–3 GB free); the release build peaks during linking.
+  Don't run the build and the app side by side if the box is loaded.

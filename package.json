@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build --target aarch64-apple-darwin && tauri build --target x86_64-apple-darwin",
+    "build:linux": "tauri build --no-bundle",
     "install-app": "tauri build --bundles app && rm -rf /Applications/Helix.app && ditto src-tauri/target/release/bundle/macos/Helix.app /Applications/Helix.app",
     "web": "vite",
     "check": "tsc --noEmit",
