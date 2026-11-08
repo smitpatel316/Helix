@@ -19,7 +19,8 @@ export type AnalysisType =
   | "correlation-matrix"
   | "multiple-regression"
   | "outliers"
-  | "chi-square";
+  | "chi-square"
+  | "survival-log-rank";
 
 /** What the New Analysis picker offers: a test, or "Compare more than two groups",
  *  which its wizard resolves to one-way ANOVA, Kruskal-Wallis, repeated-measures ANOVA

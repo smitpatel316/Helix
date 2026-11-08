@@ -34,6 +34,7 @@ import { runMultipleTTests } from "./grouped/multiple-t-tests";
 import { runCorrelationMatrix } from "./multiple/correlation-matrix";
 import { runMultipleRegression } from "./multiple/multiple-regression";
 import { runChiSquare } from "./contingency/chi-square";
+import { runLogRank } from "./survival/log-rank";
 import type { TableData } from "../store/types";
 import { readTable, setColumns, type Column } from "../lib/dataset";
 
@@ -106,6 +107,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     run: (c, p) => runMultipleRegression(c, p as MultipleRegressionParams),
   },
   "chi-square": { label: "Chi-square or Fisher's exact test", minColumns: 2, run: (c) => runChiSquare(c) },
+  "survival-log-rank": {
+    label: "Survival analysis (log-rank test)",
+    minColumns: 3,
+    run: (c) => runLogRank(c),
+  },
 };
 
 // One result per table version, test and params, shared by everyone who asks:

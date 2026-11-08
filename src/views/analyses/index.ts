@@ -30,7 +30,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "one-sample-t",
     "outliers",
   ]),
-  xy: optionsFor(["correlation", "linear-regression", "area-under-curve", "nonlinear-regression"]),
+  xy: optionsFor(["correlation", "linear-regression", "area-under-curve", "nonlinear-regression", "survival-log-rank"]),
   grouped: optionsFor(["two-way-anova", "multiple-t-tests"]),
   multiple: optionsFor(["correlation-matrix", "multiple-regression"]),
   contingency: optionsFor(["chi-square"]),

@@ -1749,6 +1749,216 @@ check("the update check still answers when GitHub refuses it", async () => {
   }
 });
 
+import { parsePzfx } from "../src/lib/pzfx";
+import { chiSquareSF } from "../src/lib/chi-square";
+
+// ── Prism (.pzfx) import ──────────────────────────────────────────────
+// Fixtures in tests/testdata/ are GraphPad Prism files from the pypzfx project
+// (MIT, © Yue Jiang); the expected tables are in their `.tab` files, as
+// pypzfx reads them. The importer is checked against those, not against Prism.
+
+const pzfxFile = (name: string) =>
+  parsePzfx(readFileSync(new URL(`./testdata/${name}.pzfx`, import.meta.url), "utf8"));
+const importedTable = (name: string) => {
+  const imported = pzfxFile(name);
+  strictEqual(imported.tables.length, 1, `${name}: one table`);
+  const node = imported.project.nodes[imported.project.rootOrder[0]];
+  if (!node || node.type !== "table") throw new Error(`${name}: no table node`);
+  return { imported, table: node };
+};
+const close = (value: number | null | undefined, expected: number, tol: number, what: string) =>
+  ok(value != null && Math.abs(value - expected) <= tol, `${what}: got ${value}, expected ${expected}`);
+
+check(".pzfx import reads a Column table", () => {
+  const { imported, table } = importedTable("column");
+  strictEqual(imported.issues.length, 0);
+  strictEqual(table.name, "Data 1");
+  strictEqual(table.tableType, "column");
+  deepStrictEqual(table.data!.columns, ["Title", "Aa", "Bb"]);
+  deepStrictEqual(table.data!.rows, [
+    [null, "1.", "100."],
+    [null, "2.", "90."],
+    [null, "3.", "80."],
+    [null, "4.", "70."],
+  ]);
+});
+
+check(".pzfx import reads an XY table with replicates", () => {
+  const { table } = importedTable("x_y_rep");
+  strictEqual(table.tableType, "xy");
+  deepStrictEqual(table.data!.columns, ["Title", "XX", "Ya_1", "Ya_2", "Yb_1", "Yb_2", "Yc_1", "Yc_2"]);
+  deepStrictEqual(table.data!.rows, [
+    ["A", "1.", "100.", "50.", "1.", "10.", "5.", "2."],
+    ["B", "2.", "90.", "60.", "2.", "9.", "5.", "2."],
+    ["C", "3.", "80.", "70.", "3.", "8.", "5.", "2."],
+  ]);
+});
+
+check(".pzfx import reads a Survival table as XY (time + event codes)", () => {
+  const { imported, table } = importedTable("survival");
+  strictEqual(table.tableType, "xy");
+  deepStrictEqual(table.data!.columns, ["Title", "Days", "Control", "Treatment A", "Treatment B"]);
+  strictEqual(table.data!.rows.length, 27);
+  deepStrictEqual(table.data!.rows[0], ["CO", "78", "1", null, null]);
+  deepStrictEqual(table.data!.rows[26], ["OO", "351", null, null, "1"]);
+  ok(imported.issues.some((i) => i.message.includes("log-rank")), "says the log-rank analysis applies");
+});
+
+check(".pzfx import reads a Contingency table", () => {
+  const { table } = importedTable("contingency");
+  strictEqual(table.tableType, "contingency");
+  deepStrictEqual(table.data!.columns, ["Title", "A", "B"]);
+  deepStrictEqual(table.data!.rows, [
+    ["a", "10", "30"],
+    ["b", "20", "40"],
+  ]);
+});
+
+check(".pzfx import keeps struck-through values as excluded cells", () => {
+  const { table } = importedTable("x_y_with_strike");
+  deepStrictEqual(table.data!.rows[1], ["B", "2.", "90.", "60.", "2.", "9.", "5.", "2."]);
+  deepStrictEqual(table.data!.excluded, ["1,2", "1,3", "1,4"]);
+});
+
+check(".pzfx import names summary subcolumns and warns they aren't replicates", () => {
+  const { imported, table } = importedTable("column_sdn");
+  strictEqual(table.tableType, "column");
+  deepStrictEqual(table.data!.columns, ["Title", "A_MEAN", "A_SD", "A_N", "B_MEAN", "B_SD", "B_N"]);
+  deepStrictEqual(table.data!.rows[0], [null, "100", "10", "2", "10", "1", "10"]);
+  ok(imported.issues.some((i) => i.message.includes("not raw replicates")), "warns about summaries");
+});
+
+check(".pzfx import refuses files that aren't .pzfx", () => {
+  for (const text of ["hello", "<GraphPadPrismFile></GraphPadPrismFile>", "<Other><Table/></Other>"]) {
+    const imported = parsePzfx(text);
+    strictEqual(imported.tables.length, 0);
+    ok(imported.issues.some((i) => i.severity === "error"), text);
+  }
+});
+
+check("an imported project round-trips through the .hlx format", () => {
+  const { imported } = importedTable("column");
+  const serialized = serializeProjectFile(imported.project);
+  const reparsed = parseProjectFile(JSON.parse(serialized));
+  if ("error" in reparsed) throw new Error(reparsed.error);
+  const node = reparsed.project.nodes[reparsed.project.rootOrder[0]];
+  if (!node || node.type !== "table") throw new Error("no table after round-trip");
+  deepStrictEqual(node.data!.columns, ["Title", "Aa", "Bb"]);
+  deepStrictEqual(node.data!.rows, [
+    [null, "1.", "100."],
+    [null, "2.", "90."],
+    [null, "3.", "80."],
+    [null, "4.", "70."],
+  ]);
+});
+
+// ── Survival (log-rank) ────────────────────────────────────────────────
+// Expected numbers were computed independently in Python (first-principles
+// O−E/V plus scipy's chi-square tail), not from this code.
+
+const logRankTable = (columns: string[], rows: (string | null)[][]): TableData => ({
+  columns,
+  rows: rows.map((row) => row.map((cell) => cell ?? null)),
+});
+
+check("the log-rank test matches the independent Python computation", async () => {
+  const data = logRankTable(
+    ["Title", "Days", "Treated", "Placebo"],
+    [
+      ["", "3", "1", ""],
+      ["", "5", "", "1"],
+      ["", "7", "0", "1"],
+      ["", "8", "", "1"],
+      ["", "10", "1", ""],
+      ["", "12", "", "0"],
+      ["", "15", "1", "1"],
+      ["", "20", "0", ""],
+    ],
+  );
+  const out = await runAnalysis("survival-log-rank", data);
+  if ("error" in out) throw new Error(out.error);
+  const stat = (label: string) => out.stats.find((s) => s.label === label)?.value;
+  close(stat("Chi-square"), 0.528, 1e-3, "chi-square");
+  strictEqual(stat("df"), 1);
+  close(stat("P value"), 0.4674, 1e-3, "P value");
+  deepStrictEqual(
+    out.groups.map((g) => [g.name, g.median, g.n]),
+    [
+      ["Treated", 15, 5],
+      ["Placebo", 8, 5],
+    ],
+  );
+});
+
+check("the log-rank test handles three groups", async () => {
+  const data = logRankTable(
+    ["Title", "Days", "A", "B", "C"],
+    [
+      ["", "4", "1", "", ""],
+      ["", "6", "1", "", ""],
+      ["", "8", "0", "", ""],
+      ["", "10", "1", "", ""],
+      ["", "12", "0", "", ""],
+      ["", "3", "", "1", ""],
+      ["", "5", "", "1", ""],
+      ["", "7", "", "1", ""],
+      ["", "9", "", "0", ""],
+      ["", "11", "", "1", ""],
+      ["", "6", "", "", "1"],
+      ["", "9", "", "", "1"],
+      ["", "12", "", "", "1"],
+      ["", "15", "", "", "0"],
+      ["", "18", "", "", "1"],
+    ],
+  );
+  const out = await runAnalysis("survival-log-rank", data);
+  if ("error" in out) throw new Error(out.error);
+  const stat = (label: string) => out.stats.find((s) => s.label === label)?.value;
+  close(stat("Chi-square"), 1.9194, 1e-3, "chi-square");
+  strictEqual(stat("df"), 2);
+  close(stat("P value"), 0.383, 1e-3, "P value");
+  deepStrictEqual(
+    out.groups.map((g) => [g.name, g.median]),
+    [
+      ["A", 10],
+      ["B", 7],
+      ["C", 12],
+    ],
+  );
+});
+
+check("the log-rank test refuses bad survival data", async () => {
+  const cases: [TableData, string][] = [
+    // A code that isn't 0 or 1.
+    [logRankTable(["Title", "Days", "A", "B"], [["", "3", "2", "1"]]), "must be 1 (event) or 0 (censored)"],
+    // Only one group with data.
+    [logRankTable(["Title", "Days", "A", "B"], [["", "3", "1", ""]]), "at least two groups"],
+    // No events at all.
+    [
+      logRankTable(
+        ["Title", "Days", "A", "B"],
+        [
+          ["", "3", "0", ""],
+          ["", "5", "", "0"],
+        ],
+      ),
+      "at least one event",
+    ],
+  ];
+  for (const [data, message] of cases) {
+    const out = await runAnalysis("survival-log-rank", data);
+    if (!("error" in out) || !out.error.includes(message)) {
+      throw new Error(`expected an error mentioning "${message}", got ${JSON.stringify(out)}`);
+    }
+  }
+});
+
+check("the chi-square tail matches scipy's", () => {
+  close(chiSquareSF(3.841458820694124, 1), 0.05, 1e-6, "chi2(1) 95% point");
+  close(chiSquareSF(5.991464547107979, 2), 0.05, 1e-6, "chi2(2) 95% point");
+  close(chiSquareSF(0.528, 1), 0.4674, 1e-3, "log-rank p");
+});
+
 // ── Run ──────────────────────────────────────────────────────────────────
 
 let failed = 0;

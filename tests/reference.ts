@@ -257,6 +257,7 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "sigmoidal-4pl-x" }],
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "hyperbola" }],
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "semilog-line" }],
+  ["survival", survivalTable, "survival-log-rank"],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "none", posthocTarget: "groups" }],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "tukey", posthocTarget: "groups" }],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "bonferroni", posthocTarget: "rows" }],

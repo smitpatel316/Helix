@@ -17,7 +17,7 @@ interface KaplanMeier {
   censorS: number[];
 }
 
-function kaplanMeier(times: number[], codes: number[]): KaplanMeier {
+export function kaplanMeier(times: number[], codes: number[]): KaplanMeier {
   const order = times.map((_, i) => i).sort((a, b) => times[a] - times[b]);
   const t = [0];
   const s = [1];
