@@ -206,17 +206,23 @@ fn choose_project(app: AppHandle, window: WebviewWindow) {
     });
 }
 
-/// File ▸ Import Prism File…: the Open panel for a Prism `.pzfx` file. The page
-/// reads it (read_prism_text) and imports its tables; the shell only picks it.
+/// File ▸ Import Prism File…: the Open panel for a Prism `.pzfx` file.
+/// Non-blocking, like choose_project: blocking_pick_file parks the main
+/// thread on a semaphore while the NSOpenPanel needs that same thread to
+/// process clicks — deadlock, Helix (not responding), 0% CPU (confirmed
+/// Nov 9 on macOS; the same bug froze the picker on Linux). pick_file's
+/// callback fires when the user picks or cancels, and the page then reads
+/// the file (read_prism_text) and imports it. The event carries the path,
+/// or null on Cancel, so the page can unsubscribe either way.
 #[tauri::command]
-fn choose_prism_file(app: AppHandle) -> Option<String> {
-    app.dialog()
-        .file()
-        .set_title("Import Prism File")
-        .add_filter("GraphPad Prism File", &["pzfx"])
-        .blocking_pick_file()
-        .and_then(|file| file.into_path().ok())
-        .map(|path| path.to_string_lossy().into_owned())
+fn choose_prism_file(app: AppHandle, window: WebviewWindow) {
+    let label = window.label().to_string();
+    app.dialog().file().set_title("Import Prism File").add_filter("GraphPad Prism File", &["pzfx"]).pick_file(
+        move |file| {
+            let picked = file.and_then(|file| file.into_path().ok()).map(|path| path.to_string_lossy().into_owned());
+            let _ = app.emit_to(label.as_str(), "prism-file-picked", picked);
+        },
+    );
 }
 
 /// A window refused to close (its user chose Cancel): Helix doesn't quit after all.
