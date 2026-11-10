@@ -20,6 +20,7 @@
 # icon, just without the Finder window-position/icon-layout dressing.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+ROOT="$PWD"
 
 ARCHS="${1:-both}"
 case "$ARCHS" in
@@ -38,14 +39,14 @@ for TARGET in $TARGETS; do
   DMG_NAME="Helix_1.0.6_aarch64.dmg"
   [ "$TARGET" = "x86_64-apple-darwin" ] && DMG_NAME="Helix_1.0.6_x64.dmg"
   echo "=== $TARGET: manual DMG bundle -> $BUNDLE/dmg/$DMG_NAME ==="
-  (cd /tmp && bash "$PWD/$BUNDLE/dmg/bundle_dmg.sh" --skip-jenkins \
+  (cd /tmp && bash "$ROOT/$BUNDLE/dmg/bundle_dmg.sh" --skip-jenkins \
     --volname Helix \
-    --volicon "$PWD/$BUNDLE/dmg/icon.icns" \
-    --background "$PWD/src-tauri/icons/dmg-background.png" \
+    --volicon "$ROOT/$BUNDLE/dmg/icon.icns" \
+    --background "$ROOT/src-tauri/icons/dmg-background.png" \
     --window-pos 200 120 --window-size 660 400 --icon-size 100 \
     --icon Helix.app 180 185 --app-drop-link 480 185 \
-    "$PWD/$BUNDLE/dmg/$DMG_NAME" \
-    "$PWD/$BUNDLE/macos")
+    "$ROOT/$BUNDLE/dmg/$DMG_NAME" \
+    "$ROOT/$BUNDLE/macos")
   ls -lh "$BUNDLE/dmg/$DMG_NAME"
   shasum -a 256 "$BUNDLE/dmg/$DMG_NAME"
 done
