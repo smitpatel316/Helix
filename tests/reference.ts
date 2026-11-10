@@ -138,6 +138,23 @@ const logisticSeparated = table(
   ],
 );
 
+/** Two methods on the same subjects (Bland-Altman method comparison). */
+const blandAltman = table(
+  ["Title", "Method A", "Method B"],
+  [
+    ["", "12.1", "12.4"],
+    ["", "11.4", "11.9"],
+    ["", "13.2", "13.0"],
+    ["", "12.8", "13.5"],
+    ["", "10.9", "11.2"],
+    ["", "12.5", "12.9"],
+    ["", "11.8", "12.0"],
+    ["", "13.0", "13.6"],
+    ["", "12.2", "12.5"],
+    ["", "11.6", "12.1"],
+  ],
+);
+
 const grouped = table(
   ["Title", "A:Y1", "A:Y2", "A:Y3", "B:Y1", "B:Y2", "B:Y3", "C:Y1", "C:Y2", "C:Y3"],
   [
@@ -293,6 +310,7 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "semilog-line" }],
   ["logistic", logistic, "simple-logistic-regression", {}],
   ["logisticSeparated", logisticSeparated, "simple-logistic-regression", {}],
+  ["blandAltman", blandAltman, "bland-altman", { sets: ["Method A", "Method B"] }],
   ["survival", survivalTable, "survival-log-rank"],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "none", posthocTarget: "groups" }],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "tukey", posthocTarget: "groups" }],
@@ -369,6 +387,7 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["xy", xy, "xy-area"],
   ["doseLog", doseLog, "dose-response"],
   ["logistic", logistic, "logistic-curve"],
+  ["blandAltman", blandAltman, "bland-altman"],
   ["survival", survivalTable, "survival"],
   ["grouped", grouped, "grouped-scatter"],
   ["grouped", grouped, "grouped-bars", { groupLayout: "separated" }],
@@ -468,8 +487,7 @@ async function disagreements(): Promise<string[]> {
     const b0 = log.coefficients?.find((c) => c.term === "Intercept")?.estimate;
     const b1 = log.coefficients?.find((c) => c.term === "X")?.estimate;
     const p = b0 == null || b1 == null ? NaN : 1 / (1 + Math.exp(-(b0 + b1 * 4.5)));
-    if (!Number.isFinite(p) || Math.abs(p - 0.5) > 1e-6)
-      out.push(`Logistic P(Y=1) at X=4.5: ${p}, expected 0.5`);
+    if (!Number.isFinite(p) || Math.abs(p - 0.5) > 1e-6) out.push(`Logistic P(Y=1) at X=4.5: ${p}, expected 0.5`);
     // The logistic-curve graph's sigmoid overlay, from the same cached result.
     const { addLogisticCurve } = await import("../src/views/graphs/logistic-curve");
     const fig = GRAPHS["logistic-curve"].build(
@@ -478,12 +496,58 @@ async function disagreements(): Promise<string[]> {
       paintOf(newGraphOptions("logistic-curve"), 1),
       readTable(logistic).titles,
     );
-    addLogisticCurve(fig, plotColumns(readTable(logistic), "logistic-curve"), log, paintOf(newGraphOptions("logistic-curve"), 1));
+    addLogisticCurve(
+      fig,
+      plotColumns(readTable(logistic), "logistic-curve"),
+      log,
+      paintOf(newGraphOptions("logistic-curve"), 1),
+    );
     const traces = fig.data as { x?: number[]; y?: number[] }[];
     const curve = traces.find((t) => t.x?.length === 101);
     const mid = curve?.y?.[50];
-    if (!curve || mid == null || Math.abs(mid - 0.5) > 1e-6)
-      out.push(`Logistic curve at X=4.5: ${mid}, expected 0.5`);
+    if (!curve || mid == null || Math.abs(mid - 0.5) > 1e-6) out.push(`Logistic curve at X=4.5: ${mid}, expected 0.5`);
+  }
+  // Bland-Altman: the plot's three lines equal the analysis's bias and limits.
+  const ba = await runAnalysis("bland-altman", blandAltman, { sets: ["Method A", "Method B"] });
+  if ("error" in ba) {
+    out.push(`Bland-Altman spot check: ${ba.error}`);
+  } else {
+    const stat = (label: string) => ba.stats.find((s) => s.label === label)?.value;
+    const fig = GRAPHS["bland-altman"].build(
+      plotColumns(readTable(blandAltman), "bland-altman"),
+      newGraphOptions("bland-altman"),
+      paintOf(newGraphOptions("bland-altman"), 2),
+      readTable(blandAltman).titles,
+    );
+    const lines = (fig.data as { mode?: string; y?: number[] }[])
+      .filter((t) => t.mode === "lines" && t.y?.length === 2 && t.y[0] === t.y[1])
+      .map((t) => t.y![0])
+      .sort((a, b) => a - b);
+    const expected = [
+      stat("Lower limit of agreement"),
+      stat("Bias (mean difference)"),
+      stat("Upper limit of agreement"),
+    ];
+    if (lines.length !== 3 || expected.some((v, i) => v == null || Math.abs(v - lines[i]) > 1e-9))
+      out.push(`Bland-Altman lines: ${lines}, expected ${expected}`);
+    // The plan's hand-verified values (Python/scipy, sample SD, t crit 2.262, df 9).
+    const plan: [string, number][] = [
+      ["Bias (mean difference)", -0.36],
+      ["SD of differences", 0.2503],
+      ["Lower limit of agreement", -0.8507],
+      ["Upper limit of agreement", 0.1307],
+      ["Bias 95% CI lower", -0.5391],
+      ["Bias 95% CI upper", -0.1809],
+      ["Lower limit 95% CI lower", -1.1608],
+      ["Lower limit 95% CI upper", -0.5405],
+      ["Upper limit 95% CI lower", -0.1795],
+      ["Upper limit 95% CI upper", 0.4408],
+    ];
+    for (const [label, value] of plan) {
+      const got = stat(label);
+      if (got == null || Math.abs(got - value) > 1e-3) out.push(`Bland-Altman ${label}: ${got}, plan says ${value}`);
+    }
+    if (stat("N (pairs)") !== 10) out.push(`Bland-Altman N: ${stat("N (pairs)")}, expected 10`);
   }
   return out;
 }
