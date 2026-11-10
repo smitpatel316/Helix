@@ -10,7 +10,7 @@ import { useLayout } from "./store/use-layout";
 import { removeWithConfirm, type DocumentActions } from "./store/use-document";
 import { NODE_NAMES, type GraphType, type NodeType } from "./store/types";
 import { TABLE_TYPE_OPTIONS } from "./views/tables";
-import { ANALYSIS_OPTIONS_BY_TABLE } from "./views/analyses";
+import { analysisOptionsForTable } from "./views/analyses";
 import { GRAPH_OPTIONS_BY_TABLE } from "./views/graphs";
 import { useStartAnalysis } from "./views/analyses/use-analysis-launcher";
 
@@ -209,7 +209,10 @@ export function useAppMenu(doc: DocumentActions) {
             action: run((l, id) => l.store.openSelector({ kind: "new-analysis", tableId: id })),
           },
           sep,
-          ...(tableType ? ANALYSIS_OPTIONS_BY_TABLE[tableType] : []).map((o) => ({
+          ...(tableType
+            ? analysisOptionsForTable(tableType, activeTableId ? nodes[activeTableId]?.data : undefined)
+            : []
+          ).map((o) => ({
             text: o.label,
             action: run((l, id) => l.startAnalysis(id, o.value)),
           })),

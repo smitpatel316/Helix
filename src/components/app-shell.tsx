@@ -9,7 +9,7 @@ import { onFullscreenChange } from "../native";
 import { UniversalModal } from "./universal-modal";
 import { TABLE_TYPE_OPTIONS } from "../views/tables";
 import { TableDetail } from "../views/tables/table-detail";
-import { ANALYSIS_OPTIONS_BY_TABLE } from "../views/analyses";
+import { analysisOptionsForTable } from "../views/analyses";
 import { AnalysisWizard } from "../views/analyses/analysis-wizard";
 import { useStartAnalysis } from "../views/analyses/use-analysis-launcher";
 import { GRAPH_OPTIONS_BY_TABLE } from "../views/graphs";
@@ -32,6 +32,7 @@ export function AppShell() {
   const startAnalysis = useStartAnalysis();
   // The New Analysis / New Graph pickers list what fits the target table's type.
   const tableType = selector && "tableId" in selector ? (nodes[selector.tableId]?.tableType ?? "column") : "column";
+  const tableData = selector && "tableId" in selector ? nodes[selector.tableId]?.data : undefined;
 
   return (
     <div className="flex h-full">
@@ -61,7 +62,7 @@ export function AppShell() {
         open={selector?.kind === "new-analysis"}
         title="New Analysis"
         description="Choose a statistical test."
-        options={ANALYSIS_OPTIONS_BY_TABLE[tableType]}
+        options={analysisOptionsForTable(tableType, tableData)}
         onSelect={(type) => {
           // A test with options moves on to its wizard; otherwise the picker is done.
           if (selector?.kind === "new-analysis" && startAnalysis(selector.tableId, type)) return;

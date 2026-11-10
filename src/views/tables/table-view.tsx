@@ -1,14 +1,24 @@
 // A data table: the grid, and (grouped tables) the Groups panel. Every edit goes to
 // the project store, which keeps the Undo history for the whole project.
-import { GROUPED_LIMITS, type ProjectNode, type TableData } from "../../store/types";
+import { GROUPED_LIMITS, type ProjectNode, type RowGroup, type TableData } from "../../store/types";
 import type { TableMove } from "../../store/references";
 import { useProjectActions } from "../../store/use-project-store";
 import { Section, Stepper, WithInspector } from "../../components/inspector";
+import { Button, Input } from "../../ui/controls";
 import { useLayout } from "../../store/use-layout";
-import { ColumnsIcon } from "@phosphor-icons/react";
+import { ColumnsIcon, MinusIcon, PlusIcon } from "@phosphor-icons/react";
 import { Toolbar } from "../../ui/layout";
 import { Grid } from "./grid";
-import { regroupLoses, regroupTable } from "./table-data";
+import {
+  addRowGroup,
+  defaultRowGroups,
+  regroupLoses,
+  regroupTable,
+  removeRowGroup,
+  rowGroupTotal,
+  setRowGroupCount,
+  setRowGroupName,
+} from "./table-data";
 import { isGrouped } from "../../lib/dataset";
 import { seriesKeyOf } from "../../lib/columns";
 import { confirmDelete } from "../../native";
@@ -80,6 +90,62 @@ function GroupsPanel({ data, update }: { data: TableData; update: (next: TableDa
         step={1}
         onChange={(r) => void regroup(groups, r)}
       />
+      <RowGroupsEditor data={data} update={update} />
     </Section>
+  );
+}
+
+/** A grouped table's third factor: consecutive bands of rows, one level each
+ *  (e.g. WT rows, then KO rows) — what a three-way ANOVA reads as factor C.
+ *  Before the user edits them there is one band covering every row, which
+ *  disables the three-way option; splitting into ≥ 2 bands enables it. */
+function RowGroupsEditor({ data, update }: { data: TableData; update: (next: TableData, label: string) => void }) {
+  const rows = data.rows.length;
+  const stored = data.rowGroups;
+  const bands: RowGroup[] = stored ?? (rows > 0 ? defaultRowGroups(data) : []);
+  const setBands = (next: RowGroup[], label: string) =>
+    update({ ...data, rowGroups: next.length > 1 ? next : undefined }, label);
+  if (rows === 0) {
+    return <p className="text-small text-secondary">Add rows to split them into row groups (a third factor).</p>;
+  }
+  const canSplit = bands.some((b) => b.count > 1);
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-small text-secondary">Row groups (third factor)</span>
+      {bands.map((band, i) => (
+        <div key={i} className="flex items-center gap-1">
+          <Input
+            aria-label={`Row group ${i + 1} name`}
+            value={band.name}
+            onChange={(e) => setBands(setRowGroupName(bands, i, e.target.value), "Rename Row Group")}
+          />
+          <Stepper
+            label={`Rows in ${band.name}`}
+            value={band.count}
+            min={1}
+            max={Math.max(1, rowGroupTotal(bands) - (bands.length - 1))}
+            step={1}
+            onChange={(c) => setBands(setRowGroupCount(bands, i, c), "Change Row Groups")}
+          />
+          {bands.length > 1 && (
+            <Button
+              size="icon"
+              aria-label={`Remove row group ${band.name}`}
+              onClick={() => setBands(removeRowGroup(bands, i), "Remove Row Group")}
+            >
+              <MinusIcon className="size-3.5" />
+            </Button>
+          )}
+        </div>
+      ))}
+      <Button size="small" disabled={!canSplit} onClick={() => setBands(addRowGroup(bands), "Add Row Group")}>
+        <PlusIcon className="size-3.5" /> Add row group
+      </Button>
+      {bands.length < 2 && (
+        <p className="text-small text-secondary">
+          One band covers every row. Split it into 2 or more bands to run a three-way ANOVA.
+        </p>
+      )}
+    </div>
   );
 }

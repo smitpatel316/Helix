@@ -18,6 +18,7 @@ export type AnalysisType =
   | "nonlinear-regression"
   | "standard-curve-interpolation"
   | "two-way-anova"
+  | "three-way-anova"
   | "multiple-t-tests"
   | "correlation-matrix"
   | "multiple-regression"
@@ -69,6 +70,8 @@ export const CORRELATION_METHODS = ["pearson", "spearman"] as const;
 export const CORRELATION_MODES = ["x-vs-every-y", "two-datasets", "matrix"] as const;
 export const TWO_WAY_DESIGNS = ["ordinary", "repeated-measures", "nonparametric"] as const;
 export const POSTHOC_TARGETS = ["groups", "rows"] as const;
+/** The terms a three-way ANOVA's post-hoc can follow up (one term only). */
+export const THREE_WAY_TERMS = ["A", "B", "C", "A:B", "A:C", "B:C", "A:B:C"] as const;
 export const CORRECTIONS = ["holm", "fdr", "none"] as const;
 export const CURVE_TESTS = ["logrank", "trend", "gehan"] as const;
 export const BIN_MODES = ["auto", "width", "count"] as const;
@@ -223,6 +226,15 @@ export interface TwoWayAnovaParams {
   sphericity?: boolean;
 }
 
+/** Params for "three-way-anova" on a Grouped table's column-groups × row
+ *  position × row bands: ordinary (parametric) only. `posthoc` pairwise-compares
+ *  the means of one term (`posthocTerm`, required when posthoc !== "none"),
+ *  Tukey- or Bonferroni-corrected. */
+export interface ThreeWayAnovaParams {
+  posthoc: (typeof POSTHOCS)[number];
+  posthocTerm?: (typeof THREE_WAY_TERMS)[number];
+}
+
 /** Params for "multiple-t-tests": a per-row t test (or Wilcoxon/Mann-Whitney)
  *  between a Grouped table's exactly-2 column-groups, with a multiplicity
  *  correction across rows. `paired` runs a paired test, matching replicate columns
@@ -278,6 +290,7 @@ export type AnalysisParams = DataSetsParam &
     | NonlinearRegressionParams
     | StandardCurveInterpolationParams
     | TwoWayAnovaParams
+    | ThreeWayAnovaParams
     | MultipleTTestsParams
     | MultipleRegressionParams
     | OutliersParams

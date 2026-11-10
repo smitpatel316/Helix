@@ -17,6 +17,7 @@ import type {
   CoxParams,
   SimpleLogisticRegressionParams,
   StandardCurveInterpolationParams,
+  ThreeWayAnovaParams,
   TwoWayAnovaParams,
   XYCorrelationParams,
 } from "./types";
@@ -38,6 +39,7 @@ import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
 import { runStandardCurveInterpolation } from "./xy/standard-curve-interpolation";
 import { runTwoWayAnova } from "./grouped/two-way-anova";
+import { runThreeWayAnova } from "./grouped/three-way-anova";
 import { runMultipleTTests } from "./grouped/multiple-t-tests";
 import { runCorrelationMatrix } from "./multiple/correlation-matrix";
 import { runMultipleRegression } from "./multiple/multiple-regression";
@@ -52,11 +54,14 @@ import { readTable, setColumns, type Column } from "../lib/dataset";
 import { ensurePackages, packageErrorMessage, packageStatus } from "./webr";
 
 /** How every test runs: the columns of its data sets (`sets`, all by default), the
- *  wizard's params, and the row titles, which name the rows in grouped-table results. */
+ *  wizard's params, and the row titles, which name the rows in grouped-table results.
+ *  `rowGroups` (grouped tables only) is the table's third-factor bands, for the
+ *  tests that read them — the others ignore it. */
 type Runner = (
   columns: Column[],
   params: AnalysisParams | undefined,
   titles: (string | null)[],
+  rowGroups?: TableData["rowGroups"],
 ) => Promise<AnalysisOutcome>;
 
 interface Analysis {
@@ -122,6 +127,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Two-way ANOVA",
     minColumns: 2,
     run: (c, p, t) => runTwoWayAnova(c, p as TwoWayAnovaParams, t),
+  },
+  "three-way-anova": {
+    label: "Three-way ANOVA",
+    minColumns: 2,
+    run: (c, p, t, r) => runThreeWayAnova(c, p as ThreeWayAnovaParams, t, r),
   },
   "multiple-t-tests": {
     label: "Multiple t tests",
@@ -219,7 +229,7 @@ export function runAnalysis(
         }
       }
       try {
-        return await analysis.run(columns, params, table.titles);
+        return await analysis.run(columns, params, table.titles, data.rowGroups);
       } catch (err: unknown) {
         // A failure (an R error, R not starting) is shown, not kept: asking again retries.
         byTest.delete(key);
