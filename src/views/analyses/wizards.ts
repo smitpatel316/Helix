@@ -319,6 +319,13 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
     finish: (a) => ({ type: "linear-regression", params: { y: a.y as string, forceOrigin: a.origin === "yes" } }),
   },
 
+  "simple-logistic-regression": {
+    questions: (_, table) => [
+      choice("y", "Which Y data set is the binary outcome (0 = no, 1 = yes)?", names(yNames(table))),
+    ],
+    finish: (a) => ({ type: "simple-logistic-regression", params: { y: a.y as string } }),
+  },
+
   "area-under-curve": {
     questions: () => [
       {

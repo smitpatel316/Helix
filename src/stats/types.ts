@@ -12,6 +12,7 @@ export type AnalysisType =
   | "shapiro-wilk"
   | "correlation"
   | "linear-regression"
+  | "simple-logistic-regression"
   | "area-under-curve"
   | "nonlinear-regression"
   | "two-way-anova"
@@ -127,6 +128,13 @@ export interface LinearRegressionParams {
   forceOrigin: boolean;
 }
 
+/** Params for "simple-logistic-regression" (XY table): which Y series is the
+ *  binary (0/1) outcome. Predictor is always X. */
+export interface SimpleLogisticRegressionParams {
+  /** Omitted defaults to the first Y data column. */
+  y?: string;
+}
+
 /** Params for "area-under-curve": trapezoidal-rule AUC of every Y series against X,
  *  measured from a horizontal baseline (Prism's "Baseline Y =", default 0). */
 export interface AreaUnderCurveParams {
@@ -230,6 +238,7 @@ export type AnalysisParams = DataSetsParam &
     | CorrelationParams
     | XYCorrelationParams
     | LinearRegressionParams
+    | SimpleLogisticRegressionParams
     | AreaUnderCurveParams
     | NonlinearRegressionParams
     | TwoWayAnovaParams
@@ -396,6 +405,9 @@ export interface AnalysisResult {
   fit?: { sets: string[]; rows: FitRow[] };
   /** A standard curve's unknowns, interpolated. */
   interpolated?: InterpolatedRow[];
+  /** What the coefficients table's statistic column is ("t" by default): a
+   *  logistic regression's is a z-statistic, so it says "z". */
+  statisticLabel?: string;
   /** Optional per-Y correlations table ("correlation", "x-vs-every-y" mode). */
   correlations?: CorrelationRow[];
   /** Optional per-Y area-under-curve table ("area-under-curve"). */

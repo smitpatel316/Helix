@@ -14,6 +14,7 @@ import type {
   OutliersParams,
   SurvivalParams,
   CoxParams,
+  SimpleLogisticRegressionParams,
   TwoWayAnovaParams,
   XYCorrelationParams,
 } from "./types";
@@ -29,6 +30,7 @@ import { shapiroWilkSpec } from "./column/shapiro-wilk";
 import { runRout } from "./column/rout";
 import { runXYCorrelation } from "./xy/correlation";
 import { linearRegressionSpec } from "./xy/linear-regression";
+import { runSimpleLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
 import { runTwoWayAnova } from "./grouped/two-way-anova";
@@ -80,6 +82,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
   outliers: { label: "Identify outliers (ROUT)", minColumns: 1, run: (c, p) => runRout(c, p as OutliersParams) },
   correlation: { label: "Correlation", minColumns: 2, run: (c, p) => runXYCorrelation(c, p as XYCorrelationParams) },
   "linear-regression": spec("Linear regression", linearRegressionSpec),
+  "simple-logistic-regression": {
+    label: "Simple logistic regression",
+    minColumns: 2,
+    run: (c, p) => runSimpleLogisticRegression(c, p as SimpleLogisticRegressionParams),
+  },
   "area-under-curve": {
     label: "Area under the curve",
     minColumns: 2,

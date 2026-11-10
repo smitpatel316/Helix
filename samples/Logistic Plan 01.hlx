@@ -1,0 +1,110 @@
+{
+  "app": "helix",
+  "schemaVersion": 1,
+  "savedAt": "2026-11-10T03:15:44.441Z",
+  "project": {
+    "nodes": {
+      "t-logistic": {
+        "id": "t-logistic",
+        "type": "table",
+        "name": "Logistic regression",
+        "parentId": null,
+        "tableType": "xy",
+        "data": {
+          "columns": ["Title","X","Response"],
+          "rows": [
+            [null,"0","0"],
+            [null,"1","0"],
+            [null,"2","0"],
+            [null,"3","0"],
+            [null,"4","1"],
+            [null,"5","0"],
+            [null,"6","1"],
+            [null,"7","1"],
+            [null,"8","1"],
+            [null,"9","1"]
+          ]
+        }
+      },
+      "a-logistic": {
+        "id": "a-logistic",
+        "type": "analysis",
+        "name": "Simple logistic regression",
+        "parentId": "t-logistic",
+        "analysisType": "simple-logistic-regression",
+        "analysisParams": {
+          "y": "Response"
+        }
+      },
+      "g-logistic": {
+        "id": "g-logistic",
+        "type": "graph",
+        "name": "Logistic curve",
+        "parentId": "t-logistic",
+        "graphType": "logistic-curve",
+        "graphOptions": {
+          "bars": false,
+          "center": "mean",
+          "error": "sem",
+          "shape": "bar",
+          "kind": "box",
+          "showPoints": false,
+          "xyStyle": "points",
+          "pieValue": "sum",
+          "pieShowPercent": true,
+          "groupLayout": "interleaved",
+          "sigDisplay": "stars",
+          "regShowLine": true,
+          "regShowBand": true,
+          "regShowEquation": true,
+          "doseModel": "sigmoidal-4pl-x",
+          "doseShowCurve": true,
+          "doseShowEquation": true,
+          "heatmapShowValues": false,
+          "heatmapShowScale": true,
+          "survivalMode": "codes",
+          "survivalShowCensors": true,
+          "volcanoYIsPValue": true,
+          "volcanoFcThreshold": 1,
+          "volcanoPThreshold": 1.3,
+          "volcanoShowThresholds": true,
+          "volcanoLabelCount": 10,
+          "volcanoEffect": "log2ratio",
+          "volcanoSignificance": "pvalue",
+          "title": "",
+          "xLabel": "",
+          "yLabel": "",
+          "axisWidth": 1,
+          "fontSize": 13,
+          "fill": 1,
+          "pointFill": 1,
+          "pointSize": 7,
+          "pointShape": "circle",
+          "pointOutline": 1.5,
+          "outline": 1.5,
+          "barGap": 0.1,
+          "lineWidth": 2,
+          "lineDash": "solid",
+          "xTitleGap": 12,
+          "yTitleGap": 2,
+          "errorWidth": 1.5,
+          "errorCaps": 6,
+          "errorDirection": "both",
+          "background": "white",
+          "width": 640,
+          "height": 460,
+          "palette": {
+            "name": "okabe-ito",
+            "kind": "categorical",
+            "colors": ["#000000","#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7"]
+          }
+        }
+      }
+    },
+    "rootOrder": ["t-logistic"],
+    "childOrder": {
+      "t-logistic": ["a-logistic","g-logistic"]
+    },
+    "activeNodeId": "a-logistic"
+  }
+}

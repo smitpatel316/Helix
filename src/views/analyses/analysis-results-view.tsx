@@ -277,7 +277,7 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
             { label: "" },
             { label: "Estimate", numeric: true },
             { label: "Std. error", numeric: true },
-            { label: "t", numeric: true },
+            { label: result.statisticLabel ?? "t", numeric: true },
             { label: "P value", numeric: true },
             { label: "95% CI", numeric: true },
           ]}

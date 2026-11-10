@@ -126,7 +126,7 @@ type OptionalOption = {
 // prettier-ignore
 const OPTIONAL_OPTIONS = {
   yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number",
-  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", xVariable: "text", yVariable: "text",
+  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", doseY: "text", xVariable: "text", yVariable: "text",
   volcanoX: "text", volcanoY: "text", volcanoLabel: "text", volcanoGroupA: "text", volcanoGroupB: "text",
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",

@@ -25,6 +25,8 @@ import { computeGroupedDEG } from "../../lib/deg";
 import { useAnalysis } from "../analyses/use-analysis";
 import { GRAPHS, graphSeries, plotColumns } from ".";
 import { addFittedCurve } from "./fitted-curve";
+import { addDoseCurve } from "./dose-response-curve";
+import { addLogisticCurve } from "./logistic-curve";
 import { FormatPanel } from "./format-panel";
 import { copyGraphImage, saveGraphImage } from "./graph-export";
 import { INK, MOVABLE, marginsFor, movedText, paintOf, withCaps } from "./plot-helpers";
@@ -254,6 +256,22 @@ export function GraphView({ node }: { node: ProjectNode }) {
     curveParams,
   );
   const curveFit = curveOutcome && !("error" in curveOutcome) ? curveOutcome : null;
+  // A dose-response graph fits its own curve (no analysis node needed).
+  const doseY = options.doseY ?? columns[1]?.name;
+  const doseOutcome = useAnalysis(type === "dose-response" && doseY ? "nonlinear-regression" : undefined, data, {
+    y: doseY,
+    model: options.doseModel,
+  });
+  const doseFit = doseOutcome && !("error" in doseOutcome) ? doseOutcome : null;
+  // A logistic-curve graph fits its own curve (no analysis node needed): the
+  // first Y series is the binary outcome, as in the analysis's default.
+  const logisticY = columns[1]?.name;
+  const logisticOutcome = useAnalysis(
+    type === "logistic-curve" && logisticY ? "simple-logistic-regression" : undefined,
+    data,
+    { y: logisticY },
+  );
+  const logisticFit = logisticOutcome && !("error" in logisticOutcome) ? logisticOutcome : null;
 
   // ── Drawing ──────────────────────────────────────────────────────────
 
@@ -333,6 +351,8 @@ export function GraphView({ node }: { node: ProjectNode }) {
         if (curveFit && x && y && options.regShowLine)
           addFittedCurve(fig, x, y, ys, curveParams.model, curveFit, options.regShowEquation, options, paint);
       } else if (type === "xy-scatter" && regNode) addRegression(fig, columns, options, regParams, paint);
+      if (doseFit) addDoseCurve(fig, columns, options, doseFit, paint);
+      if (logisticFit) addLogisticCurve(fig, columns, logisticFit, paint);
       // The points' names are part of the figure (the volcano places its own, among the
       // genes it names); the selection ring only of the view.
       const labels =
@@ -371,6 +391,8 @@ export function GraphView({ node }: { node: ProjectNode }) {
     regParams,
     curveParams,
     curveFit,
+    doseFit,
+    logisticFit,
     seriesNames.length,
     selected,
     glRatio,

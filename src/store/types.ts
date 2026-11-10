@@ -25,6 +25,8 @@ export type GraphType =
   | "grouped-hbars"
   | "pie"
   | "donut"
+  | "dose-response"
+  | "logistic-curve"
   | "heatmap"
   | "survival"
   | "volcano";
@@ -40,6 +42,7 @@ export const GRAPH_CHOICES = {
   pieValue: ["sum", "mean"],
   groupLayout: ["interleaved", "separated"],
   sigDisplay: ["stars", "pvalue"],
+  doseModel: ["sigmoidal-4pl-logx", "sigmoidal-4pl-x"],
   survivalMode: ["codes", "counts"],
   volcanoEffect: ["log2ratio", "difference"],
   volcanoSignificance: ["pvalue", "fdr"],
@@ -133,6 +136,14 @@ export interface GraphOptions {
   regShowLine: boolean;
   regShowBand: boolean;
   regShowEquation: boolean;
+  // Dose-response curve (XY family only): a one-click sigmoidal 4PL fit of the
+  // chosen Y series against X, run via WebR (see dose-response-curve.ts) — no
+  // sibling analysis node needed, unlike the Linear-regression overlay above.
+  // `doseY` omitted defaults to the first Y data column.
+  doseY?: string;
+  doseModel: Choice<"doseModel">;
+  doseShowCurve: boolean;
+  doseShowEquation: boolean;
   // A Multiple Variables table's scatter: its X and Y variables (column names); omitted,
   // the first two holding numbers.
   xVariable?: string;
@@ -240,6 +251,9 @@ export const DEFAULT_GRAPH_OPTIONS: GraphOptions = {
   regShowLine: true,
   regShowBand: true,
   regShowEquation: true,
+  doseModel: "sigmoidal-4pl-x",
+  doseShowCurve: true,
+  doseShowEquation: true,
   heatmapShowValues: false,
   heatmapShowScale: true,
   survivalMode: "codes",
