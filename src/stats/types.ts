@@ -54,6 +54,10 @@ export const NONLINEAR_MODELS = [
   // Plan 08, 2/2: association and growth.
   "one-phase-association",
   "exponential-growth",
+  // Plan 09: enzyme kinetics (substrate–velocity).
+  "michaelis-menten",
+  "allosteric-sigmoidal",
+  "substrate-inhibition",
 ] as const;
 export const CORRELATION_METHODS = ["pearson", "spearman"] as const;
 export const CORRELATION_MODES = ["x-vs-every-y", "two-datasets", "matrix"] as const;
@@ -334,13 +338,19 @@ interface CorrelationMatrix {
   label?: string;
 }
 
-/** One row of a regression coefficients table (intercept or a predictor). */
+/** One row of a regression coefficients table (intercept or a predictor).
+ *  `ciLow`/`ciHigh` are the Wald 95% CIs (estimate ± t(0.975, df)·SE),
+ *  populated by the nonlinear-fit runner (plan 09) — other runners leave
+ *  them undefined, and the results view only shows the CI columns when a
+ *  coefficient carries them. */
 export interface RegressionCoefficient {
   term: string;
   estimate: number | null;
   stdError: number | null;
   t: number | null;
   p: number | null;
+  ciLow?: number | null;
+  ciHigh?: number | null;
 }
 
 /** One row of "correlation" results in "x-vs-every-y" mode: X vs. one Y series. */

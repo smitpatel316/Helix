@@ -58,6 +58,18 @@ export function evaluateFittedCurve(model: DoseModel, coefficients: RegressionCo
       );
     case "exponential-growth":
       return coef(coefficients, "Y0") * Math.exp(coef(coefficients, "K") * x);
+    // Enzyme kinetics (plan 09): all three are Y = 0 at X = 0.
+    case "michaelis-menten":
+      return (coef(coefficients, "Vmax") * x) / (coef(coefficients, "Km") + x);
+    case "allosteric-sigmoidal": {
+      const h = coef(coefficients, "HillSlope");
+      return (coef(coefficients, "Vmax") * x ** h) / (coef(coefficients, "Khalf") ** h + x ** h);
+    }
+    case "substrate-inhibition":
+      return (
+        (coef(coefficients, "Vmax") * x) /
+        (coef(coefficients, "Km") + x + (x * x) / coef(coefficients, "Ki"))
+      );
   }
 }
 
@@ -84,7 +96,8 @@ function stat(stats: StatRow[], label: string): number | null | undefined {
 }
 
 /** "EC50 = 12.3<br>Hill slope = 1.05<br>R² = 0.9821" annotation text (Plotly-ready)
- *  — for the exponential models, the half-life / doubling time instead. */
+ *  — for the exponential models, the half-life / doubling time instead; for
+ *  the enzyme models, the fitted constants (and Vmax/Km for Michaelis-Menten). */
 function doseResponseLabel(model: DoseModel, coefficients: RegressionCoefficient[], stats: StatRow[]): string {
   const r2 = stat(stats, "R squared");
   const lines: string[] = [];
@@ -96,6 +109,13 @@ function doseResponseLabel(model: DoseModel, coefficients: RegressionCoefficient
     lines.push(`Half-life (slow) = ${num(stat(stats, "Half-life (slow)"))}`);
   } else if (model === "exponential-growth") {
     lines.push(`Doubling time = ${num(stat(stats, "Doubling time"))}`);
+  } else if (model === "michaelis-menten") {
+    lines.push(`Vmax = ${num(coef(coefficients, "Vmax"))}`, `Km = ${num(coef(coefficients, "Km"))}`);
+    lines.push(`Vmax/Km = ${num(stat(stats, "Vmax/Km"))}`);
+  } else if (model === "allosteric-sigmoidal") {
+    lines.push(`Khalf = ${num(coef(coefficients, "Khalf"))}`, `Hill slope = ${num(coef(coefficients, "HillSlope"))}`);
+  } else if (model === "substrate-inhibition") {
+    lines.push(`Km = ${num(coef(coefficients, "Km"))}`, `Ki = ${num(coef(coefficients, "Ki"))}`);
   } else if ((EXPONENTIAL_MODELS as readonly string[]).includes(model)) {
     lines.push(`Half-life = ${num(stat(stats, "Half-life"))}`);
   }

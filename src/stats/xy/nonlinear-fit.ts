@@ -22,6 +22,10 @@ export const MODEL_LABEL: Record<NonlinearModel, string> = {
   "plateau-decay": "Plateau followed by one-phase decay",
   "one-phase-association": "One-phase association",
   "exponential-growth": "Exponential growth",
+  // Prism's "Enzyme kinetics — Substrate vs. velocity" (plan 09).
+  "michaelis-menten": "Michaelis-Menten",
+  "allosteric-sigmoidal": "Allosteric sigmoidal",
+  "substrate-inhibition": "Substrate inhibition",
 };
 
 /** The exponential-curve models (plan 08): fitted with nls() algorithm
@@ -32,6 +36,16 @@ export const EXPONENTIAL_MODELS: NonlinearModel[] = [
   "plateau-decay",
   "one-phase-association",
   "exponential-growth",
+];
+
+/** The enzyme-kinetics models (plan 09): fitted with nls() algorithm
+ *  "port" (see modelSpec). Unlike the log/ratio forms, their formulas are
+ *  defined at X = 0, so the vehicle point stays in the fit — they set no
+ *  `positiveX`; the positive-X values are used only for start values. */
+export const ENZYME_MODELS: NonlinearModel[] = [
+  "michaelis-menten",
+  "allosteric-sigmoidal",
+  "substrate-inhibition",
 ];
 
 export interface ModelSpec {
@@ -52,6 +66,10 @@ export interface ModelSpec {
   /** Coefficient names of the curve's lower/upper asymptotes (4PL only) —
    *  an unknown within the fit's residual scale of one is outside range. */
   asymptotes?: [string, string];
+  /** nls models only: an alternate `m<-nls(...)` assignment to retry once
+   *  with if the primary fit fails (substrate inhibition's Ki start is the
+   *  least robust — plan 09). `fitNonlinearModel` reports the retry. */
+  retryFit?: string;
 }
 
 export function modelSpec(model: NonlinearModel): ModelSpec {
@@ -186,6 +204,44 @@ export function modelSpec(model: NonlinearModel): ModelSpec {
         derived: [{ label: "Doubling time", expr: 'ifelse(cf[["K"]]>0,log(2)/cf[["K"]],NA_real_)' }],
         curveFn: 'g<-function(xv,p) p[["Y0"]]*exp(p[["K"]]*xv)',
       };
+    // ── Enzyme kinetics (plan 09) ───────────────────────────────────────
+    // All three fit with nls() algorithm "port" (nl2sol), like plan 08's
+    // exponentials: the default Gauss-Newton fails to converge on
+    // (near-)noiseless fits in WebR's R 4.6.0 even from exact starts, while
+    // "port" recovers the generating parameters. Michaelis-Menten is
+    // algebraically the hyperbola (Bmax·X/(Kd + X)) with Prism's Vmax/Km
+    // names — a separate model entry, same formula, no duplicated fitter.
+    // None sets positiveX: the formulas are defined at X = 0, so the
+    // vehicle point stays in the fit; median(x[x > 0]) is used only for
+    // the Km/Khalf start values.
+    case "michaelis-menten":
+      // Y = Vmax·X / (Km + X).
+      return {
+        kind: "nls",
+        fit: "m<-nls(y~Vmax*x/(Km+x),start=list(Vmax=max(y)*1.1,Km=median(x[x>0])),algorithm=\"port\")",
+        terms: ["Vmax", "Km"],
+        derived: [{ label: "Vmax/Km", expr: 'ifelse(cf[["Km"]]>0,cf[["Vmax"]]/cf[["Km"]],NA_real_)' }],
+        curveFn: 'g<-function(xv,p) p[["Vmax"]]*xv/(p[["Km"]]+xv)',
+      };
+    case "allosteric-sigmoidal":
+      // Y = Vmax·X^h / (Khalf^h + X^h).
+      return {
+        kind: "nls",
+        fit: "m<-nls(y~Vmax*x^h/(Khalf^h+x^h),start=list(Vmax=max(y)*1.1,Khalf=median(x[x>0]),h=1),algorithm=\"port\")",
+        terms: ["Vmax", "Khalf", "HillSlope"],
+        curveFn: 'g<-function(xv,p) p[["Vmax"]]*xv^p[["h"]]/(p[["Khalf"]]^p[["h"]]+xv^p[["h"]])',
+      };
+    case "substrate-inhibition":
+      // Y = Vmax·X / (Km + X + X²/Ki). Ki's start is the least robust, so
+      // the fit is retried once with Ki = 5 × median(S) if nls() fails.
+      return {
+        kind: "nls",
+        fit: "m<-nls(y~Vmax*x/(Km+x+x^2/Ki),start=list(Vmax=max(y)*1.5,Km=median(x[x>0]),Ki=max(x)),algorithm=\"port\")",
+        terms: ["Vmax", "Km", "Ki"],
+        curveFn: 'g<-function(xv,p) p[["Vmax"]]*xv/(p[["Km"]]+xv+xv^2/p[["Ki"]])',
+        retryFit:
+          "m<-nls(y~Vmax*x/(Km+x+x^2/Ki),start=list(Vmax=max(y)*1.5,Km=median(x[x>0]),Ki=median(x[x>0])*5),algorithm=\"port\")",
+      };
   }
 }
 
@@ -225,6 +281,18 @@ export function prepareFit(
       error: `Not enough complete points${scope} (${xs.length}) to fit this curve; need at least ${nParams + 1}.`,
     };
   }
+  if (ENZYME_MODELS.includes(model)) {
+    // Substrate concentrations: negative X is a data error, and Km/Khalf
+    // is unidentifiable with no positive X or with all X equal — validate
+    // before calling R, not after it fails. The X = 0 vehicle point is
+    // kept (the formulas are defined at X = 0); only the start values use
+    // the positive X values.
+    if (xs.some((x) => x < 0)) return { error: "Substrate concentrations cannot be negative." };
+    if (!xs.some((x) => x > 0))
+      return { error: "No positive substrate concentration — Km cannot be estimated." };
+    if (new Set(xs).size === 1)
+      return { error: "All substrate concentrations are equal — Km cannot be estimated." };
+  }
   if (model === "plateau-decay") {
     // X0 (the breakpoint) is unidentifiable without data on both sides of
     // it — validate before calling nls(), not after it fails. R's median of
@@ -244,22 +312,32 @@ export function prepareFit(
 /** R statements that assign `x`/`y`, fit `m`, and compute the summary
  *  quantities (`s`, `co`, `cf`, `df`, `ss`, `sst`, `r2`, `syx`) — everything
  *  up to the final `c(...)`. The caller appends its own result vector, so one
- *  eval can cover the fit plus further computation on it (interpolation). */
-export function fitStatements(xs: number[], ys: number[], model: NonlinearModel): string {
+ *  eval can cover the fit plus further computation on it (interpolation).
+ *  `fitOverride` replaces the spec's fit assignment (the substrate-inhibition
+ *  retry with its alternate Ki start). */
+export function fitStatements(xs: number[], ys: number[], model: NonlinearModel, fitOverride?: string): string {
   const spec = modelSpec(model);
   // R² for lm comes from summary(); for nls we compute it from residual/total SS.
   const r2 = spec.kind === "lm" ? "s$r.squared" : "1-ss/sst";
   return (
-    `x<-${rVec(xs)};y<-${rVec(ys)};${spec.fit};s<-summary(m);co<-s$coefficients;cf<-coef(m);` +
+    `x<-${rVec(xs)};y<-${rVec(ys)};${fitOverride ?? spec.fit};s<-summary(m);co<-s$coefficients;cf<-coef(m);` +
     `df<-df.residual(m);ss<-sum(residuals(m)^2);sst<-sum((y-mean(y))^2);r2<-${r2};syx<-sqrt(ss/df);`
   );
 }
 
-/** The named entries the fit contributes to the result vector, in order. */
+/** The named entries the fit contributes to the result vector, in order.
+ *  `cl`/`ch` are the Wald 95% CIs (estimate ± t(0.975, df)·SE, plan 09) —
+ *  on noiseless data the SEs are 0, so the intervals collapse to the
+ *  estimates; the reference tests assert that, plus genuinely nonzero
+ *  widths on a noisy fixture. */
 export function fitEntries(spec: ModelSpec): string {
   // Positional coefficient extraction (co has one row per term, in fit order).
   const coefAssigns = spec.terms
-    .map((_, i) => `b${i}=co[${i + 1},1],se${i}=co[${i + 1},2],t${i}=co[${i + 1},3],pv${i}=co[${i + 1},4]`)
+    .map(
+      (_, i) =>
+        `b${i}=co[${i + 1},1],se${i}=co[${i + 1},2],t${i}=co[${i + 1},3],pv${i}=co[${i + 1},4],` +
+        `cl${i}=co[${i + 1},1]-qt(0.975,df)*co[${i + 1},2],ch${i}=co[${i + 1},1]+qt(0.975,df)*co[${i + 1},2]`,
+    )
     .join(",");
   const derived = spec.derived ?? [];
   const derivedAssigns = derived.map((d, i) => `d${i}=${d.expr}`).join(",");
@@ -279,6 +357,8 @@ export function parseFit(
     stdError: v[`se${i}`] ?? null,
     t: v[`t${i}`] ?? null,
     p: v[`pv${i}`] ?? null,
+    ciLow: v[`cl${i}`] ?? null,
+    ciHigh: v[`ch${i}`] ?? null,
   }));
   const derived: StatRow[] = (spec.derived ?? []).map((d, i) => ({ label: d.label, value: v[`d${i}`] ?? null }));
   const stats: StatRow[] = [
@@ -297,16 +377,28 @@ export interface NonlinearFit {
   stats: StatRow[];
   /** The exact R code that was evaluated (for debugging). */
   rCode: string;
+  /** True when the primary fit failed and the alternate-start retry
+   *  (substrate inhibition's Ki) converged instead — the runner notes it. */
+  retried?: boolean;
 }
 
 /** Fit the curve and return its coefficients, derived quantities and
- *  goodness-of-fit rows — one R call. */
+ *  goodness-of-fit rows — one R call (two when a spec carries a retry fit
+ *  and the first attempt fails). */
 export async function fitNonlinearModel(xs: number[], ys: number[], model: NonlinearModel): Promise<NonlinearFit> {
   const spec = modelSpec(model);
-  const rCode = `${fitStatements(xs, ys, model)}c(${fitEntries(spec)})`;
-  const v = await evalNamedVector(rCode);
-  const { coefficients, derived, stats } = parseFit(v, spec, xs.length);
-  return { coefficients, derived, stats, rCode };
+  try {
+    const rCode = `${fitStatements(xs, ys, model)}c(${fitEntries(spec)})`;
+    const v = await evalNamedVector(rCode);
+    const { coefficients, derived, stats } = parseFit(v, spec, xs.length);
+    return { coefficients, derived, stats, rCode };
+  } catch (err) {
+    if (!spec.retryFit) throw err;
+    const rCode = `${fitStatements(xs, ys, model, spec.retryFit)}c(${fitEntries(spec)})`;
+    const v = await evalNamedVector(rCode);
+    const { coefficients, derived, stats } = parseFit(v, spec, xs.length);
+    return { coefficients, derived, stats, rCode, retried: true };
+  }
 }
 
 /** The nls non-convergence message, shared by both runners — it names the

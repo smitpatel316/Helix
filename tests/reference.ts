@@ -142,6 +142,88 @@ const expTooFew = table(
   ],
 );
 
+/** Enzyme kinetics (plan 09): noiseless by construction on the shared
+ *  substrate grid S = 0.5, 1, 2, 5, 10, 20, 50, so each fit must recover
+ *  its generating parameters. A: Michaelis-Menten Vmax=100, Km=5.
+ *  B: allosteric sigmoidal Vmax=100, Khalf=5, Hill slope=2.
+ *  C: substrate inhibition Vmax=100, Km=2, Ki=10 — velocity falls at high S. */
+const enzymeS = table(
+  ["Title", "X", "A", "B", "C"],
+  [
+    ["", "0.5", "9.0909090909", "0.9900990099", "19.8019801980"],
+    ["", "1", "16.6666666667", "3.8461538462", "32.2580645161"],
+    ["", "2", "28.5714285714", "13.7931034483", "45.4545454545"],
+    ["", "5", "50.0000000000", "50.0000000000", "52.6315789474"],
+    ["", "10", "66.6666666667", "80.0000000000", "45.4545454545"],
+    ["", "20", "80.0000000000", "94.1176470588", "32.2580645161"],
+    ["", "50", "90.9090909091", "99.0099009901", "16.5562913907"],
+  ],
+);
+
+/** Case A2: the same Michaelis-Menten data plus the (X = 0, Y = 0) vehicle point. */
+const enzymeS0 = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "0", "0"],
+    ["", "0.5", "9.0909090909"],
+    ["", "1", "16.6666666667"],
+    ["", "2", "28.5714285714"],
+    ["", "5", "50.0000000000"],
+    ["", "10", "66.6666666667"],
+    ["", "20", "80.0000000000"],
+    ["", "50", "90.9090909091"],
+  ],
+);
+
+/** Noisy Michaelis-Menten (plan 09's CI fixture): the same generating
+ *  parameters (Vmax=100, Km=5) with fixed deterministic ±1% offsets —
+ *  ×[1.01, 0.99, 1.01, 0.99, 1.01, 0.99, 1.01] — recorded here, never random,
+ *  so the SEs and Wald CIs are genuinely nonzero and pinnable. */
+const enzymeNoisy = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "0.5", "9.1818181818"],
+    ["", "1", "16.5000000000"],
+    ["", "2", "28.8571428571"],
+    ["", "5", "49.5000000000"],
+    ["", "10", "67.3333333333"],
+    ["", "20", "79.2000000000"],
+    ["", "50", "91.8181818182"],
+  ],
+);
+
+/** Negative substrate concentration: the runner must error before calling R. */
+const enzymeNegX = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "-1", "5"],
+    ["", "0.5", "9.0909090909"],
+    ["", "1", "16.6666666667"],
+    ["", "2", "28.5714285714"],
+    ["", "5", "50.0000000000"],
+  ],
+);
+
+/** All substrate concentrations equal: Km is unidentifiable, error before R. */
+const enzymeConstX = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "2", "10"],
+    ["", "2", "20"],
+    ["", "2", "30"],
+    ["", "2", "40"],
+  ],
+);
+
+/** Michaelis-Menten needs ≥ 3 points (2 parameters + 1) — this has 2. */
+const enzymeTooFew = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "0.5", "9.0909090909"],
+    ["", "1", "16.6666666667"],
+  ],
+);
+
 const survivalTable = table(
   ["Title", "Days", "Treated", "Placebo"],
   [
@@ -625,6 +707,16 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["expX", expX, "nonlinear-regression", { y: "E", model: "plateau-decay" }],
   ["plateauOneSided", plateauOneSided, "nonlinear-regression", { model: "plateau-decay" }],
   ["expTooFew", expTooFew, "nonlinear-regression", { model: "two-phase-decay" }],
+  // Enzyme kinetics (plan 09) — noiseless fixtures A/A2/B/C, the noisy
+  // CI fixture, and the negative-X / constant-X / too-few-points errors.
+  ["enzymeS", enzymeS, "nonlinear-regression", { y: "A", model: "michaelis-menten" }],
+  ["enzymeS0", enzymeS0, "nonlinear-regression", { model: "michaelis-menten" }],
+  ["enzymeS", enzymeS, "nonlinear-regression", { y: "B", model: "allosteric-sigmoidal" }],
+  ["enzymeS", enzymeS, "nonlinear-regression", { y: "C", model: "substrate-inhibition" }],
+  ["enzymeNoisy", enzymeNoisy, "nonlinear-regression", { model: "michaelis-menten" }],
+  ["enzymeNegX", enzymeNegX, "nonlinear-regression", { model: "michaelis-menten" }],
+  ["enzymeConstX", enzymeConstX, "nonlinear-regression", { model: "michaelis-menten" }],
+  ["enzymeTooFew", enzymeTooFew, "nonlinear-regression", { model: "michaelis-menten" }],
   ["logistic", logistic, "simple-logistic-regression", {}],
   ["logisticSeparated", logisticSeparated, "simple-logistic-regression", {}],
   ["blandAltman", blandAltman, "bland-altman", { sets: ["Method A", "Method B"] }],
@@ -1197,6 +1289,206 @@ async function disagreements(): Promise<string[]> {
   if (!("error" in tooFew) || !tooFew.error.includes("need at least 6"))
     out.push(
       `Exponential two-phase too-few: ${"error" in tooFew ? tooFew.error : "ran without error"}, expected an error naming at least 6 points`,
+    );
+  // Enzyme kinetics (plan 09): the plan's values, by construction
+  // (noiseless fixtures) and re-verified against WebR nls() before locking.
+  // Tolerances from the plan: parameters 1e-3 relative, R² 1e-6 absolute.
+  // On noiseless data the SEs and Wald CIs collapse to 0-width intervals
+  // around the estimates — assert the CIs are present and contain the
+  // estimate, never a nonzero width; the noisy fixture tests real widths.
+  const checkEnzyme = async (
+    label: string,
+    data: TableData,
+    y: string | undefined,
+    model: "michaelis-menten" | "allosteric-sigmoidal" | "substrate-inhibition",
+    coefs: [string, number][],
+    stats: [string, number][],
+  ) => {
+    const r = await runAnalysis("nonlinear-regression", data, y ? { y, model } : { model });
+    if ("error" in r) {
+      out.push(`Enzyme ${label}: ${r.error}`);
+      return null;
+    }
+    for (const [term, want] of coefs) {
+      const c = r.coefficients?.find((cc) => cc.term === term);
+      if (!relClose(c?.estimate, want, 1e-3)) out.push(`Enzyme ${label} ${term}: ${c?.estimate}, plan says ${want}`);
+      // CI fields present and containing the estimate (0-width on noiseless data).
+      if (c == null || c.ciLow == null || c.ciHigh == null)
+        out.push(`Enzyme ${label} ${term}: CI missing (low=${c?.ciLow}, high=${c?.ciHigh})`);
+      else if (c.estimate == null || c.ciLow > c.estimate + 1e-6 || c.ciHigh < c.estimate - 1e-6)
+        out.push(`Enzyme ${label} ${term}: CI [${c.ciLow}, ${c.ciHigh}] does not contain ${c.estimate}`);
+    }
+    for (const [name, want] of stats) {
+      const got = r.stats.find((s) => s.label === name)?.value;
+      const ok = name === "R squared" ? got != null && Math.abs(got - want) <= 1e-6 : relClose(got, want, 1e-3);
+      if (!ok) out.push(`Enzyme ${label} ${name}: ${got}, plan says ${want}`);
+    }
+    return r;
+  };
+  const fitMM = await checkEnzyme(
+    "Michaelis-Menten",
+    enzymeS,
+    "A",
+    "michaelis-menten",
+    [
+      ["Vmax", 100],
+      ["Km", 5],
+    ],
+    [
+      ["Vmax/Km", 20],
+      ["R squared", 1],
+    ],
+  );
+  if (fitMM) {
+    if (fitMM.equation !== "Y = 100·X / (5 + X)") out.push(`Enzyme MM equation: ${fitMM.equation}`);
+    if (!fitMM.notes.includes("Starting values: Vmax = 100, Km = 5."))
+      out.push(`Enzyme MM notes missing starts: ${fitMM.notes}`);
+    if (fitMM.notes.includes("X = 0")) out.push(`Enzyme MM notes wrongly mention X = 0: ${fitMM.notes}`);
+  }
+  const fitMM0 = await checkEnzyme(
+    "Michaelis-Menten with vehicle point",
+    enzymeS0,
+    undefined,
+    "michaelis-menten",
+    [
+      ["Vmax", 100],
+      ["Km", 5],
+    ],
+    [
+      ["Vmax/Km", 20],
+      ["R squared", 1],
+      ["N", 8],
+    ],
+  );
+  if (fitMM0) {
+    if (!fitMM0.notes.includes("The X = 0 (vehicle) point is included in the fit"))
+      out.push(`Enzyme MM vehicle notes missing X = 0: ${fitMM0.notes}`);
+    // The fitted-curve overlay: passes through (0, 0) and (50, ~90.9),
+    // monotone increasing, and the TypeScript evaluator matches an
+    // independent R evaluation of the fitted formula at the data X to 1e-6.
+    const { addDoseCurve, evaluateFittedCurve } = await import("../src/views/graphs/dose-response-curve");
+    const mmOpts = { ...newGraphOptions("dose-response"), doseModel: "michaelis-menten" as const, doseY: "Y" };
+    const mmColumns = plotColumns(readTable(enzymeS0), "dose-response");
+    const mmFig = GRAPHS["dose-response"].build(mmColumns, mmOpts, paintOf(mmOpts, 1), readTable(enzymeS0).titles);
+    addDoseCurve(mmFig, mmColumns, mmOpts, fitMM0, paintOf(mmOpts, 1));
+    const mmTraces = mmFig.data as { mode?: string; x?: number[]; y?: number[] }[];
+    const mmCurve = mmTraces.find((t) => t.mode === "lines" && t.x?.length === 101);
+    if (!mmCurve || mmCurve.x?.[0] !== 0 || mmCurve.y?.[0] == null || Math.abs(mmCurve.y[0]) > 1e-9)
+      out.push(`Enzyme MM overlay start: ${JSON.stringify(mmCurve?.y?.slice(0, 1))}, expected 0 at X=0`);
+    const mmLastY = mmCurve?.y?.at(-1);
+    if (!mmCurve || mmCurve.x?.at(-1) !== 50 || mmLastY == null || Math.abs(mmLastY - 90.9090909091) > 1e-6)
+      out.push(`Enzyme MM overlay end: ${mmLastY}, expected ~90.909 at X=50`);
+    if (mmCurve?.y?.some((v, i, a) => i > 0 && v <= a[i - 1]!))
+      out.push(`Enzyme MM overlay is not monotone increasing`);
+    const mmAnns = (mmFig.layout.annotations as { text?: string }[] | undefined) ?? [];
+    if (!mmAnns.some((a) => a.text?.includes("Vmax/Km = 20")))
+      out.push(`Enzyme MM overlay note missing Vmax/Km: ${JSON.stringify(mmAnns.map((a) => a.text))}`);
+    const vmax = fitMM0.coefficients?.find((c) => c.term === "Vmax")?.estimate;
+    const km = fitMM0.coefficients?.find((c) => c.term === "Km")?.estimate;
+    if (vmax != null && km != null) {
+      const xs = [0, 0.5, 1, 2, 5, 10, 20, 50];
+      const rY = await evalNamedVector(
+        `x<-c(${xs.join(",")});yv<-${vmax.toPrecision(15)}*x/(${km.toPrecision(15)}+x);` +
+          `c(${xs.map((_, i) => `y${i}=yv[${i + 1}]`).join(",")})`,
+      );
+      xs.forEach((x, i) => {
+        const ts = evaluateFittedCurve("michaelis-menten", fitMM0.coefficients ?? [], x);
+        const rv = rY[`y${i}`];
+        if (rv == null || Math.abs(ts - rv) > 1e-6)
+          out.push(`Enzyme MM overlay at X=${x}: TS ${ts}, R ${rv}`);
+      });
+    }
+  }
+  await checkEnzyme(
+    "allosteric sigmoidal",
+    enzymeS,
+    "B",
+    "allosteric-sigmoidal",
+    [
+      ["Vmax", 100],
+      ["Khalf", 5],
+      ["HillSlope", 2],
+    ],
+    [["R squared", 1]],
+  );
+  const fitSI = await checkEnzyme(
+    "substrate inhibition",
+    enzymeS,
+    "C",
+    "substrate-inhibition",
+    [
+      ["Vmax", 100],
+      ["Km", 2],
+      ["Ki", 10],
+    ],
+    [["R squared", 1]],
+  );
+  if (fitSI) {
+    if (fitSI.equation !== "Y = 100·X / (2 + X + X²/10)") out.push(`Enzyme substrate-inhibition equation: ${fitSI.equation}`);
+    if (!fitSI.notes.includes("Starting values: Vmax = 78.95, Km = 5, Ki = 50."))
+      out.push(`Enzyme substrate-inhibition notes missing starts: ${fitSI.notes}`);
+    // The overlay peaks near S ≈ 4.5 (√(Km·Ki) = √20) and decreases
+    // thereafter — the key discriminator for substrate inhibition.
+    const { addDoseCurve } = await import("../src/views/graphs/dose-response-curve");
+    const siOpts = { ...newGraphOptions("dose-response"), doseModel: "substrate-inhibition" as const, doseY: "C" };
+    const siColumns = plotColumns(readTable(enzymeS), "dose-response");
+    const siFig = GRAPHS["dose-response"].build(siColumns, siOpts, paintOf(siOpts, 1), readTable(enzymeS).titles);
+    addDoseCurve(siFig, siColumns, siOpts, fitSI, paintOf(siOpts, 1));
+    const siTraces = siFig.data as { mode?: string; x?: number[]; y?: number[] }[];
+    const siCurve = siTraces.find((t) => t.mode === "lines" && t.x?.length === 101);
+    if (!siCurve || !siCurve.x?.length || !siCurve.y?.length) {
+      out.push(`Enzyme substrate-inhibition overlay missing`);
+    } else {
+      const maxI = siCurve.y.indexOf(Math.max(...siCurve.y));
+      const maxX = siCurve.x[maxI];
+      if (maxX == null || maxX < 3 || maxX > 6)
+        out.push(`Enzyme substrate-inhibition overlay peaks at S=${maxX}, expected between 3 and 6`);
+      const after = siCurve.y.slice(maxI + 1);
+      if (after.some((v, i, a) => i > 0 && v >= a[i - 1]!))
+        out.push(`Enzyme substrate-inhibition overlay does not decrease after its peak`);
+    }
+  }
+  // The noisy fixture: genuinely nonzero SEs and Wald CIs — widths > 0,
+  // intervals containing the estimates, parameters still near the truth.
+  const fitNoisy = await runAnalysis("nonlinear-regression", enzymeNoisy, { model: "michaelis-menten" });
+  if ("error" in fitNoisy) {
+    out.push(`Enzyme noisy MM: ${fitNoisy.error}`);
+  } else {
+    for (const [term, want, wantSe, wantLo, wantHi] of [
+      ["Vmax", 100.5333227, 0.7353818191, 98.64296351, 102.4236818],
+      ["Km", 5.068291815, 0.1211010523, 4.75699165, 5.37959198],
+    ] as const) {
+      const c = fitNoisy.coefficients?.find((cc) => cc.term === term);
+      if (!relClose(c?.estimate, want, 1e-3)) out.push(`Enzyme noisy MM ${term}: ${c?.estimate}, WebR says ${want}`);
+      if (!relClose(c?.stdError, wantSe, 1e-3)) out.push(`Enzyme noisy MM ${term} SE: ${c?.stdError}, WebR says ${wantSe}`);
+      if (c == null || c.ciLow == null || c.ciHigh == null || c.ciHigh <= c.ciLow)
+        out.push(`Enzyme noisy MM ${term}: CI not a nonzero interval (low=${c?.ciLow}, high=${c?.ciHigh})`);
+      else if (c.estimate == null || c.ciLow > c.estimate || c.ciHigh < c.estimate)
+        out.push(`Enzyme noisy MM ${term}: CI [${c.ciLow}, ${c.ciHigh}] does not contain ${c.estimate}`);
+      else {
+        if (!relClose(c.ciLow, wantLo, 1e-3)) out.push(`Enzyme noisy MM ${term} CI low: ${c.ciLow}, WebR says ${wantLo}`);
+        if (!relClose(c.ciHigh, wantHi, 1e-3)) out.push(`Enzyme noisy MM ${term} CI high: ${c.ciHigh}, WebR says ${wantHi}`);
+      }
+    }
+    const r2 = fitNoisy.stats.find((s) => s.label === "R squared")?.value;
+    if (r2 == null || r2 < 0.999) out.push(`Enzyme noisy MM R squared: ${r2}, expected ≥ 0.999`);
+  }
+  // The edge cases are errors, not fits — and the negative-X / constant-X
+  // errors must come from the runner before R is called.
+  const negX = await runAnalysis("nonlinear-regression", enzymeNegX, { model: "michaelis-menten" });
+  if (!("error" in negX) || !negX.error.includes("cannot be negative"))
+    out.push(
+      `Enzyme negative X: ${"error" in negX ? negX.error : "ran without error"}, expected an error about negative concentrations`,
+    );
+  const constX = await runAnalysis("nonlinear-regression", enzymeConstX, { model: "michaelis-menten" });
+  if (!("error" in constX) || !constX.error.includes("All substrate concentrations are equal"))
+    out.push(
+      `Enzyme constant X: ${"error" in constX ? constX.error : "ran without error"}, expected an error about equal concentrations`,
+    );
+  const enzTooFew = await runAnalysis("nonlinear-regression", enzymeTooFew, { model: "michaelis-menten" });
+  if (!("error" in enzTooFew) || !enzTooFew.error.includes("need at least 3"))
+    out.push(
+      `Enzyme too-few: ${"error" in enzTooFew ? enzTooFew.error : "ran without error"}, expected an error naming at least 3 points`,
     );
   // Out of range: Y = 150 is above the curve's Top — a null row, not an error.
   const oor = await runAnalysis("standard-curve-interpolation", doseLog, {
