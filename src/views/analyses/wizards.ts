@@ -11,6 +11,7 @@ import type {
   AnalysisType,
   CompareTwoGroupsParams,
   CorrelationParams,
+  CoxPHParams,
   FrequencyDistributionParams,
   MultipleTTestsParams,
   NonlinearRegressionParams,
@@ -625,6 +626,60 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
     finish: (a) => ({
       type: "multiple-regression",
       params: { dependent: a.dependent as string, predictors: a.predictors as string[] },
+    }),
+  },
+
+  "cox-proportional-hazards": {
+    questions: (a, table) => {
+      const all = dataNames(table);
+      const time = (a.time as string | undefined) ?? all[0];
+      const status = (a.status as string | undefined) ?? all.filter((n) => n !== time)[0];
+      const remaining = all.filter((n) => n !== time && n !== status);
+      // Only binary (exactly two distinct values) covariates can stratify
+      // the survival curves — among the covariates chosen so far.
+      const chosenCovariates = (a.covariates as string[] | undefined) ?? remaining;
+      const binary = chosenCovariates.filter((n) => {
+        const col = table.numeric.find((c) => c.name === n);
+        return col !== undefined && new Set(col.values).size === 2;
+      });
+      return [
+        choice("time", "Which column holds the survival (follow-up) times?", names(all)),
+        choice(
+          "status",
+          "Which column holds the event codes? 1 = event occurred, 0 = censored.",
+          names(all.filter((n) => n !== time)),
+        ),
+        {
+          id: "covariates",
+          ask: "Choose which variables to include as covariates.",
+          kind: "names",
+          options: remaining,
+        },
+        choice(
+          "stratifyBy",
+          "Stratify the survival curves by which covariate? Only 0/1 (binary) covariates are offered.",
+          [
+            ...binary.map((n): [string, string] => [n, n]),
+            ["none", "None — one curve for all subjects"],
+          ],
+        ),
+        choice("ties", "How should tied event times be handled?", [
+          ["efron", "Efron (recommended)"],
+          ["breslow", "Breslow"],
+        ]),
+      ];
+    },
+    finish: (a) => ({
+      type: "cox-proportional-hazards",
+      params: {
+        time: a.time as string,
+        status: a.status as string,
+        covariates: a.covariates as string[],
+        ties: (a.ties as CoxPHParams["ties"] | undefined) ?? "efron",
+        ...(a.stratifyBy !== undefined && a.stratifyBy !== "none"
+          ? { stratifyBy: a.stratifyBy as string }
+          : {}),
+      },
     }),
   },
 };

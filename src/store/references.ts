@@ -16,7 +16,7 @@ export interface TableMove {
 }
 
 // The params and options holding names (a name, or a list of names).
-const PARAM_NAMES = ["y", "dependent", "predictors", "datasets", "sets"] as const;
+const PARAM_NAMES = ["y", "dependent", "predictors", "datasets", "sets", "time", "status", "covariates", "stratifyBy"] as const;
 const OPTION_NAMES = ["doseY", "volcanoX", "volcanoY", "volcanoLabel", "volcanoGroupA", "volcanoGroupB"] as const;
 
 /** `node` following a table edit's `move`; `columns`: the table's columns after it (a

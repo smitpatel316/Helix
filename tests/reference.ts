@@ -4,10 +4,11 @@
 // reference after an intended change. It also checks that TypeScript and R agree
 // where both compute the same thing, and that the sample project's items all work.
 /// <reference types="node" />
-import { readFileSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runAnalysis } from "../src/stats";
-import type { AnalysisParams, AnalysisType } from "../src/stats/types";
+import type { AnalysisParams, AnalysisResult, AnalysisType } from "../src/stats/types";
 import type { GraphOptions, GraphType, TableData } from "../src/store/types";
 import { GRAPHS, graphSeries, newGraphOptions, plotColumns } from "../src/views/graphs";
 import { paintOf } from "../src/views/graphs/plot-helpers";
@@ -16,9 +17,38 @@ import { countDataColumns, countDataGroups } from "../src/views/analyses";
 import { fitLinear } from "../src/views/graphs/regression-overlay";
 import { computeGroupedDEG } from "../src/lib/deg";
 import { tCrit95 } from "../src/lib/student-t";
-import { evalNamedVector, startR } from "../src/stats/webr";
+import { evalNamedVector, setPackageRepo, startR } from "../src/stats/webr";
 import { prettyBreaks } from "../src/stats/column/frequency-distribution";
 import { sampleProject } from "./sample-project";
+
+// ── R package repo (plan 00) ────────────────────────────────────────────
+// Cox regression (plan 10) is the first analysis with requiredPackages: its
+// package installs from the BUNDLED repo (webr-repo/, served on localhost),
+// never the CDN — on Hatch the WASM side cannot reach the internet at all,
+// so the bundled path is the only one provable here, and it is the shipping
+// path. If webr-repo/ was not built yet, the Cox cases are skipped (never
+// silently passed): run scripts/build-webr-repo.sh first.
+const REPO_DIR = fileURLToPath(new URL("../webr-repo/", import.meta.url));
+const repoReady = existsSync(`${REPO_DIR}MANIFEST.json`);
+if (repoReady) {
+  const repoServer = createServer((req, res) => {
+    const path = decodeURIComponent(req.url!.split("?")[0]).replace(/^\/+/, "");
+    const file = `${REPO_DIR}${path}`;
+    if (!path || !existsSync(file) || !statSync(file).isFile()) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end(readFileSync(file));
+  });
+  await new Promise<void>((r) => repoServer.listen(0, "127.0.0.1", r));
+  setPackageRepo(`http://127.0.0.1:${(repoServer.address() as { port: number }).port}`, {
+    allowCdnFallback: false,
+  });
+} else {
+  console.log("⚠ webr-repo/ is not built — Cox cases skipped. Run scripts/build-webr-repo.sh, then re-run npm test.");
+}
 
 // ── Tables ───────────────────────────────────────────────────────────────
 
@@ -235,6 +265,69 @@ const survivalTable = table(
     ["", "12", "", "0"],
     ["", "15", "1", "1"],
     ["", "20", "0", ""],
+  ],
+);
+
+/** Cox proportional-hazards regression (plan 10): the plan's fixture —
+ *  n = 16. The plan's prose says 13 events / 3 censored, but counting its
+ *  own rows gives 12 events / 4 censored (6 + 6 events, 2 + 2 censored),
+ *  which WebR confirms (Number of events 12). Age is entered as recorded
+ *  (no centring — centring does not change a Cox slope; there is no
+ *  intercept). The one tied time, 12, holds one event (Trt = 1) and one
+ *  censored subject (Trt = 0), so there is no tied *event* time and Efron
+ *  agrees with Breslow exactly on this fixture (see disagreements()). */
+const coxTable = table(
+  ["Title", "Time", "Status", "Trt", "Age"],
+  [
+    ["", "3", "1", "0", "62"],
+    ["", "5", "1", "0", "58"],
+    ["", "7", "0", "0", "65"],
+    ["", "8", "1", "0", "70"],
+    ["", "10", "1", "0", "55"],
+    ["", "12", "0", "0", "68"],
+    ["", "15", "1", "0", "61"],
+    ["", "20", "1", "0", "59"],
+    ["", "6", "1", "1", "60"],
+    ["", "9", "1", "1", "57"],
+    ["", "12", "1", "1", "63"],
+    ["", "15", "0", "1", "66"],
+    ["", "18", "1", "1", "54"],
+    ["", "22", "1", "1", "71"],
+    ["", "25", "0", "1", "64"],
+    ["", "30", "1", "1", "56"],
+  ],
+);
+
+/** Every subject censored: Cox needs at least 2 events. */
+const coxAllCensored = table(
+  ["Title", "Time", "Status", "Trt", "Age"],
+  [
+    ["", "3", "0", "0", "62"],
+    ["", "5", "0", "0", "58"],
+    ["", "6", "0", "1", "60"],
+    ["", "9", "0", "1", "57"],
+  ],
+);
+
+/** A status code of 2: codes must be 1 (event) or 0 (censored). */
+const coxBadStatus = table(
+  ["Title", "Time", "Status", "Trt", "Age"],
+  [
+    ["", "3", "1", "0", "62"],
+    ["", "5", "2", "0", "58"],
+    ["", "6", "1", "1", "60"],
+    ["", "9", "1", "1", "57"],
+  ],
+);
+
+/** A zero survival time: times must be positive. */
+const coxZeroTime = table(
+  ["Title", "Time", "Status", "Trt", "Age"],
+  [
+    ["", "3", "1", "0", "62"],
+    ["", "0", "1", "0", "58"],
+    ["", "6", "1", "1", "60"],
+    ["", "9", "1", "1", "57"],
   ],
 );
 
@@ -744,6 +837,39 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["freqCol", freqCol, "frequency-distribution", { binMode: "count", binCount: 1, startAt: 2 }],
   ["column", column, "frequency-distribution", { binMode: "auto" }],
   ["survival", survivalTable, "survival-log-rank"],
+  // Cox proportional-hazards regression (plan 10): the reference run (Efron
+  // default), the defaults (same numbers), the single-covariate run, the
+  // Breslow run (identical here — no tied event times, see disagreements()),
+  // and the error paths (all-censored, bad status code, zero time, no
+  // covariates).
+  ["coxTable", coxTable, "cox-proportional-hazards", { time: "Time", status: "Status", covariates: ["Trt", "Age"] }],
+  ["coxTable", coxTable, "cox-proportional-hazards", {}],
+  ["coxTable", coxTable, "cox-proportional-hazards", { time: "Time", status: "Status", covariates: ["Trt"] }],
+  [
+    "coxTable",
+    coxTable,
+    "cox-proportional-hazards",
+    { time: "Time", status: "Status", covariates: ["Trt", "Age"], ties: "breslow" },
+  ],
+  [
+    "coxAllCensored",
+    coxAllCensored,
+    "cox-proportional-hazards",
+    { time: "Time", status: "Status", covariates: ["Trt", "Age"] },
+  ],
+  [
+    "coxBadStatus",
+    coxBadStatus,
+    "cox-proportional-hazards",
+    { time: "Time", status: "Status", covariates: ["Trt", "Age"] },
+  ],
+  [
+    "coxZeroTime",
+    coxZeroTime,
+    "cox-proportional-hazards",
+    { time: "Time", status: "Status", covariates: ["Trt", "Age"] },
+  ],
+  ["coxTable", coxTable, "cox-proportional-hazards", { time: "Time", status: "Status", covariates: [] }],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "none", posthocTarget: "groups" }],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "tukey", posthocTarget: "groups" }],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "bonferroni", posthocTarget: "rows" }],
@@ -834,6 +960,7 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["rocTable", rocTable, "roc-curve"],
   ["freqCol", freqCol, "histogram"],
   ["survival", survivalTable, "survival"],
+  ["coxTable", coxTable, "forest-plot"],
   ["grouped", grouped, "grouped-scatter"],
   ["grouped", grouped, "grouped-bars", { groupLayout: "separated" }],
   ["grouped", grouped, "grouped-lines"],
@@ -855,6 +982,9 @@ async function run() {
   await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
   const out: Record<string, unknown> = {};
   for (const [name, data, type, params] of ANALYSES) {
+    // Without the bundled repo the Cox cases cannot run (see the repo note
+    // above) — skipped, never silently passed.
+    if (!repoReady && type === "cox-proportional-hazards") continue;
     out[`${type} ${name} ${JSON.stringify(params ?? {})}`] = await runAnalysis(type, data, params);
   }
   for (const [name, data, type, options] of GRAPH_CASES) {
@@ -1666,6 +1796,226 @@ async function disagreements(): Promise<string[]> {
     out.push(
       `ROC unknown positive: ${"error" in rocBad ? rocBad.error : "ran without error"}, expected an error naming the outcome column`,
     );
+  // Cox proportional-hazards regression (plan 10): the plan's Breslow values,
+  // computed twice independently in Python (NumPy Newton–Raphson on the Cox
+  // partial likelihood; scipy BFGS maximisation — agreed to 6 decimals).
+  // Tolerances (plan): β 1e-3, HR 1e-3 relative, CIs 1e-2 relative, test
+  // statistics 1e-2 relative, concordance 1e-3. Two plan values do NOT
+  // survive the WebR check and are recorded here, not forced: the plan's
+  // prose says 13 events / 3 censored, but its own rows hold 12 events / 4
+  // censored; and its concordance 0.6559 (61/93 comparable pairs) counts the
+  // tied-time pair differently from survival::concordance, which gives
+  // 0.6526 (62/95) — the WebR value is pinned in reference.json and asserted
+  // below. Efron (the default) agrees with Breslow exactly on this fixture:
+  // the tied time 12 holds one event and one censored subject, so there is
+  // no tied event time and the Efron correction never engages.
+  if (repoReady) {
+    const coxStat = (r: AnalysisResult, label: string) => r.stats.find((s) => s.label === label)?.value;
+    const coxCoef = (r: AnalysisResult, term: string) => r.coefficients?.find((c) => c.term === term);
+    const close = (got: number | null | undefined, want: number, tol: number, label: string) => {
+      if (got == null || Math.abs(got - want) > tol) out.push(`Cox ${label}: ${got}, plan says ${want}`);
+    };
+    const rel = (got: number | null | undefined, want: number, relTol: number, label: string) => {
+      if (got == null || Math.abs(got - want) > relTol * Math.abs(want))
+        out.push(`Cox ${label}: ${got}, plan says ${want}`);
+    };
+    // Case A — two covariates (Trt + Age), Breslow ties.
+    const coxA = await runAnalysis("cox-proportional-hazards", coxTable, {
+      time: "Time",
+      status: "Status",
+      covariates: ["Trt", "Age"],
+      ties: "breslow",
+    });
+    if ("error" in coxA) {
+      out.push(`Cox case A: ${coxA.error}`);
+    } else {
+      const trt = coxCoef(coxA, "Trt");
+      const age = coxCoef(coxA, "Age");
+      close(trt?.estimate, -0.9859, 1e-3, "A β_Trt");
+      close(trt?.stdError, 0.6567, 1e-3, "A SE_Trt");
+      rel(trt?.hazardRatio, 0.3731, 1e-3, "A HR_Trt");
+      rel(trt?.ciLow, 0.103, 1e-2, "A HR_Trt CI low");
+      rel(trt?.ciHigh, 1.3516, 1e-2, "A HR_Trt CI high");
+      close(trt?.t, -1.501, 1e-3, "A z_Trt");
+      close(trt?.p, 0.1333, 1e-3, "A p_Trt");
+      close(age?.estimate, -0.0351, 1e-3, "A β_Age");
+      close(age?.stdError, 0.0598, 1e-3, "A SE_Age");
+      rel(age?.hazardRatio, 0.9655, 1e-3, "A HR_Age");
+      rel(age?.ciLow, 0.8587, 1e-2, "A HR_Age CI low");
+      rel(age?.ciHigh, 1.0857, 1e-2, "A HR_Age CI high");
+      close(age?.t, -0.586, 1e-3, "A z_Age");
+      close(age?.p, 0.5578, 1e-3, "A p_Age");
+      rel(coxStat(coxA, "Likelihood ratio chi-square"), 2.724, 1e-2, "A LR χ²");
+      close(coxStat(coxA, "Likelihood ratio df"), 2, 0, "A LR df");
+      rel(coxStat(coxA, "Likelihood ratio P value"), 0.2561, 1e-2, "A LR p");
+      rel(coxStat(coxA, "Score (log-rank) chi-square"), 2.8128, 1e-2, "A score χ²");
+      close(coxStat(coxA, "Score (log-rank) df"), 2, 0, "A score df");
+      rel(coxStat(coxA, "Score (log-rank) P value"), 0.245, 1e-2, "A score p");
+      close(coxStat(coxA, "Concordance"), 0.6526, 1e-3, "A concordance (WebR; plan says 0.6559)");
+      close(coxStat(coxA, "Number of events"), 12, 0, "A events (plan prose says 13)");
+      close(coxStat(coxA, "Number censored"), 4, 0, "A censored (plan prose says 3)");
+      if (!coxA.notes.includes("Log partial likelihood -22.18 (vs -23.54 at β = 0)"))
+        out.push(`Cox A notes: log partial likelihood line missing — ${coxA.notes}`);
+      if (!coxA.notes.includes("Ties handled by the Breslow method"))
+        out.push(`Cox A notes: tie method missing`);
+      if (!coxA.notes.includes("Proportional-hazards assumption not tested"))
+        out.push(`Cox A notes: PH-assumption notice missing`);
+      if (!coxA.notes.includes("fewer than 10 per covariate"))
+        out.push(`Cox A notes: events-per-covariate warning missing`);
+      if (coxA.statisticLabel !== "z") out.push(`Cox A statistic label: ${coxA.statisticLabel}, expected "z"`);
+    }
+    // Case A, Efron (the default): identical numbers on this fixture.
+    const coxAEfron = await runAnalysis("cox-proportional-hazards", coxTable, {
+      time: "Time",
+      status: "Status",
+      covariates: ["Trt", "Age"],
+    });
+    if ("error" in coxAEfron) {
+      out.push(`Cox case A (Efron): ${coxAEfron.error}`);
+    } else if (!("error" in coxA)) {
+      for (const term of ["Trt", "Age"]) {
+        const e = coxCoef(coxAEfron, term);
+        const b = coxCoef(coxA, term);
+        if (e?.estimate == null || b?.estimate == null || Math.abs(e.estimate - b.estimate) > 1e-9)
+          out.push(`Cox Efron vs Breslow β_${term}: ${e?.estimate}, Breslow: ${b?.estimate}`);
+      }
+    }
+    // The defaults (no params) give the same numbers as the explicit run.
+    const coxDef = await runAnalysis("cox-proportional-hazards", coxTable, {});
+    if ("error" in coxDef) {
+      out.push(`Cox defaults: ${coxDef.error}`);
+    } else if (!("error" in coxA)) {
+      for (const s of coxA.stats) {
+        const got = coxStat(coxDef, s.label);
+        if (got !== s.value) out.push(`Cox defaults ${s.label}: ${got}, explicit run: ${s.value}`);
+      }
+    }
+    // Case B — single covariate (Trt only), Breslow ties.
+    const coxB = await runAnalysis("cox-proportional-hazards", coxTable, {
+      time: "Time",
+      status: "Status",
+      covariates: ["Trt"],
+      ties: "breslow",
+    });
+    if ("error" in coxB) {
+      out.push(`Cox case B: ${coxB.error}`);
+    } else {
+      const trt = coxCoef(coxB, "Trt");
+      close(trt?.estimate, -1.0018, 1e-3, "B β_Trt");
+      close(trt?.stdError, 0.6593, 1e-3, "B SE_Trt");
+      rel(trt?.hazardRatio, 0.3672, 1e-3, "B HR_Trt");
+      rel(trt?.ciLow, 0.1009, 1e-2, "B HR_Trt CI low");
+      rel(trt?.ciHigh, 1.3369, 1e-2, "B HR_Trt CI high");
+      rel(coxStat(coxB, "Likelihood ratio chi-square"), 2.3715, 1e-2, "B LR χ²");
+      close(coxStat(coxB, "Likelihood ratio df"), 1, 0, "B LR df");
+      rel(coxStat(coxB, "Likelihood ratio P value"), 0.1236, 1e-2, "B LR p");
+    }
+    // Case C — error paths (assert the error strings, no numeric assertions).
+    const coxErr = async (data: TableData, params: AnalysisParams, want: string, label: string) => {
+      const r = await runAnalysis("cox-proportional-hazards", data, params);
+      if (!("error" in r) || !r.error.includes(want))
+        out.push(`Cox ${label}: ${"error" in r ? r.error : "ran without error"}, expected an error naming “${want}”`);
+    };
+    await coxErr(
+      coxAllCensored,
+      { time: "Time", status: "Status", covariates: ["Trt", "Age"] },
+      "at least 2 events",
+      "all-censored",
+    );
+    await coxErr(
+      coxBadStatus,
+      { time: "Time", status: "Status", covariates: ["Trt", "Age"] },
+      "must be 1 (event) or 0 (censored)",
+      "bad status",
+    );
+    await coxErr(
+      coxZeroTime,
+      { time: "Time", status: "Status", covariates: ["Trt", "Age"] },
+      "must be positive",
+      "zero time",
+    );
+    await coxErr(coxTable, { time: "Time", status: "Status", covariates: [] }, "at least one covariate", "no covariates");
+    // The forest plot for Case B: one row, HR 0.3672 with CI (0.1009, 1.3369),
+    // a log-scaled x-axis, and a reference line at HR = 1.
+    if (!("error" in coxB)) {
+      const { addForestPlot } = await import("../src/views/graphs/forest-plot");
+      const forestOpts = newGraphOptions("forest-plot");
+      const fig = GRAPHS["forest-plot"].build(
+        plotColumns(readTable(coxTable), "forest-plot"),
+        forestOpts,
+        paintOf(forestOpts, 1),
+        readTable(coxTable).titles,
+      );
+      addForestPlot(fig, coxB, paintOf(forestOpts, 1));
+      const traces = fig.data as {
+        mode?: string;
+        x?: number[];
+        y?: string[];
+        text?: string[];
+        error_x?: { array?: number[]; arrayminus?: number[] };
+      }[];
+      const row = traces.find((t) => t.mode === "markers");
+      if (!row || row.x?.length !== 1 || Math.abs(row.x[0] - 0.3672) / 0.3672 > 1e-3)
+        out.push(`Forest plot HR: ${JSON.stringify(row?.x)}, expected [0.3672]`);
+      if (!row || row.y?.[0] !== "Trt") out.push(`Forest plot row: ${JSON.stringify(row?.y)}, expected ["Trt"]`);
+      if (row?.error_x?.array?.[0] == null || Math.abs(row.error_x.array[0] - (1.3369 - 0.3672)) / 1.3369 > 1e-2)
+        out.push(`Forest plot CI high: ${JSON.stringify(row?.error_x?.array)}, expected [0.9697]`);
+      if (row?.error_x?.arrayminus?.[0] == null || Math.abs(row.error_x.arrayminus[0] - (0.3672 - 0.1009)) / 0.3672 > 1e-2)
+        out.push(`Forest plot CI low: ${JSON.stringify(row?.error_x?.arrayminus)}, expected [0.2663]`);
+      if (!row?.text?.[0]?.includes("HR 0.3672 (95% CI 0.1009–1.337)"))
+        out.push(`Forest plot label: ${JSON.stringify(row?.text)}, expected "HR 0.3672 (95% CI 0.1009–1.337)"`);
+      const xaxis = fig.layout.xaxis as { type?: string; range?: number[]; autorange?: boolean };
+      if (xaxis.type !== "log") out.push(`Forest plot x-axis: ${xaxis.type}, expected "log"`);
+      if (xaxis.autorange !== false)
+        out.push(`Forest plot x-axis autorange: ${xaxis.autorange}, expected false (else Plotly ignores range)`);
+      // A log axis takes its range in log10 units: 10**range must cover the
+      // whisker (0.1009, 1.3369). Passing data units here rendered [1.18, 78]
+      // — caught by Linux GUI QA, Plan 10.
+      if (
+        !xaxis.range ||
+        10 ** xaxis.range[0] >= 0.1009 ||
+        10 ** xaxis.range[1] <= 1.3369
+      )
+        out.push(
+          `Forest plot x-axis range: ${JSON.stringify(xaxis.range)}, expected log10 units covering the whisker (0.1009, 1.3369)`,
+        );
+      const shapes = (fig.layout.shapes as { type?: string; x0?: number; x1?: number }[] | undefined) ?? [];
+      if (!shapes.some((s) => s.type === "line" && s.x0 === 1 && s.x1 === 1))
+        out.push(`Forest plot reference line: ${JSON.stringify(shapes)}, expected a line at HR = 1`);
+    }
+    // Survival curves by Trt (Case A fixture): two KM curves, Trt = 1 above
+    // Trt = 0 at most times — median survival control ≈ 10, treated ≈ 18.
+    const { coxSurvivalColumns, kaplanMeier } = await import("../src/views/graphs/survival");
+    const survCols = coxSurvivalColumns(coxTable, { time: "Time", status: "Status", stratifyBy: "Trt" });
+    if (!survCols || survCols.length !== 3) {
+      out.push(`Cox survival columns: ${survCols?.map((c) => c.name).join(",")}, expected Time + 2 groups`);
+    } else {
+      const median = (col: (typeof survCols)[number]) => {
+        const { x, y: codes } = pairUp(survCols[0], col);
+        const { t, s } = kaplanMeier(x, codes);
+        for (let i = 1; i < t.length; i++) if (s[i] <= 0.5) return t[i];
+        return null;
+      };
+      const med0 = median(survCols[1]);
+      const med1 = median(survCols[2]);
+      if (med0 !== 10) out.push(`Cox KM median (control): ${med0}, expected 10`);
+      if (med1 !== 18) out.push(`Cox KM median (treated): ${med1}, expected 18`);
+      const survOpts = newGraphOptions("survival");
+      const survFig = GRAPHS["survival"].build(
+        survCols,
+        survOpts,
+        paintOf(survOpts, 2),
+        readTable(coxTable).titles,
+      );
+      const curves = (
+        survFig.data as { mode?: string; name?: string; y?: number[] }[]
+      ).filter((t) => t.mode === "lines");
+      if (curves.length !== 2) out.push(`Cox survival graph curves: ${curves.length}, expected 2`);
+      const names = curves.map((t) => t.name).sort();
+      if (JSON.stringify(names) !== JSON.stringify(["Trt = 0", "Trt = 1"]))
+        out.push(`Cox survival curves: ${names.join(",")}, expected "Trt = 0" and "Trt = 1"`);
+    }
+  }
   // Kolmogorov-Smirnov: the plan's values, computed independently in Python
   // with scipy.stats.ks_2samp(..., method='exact') (scipy 1.11.4) and verified
   // by a manual ECDF-difference calculation in the same script — both agreed
@@ -1921,6 +2271,11 @@ if (process.argv.includes("--update")) {
   console.log(`Reference updated: ${Object.keys(actual).length} results.`);
 } else {
   const expected = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+  // Without the bundled repo the Cox cases were skipped above — the same keys
+  // are dropped from the expectation, so the comparison stays exact.
+  if (!repoReady) {
+    for (const k of Object.keys(expected)) if (k.startsWith("cox-proportional-hazards ")) delete expected[k];
+  }
   const keys = new Set([...Object.keys(expected), ...Object.keys(actual)]);
   const changed = [...keys].filter((k) => JSON.stringify(expected[k]) !== JSON.stringify(actual[k]));
   for (const k of changed)

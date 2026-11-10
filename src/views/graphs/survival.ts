@@ -5,9 +5,11 @@
 //   round-trip needed, unlike e.g. the dose-response sigmoidal fit).
 // - "counts": cells are the number of survivors remaining in that group at that
 //   time; plotted directly as percent-of-initial, no event/censor concept.
-import type { GraphOptions } from "../../store/types";
+import type { GraphOptions, TableData } from "../../store/types";
+import type { CoxPHParams } from "../../stats/types";
 import type { GraphModule, GraphFigure } from ".";
-import { pairUp, type Column } from "../../lib/dataset";
+import { pairUp, readTable, type Column } from "../../lib/dataset";
+import { num } from "../../lib/format";
 import { xyLayout, type Paint } from "./plot-helpers";
 
 interface KaplanMeier {
@@ -103,3 +105,31 @@ function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFig
 }
 
 export const survival: GraphModule = { label: "Survival curve", family: "xy", lines: () => true, build };
+
+/** The survival graph's columns from a Multiple Variables table + a Cox
+ *  analysis's params: the time column, then one event-code column per value
+ *  of the stratifier (or a single code column for all subjects when the
+ *  analysis stratifies by nothing) — the XY shape this graph already draws.
+ *  Rows are complete cases only. Null when the time/status columns are
+ *  missing or no complete row exists. */
+export function coxSurvivalColumns(data: TableData, params: CoxPHParams): Column[] | null {
+  const dataset = readTable(data);
+  const time = params.time ? dataset.columns.find((c) => c.name === params.time) : dataset.numeric[0];
+  const status = params.status ? dataset.columns.find((c) => c.name === params.status) : dataset.numeric[1];
+  if (!time?.values.length || !status?.values.length) return null;
+  const strat = params.stratifyBy ? dataset.columns.find((c) => c.name === params.stratifyBy) : undefined;
+  const rows = time.rows.filter((r) => status.byRow[r] != null && (!strat || strat.byRow[r] != null));
+  if (!rows.length) return null;
+  const groups = strat ? [...new Set(rows.map((r) => strat.byRow[r]!))] : [null];
+  const columns = [
+    "Title",
+    time.name,
+    ...groups.map((g) => (strat ? `${strat.name} = ${num(g)}` : "All subjects")),
+  ];
+  const tableRows = rows.map((r) => [
+    null,
+    String(time.byRow[r]),
+    ...groups.map((g) => (g === null || strat!.byRow[r] === g ? String(status.byRow[r]) : null)),
+  ]);
+  return readTable({ columns, rows: tableRows }).columns;
+}

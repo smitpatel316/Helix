@@ -5779,6 +5779,492 @@
   ],
   "notes": "Log-rank test comparing 2 survival curves (df = 1). The median shown per group is the Kaplan-Meier median survival. Treated: 5 subjects, 3 events, 2 censored, observed 3 vs expected 3.878, median survival 15; Placebo: 5 subjects, 4 events, 1 censored, observed 4 vs expected 3.122, median survival 8."
  },
+ "cox-proportional-hazards coxTable {\"time\":\"Time\",\"status\":\"Status\",\"covariates\":[\"Trt\",\"Age\"]}": {
+  "testType": "cox-proportional-hazards",
+  "subtitle": "Cox proportional-hazards regression",
+  "statisticLabel": "z",
+  "stats": [
+   {
+    "label": "Concordance",
+    "value": 0.6526315789
+   },
+   {
+    "label": "Concordance SE",
+    "value": 0.08413219859
+   },
+   {
+    "label": "Likelihood ratio chi-square",
+    "value": 2.724017183
+   },
+   {
+    "label": "Likelihood ratio df",
+    "value": 2
+   },
+   {
+    "label": "Likelihood ratio P value",
+    "value": 0.2561457676,
+    "p": true
+   },
+   {
+    "label": "Wald chi-square",
+    "value": 2.62
+   },
+   {
+    "label": "Wald df",
+    "value": 2
+   },
+   {
+    "label": "Wald P value",
+    "value": 0.2698370349,
+    "p": true
+   },
+   {
+    "label": "Score (log-rank) chi-square",
+    "value": 2.812762252
+   },
+   {
+    "label": "Score (log-rank) df",
+    "value": 2
+   },
+   {
+    "label": "Score (log-rank) P value",
+    "value": 0.2450284076,
+    "p": true
+   },
+   {
+    "label": "Number of events",
+    "value": 12
+   },
+   {
+    "label": "Number censored",
+    "value": 4
+   },
+   {
+    "label": "N (complete cases)",
+    "value": 16
+   }
+  ],
+  "groups": [
+   {
+    "name": "Time",
+    "mean": 13.5625,
+    "sd": 7.711193163,
+    "sem": 1.927798291,
+    "median": 12,
+    "n": 16
+   },
+   {
+    "name": "Status",
+    "mean": 0.75,
+    "sd": 0.4472135955,
+    "sem": 0.1118033989,
+    "median": 1,
+    "n": 16
+   },
+   {
+    "name": "Trt",
+    "mean": 0.5,
+    "sd": 0.5163977795,
+    "sem": 0.1290994449,
+    "median": 0.5,
+    "n": 16
+   },
+   {
+    "name": "Age",
+    "mean": 61.8125,
+    "sd": 5.256345372,
+    "sem": 1.314086343,
+    "median": 61.5,
+    "n": 16
+   }
+  ],
+  "notes": "Cox proportional-hazards regression of survival in “Time” (status “Status”: 1 = event, 0 = censored) on 2 covariate(s): Trt, Age. Ties handled by the Efron method. Covariates were entered as recorded (no centring — centring does not change a Cox slope, and the model has no intercept). Log partial likelihood -22.18 (vs -23.54 at β = 0). Proportional-hazards assumption not tested in this version — see sub-task 3 (diagnostics). Only 12 events for 2 covariate(s) (6 per covariate) — fewer than 10 per covariate, so hazard ratios are imprecise.",
+  "coefficients": [
+   {
+    "term": "Trt",
+    "estimate": -0.9859454503,
+    "stdError": 0.6567369442,
+    "t": -1.501279103,
+    "p": 0.1332833877,
+    "hazardRatio": 0.3730863256,
+    "ciLow": 0.102989709,
+    "ciHigh": 1.351527329
+   },
+   {
+    "term": "Age",
+    "estimate": -0.0350772615,
+    "stdError": 0.05984449456,
+    "t": -0.5861401581,
+    "p": 0.5577813317,
+    "hazardRatio": 0.965530815,
+    "ciLow": 0.858670243,
+    "ciHigh": 1.085690068
+   }
+  ]
+ },
+ "cox-proportional-hazards coxTable {}": {
+  "testType": "cox-proportional-hazards",
+  "subtitle": "Cox proportional-hazards regression",
+  "statisticLabel": "z",
+  "stats": [
+   {
+    "label": "Concordance",
+    "value": 0.6526315789
+   },
+   {
+    "label": "Concordance SE",
+    "value": 0.08413219859
+   },
+   {
+    "label": "Likelihood ratio chi-square",
+    "value": 2.724017183
+   },
+   {
+    "label": "Likelihood ratio df",
+    "value": 2
+   },
+   {
+    "label": "Likelihood ratio P value",
+    "value": 0.2561457676,
+    "p": true
+   },
+   {
+    "label": "Wald chi-square",
+    "value": 2.62
+   },
+   {
+    "label": "Wald df",
+    "value": 2
+   },
+   {
+    "label": "Wald P value",
+    "value": 0.2698370349,
+    "p": true
+   },
+   {
+    "label": "Score (log-rank) chi-square",
+    "value": 2.812762252
+   },
+   {
+    "label": "Score (log-rank) df",
+    "value": 2
+   },
+   {
+    "label": "Score (log-rank) P value",
+    "value": 0.2450284076,
+    "p": true
+   },
+   {
+    "label": "Number of events",
+    "value": 12
+   },
+   {
+    "label": "Number censored",
+    "value": 4
+   },
+   {
+    "label": "N (complete cases)",
+    "value": 16
+   }
+  ],
+  "groups": [
+   {
+    "name": "Time",
+    "mean": 13.5625,
+    "sd": 7.711193163,
+    "sem": 1.927798291,
+    "median": 12,
+    "n": 16
+   },
+   {
+    "name": "Status",
+    "mean": 0.75,
+    "sd": 0.4472135955,
+    "sem": 0.1118033989,
+    "median": 1,
+    "n": 16
+   },
+   {
+    "name": "Trt",
+    "mean": 0.5,
+    "sd": 0.5163977795,
+    "sem": 0.1290994449,
+    "median": 0.5,
+    "n": 16
+   },
+   {
+    "name": "Age",
+    "mean": 61.8125,
+    "sd": 5.256345372,
+    "sem": 1.314086343,
+    "median": 61.5,
+    "n": 16
+   }
+  ],
+  "notes": "Cox proportional-hazards regression of survival in “Time” (status “Status”: 1 = event, 0 = censored) on 2 covariate(s): Trt, Age. Ties handled by the Efron method. Covariates were entered as recorded (no centring — centring does not change a Cox slope, and the model has no intercept). Log partial likelihood -22.18 (vs -23.54 at β = 0). Proportional-hazards assumption not tested in this version — see sub-task 3 (diagnostics). Only 12 events for 2 covariate(s) (6 per covariate) — fewer than 10 per covariate, so hazard ratios are imprecise.",
+  "coefficients": [
+   {
+    "term": "Trt",
+    "estimate": -0.9859454503,
+    "stdError": 0.6567369442,
+    "t": -1.501279103,
+    "p": 0.1332833877,
+    "hazardRatio": 0.3730863256,
+    "ciLow": 0.102989709,
+    "ciHigh": 1.351527329
+   },
+   {
+    "term": "Age",
+    "estimate": -0.0350772615,
+    "stdError": 0.05984449456,
+    "t": -0.5861401581,
+    "p": 0.5577813317,
+    "hazardRatio": 0.965530815,
+    "ciLow": 0.858670243,
+    "ciHigh": 1.085690068
+   }
+  ]
+ },
+ "cox-proportional-hazards coxTable {\"time\":\"Time\",\"status\":\"Status\",\"covariates\":[\"Trt\"]}": {
+  "testType": "cox-proportional-hazards",
+  "subtitle": "Cox proportional-hazards regression",
+  "statisticLabel": "z",
+  "stats": [
+   {
+    "label": "Concordance",
+    "value": 0.6210526316
+   },
+   {
+    "label": "Concordance SE",
+    "value": 0.07673892179
+   },
+   {
+    "label": "Likelihood ratio chi-square",
+    "value": 2.371471413
+   },
+   {
+    "label": "Likelihood ratio df",
+    "value": 1
+   },
+   {
+    "label": "Likelihood ratio P value",
+    "value": 0.1235705304,
+    "p": true
+   },
+   {
+    "label": "Wald chi-square",
+    "value": 2.31
+   },
+   {
+    "label": "Wald df",
+    "value": 1
+   },
+   {
+    "label": "Wald P value",
+    "value": 0.1286056338,
+    "p": true
+   },
+   {
+    "label": "Score (log-rank) chi-square",
+    "value": 2.485589103
+   },
+   {
+    "label": "Score (log-rank) df",
+    "value": 1
+   },
+   {
+    "label": "Score (log-rank) P value",
+    "value": 0.1148933218,
+    "p": true
+   },
+   {
+    "label": "Number of events",
+    "value": 12
+   },
+   {
+    "label": "Number censored",
+    "value": 4
+   },
+   {
+    "label": "N (complete cases)",
+    "value": 16
+   }
+  ],
+  "groups": [
+   {
+    "name": "Time",
+    "mean": 13.5625,
+    "sd": 7.711193163,
+    "sem": 1.927798291,
+    "median": 12,
+    "n": 16
+   },
+   {
+    "name": "Status",
+    "mean": 0.75,
+    "sd": 0.4472135955,
+    "sem": 0.1118033989,
+    "median": 1,
+    "n": 16
+   },
+   {
+    "name": "Trt",
+    "mean": 0.5,
+    "sd": 0.5163977795,
+    "sem": 0.1290994449,
+    "median": 0.5,
+    "n": 16
+   }
+  ],
+  "notes": "Cox proportional-hazards regression of survival in “Time” (status “Status”: 1 = event, 0 = censored) on 1 covariate(s): Trt. Ties handled by the Efron method. Covariates were entered as recorded (no centring — centring does not change a Cox slope, and the model has no intercept). Log partial likelihood -22.36 (vs -23.54 at β = 0). Proportional-hazards assumption not tested in this version — see sub-task 3 (diagnostics).",
+  "coefficients": [
+   {
+    "term": "Trt",
+    "estimate": -1.001825716,
+    "stdError": 0.6592591725,
+    "t": -1.519623478,
+    "p": 0.1286056338,
+    "hazardRatio": 0.3672084104,
+    "ciLow": 0.1008672533,
+    "ciHigh": 1.336826496
+   }
+  ]
+ },
+ "cox-proportional-hazards coxTable {\"time\":\"Time\",\"status\":\"Status\",\"covariates\":[\"Trt\",\"Age\"],\"ties\":\"breslow\"}": {
+  "testType": "cox-proportional-hazards",
+  "subtitle": "Cox proportional-hazards regression",
+  "statisticLabel": "z",
+  "stats": [
+   {
+    "label": "Concordance",
+    "value": 0.6526315789
+   },
+   {
+    "label": "Concordance SE",
+    "value": 0.08413219859
+   },
+   {
+    "label": "Likelihood ratio chi-square",
+    "value": 2.724017183
+   },
+   {
+    "label": "Likelihood ratio df",
+    "value": 2
+   },
+   {
+    "label": "Likelihood ratio P value",
+    "value": 0.2561457676,
+    "p": true
+   },
+   {
+    "label": "Wald chi-square",
+    "value": 2.62
+   },
+   {
+    "label": "Wald df",
+    "value": 2
+   },
+   {
+    "label": "Wald P value",
+    "value": 0.2698370349,
+    "p": true
+   },
+   {
+    "label": "Score (log-rank) chi-square",
+    "value": 2.812762252
+   },
+   {
+    "label": "Score (log-rank) df",
+    "value": 2
+   },
+   {
+    "label": "Score (log-rank) P value",
+    "value": 0.2450284076,
+    "p": true
+   },
+   {
+    "label": "Number of events",
+    "value": 12
+   },
+   {
+    "label": "Number censored",
+    "value": 4
+   },
+   {
+    "label": "N (complete cases)",
+    "value": 16
+   }
+  ],
+  "groups": [
+   {
+    "name": "Time",
+    "mean": 13.5625,
+    "sd": 7.711193163,
+    "sem": 1.927798291,
+    "median": 12,
+    "n": 16
+   },
+   {
+    "name": "Status",
+    "mean": 0.75,
+    "sd": 0.4472135955,
+    "sem": 0.1118033989,
+    "median": 1,
+    "n": 16
+   },
+   {
+    "name": "Trt",
+    "mean": 0.5,
+    "sd": 0.5163977795,
+    "sem": 0.1290994449,
+    "median": 0.5,
+    "n": 16
+   },
+   {
+    "name": "Age",
+    "mean": 61.8125,
+    "sd": 5.256345372,
+    "sem": 1.314086343,
+    "median": 61.5,
+    "n": 16
+   }
+  ],
+  "notes": "Cox proportional-hazards regression of survival in “Time” (status “Status”: 1 = event, 0 = censored) on 2 covariate(s): Trt, Age. Ties handled by the Breslow method. Covariates were entered as recorded (no centring — centring does not change a Cox slope, and the model has no intercept). Log partial likelihood -22.18 (vs -23.54 at β = 0). Proportional-hazards assumption not tested in this version — see sub-task 3 (diagnostics). Only 12 events for 2 covariate(s) (6 per covariate) — fewer than 10 per covariate, so hazard ratios are imprecise.",
+  "coefficients": [
+   {
+    "term": "Trt",
+    "estimate": -0.9859454503,
+    "stdError": 0.6567369442,
+    "t": -1.501279103,
+    "p": 0.1332833877,
+    "hazardRatio": 0.3730863256,
+    "ciLow": 0.102989709,
+    "ciHigh": 1.351527329
+   },
+   {
+    "term": "Age",
+    "estimate": -0.0350772615,
+    "stdError": 0.05984449456,
+    "t": -0.5861401581,
+    "p": 0.5577813317,
+    "hazardRatio": 0.965530815,
+    "ciLow": 0.858670243,
+    "ciHigh": 1.085690068
+   }
+  ]
+ },
+ "cox-proportional-hazards coxAllCensored {\"time\":\"Time\",\"status\":\"Status\",\"covariates\":[\"Trt\",\"Age\"]}": {
+  "error": "Cox regression needs at least 2 events."
+ },
+ "cox-proportional-hazards coxBadStatus {\"time\":\"Time\",\"status\":\"Status\",\"covariates\":[\"Trt\",\"Age\"]}": {
+  "error": "“Status” holds 2, but survival codes must be 1 (event) or 0 (censored)."
+ },
+ "cox-proportional-hazards coxZeroTime {\"time\":\"Time\",\"status\":\"Status\",\"covariates\":[\"Trt\",\"Age\"]}": {
+  "error": "Survival times must be positive — “Time” holds 0."
+ },
+ "cox-proportional-hazards coxTable {\"time\":\"Time\",\"status\":\"Status\",\"covariates\":[]}": {
+  "error": "Cox regression needs at least one covariate — choose one or more columns."
+ },
  "two-way-anova grouped {\"design\":\"ordinary\",\"posthoc\":\"none\",\"posthocTarget\":\"groups\"}": {
   "testType": "two-way-anova",
   "subtitle": "Ordinary two-way ANOVA",
@@ -11333,6 +11819,72 @@
      "standoff": 2
     }
    }
+  }
+ },
+ "graph forest-plot coxTable": {
+  "data": [],
+  "layout": {
+   "paper_bgcolor": "#ffffff",
+   "plot_bgcolor": "#ffffff",
+   "dragmode": false,
+   "font": {
+    "color": "#111827",
+    "family": "system-ui, -apple-system, sans-serif",
+    "size": 13
+   },
+   "margin": {
+    "l": 16,
+    "r": 16,
+    "t": 16,
+    "b": 16
+   },
+   "showlegend": false,
+   "legend": {
+    "x": 1.02,
+    "y": 1,
+    "xanchor": "left"
+   },
+   "xaxis": {
+    "type": "log",
+    "showgrid": false,
+    "zeroline": false,
+    "linecolor": "#111827",
+    "linewidth": 1,
+    "ticks": "outside",
+    "tickwidth": 1,
+    "fixedrange": true,
+    "automargin": true,
+    "title": {
+     "text": "Hazard ratio",
+     "standoff": 12
+    }
+   },
+   "yaxis": {
+    "showgrid": false,
+    "zeroline": false,
+    "linecolor": "#111827",
+    "linewidth": 1,
+    "ticks": "outside",
+    "tickwidth": 1,
+    "fixedrange": true,
+    "automargin": true,
+    "autorange": "reversed"
+   },
+   "shapes": [
+    {
+     "type": "line",
+     "x0": 1,
+     "x1": 1,
+     "y0": 0,
+     "y1": 1,
+     "yref": "paper",
+     "line": {
+      "color": "#9CA3AF",
+      "width": 1.5,
+      "dash": "dash"
+     }
+    }
+   ]
   }
  },
  "graph grouped-scatter grouped": {

@@ -16,7 +16,7 @@ import {
   type ProjectNode,
   type SeriesStyle,
 } from "../../store/types";
-import type { LinearRegressionParams } from "../../stats/types";
+import type { LinearRegressionParams, CoxPHParams } from "../../stats/types";
 import { useProjectStore } from "../../store/use-project-store";
 import { groupsOf, readTable, xyProblem } from "../../lib/dataset";
 import { paletteOf } from "../../lib/palettes";
@@ -25,6 +25,8 @@ import { useAnalysis } from "../analyses/use-analysis";
 import { GRAPHS, graphSeries, plotColumns } from ".";
 import { addDoseCurve } from "./dose-response-curve";
 import { addLogisticCurve } from "./logistic-curve";
+import { addForestPlot } from "./forest-plot";
+import { coxSurvivalColumns } from "./survival";
 import { FormatPanel } from "./format-panel";
 import { copyGraphImage, saveGraphImage } from "./graph-export";
 import { INK, MOVABLE, marginsFor, movedText, paintOf, withCaps } from "./plot-helpers";
@@ -99,7 +101,18 @@ export function GraphView({ node }: { node: ProjectNode }) {
   // An XY graph needs numbers in X and in a Y column, and says which it lacks —
   // except the ROC curve, whose truth (X) may be text ("Diseased"/"Healthy"):
   // its build draws nothing when the truth has other than two classes.
-  const xyLack = family === "xy" && type !== "roc-curve" && dataset ? xyProblem(dataset.columns) : undefined;
+  // An XY graph needs numbers in X and in a Y column, and says which it lacks — except the
+  // ROC curve (its truth may be text), the forest plot (its points come from a Cox analysis,
+  // not the table's columns), and a survival curve on a Multiple Variables table (its
+  // columns are derived from the Cox analysis below, not the table's own X/Y shape).
+  const xyLack =
+    family === "xy" &&
+    type !== "roc-curve" &&
+    type !== "forest-plot" &&
+    !(type === "survival" && parent?.tableType === "multiple") &&
+    dataset
+      ? xyProblem(dataset.columns)
+      : undefined;
   const hasData = !xyLack && columns.some((c) => c.values.length > 0);
 
   // A volcano on a grouped table: Helix computes the DEGs between two of its groups
@@ -265,6 +278,30 @@ export function GraphView({ node }: { node: ProjectNode }) {
     { y: logisticY },
   );
   const logisticFit = logisticOutcome && !("error" in logisticOutcome) ? logisticOutcome : null;
+  // A forest plot draws a sibling Cox regression's hazard ratios, and a
+  // survival curve on a Multiple Variables table stratifies by its binary
+  // covariate — both from the same cached runAnalysis result (no extra R call).
+  const coxAnalysis = options.coxAnalysisId ? nodes[options.coxAnalysisId] : undefined;
+  const coxOutcome = useAnalysis(
+    (type === "forest-plot" || (type === "survival" && parent?.tableType === "multiple")) &&
+      coxAnalysis?.analysisType === "cox-proportional-hazards"
+      ? "cox-proportional-hazards"
+      : undefined,
+    data,
+    coxAnalysis?.analysisParams,
+  );
+  const coxResult = coxOutcome && !("error" in coxOutcome) ? coxOutcome : null;
+  const coxParams = (coxAnalysis?.analysisParams ?? undefined) as CoxPHParams | undefined;
+  // A survival curve on a Multiple Variables table plots the Cox analysis's
+  // time/status columns, stratified by its binary covariate (or one curve for
+  // all subjects); without a Cox analysis it draws nothing — the Format panel
+  // says to pick one.
+  const coxSurvivalCols =
+    type === "survival" && parent?.tableType === "multiple"
+      ? coxResult && coxParams && data
+        ? (coxSurvivalColumns(data, coxParams) ?? [])
+        : []
+      : undefined;
 
   // ── Drawing ──────────────────────────────────────────────────────────
 
@@ -335,12 +372,13 @@ export function GraphView({ node }: { node: ProjectNode }) {
     void loadPlotly().then(async (Plotly) => {
       if (!current) return;
       const paint = paintOf(options, seriesNames.length);
-      const fig = GRAPHS[type].build(volcanoColumns, buildOptions, paint, dataset?.titles);
+      const fig = GRAPHS[type].build(coxSurvivalCols ?? volcanoColumns, buildOptions, paint, dataset?.titles);
       fig.data = withCaps(fig.data, options);
       if (family === "column" && options.sigAnalysisId) addSignificance(fig, columns, type, options, comparisons ?? []);
       if (type === "xy-scatter" && options.regAnalysisId) addRegression(fig, columns, options, regParams, paint);
       if (doseFit) addDoseCurve(fig, columns, options, doseFit, paint, interpFit);
       if (logisticFit) addLogisticCurve(fig, columns, logisticFit, paint);
+      if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint);
       // The points' names are part of the figure (the volcano places its own, among the
       // genes it names); the selection ring only of the view.
       const labels =
@@ -374,12 +412,14 @@ export function GraphView({ node }: { node: ProjectNode }) {
     type,
     hasData,
     volcanoColumns,
+    coxSurvivalCols,
     node.graphOptions,
     comparisons,
     regParams,
     doseFit,
     interpFit,
     logisticFit,
+    coxResult,
     seriesNames.length,
     selected,
     glRatio,

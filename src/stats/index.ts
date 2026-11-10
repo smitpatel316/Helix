@@ -8,6 +8,7 @@ import type {
   AnalysisParams,
   AreaUnderCurveParams,
   CorrelationParams,
+  CoxPHParams,
   FrequencyDistributionParams,
   MultipleRegressionParams,
   MultipleTTestsParams,
@@ -44,6 +45,7 @@ import { runCorrelationMatrix } from "./multiple/correlation-matrix";
 import { runMultipleRegression } from "./multiple/multiple-regression";
 import { runChiSquare } from "./contingency/chi-square";
 import { runLogRank } from "./survival/log-rank";
+import { runCoxPH } from "./survival/cox-ph";
 import { runBlandAltman } from "./column/bland-altman";
 import { runRocCurve } from "./column/roc-curve";
 import { runFrequencyDistribution } from "./column/frequency-distribution";
@@ -148,6 +150,12 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     minColumns: 3,
     run: (c) => runLogRank(c),
   },
+  "cox-proportional-hazards": {
+    label: "Cox proportional-hazards regression",
+    minColumns: 3,
+    requiredPackages: ["survival"],
+    run: (c, p) => runCoxPH(c, p as CoxPHParams),
+  },
   "bland-altman": { label: "Bland-Altman method comparison", minColumns: 2, run: (c) => runBlandAltman(c) },
   // minColumns 1: the truth column may be text ("Diseased"/"Healthy"), so a
   // table can hold only one numeric column (the score) — the runner checks
@@ -196,8 +204,19 @@ export function runAnalysis(
   if (!analysis) return Promise.resolve({ error: `Unknown analysis type: ${String(testType)}` });
   const table = readTable(data);
   // A data set or a column the analysis names (a regression's Y…) must still be there.
-  const named = params as { y?: string; dependent?: string; predictors?: string[]; datasets?: string[] } | undefined;
-  const chosen = [named?.y, named?.dependent, ...(named?.predictors ?? []), ...(named?.datasets ?? [])];
+  const named = params as
+    | { y?: string; dependent?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string }
+    | undefined;
+  const chosen = [
+    named?.y,
+    named?.dependent,
+    ...(named?.predictors ?? []),
+    ...(named?.datasets ?? []),
+    named?.time,
+    named?.status,
+    ...(named?.covariates ?? []),
+    named?.stratifyBy,
+  ];
   const gone =
     params?.sets?.find((name) => !table.sets.some((s) => s.name === name)) ??
     chosen.find((name) => name !== undefined && !table.columns.some((c) => c.name === name));

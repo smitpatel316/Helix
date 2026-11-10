@@ -86,7 +86,10 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
   const showCi = groups.some((g) => g.ciLow != null || g.ciHigh != null);
   // The coefficient 95% CIs come from the nonlinear-fit runner (plan 09) —
   // other runners leave them undefined, so the columns only appear then.
+  // A Cox regression (plan 10) also carries a hazard ratio per coefficient —
+  // its CI columns above are on the hazard-ratio scale.
   const showCoefCi = (result.coefficients ?? []).some((c) => c.ciLow != null || c.ciHigh != null);
+  const showHr = (result.coefficients ?? []).some((c) => c.hazardRatio != null);
   const showRange = groups.some((g) => g.min != null || g.max != null || g.range != null);
   const matrix = result.matrix;
 
@@ -210,6 +213,7 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
             { label: "Std. error", numeric: true },
             { label: result.statisticLabel ?? "t", numeric: true },
             { label: "P value", numeric: true },
+            ...(showHr ? [{ label: "Hazard ratio", numeric: true }] : []),
             ...(showCoefCi
               ? [
                   { label: "95% CI lower", numeric: true },
@@ -224,6 +228,7 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
             num(c.stdError),
             num(c.t),
             <P p={c.p} />,
+            ...(showHr ? [num(c.hazardRatio)] : []),
             ...(showCoefCi ? [num(c.ciLow), num(c.ciHigh)] : []),
           ])}
         />
