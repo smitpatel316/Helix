@@ -7,6 +7,7 @@
 # PACKAGES index, and writes a trimmed repo into webr-repo/:
 #   webr-repo/bin/emscripten/contrib/4.6/<pkg>_<version>.tgz
 #   webr-repo/bin/emscripten/contrib/4.6/PACKAGES (+ .gz, trimmed index)
+#   webr-repo/bin/emscripten/contrib/4.6/PACKAGES.rds (trimmed index, see below)
 #   webr-repo/MANIFEST.json         what was vendored, from where, and when
 #
 # The contrib/4.6 layout mirrors repo.r-wasm.org exactly: webR's installer
@@ -172,3 +173,13 @@ PYEOF
 echo "repo written to $OUT"
 ls "$OUT" | head -5
 echo "... ($(ls "$OUT" | wc -l) files)"
+
+# PACKAGES.rds: R's available.packages() (used by webr::install) tries
+# PACKAGES.rds first and only falls back to PACKAGES.gz when the fetch
+# fails, so a repo without it wastes a failed fetch — plus a warning — on
+# the first install of every session. The upstream repo ships a PACKAGES.rds
+# but it indexes the whole repo (~20k packages); ours must index exactly the
+# vendored closure, so scripts/build-webr-repo-rds.mjs generates it from the
+# .tgz files with tools::write_PACKAGES (run in webR — Hatch has no desktop
+# R) and verifies it round-trips. Needs node + the repo's node_modules.
+node "$ROOT/scripts/build-webr-repo-rds.mjs" "$CONTRIB"

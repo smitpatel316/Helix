@@ -258,8 +258,25 @@ export async function installedPackageVersions(): Promise<Record<string, string>
 }
 
 /** `ensurePackages` rejects when the install runs past this long. The install
- *  itself keeps running in the engine; a later call joins it. */
-export const PACKAGE_INSTALL_TIMEOUT_MS = 30_000;
+ *  itself keeps running in the engine; a later call joins it.
+ *
+ *  120 s, measured 2026-11-09 — not a guess. The old 30 s budget was
+ *  unachievable for the pinned closure on this host: the largest single
+ *  batch, lme4 + lmerTest (21 packages / 27 MB, because lmerTest Imports
+ *  ggplot2), takes ~48 s end to end under load (71 s when a second webR
+ *  process contends for the same CPUs), lme4 alone takes >30 s, and even
+ *  survival alone takes 16–46 s depending on host load. The seconds go to
+ *  WASM-side work, not the network: every .tgz arrives from localhost in
+ *  <0.1 s, then R spends ~1–6 s per package unpacking it and building its
+ *  lazy-load database, single-threaded, while the shared host runs at load
+ *  6–9. No code change can shrink that — the closure is the pinned
+ *  hard-dependency set, and webR cannot parallelise installs (no fork
+ *  under Emscripten). 120 s covers the worst measured batch (71 s) with
+ *  ~1.7x headroom; if the closure grows, re-measure before touching this
+ *  again. (The missing PACKAGES.rds was a real defect too — fixed by
+ *  vendoring one — but it only ever cost ~1 s once per session, so it was
+ *  never the reason the suite failed; the cap was.) */
+export const PACKAGE_INSTALL_TIMEOUT_MS = 120_000;
 
 /**
  * Guarantee the named packages are installed and loadable in this engine,

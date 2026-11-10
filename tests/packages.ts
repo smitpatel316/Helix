@@ -94,6 +94,7 @@ for (const p of repoManifest.packages) {
   check(`repo has ${p.file}`, repoFiles.has(p.file) && statSync(`${CONTRIB}/${p.file}`).isFile());
 }
 check("repo has trimmed PACKAGES", repoFiles.has("PACKAGES"));
+check("repo has PACKAGES.rds", repoFiles.has("PACKAGES.rds")); // R tries the .rds first; without it every session wastes a failed fetch
 const indexText = readFileSync(`${CONTRIB}/PACKAGES`, "utf8");
 for (const p of repoManifest.packages) {
   check(`index lists ${p.name}`, new RegExp(`^Package: ${p.name}$`, "m").test(indexText));
@@ -236,7 +237,7 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
 }
 
 // P-10 — offline simulation: the repo URL is unreachable (connection
-// refused). Must reject with the network error inside the 30 s bound — and
+// refused). Must reject with the network error inside the install bound — and
 // a retry against the good repo must then succeed (failed is sticky only
 // until a successful reinstall). MethComp is still fresh here.
 {
@@ -329,6 +330,26 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
   close(nlme.time, 1.4972051425844526, 1e-9, "nlme time effect matches lmer");
   // The wizard gate: no current analysis needs a package, so nothing blocks.
   check("package gate is open with no required packages", !packageGate("anova").blocked);
+  // The vendored PACKAGES.rds (plan 00 fix, 2026-11-09): R's
+  // available.packages reads it before falling back to PACKAGES.gz, so a
+  // repo without it wastes a failed fetch on the first install of a session.
+  // It must list exactly the vendored closure (repoManifest.packages — the
+  // 45-package closure, not the 11-package registry: the registry names
+  // only the pinned direct dependencies, the repo also ships their
+  // transitive deps). A stale or foreign .rds would let install.packages
+  // resolve against packages this build does not ship.
+  {
+    const names = repoManifest.packages.map((p) => JSON.stringify(p.name)).join(",");
+    const rds = await evalNamedVector(
+      `f<-tempfile(fileext=".rds"); download.file(paste0(${JSON.stringify(repoUrl)}, "/bin/emscripten/contrib/4.6/PACKAGES.rds"), f, quiet=TRUE);` +
+        ` d<-readRDS(f); c(n=nrow(d), match=as.numeric(setequal(d[,"Package"], c(${names}))))`,
+    );
+    check(
+      "PACKAGES.rds lists exactly the vendored closure",
+      rds.n === repoManifest.packages.length && rds.match === 1,
+      `n=${rds.n} match=${rds.match}`,
+    );
+  }
   // Installed versions report the pins (R-normalized: 3.8-12 -> 3.8.12).
   const versions = await installedPackageVersions();
   check("installed versions report lme4", versions.lme4 === "2.0.6", versions.lme4);
