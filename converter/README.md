@@ -47,15 +47,82 @@ The field-by-field mapping is the spec in the vault:
 ## Verify
 
 ```sh
-node --import tsx converter/tests/verify.ts
+node --import tsx converter/tests/verify.ts          # demo file: 22 checks
+npm run verify-corpus                                # 11-file public corpus: 73 checks
+PRISM_TEST_CORPUS_PRISM10=~/workspace/helix/test-corpus-synthetic npm run verify-corpus
+                                                     # 6 synthetic edge cases: 36 checks
 ```
 
-Converts the public demo file (`prism2R-demo_dataset.prism`, the only
-`.prism` in the test corpus — Mansi's files are never test material),
-checks every table cell-by-cell against its source CSV, checks the analysis
-nodes, round-trips the output through Helix's own `parseProjectFile`, and
-prints PASS/FAIL per check with exact figures. Corpus path defaults to
-`~/workspace/helix/test-corpus`; override with `PRISM_TEST_CORPUS`.
+`verify.ts` converts the public demo file (`prism2R-demo_dataset.prism`,
+Mansi's files are never test material), checks every table cell-by-cell
+against its source CSV, checks the analysis nodes, round-trips the output
+through Helix's own `parseProjectFile`, and prints PASS/FAIL per check with
+exact figures. Corpus path defaults to `~/workspace/helix/test-corpus`;
+override with `PRISM_TEST_CORPUS`.
+
+`verify-corpus.ts` runs every `.prism` in a corpus directory through the
+same checks, plus a CLI check (C0: a good file converts, exit 0; a bad
+file is refused, exit 1), a source-untouched checksum (C7), and a
+values-clean check (C8: no stray carriage return or comma-decimal text
+leaks into the `.hlx`). Corpus path defaults to
+`~/workspace/helix/test-corpus-prism10`; override with
+`PRISM_TEST_CORPUS_PRISM10`.
+
+## Test corpus
+
+Public files only — Mansi's files are never test material.
+
+### Public corpus — `~/workspace/helix/test-corpus-prism10/` (11 files, 73/73 checks)
+
+| File | Source | What it covers |
+|---|---|---|
+| `no_analysis.prism` (31 KB) | prism2R test data — https://github.com/Biomiha/prism2R (`inst/extdata/.for_testing/`) | 2 tables, 0 analyses; Prism 10.4.1.532 |
+| `empty.prism` (194 bytes) | prism2R test data (same repo) | ZIP with 1 entry, no `document.json` — expected reject, exit 1 |
+| `survival-zenodo-19717603.prism` (191 KB) | Zenodo record 19717603 | 3 tables, 7 SURVIVAL analyses — survival date X (start/end dates → durations) |
+| `elisa-standard-curves-zenodo-21038547.prism` (1.5 MB) | Zenodo record 21038547 | 12 tables, 20 analyses incl. 6× 4PL + 6× INTERPOLATION — rich-text titles, XY tables with row titles |
+| `dose-curve-zenodo-15257821.prism` (284 KB) | Zenodo record 15257821 | 3 tables, 5 analyses — column tables with no row titles, rich-text titles |
+| `one-phase-decay-zenodo-21936291.prism` (2.35 MB) | Zenodo record 21936291 | 42 tables, 84 analyses (42× AREA_UNDER_CURVE + 42× One phase decay) — scale test, 168 orphan result-view sheets correctly ignored |
+| `figure1-analysis-zenodo-8356786.prism` (861 KB) | Zenodo record 8356786 | 12 tables, 24 analyses (NORMALITY_TESTS + t-tests) |
+| `senolytics-25hc-zenodo-15875512.prism` (127 KB) | Zenodo record 15875512 | 9 tables, 4 analyses |
+| `single-case-zenodo-10616381.prism` (143 KB) | Zenodo record 10616381 | 9 tables, 0 analyses — largest single table in the corpus |
+| `dilution-analysis-zenodo-22981103.prism` (40 MB) | Zenodo record 22981103 | 31 tables, 40 analyses — error-bar X (value + error subcolumns) |
+| `violin-plots-zenodo-16883557.prism` (112 KB) | Zenodo record 16883557 | 12 tables, 0 analyses — column tables with no row titles |
+
+Results (2026-11-10): **73/73 checks pass** — 26,623 cells compared across the
+corpus, 0 mismatches; 10 analyses converted (4PL + survival), 163 named as
+unsupported; every source file's checksum unchanged.
+
+### Synthetic corpus — `~/workspace/helix/test-corpus-synthetic/` (6 files, 36/36 checks)
+
+Built by `npm run make-synthetic` (`tests/make-synthetic.ts`) from the
+public demo file — each is one deliberate mutation, labelled `synthetic-`,
+never written by Prism:
+
+| File | Edge case | Expected behaviour |
+|---|---|---|
+| `synthetic-empty-table.prism` | First table has 0 rows | Table left out with a warning; other 13 convert; its 4PL analysis left out (input table missing) |
+| `synthetic-crlf-unicode.prism` | CRLF line endings; unicode titles ("Café — αβγ ☃") | Values byte-identical to the demo; titles survive |
+| `synthetic-missing-dataset.prism` | One dataset JSON deleted | Warning; table converts without that dataset's columns |
+| `synthetic-graphs-only.prism` | No data sheets at all | Refused cleanly, exit 1 — a `.hlx` with no tables is one Helix itself can't open |
+| `synthetic-unknown-analysis.prism` | 4PL analysis relabelled `SOMETHING_NEW` | Named as unsupported, never faked |
+| `synthetic-comma-decimal.prism` | Numbers as quoted comma decimals (`"45,5"`) | Converted to plain decimals (`45.5`) in the `.hlx` |
+
+## Bugs found by the corpus (2026-11-10, all fixed + regression-checked)
+
+- **Row-title rule was wrong (value corruption).** The converter assumed
+  "not XY ⇒ row titles". Real files break that both ways (column tables
+  with no row titles; XY tables with empty ones). Now: a CSV has a
+  row-title column iff `table.rowTitlesDataSet` is present.
+- **X datasets can have multiple subcolumns (value corruption).** The
+  converter read exactly one X column, shifting every dataset after it.
+  Now all X subcolumns are consumed; a survival date X becomes durations
+  in days, otherwise the first subcolumn is kept and the rest are named
+  in a warning.
+- **Titles can be rich-text objects.** Dataset/X/sheet/analysis titles are
+  sometimes `{ string, version, formatting }`, not strings. Now the
+  `.string` field is used; a title never becomes "[object Object]".
+- **A file with no data tables** used to produce a `.hlx` Helix's own
+  parser rejects. Now the converter refuses it cleanly, exit 1.
 
 ## Layout
 
@@ -63,3 +130,5 @@ prints PASS/FAIL per check with exact figures. Corpus path defaults to
 - `src/csv.ts` — small CSV reader (quoted fields, CRLF/LF).
 - `src/cli.ts` — command-line entry.
 - `tests/verify.ts` — headless verification against the demo file.
+- `tests/verify-corpus.ts` — multi-file verification over a corpus directory (see above).
+- `tests/make-synthetic.ts` — builds the synthetic edge-case corpus from the demo file.
