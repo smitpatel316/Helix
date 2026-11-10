@@ -1412,6 +1412,261 @@
   ],
   "notes": "Per-column normality. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality."
  },
+ "kolmogorov-smirnov ksShifted {}": {
+  "testType": "kolmogorov-smirnov",
+  "subtitle": "Kolmogorov-Smirnov test (two-sample)",
+  "stats": [
+   {
+    "label": "KS distance D",
+    "value": 1
+   },
+   {
+    "label": "P value",
+    "value": 0.0001554001554,
+    "p": true
+   },
+   {
+    "label": "N (group 1)",
+    "value": 8
+   },
+   {
+    "label": "N (group 2)",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 12.3375,
+    "sd": 1.002764037,
+    "sem": 0.3545306253,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Treated",
+    "mean": 19.65,
+    "sd": 1.512802508,
+    "sem": 0.534856456,
+    "median": 19.65,
+    "n": 8
+   }
+  ],
+  "notes": "D is the maximum absolute difference between the two cumulative distributions. One-sample KS (vs. a reference distribution) is not included; see plan 07 follow-on."
+ },
+ "kolmogorov-smirnov ksSimilar {}": {
+  "testType": "kolmogorov-smirnov",
+  "subtitle": "Kolmogorov-Smirnov test (two-sample)",
+  "stats": [
+   {
+    "label": "KS distance D",
+    "value": 0.25
+   },
+   {
+    "label": "P value",
+    "value": 0.9801087801,
+    "p": true
+   },
+   {
+    "label": "N (group 1)",
+    "value": 8
+   },
+   {
+    "label": "N (group 2)",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 12.3375,
+    "sd": 1.002764037,
+    "sem": 0.3545306253,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Similar",
+    "mean": 12.4625,
+    "sd": 0.6781013409,
+    "sem": 0.2397450283,
+    "median": 12.4,
+    "n": 8
+   }
+  ],
+  "notes": "D is the maximum absolute difference between the two cumulative distributions. One-sample KS (vs. a reference distribution) is not included; see plan 07 follow-on."
+ },
+ "kolmogorov-smirnov ksTies {}": {
+  "testType": "kolmogorov-smirnov",
+  "subtitle": "Kolmogorov-Smirnov test (two-sample)",
+  "stats": [
+   {
+    "label": "KS distance D",
+    "value": 0.125
+   },
+   {
+    "label": "P value",
+    "value": 1,
+    "p": true
+   },
+   {
+    "label": "N (group 1)",
+    "value": 8
+   },
+   {
+    "label": "N (group 2)",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 13.5,
+    "sd": 1.195228609,
+    "sem": 0.4225771274,
+    "median": 13.5,
+    "n": 8
+   },
+   {
+    "name": "B",
+    "mean": 14,
+    "sd": 1.309307341,
+    "sem": 0.4629100499,
+    "median": 14,
+    "n": 8
+   }
+  ],
+  "notes": "D is the maximum absolute difference between the two cumulative distributions. Tied values present — P value is asymptotic, not exact. One-sample KS (vs. a reference distribution) is not included; see plan 07 follow-on."
+ },
+ "kolmogorov-smirnov ksIdentical {}": {
+  "testType": "kolmogorov-smirnov",
+  "subtitle": "Kolmogorov-Smirnov test (two-sample)",
+  "stats": [
+   {
+    "label": "KS distance D",
+    "value": 0
+   },
+   {
+    "label": "P value",
+    "value": 1,
+    "p": true
+   },
+   {
+    "label": "N (group 1)",
+    "value": 8
+   },
+   {
+    "label": "N (group 2)",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 12.3375,
+    "sd": 1.002764037,
+    "sem": 0.3545306253,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Y",
+    "mean": 12.3375,
+    "sd": 1.002764037,
+    "sem": 0.3545306253,
+    "median": 12.3,
+    "n": 8
+   }
+  ],
+  "notes": "D is the maximum absolute difference between the two cumulative distributions. Tied values present — P value is asymptotic, not exact. One-sample KS (vs. a reference distribution) is not included; see plan 07 follow-on."
+ },
+ "kolmogorov-smirnov ksTooFew {}": {
+  "error": "Kolmogorov-Smirnov test needs two groups with at least 2 values each."
+ },
+ "kolmogorov-smirnov column {}": {
+  "testType": "kolmogorov-smirnov",
+  "subtitle": "Kolmogorov-Smirnov test (two-sample)",
+  "stats": [
+   {
+    "label": "KS distance D",
+    "value": 0.875
+   },
+   {
+    "label": "P value",
+    "value": 0.002486402486,
+    "p": true
+   },
+   {
+    "label": "N (group 1)",
+    "value": 8
+   },
+   {
+    "label": "N (group 2)",
+    "value": 7
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 14.3375,
+    "sd": 6.372247305,
+    "sem": 2.25292964,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Low",
+    "mean": 14.84285714,
+    "sd": 0.8443086775,
+    "sem": 0.3191186843,
+    "median": 14.9,
+    "n": 7
+   }
+  ],
+  "notes": "D is the maximum absolute difference between the two cumulative distributions. Compares “Control” and “Low”, the first two columns with data; not included: “High”, “Sparse”. “Low”: 1 non-numeric cell ignored. One-sample KS (vs. a reference distribution) is not included; see plan 07 follow-on."
+ },
+ "kolmogorov-smirnov column {\"sets\":[\"High\",\"Control\"]}": {
+  "testType": "kolmogorov-smirnov",
+  "subtitle": "Kolmogorov-Smirnov test (two-sample)",
+  "stats": [
+   {
+    "label": "KS distance D",
+    "value": 0.875
+   },
+   {
+    "label": "P value",
+    "value": 0.004662004662,
+    "p": true
+   },
+   {
+    "label": "N (group 1)",
+    "value": 6
+   },
+   {
+    "label": "N (group 2)",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "High",
+    "mean": 19.61666667,
+    "sd": 1.083358974,
+    "sem": 0.4422794491,
+    "median": 19.65,
+    "n": 6
+   },
+   {
+    "name": "Control",
+    "mean": 14.3375,
+    "sd": 6.372247305,
+    "sem": 2.25292964,
+    "median": 12.3,
+    "n": 8
+   }
+  ],
+  "notes": "D is the maximum absolute difference between the two cumulative distributions. One-sample KS (vs. a reference distribution) is not included; see plan 07 follow-on."
+ },
  "outliers column {\"q\":1}": {
   "testType": "outliers",
   "subtitle": "ROUT method (Q = 1%)",

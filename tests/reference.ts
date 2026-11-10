@@ -191,6 +191,81 @@ const freqConst = table(
 /** A single value: too few to bin (plan 06 edge case). */
 const freqSingle = table(["Title", "Values"], [["", "5"]]);
 
+/** Kolmogorov-Smirnov (plan 07): two clearly separated groups (D = 1). */
+const ksShifted = table(
+  ["Title", "Control", "Treated"],
+  [
+    ["", "12.1", "18.2"],
+    ["", "11.4", "19.9"],
+    ["", "13.2", "17.5"],
+    ["", "12.8", "21.3"],
+    ["", "10.9", "18.8"],
+    ["", "12.5", "20.1"],
+    ["", "11.8", "19.4"],
+    ["", "14.0", "22.0"],
+  ],
+);
+
+/** Kolmogorov-Smirnov (plan 07): same Control vs. a similar group (D = 0.25). */
+const ksSimilar = table(
+  ["Title", "Control", "Similar"],
+  [
+    ["", "12.1", "11.9"],
+    ["", "11.4", "12.6"],
+    ["", "13.2", "12.2"],
+    ["", "12.8", "13.1"],
+    ["", "10.9", "11.5"],
+    ["", "12.5", "12.9"],
+    ["", "11.8", "12.0"],
+    ["", "14.0", "13.5"],
+  ],
+);
+
+/** Kolmogorov-Smirnov (plan 07): repeated values, so the P value is asymptotic. */
+const ksTies = table(
+  ["Title", "A", "B"],
+  [
+    ["", "12", "12"],
+    ["", "12", "13"],
+    ["", "13", "13"],
+    ["", "13", "14"],
+    ["", "14", "14"],
+    ["", "14", "15"],
+    ["", "15", "15"],
+    ["", "15", "16"],
+  ],
+);
+
+/** Kolmogorov-Smirnov (plan 07): a column compared with itself (D = 0, p = 1). */
+const ksIdentical = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "12.1", "12.1"],
+    ["", "11.4", "11.4"],
+    ["", "13.2", "13.2"],
+    ["", "12.8", "12.8"],
+    ["", "10.9", "10.9"],
+    ["", "12.5", "12.5"],
+    ["", "11.8", "11.8"],
+    ["", "14.0", "14.0"],
+  ],
+);
+
+/** Kolmogorov-Smirnov (plan 07): too few values in one group — an error. */
+const ksTooFew = table(
+  ["Title", "A", "B"],
+  [
+    ["", "5", "1"],
+    ["", "", "2"],
+    ["", "", "3"],
+    ["", "", "4"],
+    ["", "", "5"],
+    ["", "", "6"],
+    ["", "", "7"],
+    ["", "", "8"],
+  ],
+);
+
 /** Two methods on the same subjects (Bland-Altman method comparison). */
 const blandAltman = table(
   ["Title", "Method A", "Method B"],
@@ -343,6 +418,16 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["column", column, "rm-anova", { posthoc: "bonferroni" }],
   ["column", column, "friedman", { posthoc: "dunn" }],
   ["column", column, "shapiro-wilk"],
+  // Kolmogorov-Smirnov (plan 07): separated, similar, ties (asymptotic p),
+  // identical, too-few (error), the shared multi-column table (first two
+  // columns + the non-numeric cell), and an explicit `sets` selection.
+  ["ksShifted", ksShifted, "kolmogorov-smirnov"],
+  ["ksSimilar", ksSimilar, "kolmogorov-smirnov"],
+  ["ksTies", ksTies, "kolmogorov-smirnov"],
+  ["ksIdentical", ksIdentical, "kolmogorov-smirnov"],
+  ["ksTooFew", ksTooFew, "kolmogorov-smirnov"],
+  ["column", column, "kolmogorov-smirnov"],
+  ["column", column, "kolmogorov-smirnov", { sets: ["High", "Control"] }],
   ["column", column, "outliers", { q: 1 }],
   ["column", column, "outliers", { q: 5 }],
   ["xy", xy, "correlation", { method: "pearson", mode: "x-vs-every-y" }],
@@ -618,6 +703,57 @@ async function disagreements(): Promise<string[]> {
       if (got == null || Math.abs(got - value) > 1e-3) out.push(`Bland-Altman ${label}: ${got}, plan says ${value}`);
     }
     if (stat("N (pairs)") !== 10) out.push(`Bland-Altman N: ${stat("N (pairs)")}, expected 10`);
+  }
+  // Kolmogorov-Smirnov: the plan's values, computed independently in Python
+  // with scipy.stats.ks_2samp(..., method='exact') (scipy 1.11.4) and verified
+  // by a manual ECDF-difference calculation in the same script — both agreed
+  // exactly. Tolerance: D exact to 1e-12; p to 1e-4 relative. The ties
+  // fixture's D (0.125) is the same manual calculation; its p is asymptotic
+  // (R falls back when ties exist), so only its presence is asserted here and
+  // the WebR value is pinned in reference.json.
+  const ksRun = async (data: TableData, label: string) => {
+    const r = await runAnalysis("kolmogorov-smirnov", data);
+    if ("error" in r) {
+      out.push(`Kolmogorov-Smirnov ${label}: ${r.error}`);
+      return null;
+    }
+    return { stat: (l: string) => r.stats.find((s) => s.label === l)?.value, notes: r.notes };
+  };
+  const ksShiftedR = await ksRun(ksShifted, "shifted");
+  if (ksShiftedR) {
+    const d = ksShiftedR.stat("KS distance D");
+    const p = ksShiftedR.stat("P value");
+    if (d == null || Math.abs(d - 1) > 1e-12) out.push(`KS shifted D: ${d}, plan says 1`);
+    if (p == null || Math.abs(p - 0.0001554) / 0.0001554 > 1e-4)
+      out.push(`KS shifted p: ${p}, plan says 0.0001554`);
+    if (ksShiftedR.stat("N (group 1)") !== 8 || ksShiftedR.stat("N (group 2)") !== 8)
+      out.push(
+        `KS shifted N: ${ksShiftedR.stat("N (group 1)")}/${ksShiftedR.stat("N (group 2)")}, expected 8/8`,
+      );
+  }
+  const ksSimilarR = await ksRun(ksSimilar, "similar");
+  if (ksSimilarR) {
+    const d = ksSimilarR.stat("KS distance D");
+    const p = ksSimilarR.stat("P value");
+    if (d == null || Math.abs(d - 0.25) > 1e-12) out.push(`KS similar D: ${d}, plan says 0.25`);
+    if (p == null || Math.abs(p - 0.9801) / 0.9801 > 1e-4)
+      out.push(`KS similar p: ${p}, plan says 0.9801`);
+  }
+  const ksTiesR = await ksRun(ksTies, "ties");
+  if (ksTiesR) {
+    const d = ksTiesR.stat("KS distance D");
+    const p = ksTiesR.stat("P value");
+    if (d == null || Math.abs(d - 0.125) > 1e-12) out.push(`KS ties D: ${d}, expected 0.125`);
+    if (p == null) out.push(`KS ties p: missing`);
+    if (!ksTiesR.notes.includes("Tied values present — P value is asymptotic, not exact."))
+      out.push(`KS ties notes missing the asymptotic warning: ${ksTiesR.notes}`);
+  }
+  const ksIdenticalR = await ksRun(ksIdentical, "identical");
+  if (ksIdenticalR) {
+    if (ksIdenticalR.stat("KS distance D") !== 0)
+      out.push(`KS identical D: ${ksIdenticalR.stat("KS distance D")}, expected 0`);
+    if (ksIdenticalR.stat("P value") !== 1)
+      out.push(`KS identical p: ${ksIdenticalR.stat("P value")}, expected 1`);
   }
   // Frequency distribution: the TypeScript binning equals R's hist() with the
   // matching (left-closed) edge rule, the auto breaks are R's pretty() breaks,
