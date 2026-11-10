@@ -5382,6 +5382,656 @@
   ],
   "comparisonsLabel": "Per-row comparisons (A vs. B)"
  },
+ "three-way-anova grouped3way {\"posthoc\":\"none\"}": {
+  "testType": "three-way-anova",
+  "subtitle": "Ordinary three-way ANOVA",
+  "stats": [
+   {
+    "label": "A F",
+    "value": 126.6761324
+   },
+   {
+    "label": "A DFn",
+    "value": 1
+   },
+   {
+    "label": "A P value",
+    "value": 5.176955776e-9,
+    "p": true
+   },
+   {
+    "label": "B F",
+    "value": 211.2668769
+   },
+   {
+    "label": "B DFn",
+    "value": 1
+   },
+   {
+    "label": "B P value",
+    "value": 1.224083575e-10,
+    "p": true
+   },
+   {
+    "label": "C F",
+    "value": 34.49064363
+   },
+   {
+    "label": "C DFn",
+    "value": 1
+   },
+   {
+    "label": "C P value",
+    "value": 0.00002357822331,
+    "p": true
+   },
+   {
+    "label": "A:B F",
+    "value": 29.89738213
+   },
+   {
+    "label": "A:B DFn",
+    "value": 1
+   },
+   {
+    "label": "A:B P value",
+    "value": 0.00005160348178,
+    "p": true
+   },
+   {
+    "label": "A:C F",
+    "value": 2.778525512
+   },
+   {
+    "label": "A:C DFn",
+    "value": 1
+   },
+   {
+    "label": "A:C P value",
+    "value": 0.1149878616,
+    "p": true
+   },
+   {
+    "label": "B:C F",
+    "value": 95.81852674
+   },
+   {
+    "label": "B:C DFn",
+    "value": 1
+   },
+   {
+    "label": "B:C P value",
+    "value": 3.69428998e-8,
+    "p": true
+   },
+   {
+    "label": "A:B:C F",
+    "value": 8.810973887
+   },
+   {
+    "label": "A:B:C DFn",
+    "value": 1
+   },
+   {
+    "label": "A:B:C P value",
+    "value": 0.009058193021,
+    "p": true
+   },
+   {
+    "label": "DFd (residual)",
+    "value": 16
+   }
+  ],
+  "groups": [
+   {
+    "name": "Placebo",
+    "mean": 11.58726575,
+    "sd": 1.780766661,
+    "sem": 0.5140630555,
+    "median": 11.10209575,
+    "n": 12
+   },
+   {
+    "name": "Drug",
+    "mean": 14.62929538,
+    "sd": 3.567933338,
+    "sem": 1.029973636,
+    "median": 13.71392836,
+    "n": 12
+   }
+  ],
+  "notes": "A = Group (Placebo, Drug); B = Row (Day 1, Day 2); C = Row group (WT, KO). Compares the three factors and all their interactions; assumes normal distributions with equal variances (Type III sums of squares). 24 observations in 8 cells."
+ },
+ "three-way-anova grouped3way {\"posthoc\":\"tukey\",\"posthocTerm\":\"A:B\"}": {
+  "testType": "three-way-anova",
+  "subtitle": "Ordinary three-way ANOVA",
+  "stats": [
+   {
+    "label": "A F",
+    "value": 126.6761324
+   },
+   {
+    "label": "A DFn",
+    "value": 1
+   },
+   {
+    "label": "A P value",
+    "value": 5.176955776e-9,
+    "p": true
+   },
+   {
+    "label": "B F",
+    "value": 211.2668769
+   },
+   {
+    "label": "B DFn",
+    "value": 1
+   },
+   {
+    "label": "B P value",
+    "value": 1.224083575e-10,
+    "p": true
+   },
+   {
+    "label": "C F",
+    "value": 34.49064363
+   },
+   {
+    "label": "C DFn",
+    "value": 1
+   },
+   {
+    "label": "C P value",
+    "value": 0.00002357822331,
+    "p": true
+   },
+   {
+    "label": "A:B F",
+    "value": 29.89738213
+   },
+   {
+    "label": "A:B DFn",
+    "value": 1
+   },
+   {
+    "label": "A:B P value",
+    "value": 0.00005160348178,
+    "p": true
+   },
+   {
+    "label": "A:C F",
+    "value": 2.778525512
+   },
+   {
+    "label": "A:C DFn",
+    "value": 1
+   },
+   {
+    "label": "A:C P value",
+    "value": 0.1149878616,
+    "p": true
+   },
+   {
+    "label": "B:C F",
+    "value": 95.81852674
+   },
+   {
+    "label": "B:C DFn",
+    "value": 1
+   },
+   {
+    "label": "B:C P value",
+    "value": 3.69428998e-8,
+    "p": true
+   },
+   {
+    "label": "A:B:C F",
+    "value": 8.810973887
+   },
+   {
+    "label": "A:B:C DFn",
+    "value": 1
+   },
+   {
+    "label": "A:B:C P value",
+    "value": 0.009058193021,
+    "p": true
+   },
+   {
+    "label": "DFd (residual)",
+    "value": 16
+   }
+  ],
+  "groups": [
+   {
+    "name": "Placebo",
+    "mean": 11.58726575,
+    "sd": 1.780766661,
+    "sem": 0.5140630555,
+    "median": 11.10209575,
+    "n": 12
+   },
+   {
+    "name": "Drug",
+    "mean": 14.62929538,
+    "sd": 3.567933338,
+    "sem": 1.029973636,
+    "median": 13.71392836,
+    "n": 12
+   }
+  ],
+  "notes": "A = Group (Placebo, Drug); B = Row (Day 1, Day 2); C = Row group (WT, KO). Compares the three factors and all their interactions; assumes normal distributions with equal variances (Type III sums of squares). 24 observations in 8 cells. Multiple comparisons follow the A:B term.",
+  "comparisons": [
+   {
+    "group1": "Placebo (Day 1)",
+    "group2": "Placebo (Day 2)",
+    "diff": -2.450687432,
+    "p": 0.00004639737147
+   },
+   {
+    "group1": "Placebo (Day 1)",
+    "group2": "Drug (Day 1)",
+    "diff": -1.564171915,
+    "p": 0.00424629462
+   },
+   {
+    "group1": "Placebo (Day 1)",
+    "group2": "Drug (Day 2)",
+    "diff": -6.970574781,
+    "p": 2.117384046e-11
+   },
+   {
+    "group1": "Placebo (Day 2)",
+    "group2": "Drug (Day 1)",
+    "diff": 0.8865155175,
+    "p": 0.1350043211
+   },
+   {
+    "group1": "Placebo (Day 2)",
+    "group2": "Drug (Day 2)",
+    "diff": -4.519887349,
+    "p": 1.423353924e-8
+   },
+   {
+    "group1": "Drug (Day 1)",
+    "group2": "Drug (Day 2)",
+    "diff": -5.406402866,
+    "p": 1.039186404e-9
+   }
+  ],
+  "comparisonsLabel": "Tukey's multiple comparisons test (A:B cell means)"
+ },
+ "three-way-anova grouped3way {\"posthoc\":\"bonferroni\",\"posthocTerm\":\"A:B:C\"}": {
+  "testType": "three-way-anova",
+  "subtitle": "Ordinary three-way ANOVA",
+  "stats": [
+   {
+    "label": "A F",
+    "value": 126.6761324
+   },
+   {
+    "label": "A DFn",
+    "value": 1
+   },
+   {
+    "label": "A P value",
+    "value": 5.176955776e-9,
+    "p": true
+   },
+   {
+    "label": "B F",
+    "value": 211.2668769
+   },
+   {
+    "label": "B DFn",
+    "value": 1
+   },
+   {
+    "label": "B P value",
+    "value": 1.224083575e-10,
+    "p": true
+   },
+   {
+    "label": "C F",
+    "value": 34.49064363
+   },
+   {
+    "label": "C DFn",
+    "value": 1
+   },
+   {
+    "label": "C P value",
+    "value": 0.00002357822331,
+    "p": true
+   },
+   {
+    "label": "A:B F",
+    "value": 29.89738213
+   },
+   {
+    "label": "A:B DFn",
+    "value": 1
+   },
+   {
+    "label": "A:B P value",
+    "value": 0.00005160348178,
+    "p": true
+   },
+   {
+    "label": "A:C F",
+    "value": 2.778525512
+   },
+   {
+    "label": "A:C DFn",
+    "value": 1
+   },
+   {
+    "label": "A:C P value",
+    "value": 0.1149878616,
+    "p": true
+   },
+   {
+    "label": "B:C F",
+    "value": 95.81852674
+   },
+   {
+    "label": "B:C DFn",
+    "value": 1
+   },
+   {
+    "label": "B:C P value",
+    "value": 3.69428998e-8,
+    "p": true
+   },
+   {
+    "label": "A:B:C F",
+    "value": 8.810973887
+   },
+   {
+    "label": "A:B:C DFn",
+    "value": 1
+   },
+   {
+    "label": "A:B:C P value",
+    "value": 0.009058193021,
+    "p": true
+   },
+   {
+    "label": "DFd (residual)",
+    "value": 16
+   }
+  ],
+  "groups": [
+   {
+    "name": "Placebo",
+    "mean": 11.58726575,
+    "sd": 1.780766661,
+    "sem": 0.5140630555,
+    "median": 11.10209575,
+    "n": 12
+   },
+   {
+    "name": "Drug",
+    "mean": 14.62929538,
+    "sd": 3.567933338,
+    "sem": 1.029973636,
+    "median": 13.71392836,
+    "n": 12
+   }
+  ],
+  "notes": "A = Group (Placebo, Drug); B = Row (Day 1, Day 2); C = Row group (WT, KO). Compares the three factors and all their interactions; assumes normal distributions with equal variances (Type III sums of squares). 24 observations in 8 cells. Multiple comparisons follow the A:B:C term.",
+  "comparisons": [
+   {
+    "group1": "Placebo (Day 1, WT)",
+    "group2": "Placebo (Day 2, WT)",
+    "diff": -4.294104831,
+    "p": 0.00001701319139
+   },
+   {
+    "group1": "Placebo (Day 1, WT)",
+    "group2": "Placebo (Day 1, KO)",
+    "diff": -0.7066188488,
+    "p": 1
+   },
+   {
+    "group1": "Placebo (Day 1, WT)",
+    "group2": "Placebo (Day 2, KO)",
+    "diff": -1.313888882,
+    "p": 0.7618258483
+   },
+   {
+    "group1": "Placebo (Day 1, WT)",
+    "group2": "Drug (Day 1, WT)",
+    "diff": -1.212417662,
+    "p": 1
+   },
+   {
+    "group1": "Placebo (Day 1, WT)",
+    "group2": "Drug (Day 2, WT)",
+    "diff": -10.06680544,
+    "p": 8.025498596e-11
+   },
+   {
+    "group1": "Placebo (Day 1, WT)",
+    "group2": "Drug (Day 1, KO)",
+    "diff": -2.622545017,
+    "p": 0.00494983559
+   },
+   {
+    "group1": "Placebo (Day 1, WT)",
+    "group2": "Drug (Day 2, KO)",
+    "diff": -4.58096297,
+    "p": 0.000007295683177
+   },
+   {
+    "group1": "Placebo (Day 2, WT)",
+    "group2": "Placebo (Day 1, KO)",
+    "diff": 3.587485983,
+    "p": 0.0001600802336
+   },
+   {
+    "group1": "Placebo (Day 2, WT)",
+    "group2": "Placebo (Day 2, KO)",
+    "diff": 2.980215949,
+    "p": 0.001322236989
+   },
+   {
+    "group1": "Placebo (Day 2, WT)",
+    "group2": "Drug (Day 1, WT)",
+    "diff": 3.08168717,
+    "p": 0.0009182725686
+   },
+   {
+    "group1": "Placebo (Day 2, WT)",
+    "group2": "Drug (Day 2, WT)",
+    "diff": -5.77270061,
+    "p": 3.059988621e-7
+   },
+   {
+    "group1": "Placebo (Day 2, WT)",
+    "group2": "Drug (Day 1, KO)",
+    "diff": 1.671559814,
+    "p": 0.1957851652
+   },
+   {
+    "group1": "Placebo (Day 2, WT)",
+    "group2": "Drug (Day 2, KO)",
+    "diff": -0.2868581389,
+    "p": 1
+   },
+   {
+    "group1": "Placebo (Day 1, KO)",
+    "group2": "Placebo (Day 2, KO)",
+    "diff": -0.6072700336,
+    "p": 1
+   },
+   {
+    "group1": "Placebo (Day 1, KO)",
+    "group2": "Drug (Day 1, WT)",
+    "diff": -0.5057988131,
+    "p": 1
+   },
+   {
+    "group1": "Placebo (Day 1, KO)",
+    "group2": "Drug (Day 2, WT)",
+    "diff": -9.360186592,
+    "p": 2.441098385e-10
+   },
+   {
+    "group1": "Placebo (Day 1, KO)",
+    "group2": "Drug (Day 1, KO)",
+    "diff": -1.915926168,
+    "p": 0.07556382654
+   },
+   {
+    "group1": "Placebo (Day 1, KO)",
+    "group2": "Drug (Day 2, KO)",
+    "diff": -3.874344121,
+    "p": 0.00006268281674
+   },
+   {
+    "group1": "Placebo (Day 2, KO)",
+    "group2": "Drug (Day 1, WT)",
+    "diff": 0.1014712205,
+    "p": 1
+   },
+   {
+    "group1": "Placebo (Day 2, KO)",
+    "group2": "Drug (Day 2, WT)",
+    "diff": -8.752916559,
+    "p": 6.759357322e-10
+   },
+   {
+    "group1": "Placebo (Day 2, KO)",
+    "group2": "Drug (Day 1, KO)",
+    "diff": -1.308656135,
+    "p": 0.7766886364
+   },
+   {
+    "group1": "Placebo (Day 2, KO)",
+    "group2": "Drug (Day 2, KO)",
+    "diff": -3.267074088,
+    "p": 0.0004774427458
+   },
+   {
+    "group1": "Drug (Day 1, WT)",
+    "group2": "Drug (Day 2, WT)",
+    "diff": -8.854387779,
+    "p": 5.676994403e-10
+   },
+   {
+    "group1": "Drug (Day 1, WT)",
+    "group2": "Drug (Day 1, KO)",
+    "diff": -1.410127355,
+    "p": 0.5321304329
+   },
+   {
+    "group1": "Drug (Day 1, WT)",
+    "group2": "Drug (Day 2, KO)",
+    "diff": -3.368545308,
+    "p": 0.0003360220817
+   },
+   {
+    "group1": "Drug (Day 2, WT)",
+    "group2": "Drug (Day 1, KO)",
+    "diff": 7.444260424,
+    "p": 7.65196906e-9
+   },
+   {
+    "group1": "Drug (Day 2, WT)",
+    "group2": "Drug (Day 2, KO)",
+    "diff": 5.485842471,
+    "p": 6.263460008e-7
+   },
+   {
+    "group1": "Drug (Day 1, KO)",
+    "group2": "Drug (Day 2, KO)",
+    "diff": -1.958417953,
+    "p": 0.06400198081
+   }
+  ],
+  "comparisonsLabel": "Bonferroni-corrected multiple comparisons test (A:B:C cell means)"
+ },
+ "two-way-anova grouped3way {\"design\":\"ordinary\",\"posthoc\":\"none\",\"posthocTarget\":\"groups\"}": {
+  "testType": "two-way-anova",
+  "subtitle": "Ordinary two-way ANOVA",
+  "stats": [
+   {
+    "label": "Group F",
+    "value": 126.6761324
+   },
+   {
+    "label": "Group DFn",
+    "value": 1
+   },
+   {
+    "label": "Group P value",
+    "value": 5.176955776e-9,
+    "p": true
+   },
+   {
+    "label": "Row F",
+    "value": 113.8586824
+   },
+   {
+    "label": "Row DFn",
+    "value": 3
+   },
+   {
+    "label": "Row P value",
+    "value": 5.257092507e-11,
+    "p": true
+   },
+   {
+    "label": "Interaction F",
+    "value": 13.82896051
+   },
+   {
+    "label": "Interaction DFn",
+    "value": 3
+   },
+   {
+    "label": "Interaction P value",
+    "value": 0.0001042720946,
+    "p": true
+   },
+   {
+    "label": "DFd (residual)",
+    "value": 16
+   }
+  ],
+  "groups": [
+   {
+    "name": "Placebo",
+    "mean": 11.58726575,
+    "sd": 1.780766661,
+    "sem": 0.5140630555,
+    "median": 11.10209575,
+    "n": 12
+   },
+   {
+    "name": "Drug",
+    "mean": 14.62929538,
+    "sd": 3.567933338,
+    "sem": 1.029973636,
+    "median": 13.71392836,
+    "n": 12
+   }
+  ],
+  "notes": "Compares group and row-position effects, plus their interaction; assumes normal distributions with equal variances (Type III sums of squares)."
+ },
+ "three-way-anova grouped3wayEmpty {\"posthoc\":\"none\"}": {
+  "error": "Every combination of the three factors needs at least one value. Drug × Day 2 × KO has no values."
+ },
+ "three-way-anova grouped3wayBadBands {\"posthoc\":\"none\"}": {
+  "error": "Row groups must cover every row exactly once."
+ },
+ "three-way-anova grouped3wayN1 {\"posthoc\":\"none\"}": {
+  "error": "Each combination needs replicates (or the design needs more rows) — there are no residual degrees of freedom."
+ },
+ "three-way-anova grouped {\"posthoc\":\"none\"}": {
+  "error": "Three-way ANOVA needs at least 2 column groups, 2 rows per row group, and 2 row groups. Add row groups in the table's Groups panel: split the rows into at least 2 named bands."
+ },
  "correlation-matrix multiple {\"method\":\"pearson\"}": {
   "testType": "correlation-matrix",
   "subtitle": "Pearson correlation matrix",

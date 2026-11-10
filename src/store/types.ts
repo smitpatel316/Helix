@@ -353,6 +353,13 @@ export type PaletteColor = "blue" | "red" | "green" | "purple" | "orange" | "bla
 /** How many groups and sub-columns a grouped table has: its Groups panel and a file alike. */
 export const GROUPED_LIMITS = { groups: { min: 1, max: 200 }, replicates: { min: 1, max: 20 } };
 
+/** One band of a grouped table's rows, carrying one level of a third factor
+ *  (see `TableData.rowGroups`). */
+export interface RowGroup {
+  name: string;
+  count: number;
+}
+
 export interface TableData {
   columns: string[];
   rows: (string | null)[][];
@@ -360,6 +367,11 @@ export interface TableData {
   groups?: number;
   /** Grouped tables only: replicate sub-columns per group. */
   replicates?: number;
+  /** Grouped tables only: factor-C bands — consecutive rows sharing one level of a
+   *  third factor, e.g. [{ name: "WT", count: 2 }, { name: "KO", count: 2 }].
+   *  Omitted (or empty) = no third factor; existing files read as before. Bands
+   *  must tile the table's rows exactly (see the three-way ANOVA runner). */
+  rowGroups?: RowGroup[];
   /**
    * Prism-style excluded cells: `"row,col"` keys in full-grid coords (col 0 holds
    * the row titles and is never excluded). Excluded values stay in the table + the

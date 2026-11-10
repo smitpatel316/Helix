@@ -43,10 +43,26 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "bland-altman",
     "survival-log-rank",
   ]),
-  grouped: optionsFor(["two-way-anova", "multiple-t-tests"]),
+  grouped: optionsFor(["two-way-anova", "three-way-anova", "multiple-t-tests"]),
   multiple: optionsFor(["correlation-matrix", "multiple-regression"]),
   contingency: optionsFor(["chi-square"]),
 };
+
+/** Whether the table has the ≥ 2 row bands a three-way ANOVA needs. */
+export function hasRowGroups(data: TableData | undefined): boolean {
+  return (data?.rowGroups?.length ?? 0) >= 2;
+}
+
+/** The picker/menu options for a table: the three-way ANOVA is offered only
+ *  when the table has ≥ 2 row bands — without them it would be a dead test. */
+export function analysisOptionsForTable(
+  tableType: TableType,
+  data?: TableData,
+): SelectorOption<AnalysisPickerValue>[] {
+  return ANALYSIS_OPTIONS_BY_TABLE[tableType].filter(
+    (o) => o.value !== "three-way-anova" || hasRowGroups(data),
+  );
+}
 
 /** Count data columns (excluding the leading Title column) that hold ≥1 numeric value. */
 export function countDataColumns(data: TableData | undefined): number {

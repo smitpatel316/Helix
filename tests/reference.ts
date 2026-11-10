@@ -307,6 +307,48 @@ const twoGroups = table(
   { groups: 2, replicates: 3 },
 );
 
+/** Three-way ANOVA (plan 03): Grouped, groups 2, replicates 3, row bands
+ *  WT × 2 rows / KO × 2 rows. Full-precision values are deliberate: the
+ *  expected ANOVA table was computed from exactly these numbers — do not round
+ *  them, or the expected values must be regenerated. */
+const grouped3way = table(
+  ["Title", "Placebo:Y1", "Placebo:Y2", "Placebo:Y3", "Drug:Y1", "Drug:Y2", "Drug:Y3"],
+  [
+    ["Day 1", "10.001230153357483", "10.29874553750847", "9.725862144637782", "11.109408161242726", "11.545329214828277", "11.008353445003538"],
+    ["Day 2", "14.060143602597439", "15.340215245554534", "13.50779348144867", "19.37952510018006", "20.4898420501852", "20.35688700816006"],
+    ["Day 1", "11.1054142489979", "10.069531955291795", "10.970748177536727", "13.695303194458289", "11.655785452714918", "12.542384238959782"],
+    ["Day 2", "11.098777260199157", "11.710462260215024", "11.158264962208268", "14.76490886892532", "13.732553518556298", "15.271264358821702"],
+  ],
+  { groups: 2, replicates: 3, rowGroups: [{ name: "WT", count: 2 }, { name: "KO", count: 2 }] },
+);
+
+/** The Drug × Day 2 × KO cell emptied (all three replicates blank). */
+const grouped3wayEmpty = table(
+  ["Title", "Placebo:Y1", "Placebo:Y2", "Placebo:Y3", "Drug:Y1", "Drug:Y2", "Drug:Y3"],
+  [
+    ["Day 1", "10.001230153357483", "10.29874553750847", "9.725862144637782", "11.109408161242726", "11.545329214828277", "11.008353445003538"],
+    ["Day 2", "14.060143602597439", "15.340215245554534", "13.50779348144867", "19.37952510018006", "20.4898420501852", "20.35688700816006"],
+    ["Day 1", "11.1054142489979", "10.069531955291795", "10.970748177536727", "13.695303194458289", "11.655785452714918", "12.542384238959782"],
+    ["Day 2", "11.098777260199157", "11.710462260215024", "11.158264962208268", "", "", ""],
+  ],
+  { groups: 2, replicates: 3, rowGroups: [{ name: "WT", count: 2 }, { name: "KO", count: 2 }] },
+);
+
+/** Bands that don't tile the rows (3 + 2 ≠ 4). */
+const grouped3wayBadBands = { ...grouped3way, rowGroups: [{ name: "WT", count: 3 }, { name: "KO", count: 2 }] };
+
+/** One observation per cell: no residual degrees of freedom. */
+const grouped3wayN1 = table(
+  ["Title", "Placebo:Y1", "Drug:Y1"],
+  [
+    ["Day 1", "10.0", "11.1"],
+    ["Day 2", "14.1", "19.4"],
+    ["Day 1", "11.1", "13.7"],
+    ["Day 2", "11.1", "14.8"],
+  ],
+  { groups: 2, replicates: 1, rowGroups: [{ name: "WT", count: 2 }, { name: "KO", count: 2 }] },
+);
+
 const multiple = table(
   ["Title", "Weight", "Height", "Age", "Dose"],
   [
@@ -482,6 +524,17 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["twoGroups", twoGroups, "multiple-t-tests", { paired: true, gaussian: true, pooledSd: false, correction: "none" }],
   ["twoGroups", twoGroups, "multiple-t-tests", { paired: false, gaussian: false, pooledSd: false, correction: "holm" }],
   ["twoGroups", twoGroups, "multiple-t-tests", { paired: true, gaussian: false, pooledSd: false, correction: "fdr" }],
+  // Three-way ANOVA (plan 03): the ANOVA table, Tukey on A:B, the two-way
+  // ANOVA on the same table (rowGroups must be ignored — no diff), and the
+  // empty-cell / bands-don't-tile / no-residual-df errors.
+  ["grouped3way", grouped3way, "three-way-anova", { posthoc: "none" }],
+  ["grouped3way", grouped3way, "three-way-anova", { posthoc: "tukey", posthocTerm: "A:B" }],
+  ["grouped3way", grouped3way, "three-way-anova", { posthoc: "bonferroni", posthocTerm: "A:B:C" }],
+  ["grouped3way", grouped3way, "two-way-anova", { design: "ordinary", posthoc: "none", posthocTarget: "groups" }],
+  ["grouped3wayEmpty", grouped3wayEmpty, "three-way-anova", { posthoc: "none" }],
+  ["grouped3wayBadBands", grouped3wayBadBands, "three-way-anova", { posthoc: "none" }],
+  ["grouped3wayN1", grouped3wayN1, "three-way-anova", { posthoc: "none" }],
+  ["grouped", grouped, "three-way-anova", { posthoc: "none" }],
   ["multiple", multiple, "correlation-matrix", { method: "pearson" }],
   ["multiple", multiple, "correlation-matrix", { method: "spearman" }],
   ["multiple", multiple, "multiple-regression", { dependent: "Weight" }],
@@ -940,6 +993,93 @@ async function disagreements(): Promise<string[]> {
   if (!eq(bars, autoCounts ?? [])) out.push(`Histogram bars: ${bars}, analysis counts: ${autoCounts}`);
   if (JSON.stringify(bars) !== JSON.stringify([3, 3, 2, 2]))
     out.push(`Histogram bars for freqCol: ${bars}, plan says [3, 3, 2, 2]`);
+  // Three-way ANOVA (plan 03): the plan's values, computed independently in
+  // Python (numpy/scipy, effect-coded least squares) and re-verified in WebR
+  // base R (aov + drop1, match() on row names) before locking. Tolerances from
+  // the plan: SS/F relative 1e-3; p relative 1e-2 for p < 0.01, absolute 1e-3
+  // for p >= 0.01. The Tukey A:B comparisons are cross-checked against an
+  // independent R computation (tapply cell means + pooled MSE + ptukey),
+  // matched by comparison label, not by row order.
+  const three = await runAnalysis("three-way-anova", grouped3way, { posthoc: "none" });
+  if ("error" in three) {
+    out.push(`Three-way ANOVA: ${three.error}`);
+  } else {
+    const stat = (label: string) => three.stats.find((s) => s.label === label)?.value;
+    const planF: [string, number, number][] = [
+      ["A", 126.6761, 5.18e-9],
+      ["B", 211.2669, 1.22e-10],
+      ["C", 34.4906, 2.36e-5],
+      ["A:B", 29.8974, 5.16e-5],
+      ["A:C", 2.7785, 0.115],
+      ["B:C", 95.8185, 3.69e-8],
+      ["A:B:C", 8.811, 0.00906],
+    ];
+    for (const [term, f, p] of planF) {
+      const gotF = stat(`${term} F`);
+      const gotP = stat(`${term} P value`);
+      if (gotF == null || Math.abs(gotF - f) / f > 1e-3) out.push(`Three-way ANOVA ${term} F: ${gotF}, plan says ${f}`);
+      if (gotP == null || (p < 0.01 ? Math.abs(gotP - p) / p > 1e-2 : Math.abs(gotP - p) > 1e-3))
+        out.push(`Three-way ANOVA ${term} p: ${gotP}, plan says ${p}`);
+      if (stat(`${term} DFn`) !== 1) out.push(`Three-way ANOVA ${term} DFn: ${stat(`${term} DFn`)}, expected 1`);
+    }
+    if (stat("DFd (residual)") !== 16)
+      out.push(`Three-way ANOVA DFd: ${stat("DFd (residual)")}, expected 16`);
+    if (three.subtitle !== "Ordinary three-way ANOVA") out.push(`Three-way ANOVA subtitle: ${three.subtitle}`);
+    if (!three.notes.includes("A = Group (Placebo, Drug); B = Row (Day 1, Day 2); C = Row group (WT, KO)."))
+      out.push(`Three-way ANOVA notes missing the factor mapping: ${three.notes}`);
+  }
+  const threeTukey = await runAnalysis("three-way-anova", grouped3way, { posthoc: "tukey", posthocTerm: "A:B" });
+  if ("error" in threeTukey) {
+    out.push(`Three-way ANOVA Tukey: ${threeTukey.error}`);
+  } else {
+    const comps = threeTukey.comparisons ?? [];
+    if (comps.length !== 6) out.push(`Three-way ANOVA Tukey A:B comparisons: ${comps.length}, expected 6`);
+    if (threeTukey.comparisonsLabel !== "Tukey's multiple comparisons test (A:B cell means)")
+      out.push(`Three-way ANOVA Tukey label: ${threeTukey.comparisonsLabel}`);
+    const raw = grouped3way.rows.flatMap((row) => row.slice(1).map((c) => (c == null ? "NA" : c)));
+    // R orders tapply cells by factor level (Drug before Placebo) and flattens
+    // the A×B matrix column-major: m[1]=Drug/Day 1, m[2]=Placebo/Day 1,
+    // m[3]=Drug/Day 2, m[4]=Placebo/Day 2. The JS runner orders them first-seen
+    // (Placebo first) — match by label, and compare the (label1, label2) pair's
+    // P, whichever order R lists it in.
+    const rCells = ["Day 1", "Day 2"].flatMap((b) => ["Drug", "Placebo"].map((a) => `${a} (${b})`));
+    const pairs: [number, number][] = [
+      [0, 1],
+      [0, 2],
+      [0, 3],
+      [1, 2],
+      [1, 3],
+      [2, 3],
+    ];
+    const expected = await evalNamedVector(
+      `v<-c(${raw.join(",")});` +
+        `A<-factor(rep(c("Placebo","Drug"),each=3,times=4));` +
+        `B<-factor(rep(c("Day 1","Day 2","Day 1","Day 2"),each=6));` +
+        `C<-factor(rep(c("WT","KO"),each=12));` +
+        `f<-aov(v~A*B*C);mse<-deviance(f)/df.residual(f);` +
+        `m<-tapply(v,list(A,B),mean);n<-tapply(v,list(A,B),length);` +
+        `c(${pairs.map(([i, j], k) => `p${k}=1-ptukey(sqrt(2)*abs((m[${i + 1}]-m[${j + 1}])/sqrt(mse*(1/n[${i + 1}]+1/n[${j + 1}]))),4,df.residual(f))`).join(",")})`,
+    );
+    pairs.forEach(([i, j], k) => {
+      const got =
+        comps.find((c) => c.group1 === rCells[i] && c.group2 === rCells[j]) ??
+        comps.find((c) => c.group1 === rCells[j] && c.group2 === rCells[i]);
+      const want = expected[`p${k}`];
+      if (!got || got.p == null || want == null || Math.abs(got.p - want) > 1e-9)
+        out.push(`Three-way ANOVA Tukey ${rCells[i]} vs ${rCells[j]}: ${got?.p}, R says ${want}`);
+    });
+  }
+  // The edge cases are errors, not NA rows.
+  for (const [data, label, want] of [
+    [grouped3wayEmpty, "empty cell", "Drug × Day 2 × KO has no values"],
+    [grouped3wayBadBands, "bands don't tile", "Row groups must cover every row exactly once."],
+    [grouped3wayN1, "no residual df", "no residual degrees of freedom"],
+    [grouped, "no row groups", "2 row groups"],
+  ] as const) {
+    const r = await runAnalysis("three-way-anova", data, { posthoc: "none" });
+    if (!("error" in r) || !r.error.includes(want))
+      out.push(`Three-way ANOVA ${label}: ${"error" in r ? r.error : "ran without error"}, expected an error naming ${want}`);
+  }
   return out;
 }
 

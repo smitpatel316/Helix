@@ -74,12 +74,18 @@ Every item has `id`, `type` (`"table"`, `"analysis"` or `"graph"`), `name`, and
   empty cell. Numbers are written as text (`"2.5"`), exactly as entered. A row may
   be shorter than `columns`: the missing cells are empty.
 - A grouped table names its sub-columns `<group>:<sub-column>` (`"A:Y1"`) and gives
-  `groups` and `replicates` (sub-columns per group).
+  `groups` and `replicates` (sub-columns per group). It may also give `rowGroups`:
+  consecutive bands of rows carrying one level of a third factor, e.g.
+  `"rowGroups": [{ "name": "WT", "count": 2 }, { "name": "KO", "count": 2 }]`
+  — the bands must tile the table's rows exactly (their counts add up to the row
+  count), with non-empty, distinct names. A table without `rowGroups` has no third
+  factor; a three-way ANOVA needs at least 2 bands.
 
 Optional fields:
 
 | Field | Meaning |
 | --- | --- |
+| `rowGroups` | A grouped table's third-factor bands, as `{ "name", "count" }` per band |
 | `excluded` | Cells excluded from analyses and graphs, as `"row,column"` (0-based, column 0 is Title): `["2,1"]` |
 | `widths` | Column widths set by the user, in pixels, by column name |
 | `freezeTitle` | `true` keeps the Title column visible while scrolling |

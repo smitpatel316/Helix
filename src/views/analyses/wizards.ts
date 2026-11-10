@@ -19,6 +19,7 @@ import type {
   NonlinearRegressionParams,
   OneSampleTParams,
   StandardCurveInterpolationParams,
+  ThreeWayAnovaParams,
   TwoWayAnovaParams,
   XYCorrelationParams,
 } from "../../stats/types";
@@ -472,6 +473,40 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         }),
       };
     },
+  },
+
+  "three-way-anova": {
+    questions: (a, table) => [
+      ...someSets(table, 2),
+      choice("posthoc", "Run multiple comparisons? Only meaningful if the ANOVA is significant.", [
+        ["none", "No — just the ANOVA table"],
+        ["tukey", "Yes — Tukey's"],
+        ["bonferroni", "Yes — Bonferroni-corrected"],
+      ]),
+      a.posthoc !== "none" &&
+        choice(
+          "posthocTerm",
+          "Which term should the comparisons follow up? The wizard cannot know yet which terms will be significant — pick the one you most want to follow up.",
+          [
+            ["A", "Factor A (column groups)"],
+            ["B", "Factor B (rows)"],
+            ["C", "Factor C (row groups)"],
+            ["A:B", "Interaction A:B"],
+            ["A:C", "Interaction A:C"],
+            ["B:C", "Interaction B:C"],
+            ["A:B:C", "Interaction A:B:C"],
+          ],
+        ),
+    ],
+    finish: (a) => ({
+      type: "three-way-anova",
+      params: withSets(a, {
+        posthoc: (a.posthoc as ThreeWayAnovaParams["posthoc"] | undefined) ?? "none",
+        ...(a.posthoc !== undefined && a.posthoc !== "none"
+          ? { posthocTerm: (a.posthocTerm as ThreeWayAnovaParams["posthocTerm"] | undefined) ?? "A" }
+          : {}),
+      }),
+    }),
   },
 
   "multiple-t-tests": {

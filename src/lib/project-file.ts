@@ -24,6 +24,7 @@ import {
   type Place,
   type PointStyle,
   type ProjectNode,
+  type RowGroup,
   SAME_AS_FILL,
   type SeriesStyle,
   type TableData,
@@ -40,6 +41,7 @@ import {
   RANK_POSTHOCS,
   ROUT_Q,
   TAILS,
+  THREE_WAY_TERMS,
   TWO_WAY_DESIGNS,
 } from "../stats/types";
 import { NAMED_COLORS, paletteNamed, savedPalette } from "./palettes";
@@ -113,7 +115,7 @@ const NODE_KEYS = Object.keys({
 } satisfies Record<keyof ProjectNode, 1>);
 // prettier-ignore
 const DATA_KEYS = Object.keys({
-  columns: 1, rows: 1, groups: 1, replicates: 1, excluded: 1,
+  columns: 1, rows: 1, groups: 1, replicates: 1, rowGroups: 1, excluded: 1,
   widths: 1, freezeTitle: 1,
 } satisfies Record<keyof TableData, 1>);
 
@@ -152,6 +154,7 @@ const PARAMS = {
   mode: CORRELATION_MODES, design: TWO_WAY_DESIGNS, posthocTarget: POSTHOC_TARGETS, correction: CORRECTIONS,
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q,
   binMode: BIN_MODES, binWidth: "number", binCount: { min: 2, max: 100 }, startAt: "number",
+  posthocTerm: THREE_WAY_TERMS,
   y: "name", dependent: "name", datasets: "names", predictors: "names", sets: "names", unknowns: "numbers",
 } satisfies Record<ParamKey, ParamKind>;
 
@@ -179,8 +182,11 @@ function colors(v: unknown): Record<string, PaletteColor> | undefined {
   return out.length ? Object.fromEntries(out) : undefined;
 }
 
-/** `v` when it is one of `choices`, whatever its case. */
-const oneOf = <T extends string>(choices: readonly T[], v: unknown) => choices.find((c) => c === lower(v));
+/** `v` when it is one of `choices`, whatever their case (the choices themselves
+ *  are mostly lowercase, but a three-way ANOVA's post-hoc term is "A:B" — so
+ *  both sides are compared lowercased). */
+const oneOf = <T extends string>(choices: readonly T[], v: unknown) =>
+  choices.find((c) => c.toLowerCase() === lower(v));
 
 /** A number brought within `limits`; anything else, none. */
 const within = (v: unknown, limits: Limits) => (isFiniteNumber(v) ? clamp(v, limits) : undefined);
@@ -259,6 +265,22 @@ const READ_OPTION = {
 /** Colors a table kept for its graphs before Helix 1.0.3: its series' and its cells'. */
 type TableColors = { series?: Record<string, PaletteColor>; cells?: Record<string, PaletteColor> };
 
+/** A table's row groups as a file holds them: every band a non-empty, distinct
+ *  name with a positive whole-row count — anything else reads as no third
+ *  factor (a broken band is left out on its own, like any broken item). */
+function readRowGroups(v: unknown): RowGroup[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const bands = v.map((b) =>
+    isObj(b) && typeof b.name === "string" && b.name.trim() !== "" && isCount(b.count)
+      ? { name: b.name, count: b.count }
+      : null,
+  );
+  if (bands.some((b) => b === null)) return undefined;
+  const kept = bands as RowGroup[];
+  if (new Set(kept.map((b) => b.name)).size !== kept.length) return undefined;
+  return kept.length ? kept : undefined;
+}
+
 /** A table's data, and the colors it kept for its graphs. */
 /** A table's data, put straight: no value beyond its last column (`beyond` counts those left
  *  out), exclusions and widths only on cells and columns it has, and a grouped table's
@@ -290,6 +312,7 @@ function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: num
     rows,
     groups: isCount(d.groups) && isCount(d.replicates) ? d.groups : undefined,
     replicates: isCount(d.groups) && isCount(d.replicates) ? d.replicates : undefined,
+    rowGroups: readRowGroups(d.rowGroups),
     excluded: excluded.length ? excluded : undefined,
     widths: Object.keys(widths).length ? (widths as Record<string, number>) : undefined,
     freezeTitle: d.freezeTitle === true || undefined,

@@ -6,7 +6,7 @@ import { alert } from "../../native";
 import { useProjectActions } from "../../store/use-project-store";
 import { ANALYSES } from "../../stats";
 import type { AnalysisParams, AnalysisPickerValue, AnalysisType } from "../../stats/types";
-import { countDataColumns, countDataGroups } from ".";
+import { countDataColumns, countDataGroups, hasRowGroups } from ".";
 import { WIZARDS } from "./wizards";
 import { readTable } from "../../lib/dataset";
 
@@ -36,6 +36,16 @@ function useAnalysisPrecheck() {
     // data, not the table's structural group count.
     if (testType === "multiple-t-tests" && countDataGroups(get().nodes[tableId]?.data) < 2) {
       alert(`${label} needs at least 2 column groups with data.`, "Enter data into 2 groups and try again.");
+      return false;
+    }
+    // Three-way ANOVA needs a third factor: ≥ 2 row bands. The picker and menu
+    // hide it without them, but a stale entry point still lands here — explain
+    // how to add bands instead of offering a test that cannot run.
+    if (testType === "three-way-anova" && !hasRowGroups(get().nodes[tableId]?.data)) {
+      alert(
+        `${label} needs at least 2 row groups.`,
+        "Split the table's rows into at least 2 named bands in the Groups panel (Show Inspector), then try again.",
+      );
       return false;
     }
     return true;

@@ -15,16 +15,25 @@ import {
   type TableData,
 } from "../src/store/types";
 import {
+  addRowGroup,
+  defaultRowGroups,
   deleteColumns,
+  deleteRows,
   freshColumnNames,
+  insertRows,
   newGroupedTable,
   regroupLoses,
   regroupTable,
+  removeRowGroup,
   renameGroup,
   rowsDeleted,
   rowsInserted,
+  setRowGroupCount,
+  setRowGroupName,
   writeBlock,
 } from "../src/views/tables/table-data";
+import { flattenThreeWay, rowGroupBands } from "../src/stats/grouped/base";
+import { analysisOptionsForTable } from "../src/views/analyses";
 import { followTable } from "../src/store/references";
 import { pairKey } from "../src/lib/columns";
 import {
@@ -42,7 +51,7 @@ import { deletePalette, keepPalette, loadMyPalettes } from "../src/store/my-pale
 import { GRAPHS, newGraphOptions, type GraphFigure } from "../src/views/graphs";
 import { readTable, setColumns } from "../src/lib/dataset";
 import { incompleteRows, missingColumn } from "../src/stats/column/base";
-import { WIZARDS } from "../src/views/analyses/wizards";
+import { WIZARDS, type Question } from "../src/views/analyses/wizards";
 import { addNote, movedText, paintOf, vectorTraces, visibleOutline, withCaps } from "../src/views/graphs/plot-helpers";
 import {
   drawnKeys,
@@ -523,6 +532,236 @@ check("fewer groups or sub-columns ask first only when they hold values", () => 
   ok(regroupLoses(t, 1, 4)); // Treated
   ok(regroupLoses(t, 3, 2)); // A:Y3, Treated:Y3
   ok(!regroupLoses(t, 3, 5));
+});
+
+// ── Row groups (a grouped table's third factor, plan 03) ─────────────────
+
+check("row groups split, resize and merge keeping every row covered", () => {
+  const bands = [
+    { name: "WT", count: 2 },
+    { name: "KO", count: 2 },
+  ];
+  // Splitting takes 1 row off the last splittable band.
+  deepStrictEqual(addRowGroup(bands), [
+    { name: "WT", count: 2 },
+    { name: "KO", count: 1 },
+    { name: "Row group 3", count: 1 },
+  ]);
+  deepStrictEqual(addRowGroup([{ name: "Only", count: 1 }]), [{ name: "Only", count: 1 }]);
+  // Resizing one band takes the difference from its neighbour.
+  deepStrictEqual(setRowGroupCount(bands, 0, 3), [
+    { name: "WT", count: 3 },
+    { name: "KO", count: 1 },
+  ]);
+  deepStrictEqual(setRowGroupCount(bands, 1, 3), [
+    { name: "WT", count: 1 },
+    { name: "KO", count: 3 },
+  ]);
+  // A band never drops below 1 row, whatever is asked.
+  deepStrictEqual(setRowGroupCount(bands, 0, 0)[0].count, 1);
+  // Removing a band gives its rows to a neighbour; the last band leaves none.
+  deepStrictEqual(removeRowGroup(bands, 0), [{ name: "KO", count: 4 }]);
+  deepStrictEqual(removeRowGroup(bands, 1), [{ name: "WT", count: 4 }]);
+  deepStrictEqual(removeRowGroup([{ name: "Only", count: 4 }], 0), []);
+  deepStrictEqual(setRowGroupName(bands, 1, "Mutant")[1], { name: "Mutant", count: 2 });
+  deepStrictEqual(defaultRowGroups({ columns: ["Title"], rows: [[null], [null], [null]] }), [
+    { name: "All rows", count: 3 },
+  ]);
+});
+
+check("inserting and deleting rows keeps the row groups tiling", () => {
+  const t: TableData = {
+    columns: ["Title", "A:Y1", "B:Y1"],
+    rows: [["r1", "1", "2"], ["r2", "3", "4"], ["r3", "5", "6"], ["r4", "7", "8"]],
+    groups: 2,
+    replicates: 1,
+    rowGroups: [
+      { name: "WT", count: 2 },
+      { name: "KO", count: 2 },
+    ],
+  };
+  // Two rows inserted inside WT grow WT; two deleted from KO shrink it away.
+  deepStrictEqual(insertRows(t, 1, 2).rowGroups, [
+    { name: "WT", count: 4 },
+    { name: "KO", count: 2 },
+  ]);
+  deepStrictEqual(deleteRows(t, 2, 2).rowGroups, [{ name: "WT", count: 2 }]);
+  deepStrictEqual(deleteRows(t, 0, 4).rowGroups, undefined);
+  // Pasting past the last row grows the last band with the table.
+  const grown = writeBlock(t, 4, 0, [["r5", "9", "10"]], "grouped");
+  deepStrictEqual(grown.rowGroups, [
+    { name: "WT", count: 2 },
+    { name: "KO", count: 3 },
+  ]);
+});
+
+check("flattenThreeWay tags every observation by group, row-in-band and band", () => {
+  const t: TableData = {
+    columns: ["Title", "Placebo:Y1", "Placebo:Y2", "Drug:Y1", "Drug:Y2"],
+    rows: [
+      ["Day 1", "1", "2", "3", "4"],
+      ["Day 2", "5", "6", "7", "8"],
+      ["Day 1", "9", "10", "11", "12"],
+      ["Day 2", "13", null, "15", "16"],
+    ],
+    groups: 2,
+    replicates: 2,
+    rowGroups: [
+      { name: "WT", count: 2 },
+      { name: "KO", count: 2 },
+    ],
+  };
+  const flat = flattenThreeWay(readTable(t).columns, rowGroupBands(t.rowGroups)!);
+  // Group-major, like flattenGrouped: all of Placebo's values, then Drug's.
+  deepStrictEqual(flat.values, [1, 2, 5, 6, 9, 10, 13, 3, 4, 7, 8, 11, 12, 15, 16]);
+  deepStrictEqual(flat.a.slice(0, 7), ["Placebo", "Placebo", "Placebo", "Placebo", "Placebo", "Placebo", "Placebo"]);
+  deepStrictEqual(flat.a.slice(7), ["Drug", "Drug", "Drug", "Drug", "Drug", "Drug", "Drug", "Drug"]);
+  deepStrictEqual(flat.b.slice(0, 7), ["R1", "R1", "R2", "R2", "R1", "R1", "R2"]);
+  deepStrictEqual(flat.c, ["WT", "WT", "WT", "WT", "KO", "KO", "KO", "WT", "WT", "WT", "WT", "KO", "KO", "KO", "KO"]);
+  strictEqual(flat.dropped, 1); // the blank Placebo:Y2 on KO Day 2
+  // flattenGrouped is unchanged: it still reads row position, not bands.
+  strictEqual(rowGroupBands(undefined), undefined);
+});
+
+check("row groups survive a save and reload; a broken band is left out", () => {
+  const project: ProjectFilePayload = {
+    nodes: {
+      t1: {
+        id: "t1",
+        type: "table",
+        name: "T",
+        parentId: null,
+        tableType: "grouped",
+        data: {
+          columns: ["Title", "A:Y1", "B:Y1"],
+          rows: [["r1", "1", "2"], ["r2", "3", "4"]],
+          groups: 2,
+          replicates: 1,
+          rowGroups: [
+            { name: "WT", count: 1 },
+            { name: "KO", count: 1 },
+          ],
+        },
+      },
+    },
+    rootOrder: ["t1"],
+    childOrder: { t1: [] },
+    activeNodeId: "t1",
+  };
+  const again = read(serializeProjectFile(project));
+  deepStrictEqual(again.project.nodes.t1.data!.rowGroups, [
+    { name: "WT", count: 1 },
+    { name: "KO", count: 1 },
+  ]);
+  strictEqual(again.updated, false);
+  // An older file without rowGroups opens unchanged, with no third factor.
+  const old = JSON.parse(serializeProjectFile(project));
+  delete old.project.nodes.t1.data.rowGroups;
+  const reopened = read(JSON.stringify(old));
+  strictEqual(reopened.project.nodes.t1.data!.rowGroups, undefined);
+  strictEqual(reopened.updated, false);
+  // A band with an empty name, a duplicate name or a bad count drops the field.
+  for (const rowGroups of [
+    [{ name: "", count: 1 }, { name: "KO", count: 1 }],
+    [{ name: "WT", count: 1 }, { name: "WT", count: 1 }],
+    [{ name: "WT", count: 0 }, { name: "KO", count: 2 }],
+    [{ name: "WT", count: 1.5 }, { name: "KO", count: 1 }],
+    "WT/KO",
+  ]) {
+    const broken = JSON.parse(serializeProjectFile(project));
+    broken.project.nodes.t1.data.rowGroups = rowGroups;
+    strictEqual(read(JSON.stringify(broken)).project.nodes.t1.data!.rowGroups, undefined);
+  }
+  // A three-way analysis's posthocTerm survives the same round-trip; a bogus
+  // term falls back (the runner takes its default).
+  const withAnalysis: ProjectFilePayload = {
+    ...project,
+    nodes: {
+      ...project.nodes,
+      a1: {
+        id: "a1",
+        type: "analysis",
+        name: "A",
+        parentId: "t1",
+        analysisType: "three-way-anova",
+        analysisParams: { posthoc: "tukey", posthocTerm: "A:B" },
+      },
+    },
+    childOrder: { t1: ["a1"] },
+  };
+  deepStrictEqual(read(serializeProjectFile(withAnalysis)).project.nodes.a1.analysisParams, {
+    posthoc: "tukey",
+    posthocTerm: "A:B",
+  });
+  const bogus = JSON.parse(serializeProjectFile(withAnalysis));
+  bogus.project.nodes.a1.analysisParams.posthocTerm = "A:B:C:D";
+  strictEqual(
+    (read(JSON.stringify(bogus)).project.nodes.a1.analysisParams as { posthocTerm?: string } | undefined)
+      ?.posthocTerm,
+    undefined,
+  );
+});
+
+check("the three-way ANOVA is offered only with at least 2 row bands", () => {
+  const withBands: TableData = {
+    columns: ["Title", "A:Y1"],
+    rows: [["r1", "1"], ["r2", "2"]],
+    groups: 1,
+    replicates: 1,
+    rowGroups: [
+      { name: "WT", count: 1 },
+      { name: "KO", count: 1 },
+    ],
+  };
+  const values = (data?: TableData) => analysisOptionsForTable("grouped", data).map((o) => o.value);
+  deepStrictEqual(values(withBands), ["two-way-anova", "three-way-anova", "multiple-t-tests"]);
+  deepStrictEqual(values({ ...withBands, rowGroups: [{ name: "All rows", count: 2 }] }), [
+    "two-way-anova",
+    "multiple-t-tests",
+  ]);
+  deepStrictEqual(values({ ...withBands, rowGroups: undefined }), ["two-way-anova", "multiple-t-tests"]);
+  deepStrictEqual(values(), ["two-way-anova", "multiple-t-tests"]);
+});
+
+check("the three-way ANOVA wizard asks for a post-hoc term only when comparing", () => {
+  const table = readTable({
+    columns: ["Title", "A:Y1", "A:Y2", "B:Y1", "B:Y2"],
+    rows: [
+      ["r1", "1", "2", "3", "4"],
+      ["r2", "5", "6", "7", "8"],
+    ],
+    groups: 2,
+    replicates: 2,
+  });
+  const wizard = WIZARDS["three-way-anova"]!;
+  const asked = (a: Record<string, string | number | string[] | undefined>) =>
+    wizard.questions(a, table).filter((q): q is Question => q !== false);
+  deepStrictEqual(
+    asked({}).map((q) => q.id),
+    ["posthoc", "posthocTerm"],
+  );
+  deepStrictEqual(
+    asked({ posthoc: "none" }).map((q) => q.id),
+    ["posthoc"],
+  );
+  deepStrictEqual(
+    asked({ posthoc: "tukey" }).map((q) => q.id),
+    ["posthoc", "posthocTerm"],
+  );
+  // The term defaults to A (the wizard cannot know significance yet); "none"
+  // carries no term at all.
+  deepStrictEqual(wizard.finish({ posthoc: "tukey" }, table), {
+    type: "three-way-anova",
+    params: { posthoc: "tukey", posthocTerm: "A" },
+  });
+  deepStrictEqual(wizard.finish({ posthoc: "none" }, table), {
+    type: "three-way-anova",
+    params: { posthoc: "none" },
+  });
+  deepStrictEqual(wizard.finish({ posthoc: "bonferroni", posthocTerm: "A:B:C" }, table), {
+    type: "three-way-anova",
+    params: { posthoc: "bonferroni", posthocTerm: "A:B:C" },
+  });
 });
 
 check("a column gone takes its width with it: a new one of its name starts at the default", () => {
