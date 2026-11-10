@@ -776,6 +776,31 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
     ],
     finish: (a) => ({ type: "cox", params: { reference: a.reference as CoxParams["reference"] } }),
   },
+  "multiple-logistic-regression": {
+    questions: (a, table) => {
+      // Only 0/1 columns can be the outcome — offer those, so a non-binary
+      // dependent is rejected at selection time. When no column is binary,
+      // offer every data column and let the runner say so.
+      const binary = table.numeric
+        .filter((c) => c.values.length > 0 && c.values.every((v) => v === 0 || v === 1))
+        .map((c) => c.name);
+      const dependents = binary.length > 0 ? binary : dataNames(table);
+      return [
+        choice("dependent", "Choose the dependent variable (Y).", names(dependents)),
+        {
+          id: "predictors",
+          ask: "Choose which variables to include as predictors.",
+          kind: "names",
+          options: dataNames(table).filter((n) => n !== a.dependent),
+        },
+      ];
+    },
+    finish: (a) => ({
+      type: "multiple-logistic-regression",
+      params: { dependent: a.dependent as string, predictors: a.predictors as string[] },
+    }),
+  },
+
   "cox-proportional-hazards": {
     questions: (a, table) => {
       const all = dataNames(table);

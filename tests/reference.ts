@@ -887,6 +887,45 @@ const multiple = table(
   ],
 );
 
+/** Binary outcome vs. two predictors (multiple logistic regression, plan 11). */
+const multipleBinary = table(
+  ["Title", "Outcome", "Age", "Dose"],
+  [
+    ["", "0", "22", "0"],
+    ["", "0", "25", "0"],
+    ["", "0", "28", "1"],
+    ["", "1", "31", "0"],
+    ["", "0", "35", "1"],
+    ["", "1", "38", "1"],
+    ["", "0", "42", "0"],
+    ["", "1", "45", "1"],
+    ["", "1", "49", "1"],
+    ["", "0", "53", "0"],
+    ["", "1", "57", "1"],
+    ["", "1", "61", "1"],
+  ],
+);
+
+/** Completely separated: Dose predicts the outcome exactly, so glm diverges
+ *  and the runner must refuse (same guard as plan 01's logisticSeparated). */
+const multipleBinarySeparated = table(
+  ["Title", "Outcome", "Age", "Dose"],
+  [
+    ["", "0", "22", "0"],
+    ["", "0", "25", "0"],
+    ["", "0", "28", "0"],
+    ["", "0", "31", "0"],
+    ["", "0", "35", "0"],
+    ["", "0", "38", "0"],
+    ["", "1", "42", "1"],
+    ["", "1", "45", "1"],
+    ["", "1", "49", "1"],
+    ["", "1", "53", "1"],
+    ["", "1", "57", "1"],
+    ["", "1", "61", "1"],
+  ],
+);
+
 const volcanoTable = table(
   ["Title", "Gene", "Log2 FC", "P"],
   [
@@ -1179,6 +1218,22 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["multiple", multiple, "multiple-regression", { dependent: "Weight", predictors: ["Height", "Age"] }],
   ["multiple", multiple, "descriptive-statistics"],
   ["multiple", multiple, "outliers", { q: 1 }],
+  // Multiple logistic regression (plan 11): explicit predictors, then the
+  // predictors-omitted run (every other variable — same result), then the
+  // separated table, which must error rather than publish absurd odds ratios.
+  [
+    "multipleBinary",
+    multipleBinary,
+    "multiple-logistic-regression",
+    { dependent: "Outcome", predictors: ["Age", "Dose"] },
+  ],
+  ["multipleBinary", multipleBinary, "multiple-logistic-regression", { dependent: "Outcome" }],
+  [
+    "multipleBinarySeparated",
+    multipleBinarySeparated,
+    "multiple-logistic-regression",
+    { dependent: "Outcome", predictors: ["Age", "Dose"] },
+  ],
   ["contingency2", contingency2, "chi-square"],
   ["contingency3", contingency3, "chi-square"],
   ["contingencyWide", contingencyWide, "chi-square"],
