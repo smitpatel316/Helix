@@ -266,6 +266,150 @@ const enzymeTooFew = table(
   ],
 );
 
+/** Binding — Saturation (plan 16): noiseless by construction, so each fit
+ *  must recover its generating parameters. bindTotal: one-site total
+ *  Bmax=100, Kd=5, NS=0.5, Background=2 (the X = 0 row pins Background).
+ *  bindTwoSite: two-site specific BmaxHi=60, KdHi=1, BmaxLo=40, KdLo=20.
+ *  bindTotalNs: the same total curve plus its nonspecific series
+ *  (NS·X + Background), fitted jointly with NS/Background shared.
+ *  bindTwoSiteNs: 12-point two-site total + nonspecific (BmaxHi=60,
+ *  KdHi=1, BmaxLo=40, KdLo=20, NS=0.5, Background=2). */
+const bindTotal = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "0", "2"],
+    ["", "0.5", "11.3409090909"],
+    ["", "1", "19.1666666667"],
+    ["", "2", "31.5714285714"],
+    ["", "5", "54.5"],
+    ["", "10", "73.6666666667"],
+    ["", "20", "92"],
+    ["", "50", "117.9090909091"],
+  ],
+);
+const bindTwoSite = table(
+  ["Title", "X", "Y"],
+  [
+    // 10 points: the plan's 8-point table, plus X = 0.03 and X = 1000 —
+    // the plan's own ≥10-point rule for two-site fits (see the
+    // "at least 10 points" error) would reject its 8-point table, so the
+    // table is extended with the same generating parameters (60/1/40/20).
+    ["", "0.03", "1.8074829503"],
+    ["", "0.1", "5.6535504297"],
+    ["", "0.3", "14.4372868511"],
+    ["", "1", "31.9047619048"],
+    ["", "3", "50.2173913043"],
+    ["", "10", "67.8787878788"],
+    ["", "30", "82.064516129"],
+    ["", "100", "92.7392739274"],
+    ["", "300", "97.3006644518"],
+    ["", "1000", "99.1557462146"],
+  ],
+);
+const bindTotalNs = table(
+  ["Title", "X", "Total", "Nonspecific"],
+  [
+    ["", "0", "2", "2"],
+    ["", "0.5", "11.3409090909", "2.25"],
+    ["", "1", "19.1666666667", "2.5"],
+    ["", "2", "31.5714285714", "3"],
+    ["", "5", "54.5", "4.5"],
+    ["", "10", "73.6666666667", "7"],
+    ["", "20", "92", "12"],
+    ["", "50", "117.9090909091", "27"],
+  ],
+);
+const bindTwoSiteNs = table(
+  ["Title", "X", "Total", "Nonspecific"],
+  [
+    ["", "0.1", "7.7035504297", "2.05"],
+    ["", "0.3", "16.5872868511", "2.15"],
+    ["", "1", "34.4047619048", "2.5"],
+    ["", "2", "46.6363636364", "3"],
+    ["", "3", "53.7173913043", "3.5"],
+    ["", "5", "62.5", "4.5"],
+    ["", "10", "74.8787878788", "7"],
+    ["", "20", "89.1428571429", "12"],
+    ["", "30", "99.064516129", "17"],
+    ["", "50", "114.3949579832", "27"],
+    ["", "100", "144.7392739274", "52"],
+    ["", "300", "249.3006644518", "152"],
+  ],
+);
+/** Two-site model on 6 points: must error naming the 10-point requirement. */
+const bindTwoSiteFew = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "0.1", "5.6535504297"],
+    ["", "1", "31.9047619048"],
+    ["", "3", "50.2173913043"],
+    ["", "10", "67.8787878788"],
+    ["", "30", "82.064516129"],
+    ["", "100", "92.7392739274"],
+  ],
+);
+/** Negative concentration: must error "Concentrations can't be negative." */
+const bindNegX = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "-1", "5"],
+    ["", "0.5", "11.3409090909"],
+    ["", "1", "19.1666666667"],
+    ["", "2", "31.5714285714"],
+    ["", "5", "54.5"],
+  ],
+);
+/** Two-series fit with 4 rows: each series is short of the 5-point minimum. */
+const bindTotalNsFew = table(
+  ["Title", "X", "Total", "Nonspecific"],
+  [
+    ["", "0", "2", "2"],
+    ["", "1", "19.1666666667", "2.5"],
+    ["", "5", "54.5", "4.5"],
+    ["", "10", "73.6666666667", "7"],
+  ],
+);
+
+/** Binding — Kinetics (plan 16): noiseless by construction on the shared
+ *  time grid 0–15. Assoc: one-phase association Y0=0, Plateau=100,
+ *  Kobs=0.5. Dissoc: one-phase dissociation Y0=100, Plateau=5, Koff=0.3.
+ *  TwoPhase: two-phase association Plateau=100, PercentFast=0.7, KFast=1.0,
+ *  KSlow=0.1. Dissoc2: two-phase dissociation Y0=100, Plateau=5,
+ *  PercentFast=0.7, KFast=1.0, KSlow=0.1. */
+const bindKinetics = table(
+  ["Title", "X", "Assoc", "Dissoc", "TwoPhase", "Dissoc2"],
+  [
+    ["", "0", "0", "100", "0", "100"],
+    ["", "1", "39.3469340287", "75.3777309648", "47.1033165769", "55.2518492519"],
+    ["", "2", "63.2120558829", "57.1371054289", "65.9646075811", "37.333622798"],
+    ["", "3", "77.6869839852", "43.6241176754", "74.2903585938", "29.4241593359"],
+    ["", "5", "91.7915001376", "26.1973652141", "81.3324239187", "22.7341972772"],
+    ["", "7", "96.9802616578", "16.633360684", "85.0386091487", "19.2133213088"],
+    ["", "10", "99.3262053001", "9.7297714949", "88.9604387698", "15.4875831687"],
+    ["", "15", "99.944691563", "6.0553546711", "93.3060737824", "11.3592299067"],
+  ],
+);
+/** Association-then-dissociation (plan 16, third sub-task): one experiment,
+ *  HotNM=1 nM, Time0=10, Kon=1e8 M⁻¹min⁻¹, Koff=0.1 min⁻¹, Bmax=100,
+ *  NS=0.5 — Kob=0.2, kinetic Kd=1 nM, Eq=50. */
+const bindAssocThenDissoc = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "0", "0.5"],
+    ["", "1", "9.5634623461"],
+    ["", "2", "16.9839976982"],
+    ["", "3", "23.0594181953"],
+    ["", "5", "32.1060279414"],
+    ["", "7", "38.1701518029"],
+    ["", "10", "43.7332358382"],
+    ["", "12", "35.8963797358"],
+    ["", "15", "26.7222830544"],
+    ["", "20", "16.4046186402"],
+    ["", "30", "6.3509822174"],
+    ["", "40", "2.6524560684"],
+  ],
+);
+
 const survivalTable = table(
   ["Title", "Days", "Treated", "Placebo"],
   [
@@ -1053,6 +1197,60 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["enzymeNegX", enzymeNegX, "nonlinear-regression", { model: "michaelis-menten" }],
   ["enzymeConstX", enzymeConstX, "nonlinear-regression", { model: "michaelis-menten" }],
   ["enzymeTooFew", enzymeTooFew, "nonlinear-regression", { model: "michaelis-menten" }],
+  // Binding — Saturation / Kinetics (plan 16): the noiseless reference
+  // cases (coefficients + derived rows asserted in disagreements() below),
+  // the two-series shared-NS fits, the derived-kon run, the
+  // association-then-dissociation run, and the validation errors.
+  ["bindTotal", bindTotal, "binding-saturation", { model: "one-site-total" }],
+  ["bindTwoSite", bindTwoSite, "binding-saturation", { model: "two-site-specific" }],
+  [
+    "bindTotalNs",
+    bindTotalNs,
+    "binding-saturation",
+    { y: "Total", y2: "Nonspecific", model: "one-site-total-and-ns" },
+  ],
+  [
+    "bindTwoSiteNs",
+    bindTwoSiteNs,
+    "binding-saturation",
+    { y: "Total", y2: "Nonspecific", model: "two-site-total-and-ns" },
+  ],
+  ["bindTwoSiteFew", bindTwoSiteFew, "binding-saturation", { model: "two-site-specific" }],
+  ["bindNegX", bindNegX, "binding-saturation", { model: "one-site-total" }],
+  [
+    "bindTotalNsFew",
+    bindTotalNsFew,
+    "binding-saturation",
+    { y: "Total", y2: "Nonspecific", model: "one-site-total-and-ns" },
+  ],
+  ["bindKinetics", bindKinetics, "binding-kinetics", { y: "Assoc", model: "association-one-phase" }],
+  ["bindKinetics", bindKinetics, "binding-kinetics", { y: "Dissoc", model: "dissociation-one-phase" }],
+  ["bindKinetics", bindKinetics, "binding-kinetics", { y: "TwoPhase", model: "association-two-phase" }],
+  ["bindKinetics", bindKinetics, "binding-kinetics", { y: "Dissoc2", model: "dissociation-two-phase" }],
+  [
+    "bindKinetics",
+    bindKinetics,
+    "binding-kinetics",
+    { y: "Assoc", model: "association-one-phase", ligandConcentration: 10, koff: 0.3 },
+  ],
+  [
+    "bindKinetics",
+    bindKinetics,
+    "binding-kinetics",
+    { y: "Assoc", model: "association-one-phase", ligandConcentration: 10 },
+  ],
+  [
+    "bindAssocThenDissoc",
+    bindAssocThenDissoc,
+    "binding-kinetics",
+    { model: "association-then-dissociation", hotNM: 1, time0: 10 },
+  ],
+  [
+    "bindAssocThenDissoc",
+    bindAssocThenDissoc,
+    "binding-kinetics",
+    { model: "association-then-dissociation", hotNM: 1, time0: 100 },
+  ],
   ["logistic", logistic, "simple-logistic-regression", {}],
   ["logisticSeparated", logisticSeparated, "simple-logistic-regression", {}],
   ["blandAltman", blandAltman, "bland-altman", { sets: ["Method A", "Method B"] }],
@@ -2886,6 +3084,321 @@ async function disagreements(): Promise<string[]> {
   if (JSON.stringify(asked({ method: "spline" })) !== JSON.stringify(["method", "y", "spar"]))
     out.push(
       `Spline/Lowess wizard (spline): ${JSON.stringify(asked({ method: "spline" }))}, expected ["method", "y", "spar"]`,
+    );
+  // Binding — Saturation / Kinetics (plan 16): noiseless fixtures must
+  // recover their generating parameters (relative tolerances from the plan:
+  // 1e-6 one-site/kinetics, 1e-4 two-site specific, 1e-3 two-phase
+  // association); every fitted parameter carries estimate + SE + t + p +
+  // 95% CI; the two-series fits share NS/Background; the graph draws the
+  // fitted curve (both branches for two-series); the validation errors
+  // name their requirement.
+  const bindCoef = (r: AnalysisResult | { error: string }, term: string) =>
+    "error" in r ? null : (r.coefficients?.find((c) => c.term === term)?.estimate ?? null);
+  const bindStat = (r: AnalysisResult | { error: string }, label: string) =>
+    "error" in r ? null : (r.stats.find((s) => s.label === label)?.value ?? null);
+  const closeRel = (got: number | null, want: number, tol: number) =>
+    got != null && Math.abs(got - want) <= tol * Math.max(Math.abs(want), 1e-12);
+  const bindChecks: [string, AnalysisResult | { error: string }, [string, number, number][]][] = [
+    [
+      "one-site total",
+      await runAnalysis("binding-saturation", bindTotal, { model: "one-site-total" }),
+      [
+        ["Bmax", 100, 1e-6],
+        ["Kd", 5, 1e-6],
+        ["NS", 0.5, 1e-6],
+        ["Background", 2, 1e-6],
+      ],
+    ],
+    [
+      "two-site specific",
+      await runAnalysis("binding-saturation", bindTwoSite, { model: "two-site-specific" }),
+      [
+        ["BmaxHi", 60, 1e-4],
+        ["KdHi", 1, 1e-4],
+        ["BmaxLo", 40, 1e-4],
+        ["KdLo", 20, 1e-4],
+      ],
+    ],
+    [
+      "one-site total + nonspecific",
+      await runAnalysis("binding-saturation", bindTotalNs, {
+        y: "Total",
+        y2: "Nonspecific",
+        model: "one-site-total-and-ns",
+      }),
+      [
+        ["Bmax", 100, 1e-6],
+        ["Kd", 5, 1e-6],
+        ["NS", 0.5, 1e-6],
+        ["Background", 2, 1e-6],
+      ],
+    ],
+    [
+      "two-site total + nonspecific",
+      await runAnalysis("binding-saturation", bindTwoSiteNs, {
+        y: "Total",
+        y2: "Nonspecific",
+        model: "two-site-total-and-ns",
+      }),
+      [
+        ["BmaxHi", 60, 1e-4],
+        ["KdHi", 1, 1e-4],
+        ["BmaxLo", 40, 1e-4],
+        ["KdLo", 20, 1e-4],
+        ["NS", 0.5, 1e-4],
+        ["Background", 2, 1e-4],
+      ],
+    ],
+    [
+      "association one-phase",
+      await runAnalysis("binding-kinetics", bindKinetics, { y: "Assoc", model: "association-one-phase" }),
+      [
+        ["Plateau", 100, 1e-6],
+        ["Kobs", 0.5, 1e-6],
+      ],
+    ],
+    [
+      "dissociation one-phase",
+      await runAnalysis("binding-kinetics", bindKinetics, { y: "Dissoc", model: "dissociation-one-phase" }),
+      [
+        ["Y0", 100, 1e-6],
+        ["Plateau", 5, 1e-6],
+        ["Koff", 0.3, 1e-6],
+      ],
+    ],
+    [
+      "association two-phase",
+      await runAnalysis("binding-kinetics", bindKinetics, { y: "TwoPhase", model: "association-two-phase" }),
+      [
+        ["Plateau", 100, 1e-3],
+        ["PercentFast", 0.7, 1e-3],
+        ["KFast", 1.0, 1e-3],
+        ["KSlow", 0.1, 1e-3],
+      ],
+    ],
+    [
+      "dissociation two-phase",
+      await runAnalysis("binding-kinetics", bindKinetics, { y: "Dissoc2", model: "dissociation-two-phase" }),
+      [
+        ["Y0", 100, 1e-3],
+        ["Plateau", 5, 1e-3],
+        ["PercentFast", 0.7, 1e-3],
+        ["KFast", 1.0, 1e-3],
+        ["KSlow", 0.1, 1e-3],
+      ],
+    ],
+    [
+      "association then dissociation",
+      await runAnalysis("binding-kinetics", bindAssocThenDissoc, {
+        model: "association-then-dissociation",
+        hotNM: 1,
+        time0: 10,
+      }),
+      [
+        ["Kon", 1e8, 1e-6],
+        ["Koff", 0.1, 1e-6],
+        ["Bmax", 100, 1e-6],
+        ["NS", 0.5, 1e-6],
+      ],
+    ],
+  ];
+  for (const [label, r, terms] of bindChecks) {
+    if ("error" in r) {
+      out.push(`Binding ${label}: ${r.error}`);
+      continue;
+    }
+    for (const [term, want, tol] of terms) {
+      const got = bindCoef(r, term);
+      if (!closeRel(got, want, tol)) out.push(`Binding ${label} ${term}: ${got}, expected ${want}`);
+    }
+    // Every fitted parameter carries estimate + SE + t + p + 95% CI.
+    for (const c of r.coefficients ?? []) {
+      if (
+        c.estimate == null ||
+        c.stdError == null ||
+        c.t == null ||
+        c.p == null ||
+        c.ciLow == null ||
+        c.ciHigh == null
+      )
+        out.push(`Binding ${label} ${c.term}: missing estimate/SE/t/p/CI`);
+    }
+    if (bindStat(r, "R squared") !== 1 && label !== "association then dissociation") {
+      // Two-series fits report the pooled R² under "R squared" too.
+      const pooled = bindStat(r, "R squared");
+      if (pooled == null || Math.abs(pooled - 1) > 1e-9)
+        out.push(`Binding ${label} R²: ${pooled}, expected 1`);
+    }
+  }
+  // Derived rows: half-lives, residence time, kinetic Kd, Eq.
+  const assoc = await runAnalysis("binding-kinetics", bindKinetics, { y: "Assoc", model: "association-one-phase" });
+  if (!closeRel(bindStat(assoc, "Half-life"), Math.LN2 / 0.5, 1e-6))
+    out.push(`Binding association half-life: ${bindStat(assoc, "Half-life")}, expected ${Math.LN2 / 0.5}`);
+  if (bindCoef(assoc, "Y0") != null && Math.abs(bindCoef(assoc, "Y0")!) > 1e-6)
+    out.push(`Binding association Y0: ${bindCoef(assoc, "Y0")}, expected 0`);
+  const dissoc = await runAnalysis("binding-kinetics", bindKinetics, { y: "Dissoc", model: "dissociation-one-phase" });
+  if (!closeRel(bindStat(dissoc, "Half-life"), Math.LN2 / 0.3, 1e-6))
+    out.push(`Binding dissociation half-life: ${bindStat(dissoc, "Half-life")}, expected ${Math.LN2 / 0.3}`);
+  if (!closeRel(bindStat(dissoc, "Residence time"), 1 / 0.3, 1e-6))
+    out.push(`Binding dissociation residence time: ${bindStat(dissoc, "Residence time")}, expected ${1 / 0.3}`);
+  const kon = await runAnalysis("binding-kinetics", bindKinetics, {
+    y: "Assoc",
+    model: "association-one-phase",
+    ligandConcentration: 10,
+    koff: 0.3,
+  });
+  if (!closeRel(bindStat(kon, "kon"), 0.02, 1e-6))
+    out.push(`Binding derived kon: ${bindStat(kon, "kon")}, expected 0.02`);
+  if (!closeRel(bindStat(kon, "Kinetic Kd"), 15, 1e-6))
+    out.push(`Binding derived kinetic Kd: ${bindStat(kon, "Kinetic Kd")}, expected 15`);
+  const konNoKoff = await runAnalysis("binding-kinetics", bindKinetics, {
+    y: "Assoc",
+    model: "association-one-phase",
+    ligandConcentration: 10,
+  });
+  if (!("error" in konNoKoff) && bindStat(konNoKoff, "kon") != null)
+    out.push(`Binding kon without Koff: ${bindStat(konNoKoff, "kon")}, expected none`);
+  if (!("error" in konNoKoff) && !konNoKoff.notes.includes("dissociation experiment"))
+    out.push(`Binding kon without Koff: notes do not say a dissociation experiment is needed`);
+  const atd = await runAnalysis("binding-kinetics", bindAssocThenDissoc, {
+    model: "association-then-dissociation",
+    hotNM: 1,
+    time0: 10,
+  });
+  if (!closeRel(bindStat(atd, "Kinetic Kd (nM)"), 1, 1e-6))
+    out.push(`Binding assoc-then-dissoc kinetic Kd: ${bindStat(atd, "Kinetic Kd (nM)")}, expected 1 nM`);
+  if (!closeRel(bindStat(atd, "Eq"), 50, 1e-6))
+    out.push(`Binding assoc-then-dissoc Eq: ${bindStat(atd, "Eq")}, expected 50`);
+  if (!closeRel(bindStat(atd, "R squared"), 1, 1e-9))
+    out.push(`Binding assoc-then-dissoc R²: ${bindStat(atd, "R squared")}, expected 1`);
+  // Two-series fits: R² per series + pooled, N per series, shared NS/Background noted.
+  const twoSeries = await runAnalysis("binding-saturation", bindTotalNs, {
+    y: "Total",
+    y2: "Nonspecific",
+    model: "one-site-total-and-ns",
+  });
+  if (!closeRel(bindStat(twoSeries, "R squared (total)"), 1, 1e-9))
+    out.push(`Binding two-series R² (total): ${bindStat(twoSeries, "R squared (total)")}, expected 1`);
+  if (!closeRel(bindStat(twoSeries, "R squared (nonspecific)"), 1, 1e-9))
+    out.push(`Binding two-series R² (nonspecific): ${bindStat(twoSeries, "R squared (nonspecific)")}, expected 1`);
+  if (bindStat(twoSeries, "N (total)") !== 8 || bindStat(twoSeries, "N (nonspecific)") !== 8)
+    out.push(
+      `Binding two-series N: ${bindStat(twoSeries, "N (total)")}/${bindStat(twoSeries, "N (nonspecific)")}, expected 8/8`,
+    );
+  if (!("error" in twoSeries) && !twoSeries.notes.includes("shared between the two series"))
+    out.push(`Binding two-series notes do not say NS/Background are shared`);
+  // Validation errors.
+  const bindErrCases: [string, TableData, AnalysisType, AnalysisParams, string][] = [
+    [
+      "two-site < 10 points",
+      bindTwoSiteFew,
+      "binding-saturation",
+      { model: "two-site-specific" },
+      "at least 10 points",
+    ],
+    ["negative concentration", bindNegX, "binding-saturation", { model: "one-site-total" }, "can't be negative"],
+    [
+      "two-series < 5 points",
+      bindTotalNsFew,
+      "binding-saturation",
+      { y: "Total", y2: "Nonspecific", model: "one-site-total-and-ns" },
+      "at least 5",
+    ],
+    [
+      "Time0 outside range",
+      bindAssocThenDissoc,
+      "binding-kinetics",
+      { model: "association-then-dissociation", hotNM: 1, time0: 100 },
+      "strictly inside",
+    ],
+  ];
+  for (const [label, tableData, type, params, want] of bindErrCases) {
+    const r = await runAnalysis(type, tableData, params);
+    if (!("error" in r) || !r.error.includes(want))
+      out.push(`Binding ${label}: ${"error" in r ? r.error : "ran"}, expected an error naming “${want}”`);
+  }
+  // The binding-curve graph draws the fitted curve over the points (101
+  // points spanning exactly the data range), and both branches for a
+  // two-series fit — the nonspecific curve dashed in its own colour.
+  if (!("error" in twoSeries)) {
+    const { addBindingCurve } = await import("../src/views/graphs/binding-curve");
+    const cols = plotColumns(readTable(bindTotalNs), "dose-response");
+    const opts = newGraphOptions("dose-response");
+    const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 2), readTable(bindTotalNs).titles);
+    addBindingCurve(fig, cols, opts, twoSeries, { y: "Total", y2: "Nonspecific", model: "one-site-total-and-ns" }, paintOf(opts, 2));
+    const traces = fig.data as { mode?: string; x?: number[]; y?: number[]; line?: { dash?: string } }[];
+    const curves = traces.filter((t) => t.mode === "lines" && t.x?.length === 101);
+    if (curves.length !== 2) out.push(`Binding curve graph draws ${curves.length} 101-point lines, expected 2`);
+    const [total, ns] = curves;
+    if (total && (total.x?.[0] !== 0 || total.x?.at(-1) !== 50))
+      out.push(`Binding total curve spans [${total.x?.[0]}, ${total.x?.at(-1)}], expected [0, 50]`);
+    if (total && total.y) {
+      const at5 = total.y[10];
+      if (at5 == null || Math.abs(at5 - 54.5) > 1e-6)
+        out.push(`Binding total curve at X=5: ${at5}, expected 54.5`);
+    }
+    if (ns && ns.line?.dash !== "dash") out.push(`Binding nonspecific curve is not dashed`);
+    if (ns && ns.y) {
+      const at5 = ns.y[10];
+      if (at5 == null || Math.abs(at5 - 4.5) > 1e-6) out.push(`Binding nonspecific curve at X=5: ${at5}, expected 4.5`);
+    }
+    const note = (fig.layout.annotations as { text?: string }[] | undefined)?.find((a) => a.text?.includes("Bmax"));
+    if (!note) out.push(`Binding curve graph draws no Bmax note`);
+    // Kinetics curve: starts at Y0 (0), not forced through the origin.
+    const fig2 = GRAPHS["dose-response"].build(
+      plotColumns(readTable(bindKinetics), "dose-response"),
+      opts,
+      paintOf(opts, 4),
+      readTable(bindKinetics).titles,
+    );
+    if (!("error" in assoc)) {
+      addBindingCurve(
+        fig2,
+        plotColumns(readTable(bindKinetics), "dose-response"),
+        opts,
+        assoc,
+        { y: "Assoc", model: "association-one-phase" },
+        paintOf(opts, 4),
+      );
+      const kTraces = fig2.data as { mode?: string; x?: number[]; y?: number[] }[];
+      const kCurve = kTraces.find((t) => t.mode === "lines" && t.x?.length === 101);
+      if (!kCurve) out.push(`Binding kinetics graph draws no 101-point line`);
+      if (kCurve && kCurve.y?.[0] != null && Math.abs(kCurve.y[0]) > 1e-6)
+        out.push(`Binding kinetics curve at t=0: ${kCurve.y[0]}, expected Y0 = 0`);
+      if (kCurve && kCurve.y?.[100] != null && Math.abs(kCurve.y[100] - 99.944691563) > 1e-3)
+        out.push(`Binding kinetics curve at t=15: ${kCurve.y[100]}, expected 99.9447`);
+    }
+  }
+  // The wizards ask Y, then model, then (two-series) the nonspecific series;
+  // kinetics adds the optional kon constants, and HotNM/Time0 for
+  // association-then-dissociation.
+  const satAsked = (a: Record<string, string>) =>
+    WIZARDS["binding-saturation"]!.questions(a, readTable(bindTotalNs)).flatMap((q) => (q ? [q.id] : []));
+  if (JSON.stringify(satAsked({})) !== JSON.stringify(["y", "model"]))
+    out.push(`Binding saturation wizard first steps: ${JSON.stringify(satAsked({}))}, expected ["y", "model"]`);
+  if (
+    JSON.stringify(satAsked({ model: "one-site-total-and-ns" })) !== JSON.stringify(["y", "model", "y2"])
+  )
+    out.push(
+      `Binding saturation wizard (two-series): ${JSON.stringify(satAsked({ model: "one-site-total-and-ns" }))}, expected ["y", "model", "y2"]`,
+    );
+  const kinAsked = (a: Record<string, string>) =>
+    WIZARDS["binding-kinetics"]!.questions(a, readTable(bindKinetics)).flatMap((q) => (q ? [q.id] : []));
+  if (JSON.stringify(kinAsked({})) !== JSON.stringify(["y", "model"]))
+    out.push(`Binding kinetics wizard first steps: ${JSON.stringify(kinAsked({}))}, expected ["y", "model"]`);
+  if (
+    JSON.stringify(kinAsked({ model: "association-one-phase" })) !==
+    JSON.stringify(["y", "model", "ligandConcentration", "koff"])
+  )
+    out.push(
+      `Binding kinetics wizard (association): ${JSON.stringify(kinAsked({ model: "association-one-phase" }))}, expected ["y", "model", "ligandConcentration", "koff"]`,
+    );
+  if (
+    JSON.stringify(kinAsked({ model: "association-then-dissociation" })) !==
+    JSON.stringify(["y", "model", "hotNM", "time0"])
+  )
+    out.push(
+      `Binding kinetics wizard (assoc-then-dissoc): ${JSON.stringify(kinAsked({ model: "association-then-dissociation" }))}, expected ["y", "model", "hotNM", "time0"]`,
     );
   return out;
 }

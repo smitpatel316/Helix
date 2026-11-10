@@ -31,6 +31,8 @@ import {
 } from "../store/types";
 import {
   type AnalysisParams,
+  BINDING_KINETICS_MODELS,
+  BINDING_SATURATION_MODELS,
   BIN_MODES,
   CORRECTIONS,
   CORRELATION_METHODS,
@@ -150,16 +152,20 @@ type ParamKind = "yes/no" | "number" | "numbers" | "name" | "names" | "name-or-n
 // prettier-ignore
 const PARAMS = {
   paired: "yes/no", gaussian: "yes/no", equalVariance: "yes/no", ratio: "yes/no", forceOrigin: "yes/no", pooledSd: "yes/no", quasi: "yes/no",
-  tails: TAILS, posthoc: [...POSTHOCS, ...RANK_POSTHOCS], model: NONLINEAR_MODELS,
+  tails: TAILS, posthoc: [...POSTHOCS, ...RANK_POSTHOCS],
+  // `model` is shared by nonlinear-regression and the binding runners:
+  // the reader only sanitizes, each runner validates its own.
+  model: [...NONLINEAR_MODELS, ...BINDING_SATURATION_MODELS, ...BINDING_KINETICS_MODELS],
   // `method` is shared by correlation ("pearson"/"spearman") and Spline/Lowess
   // ("spline"/"lowess"): the reader only sanitizes, each runner validates its own.
   method: [...CORRELATION_METHODS, "spline", "lowess"],
   mode: CORRELATION_MODES, design: TWO_WAY_DESIGNS, posthocTarget: POSTHOC_TARGETS, correction: CORRECTIONS,
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q, lambda: "number",
   f: "number", spar: "number", df: "number",
+  ligandConcentration: "number", koff: "number", hotNM: "number", time0: "number",
   binMode: BIN_MODES, binWidth: "number", binCount: { min: 2, max: 100 }, startAt: "number",
   posthocTerm: THREE_WAY_TERMS,
-  y: "name", dependent: "name", datasets: "names", predictors: "names", sets: "names", unknowns: "numbers",
+  y: "name", y2: "name", dependent: "name", datasets: "names", predictors: "names", sets: "names", unknowns: "numbers",
   truth: "name", score: "name", positive: "name-or-number",
   time: "name", status: "name", covariates: "names", stratifyBy: "name", ties: ["efron", "breslow"],
 } satisfies Record<ParamKey, ParamKind>;

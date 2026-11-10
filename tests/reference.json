@@ -5814,6 +5814,1034 @@
  "nonlinear-regression enzymeTooFew {\"model\":\"michaelis-menten\"}": {
   "error": "Not enough complete points (2) to fit this curve; need at least 3."
  },
+ "binding-saturation bindTotal {\"model\":\"one-site-total\"}": {
+  "testType": "binding-saturation",
+  "subtitle": "One-site total binding",
+  "equation": "Y = 100·X/(5 + X) + 0.5·X + 2",
+  "stats": [
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.643874371e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 2.796028676e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 4
+   },
+   {
+    "label": "N",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 11.0625,
+    "sd": 17.11815557,
+    "sem": 6.052181941,
+    "median": 3.5,
+    "n": 8
+   },
+   {
+    "name": "Y",
+    "mean": 50.26934524,
+    "sd": 41.4802145,
+    "sem": 14.66547048,
+    "median": 43.03571429,
+    "n": 8
+   }
+  ],
+  "notes": "Binding saturation fit (\"One-site total binding\") of \"Y\" on \"X\". Starting values: Bmax = 58.95, Kd = 10, NS = 0.4636, Background = 2.",
+  "coefficients": [
+   {
+    "term": "Bmax",
+    "estimate": 100,
+    "stdError": 9.911883597e-11,
+    "t": 1008889976000,
+    "p": 5.791299469e-48,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Kd",
+    "estimate": 5,
+    "stdError": 1.160844858e-11,
+    "t": 430720777500,
+    "p": 1.743283267e-46,
+    "ciLow": 5,
+    "ciHigh": 5
+   },
+   {
+    "term": "NS",
+    "estimate": 0.5,
+    "stdError": 1.838028454e-12,
+    "t": 272030609100,
+    "p": 1.095670968e-45,
+    "ciLow": 0.5,
+    "ciHigh": 0.5
+   },
+   {
+    "term": "Background",
+    "estimate": 2,
+    "stdError": 2.180987314e-11,
+    "t": 91701587970,
+    "p": 8.484843284e-44,
+    "ciLow": 2,
+    "ciHigh": 2
+   }
+  ]
+ },
+ "binding-saturation bindTwoSite {\"model\":\"two-site-specific\"}": {
+  "testType": "binding-saturation",
+  "subtitle": "Two-site specific binding",
+  "equation": "Y = 60·X/(1 + X) + 40·X/(20 + X)",
+  "stats": [
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 3.411948519e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 6.984835618e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 6
+   },
+   {
+    "label": "N",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 144.443,
+    "sd": 314.884864,
+    "sem": 99.57533711,
+    "median": 6.5,
+    "n": 10
+   },
+   {
+    "name": "Y",
+    "mean": 54.3159462,
+    "sd": 38.7629747,
+    "sem": 12.25792889,
+    "median": 59.04808959,
+    "n": 10
+   }
+  ],
+  "notes": "Binding saturation fit (\"Two-site specific binding\") of \"Y\" on \"X\". Starting values: BmaxHi = 59.49, KdHi = 0.475, BmaxLo = 39.66, KdLo = 82.5.",
+  "coefficients": [
+   {
+    "term": "BmaxHi",
+    "estimate": 60,
+    "stdError": 1.642728115e-10,
+    "t": 365246077300,
+    "p": 2.843088708e-68,
+    "ciLow": 60,
+    "ciHigh": 60
+   },
+   {
+    "term": "KdHi",
+    "estimate": 1,
+    "stdError": 4.620422246e-12,
+    "t": 216430435700,
+    "p": 6.567404557e-67,
+    "ciLow": 1,
+    "ciHigh": 1
+   },
+   {
+    "term": "BmaxLo",
+    "estimate": 40,
+    "stdError": 1.549983857e-10,
+    "t": 258067203900,
+    "p": 2.285108756e-67,
+    "ciLow": 40,
+    "ciHigh": 40
+   },
+   {
+    "term": "KdLo",
+    "estimate": 20,
+    "stdError": 1.643893839e-10,
+    "t": 121662357500,
+    "p": 2.081452027e-65,
+    "ciLow": 20,
+    "ciHigh": 20
+   }
+  ]
+ },
+ "binding-saturation bindTotalNs {\"y\":\"Total\",\"y2\":\"Nonspecific\",\"model\":\"one-site-total-and-ns\"}": {
+  "testType": "binding-saturation",
+  "subtitle": "One site — Total and nonspecific",
+  "equation": "Y = 100·X/(5 + X) + 0.5·X + 2",
+  "stats": [
+   {
+    "label": "R squared (total)",
+    "value": 1
+   },
+   {
+    "label": "R squared (nonspecific)",
+    "value": 1
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 1.547067898e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 2.872102898e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 12
+   },
+   {
+    "label": "N (total)",
+    "value": 8
+   },
+   {
+    "label": "N (nonspecific)",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 11.0625,
+    "sd": 17.11815557,
+    "sem": 6.052181941,
+    "median": 3.5,
+    "n": 8
+   },
+   {
+    "name": "Total",
+    "mean": 50.26934524,
+    "sd": 41.4802145,
+    "sem": 14.66547048,
+    "median": 43.03571429,
+    "n": 8
+   },
+   {
+    "name": "Nonspecific",
+    "mean": 7.53125,
+    "sd": 8.559077783,
+    "sem": 3.026090971,
+    "median": 3.75,
+    "n": 8
+   }
+  ],
+  "notes": "Binding saturation fit (\"One site — Total and nonspecific\") of \"Total\" (total) and \"Nonspecific\" (nonspecific) on \"X\", fitted jointly — NS and Background are shared between the two series. Starting values: Bmax = 58.95, Kd = 10, NS = 0.4636, Background = 2.",
+  "coefficients": [
+   {
+    "term": "Bmax",
+    "estimate": 100,
+    "stdError": 2.358741608e-11,
+    "t": 4239548735000,
+    "p": 1.997854773e-146,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Kd",
+    "estimate": 5,
+    "stdError": 3.684649117e-12,
+    "t": 1356981314000,
+    "p": 1.727878065e-140,
+    "ciLow": 5,
+    "ciHigh": 5
+   },
+   {
+    "term": "NS",
+    "estimate": 0.5,
+    "stdError": 3.20954893e-13,
+    "t": 1557851308000,
+    "p": 3.296760961e-141,
+    "ciLow": 0.5,
+    "ciHigh": 0.5
+   },
+   {
+    "term": "Background",
+    "estimate": 2,
+    "stdError": 5.896030142e-12,
+    "t": 339211291700,
+    "p": 2.902390824e-133,
+    "ciLow": 2,
+    "ciHigh": 2
+   }
+  ]
+ },
+ "binding-saturation bindTwoSiteNs {\"y\":\"Total\",\"y2\":\"Nonspecific\",\"model\":\"two-site-total-and-ns\"}": {
+  "testType": "binding-saturation",
+  "subtitle": "Two sites — Total and nonspecific",
+  "equation": "Y = 60·X/(1 + X) + 40·X/(20 + X) + 0.5·X + 2",
+  "stats": [
+   {
+    "label": "R squared (total)",
+    "value": 1
+   },
+   {
+    "label": "R squared (nonspecific)",
+    "value": 1
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.474577943e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 1.102236479e-20
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 18
+   },
+   {
+    "label": "N (total)",
+    "value": 12
+   },
+   {
+    "label": "N (nonspecific)",
+    "value": 12
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 43.45,
+    "sd": 85.96207938,
+    "sem": 24.81511483,
+    "median": 7.5,
+    "n": 12
+   },
+   {
+    "name": "Total",
+    "mean": 82.75586764,
+    "sd": 65.9587135,
+    "sem": 19.0406405,
+    "median": 68.68939394,
+    "n": 12
+   },
+   {
+    "name": "Nonspecific",
+    "mean": 23.725,
+    "sd": 42.98103969,
+    "sem": 12.40755742,
+    "median": 5.75,
+    "n": 12
+   }
+  ],
+  "notes": "Binding saturation fit (\"Two sites — Total and nonspecific\") of \"Total\" (total) and \"Nonspecific\" (nonspecific) on \"X\", fitted jointly — NS and Background are shared between the two series. Starting values: BmaxHi = 149.6, KdHi = 1.75, BmaxLo = 99.72, KdLo = 35.",
+  "coefficients": [
+   {
+    "term": "BmaxHi",
+    "estimate": 60,
+    "stdError": 1.022466859e-10,
+    "t": 586816085800,
+    "p": 5.403702054e-202,
+    "ciLow": 60,
+    "ciHigh": 60
+   },
+   {
+    "term": "KdHi",
+    "estimate": 1,
+    "stdError": 3.224977146e-12,
+    "t": 310079716800,
+    "p": 5.238502091e-197,
+    "ciLow": 1,
+    "ciHigh": 1
+   },
+   {
+    "term": "BmaxLo",
+    "estimate": 40,
+    "stdError": 8.934395565e-11,
+    "t": 447707958600,
+    "p": 7.044025424e-200,
+    "ciLow": 40,
+    "ciHigh": 40
+   },
+   {
+    "term": "KdLo",
+    "estimate": 20,
+    "stdError": 1.181568358e-10,
+    "t": 169266550400,
+    "p": 2.827788962e-192,
+    "ciLow": 20,
+    "ciHigh": 20
+   },
+   {
+    "term": "NS",
+    "estimate": 0.5,
+    "stdError": 8.312151943e-14,
+    "t": 6015289463000,
+    "p": 3.460270269e-220,
+    "ciLow": 0.5,
+    "ciHigh": 0.5
+   },
+   {
+    "term": "Background",
+    "estimate": 2,
+    "stdError": 7.876750204e-12,
+    "t": 253911822600,
+    "p": 1.911767031e-195,
+    "ciLow": 2,
+    "ciHigh": 2
+   }
+  ]
+ },
+ "binding-saturation bindTwoSiteFew {\"model\":\"two-site-specific\"}": {
+  "error": "Two-site binding needs at least 10 points (6 complete points provided)."
+ },
+ "binding-saturation bindNegX {\"model\":\"one-site-total\"}": {
+  "error": "Concentrations can't be negative."
+ },
+ "binding-saturation bindTotalNsFew {\"y\":\"Total\",\"y2\":\"Nonspecific\",\"model\":\"one-site-total-and-ns\"}": {
+  "error": "“Total” (total binding) has only 4 complete points; a two-series one-site saturation fit needs at least 5."
+ },
+ "binding-kinetics bindKinetics {\"y\":\"Assoc\",\"model\":\"association-one-phase\"}": {
+  "testType": "binding-kinetics",
+  "subtitle": "Association — One phase",
+  "equation": "Y = 1.35e-7 + (100 − 1.35e-7)·(1 − exp(−0.5·X))",
+  "stats": [
+   {
+    "label": "Half-life",
+    "value": 1.386294364
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 6.388008276e-8
+   },
+   {
+    "label": "Sum of squares",
+    "value": 2.040332487e-14
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 5
+   },
+   {
+    "label": "N",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 5.375,
+    "sd": 5.097268176,
+    "sem": 1.802156446,
+    "median": 4,
+    "n": 8
+   },
+   {
+    "name": "Assoc",
+    "mean": 71.03607907,
+    "sd": 35.64848935,
+    "sem": 12.60364428,
+    "median": 84.73924206,
+    "n": 8
+   }
+  ],
+  "notes": "Binding kinetics fit (\"Association — One phase\") of \"Assoc\" on \"X\" (time). Starting values: Y0 = 0, Plateau = 99.94, Kobs = 0.03333.",
+  "coefficients": [
+   {
+    "term": "Y0",
+    "estimate": 1.350105718e-7,
+    "stdError": 2.007228967e-8,
+    "t": 6.726216794,
+    "p": 0.001100860537,
+    "ciLow": 8.341310862e-8,
+    "ciHigh": 1.86608035e-7
+   },
+   {
+    "term": "Plateau",
+    "estimate": 100,
+    "stdError": 4.18951488e-8,
+    "t": 2386911203,
+    "p": 2.449754408e-46,
+    "ciLow": 99.99999991,
+    "ciHigh": 100.0000001
+   },
+   {
+    "term": "Kobs",
+    "estimate": 0.499999999,
+    "stdError": 1.046225394e-9,
+    "t": 477908490.8,
+    "p": 7.613425972e-43,
+    "ciLow": 0.4999999963,
+    "ciHigh": 0.5000000017
+   }
+  ]
+ },
+ "binding-kinetics bindKinetics {\"y\":\"Dissoc\",\"model\":\"dissociation-one-phase\"}": {
+  "testType": "binding-kinetics",
+  "subtitle": "Dissociation — One phase",
+  "equation": "Y = (100 − 5)·exp(−0.3·X) + 5",
+  "stats": [
+   {
+    "label": "Half-life",
+    "value": 2.310490602
+   },
+   {
+    "label": "Residence time",
+    "value": 3.333333333
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.975056436e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 4.425480399e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 5
+   },
+   {
+    "label": "N",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 5.375,
+    "sd": 5.097268176,
+    "sem": 1.802156446,
+    "median": 4,
+    "n": 8
+   },
+   {
+    "name": "Dissoc",
+    "mean": 41.84435077,
+    "sd": 33.67114844,
+    "sem": 11.9045487,
+    "median": 34.91074144,
+    "n": 8
+   }
+  ],
+  "notes": "Binding kinetics fit (\"Dissociation — One phase\") of \"Dissoc\" on \"X\" (time). Starting values: Y0 = 100, Plateau = 6.055, Koff = 0.03333.",
+  "coefficients": [
+   {
+    "term": "Y0",
+    "estimate": 100,
+    "stdError": 2.653471711e-11,
+    "t": 3768647676000,
+    "p": 2.4967564e-62,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Plateau",
+    "estimate": 5,
+    "stdError": 2.563804285e-11,
+    "t": 195022686800,
+    "p": 6.727879203e-56,
+    "ciLow": 5,
+    "ciHigh": 5
+   },
+   {
+    "term": "Koff",
+    "estimate": 0.3,
+    "stdError": 2.642785808e-13,
+    "t": 1135165775000,
+    "p": 1.006948869e-59,
+    "ciLow": 0.3,
+    "ciHigh": 0.3
+   }
+  ]
+ },
+ "binding-kinetics bindKinetics {\"y\":\"TwoPhase\",\"model\":\"association-two-phase\"}": {
+  "testType": "binding-kinetics",
+  "subtitle": "Association — Two phases",
+  "equation": "Y = 7.704e-34 + (100 − 7.704e-34)·(0.7·(1 − exp(−1·X)) + 0.3·(1 − exp(−0.1·X)))",
+  "stats": [
+   {
+    "label": "Half-life (fast)",
+    "value": 0.6931471806
+   },
+   {
+    "label": "Half-life (slow)",
+    "value": 6.931471806
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 7.188586996e-12
+   },
+   {
+    "label": "Sum of squares",
+    "value": 1.55027349e-22
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 3
+   },
+   {
+    "label": "N",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 5.375,
+    "sd": 5.097268176,
+    "sem": 1.802156446,
+    "median": 4,
+    "n": 8
+   },
+   {
+    "name": "TwoPhase",
+    "mean": 66.99947855,
+    "sd": 30.80857849,
+    "sem": 10.89247738,
+    "median": 77.81139126,
+    "n": 8
+   }
+  ],
+  "notes": "Binding kinetics fit (\"Association — Two phases\") of \"TwoPhase\" on \"X\" (time). Starting values: Y0 = 0, Plateau = 93.31, PercentFast = 0.5, KFast = 0.3333, KSlow = 0.03333. Two-phase fits need dense early time points — without them the fast phase is poorly identified.",
+  "coefficients": [
+   {
+    "term": "Y0",
+    "estimate": 7.703719778e-34,
+    "stdError": 7.188586996e-12,
+    "t": 1.07165981e-22,
+    "p": 1,
+    "ciLow": -2.287729213e-11,
+    "ciHigh": 2.287729213e-11
+   },
+   {
+    "term": "Plateau",
+    "estimate": 100,
+    "stdError": 5.608963488e-11,
+    "t": 1782860598000,
+    "p": 3.891513889e-37,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "PercentFast",
+    "estimate": 0.7,
+    "stdError": 1.984768188e-13,
+    "t": 3526860236000,
+    "p": 5.026966571e-38,
+    "ciLow": 0.7,
+    "ciHigh": 0.7
+   },
+   {
+    "term": "KFast",
+    "estimate": 1,
+    "stdError": 7.223171885e-13,
+    "t": 1384433343000,
+    "p": 8.311025116e-37,
+    "ciLow": 1,
+    "ciHigh": 1
+   },
+   {
+    "term": "KSlow",
+    "estimate": 0.1,
+    "stdError": 4.753143431e-13,
+    "t": 210387086900,
+    "p": 2.368173436e-34,
+    "ciLow": 0.1,
+    "ciHigh": 0.1
+   }
+  ]
+ },
+ "binding-kinetics bindKinetics {\"y\":\"Dissoc2\",\"model\":\"dissociation-two-phase\"}": {
+  "testType": "binding-kinetics",
+  "subtitle": "Dissociation — Two phases",
+  "equation": "Y = 5 + (100 − 5)·(0.7·exp(−1·X) + 0.3·exp(−0.1·X))",
+  "stats": [
+   {
+    "label": "Half-life (fast)",
+    "value": 0.6931471806
+   },
+   {
+    "label": "Half-life (slow)",
+    "value": 6.931471806
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 4.615667578e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 6.391316158e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 3
+   },
+   {
+    "label": "N",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 5.375,
+    "sd": 5.097268176,
+    "sem": 1.802156446,
+    "median": 4,
+    "n": 8
+   },
+   {
+    "name": "Dissoc2",
+    "mean": 36.35049538,
+    "sd": 29.26814956,
+    "sem": 10.34785351,
+    "median": 26.07917831,
+    "n": 8
+   }
+  ],
+  "notes": "Binding kinetics fit (\"Dissociation — Two phases\") of \"Dissoc2\" on \"X\" (time). Starting values: Y0 = 100, Plateau = 11.36, PercentFast = 0.5, KFast = 0.3333, KSlow = 0.03333. Two-phase fits need dense early time points — without them the fast phase is poorly identified.",
+  "coefficients": [
+   {
+    "term": "Y0",
+    "estimate": 100,
+    "stdError": 4.604401155e-11,
+    "t": 2171835091000,
+    "p": 2.152733199e-37,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Plateau",
+    "estimate": 5,
+    "stdError": 3.60758659e-10,
+    "t": 13859681190,
+    "p": 8.283445603e-31,
+    "ciLow": 4.999999999,
+    "ciHigh": 5.000000001
+   },
+   {
+    "term": "PercentFast",
+    "estimate": 0.7,
+    "stdError": 1.342270677e-12,
+    "t": 521504352300,
+    "p": 1.554880203e-35,
+    "ciLow": 0.7,
+    "ciHigh": 0.7
+   },
+   {
+    "term": "KFast",
+    "estimate": 1,
+    "stdError": 4.9861766e-12,
+    "t": 200554468900,
+    "p": 2.733843911e-34,
+    "ciLow": 1,
+    "ciHigh": 1
+   },
+   {
+    "term": "KSlow",
+    "estimate": 0.1,
+    "stdError": 3.220293174e-12,
+    "t": 31053073300,
+    "p": 7.364732558e-32,
+    "ciLow": 0.09999999999,
+    "ciHigh": 0.1
+   }
+  ]
+ },
+ "binding-kinetics bindKinetics {\"y\":\"Assoc\",\"model\":\"association-one-phase\",\"ligandConcentration\":10,\"koff\":0.3}": {
+  "testType": "binding-kinetics",
+  "subtitle": "Association — One phase",
+  "equation": "Y = 1.35e-7 + (100 − 1.35e-7)·(1 − exp(−0.5·X))",
+  "stats": [
+   {
+    "label": "Half-life",
+    "value": 1.386294364
+   },
+   {
+    "label": "kon",
+    "value": 0.0199999999
+   },
+   {
+    "label": "Kinetic Kd",
+    "value": 15.00000008
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 6.388008276e-8
+   },
+   {
+    "label": "Sum of squares",
+    "value": 2.040332487e-14
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 5
+   },
+   {
+    "label": "N",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 5.375,
+    "sd": 5.097268176,
+    "sem": 1.802156446,
+    "median": 4,
+    "n": 8
+   },
+   {
+    "name": "Assoc",
+    "mean": 71.03607907,
+    "sd": 35.64848935,
+    "sem": 12.60364428,
+    "median": 84.73924206,
+    "n": 8
+   }
+  ],
+  "notes": "Binding kinetics fit (\"Association — One phase\") of \"Assoc\" on \"X\" (time). Starting values: Y0 = 0, Plateau = 99.94, Kobs = 0.03333. kon = (Kobs − Koff)/[L] = 0.02 (per time per concentration unit); kinetic Kd = Koff/kon = 15 (same concentration units as [L]).",
+  "coefficients": [
+   {
+    "term": "Y0",
+    "estimate": 1.350105718e-7,
+    "stdError": 2.007228967e-8,
+    "t": 6.726216794,
+    "p": 0.001100860537,
+    "ciLow": 8.341310862e-8,
+    "ciHigh": 1.86608035e-7
+   },
+   {
+    "term": "Plateau",
+    "estimate": 100,
+    "stdError": 4.18951488e-8,
+    "t": 2386911203,
+    "p": 2.449754408e-46,
+    "ciLow": 99.99999991,
+    "ciHigh": 100.0000001
+   },
+   {
+    "term": "Kobs",
+    "estimate": 0.499999999,
+    "stdError": 1.046225394e-9,
+    "t": 477908490.8,
+    "p": 7.613425972e-43,
+    "ciLow": 0.4999999963,
+    "ciHigh": 0.5000000017
+   }
+  ]
+ },
+ "binding-kinetics bindKinetics {\"y\":\"Assoc\",\"model\":\"association-one-phase\",\"ligandConcentration\":10}": {
+  "testType": "binding-kinetics",
+  "subtitle": "Association — One phase",
+  "equation": "Y = 1.35e-7 + (100 − 1.35e-7)·(1 − exp(−0.5·X))",
+  "stats": [
+   {
+    "label": "Half-life",
+    "value": 1.386294364
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 6.388008276e-8
+   },
+   {
+    "label": "Sum of squares",
+    "value": 2.040332487e-14
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 5
+   },
+   {
+    "label": "N",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 5.375,
+    "sd": 5.097268176,
+    "sem": 1.802156446,
+    "median": 4,
+    "n": 8
+   },
+   {
+    "name": "Assoc",
+    "mean": 71.03607907,
+    "sd": 35.64848935,
+    "sem": 12.60364428,
+    "median": 84.73924206,
+    "n": 8
+   }
+  ],
+  "notes": "Binding kinetics fit (\"Association — One phase\") of \"Assoc\" on \"X\" (time). Starting values: Y0 = 0, Plateau = 99.94, Kobs = 0.03333. Radioligand concentration 10 supplied, but no Koff — kon and the kinetic Kd need a dissociation experiment (supply Koff).",
+  "coefficients": [
+   {
+    "term": "Y0",
+    "estimate": 1.350105718e-7,
+    "stdError": 2.007228967e-8,
+    "t": 6.726216794,
+    "p": 0.001100860537,
+    "ciLow": 8.341310862e-8,
+    "ciHigh": 1.86608035e-7
+   },
+   {
+    "term": "Plateau",
+    "estimate": 100,
+    "stdError": 4.18951488e-8,
+    "t": 2386911203,
+    "p": 2.449754408e-46,
+    "ciLow": 99.99999991,
+    "ciHigh": 100.0000001
+   },
+   {
+    "term": "Kobs",
+    "estimate": 0.499999999,
+    "stdError": 1.046225394e-9,
+    "t": 477908490.8,
+    "p": 7.613425972e-43,
+    "ciLow": 0.4999999963,
+    "ciHigh": 0.5000000017
+   }
+  ]
+ },
+ "binding-kinetics bindAssocThenDissoc {\"model\":\"association-then-dissociation\",\"hotNM\":1,\"time0\":10}": {
+  "testType": "binding-kinetics",
+  "subtitle": "Association then dissociation",
+  "equation": "Y = Eq·(1 − exp(−Kob·X)) + 0.5 for X < 10; Y = YatTime0·exp(−0.1·(X − 10)) + 0.5 after (Kon = 100000000, HotNM = 1 nM)",
+  "stats": [
+   {
+    "label": "Kinetic Kd (nM)",
+    "value": 1
+   },
+   {
+    "label": "Eq",
+    "value": 50
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.452604607e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 4.812215488e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 8
+   },
+   {
+    "label": "N",
+    "value": 12
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 12.08333333,
+    "sd": 12.44959534,
+    "sem": 3.593888612,
+    "median": 8.5,
+    "n": 12
+   },
+   {
+    "name": "Y",
+    "mean": 21.01191779,
+    "sd": 14.56446616,
+    "sem": 4.20439923,
+    "median": 20.02170795,
+    "n": 12
+   }
+  ],
+  "notes": "Binding kinetics fit (\"Association then dissociation\") of \"Y\" on \"X\" (time). Starting values: Kon = 264800000, Koff = 0.0125, Bmax = 43.73, NS = 0.5. HotNM = 1 nM and Time0 = 10 are constrained constants, not fitted parameters.",
+  "coefficients": [
+   {
+    "term": "Kon",
+    "estimate": 100000000,
+    "stdError": 0.0005900121528,
+    "t": 169488034300,
+    "p": 1.644771907e-87,
+    "ciLow": 100000000,
+    "ciHigh": 100000000
+   },
+   {
+    "term": "Koff",
+    "estimate": 0.1,
+    "stdError": 1.567932585e-13,
+    "t": 637782523000,
+    "p": 4.091071871e-92,
+    "ciLow": 0.1,
+    "ciHigh": 0.1
+   },
+   {
+    "term": "Bmax",
+    "estimate": 100,
+    "stdError": 4.342468225e-10,
+    "t": 230283780600,
+    "p": 1.416156391e-88,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "NS",
+    "estimate": 0.5,
+    "stdError": 1.831713743e-11,
+    "t": 27296841660,
+    "p": 3.633446904e-81,
+    "ciLow": 0.5,
+    "ciHigh": 0.5
+   }
+  ]
+ },
+ "binding-kinetics bindAssocThenDissoc {\"model\":\"association-then-dissociation\",\"hotNM\":1,\"time0\":100}": {
+  "error": "Time0 must lie strictly inside the observed time range, with data on both sides."
+ },
  "simple-logistic-regression logistic {}": {
   "testType": "simple-logistic-regression",
   "subtitle": "Simple logistic regression",

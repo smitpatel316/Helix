@@ -7,6 +7,8 @@ import type {
   AnalysisOutcome,
   AnalysisParams,
   AreaUnderCurveParams,
+  BindingKineticsParams,
+  BindingSaturationParams,
   CorrelationParams,
   CoxPHParams,
   FrequencyDistributionParams,
@@ -42,6 +44,7 @@ import { demingRegressionSpec } from "./xy/deming-regression";
 import { runSimpleLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
+import { runBindingKinetics, runBindingSaturation } from "./xy/binding";
 import { runSplineLowess } from "./xy/spline-lowess";
 import { runStandardCurveInterpolation } from "./xy/standard-curve-interpolation";
 import { runTwoWayAnova } from "./grouped/two-way-anova";
@@ -124,6 +127,16 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Nonlinear regression",
     minColumns: 2,
     run: (c, p) => runNonlinearRegression(c, p as NonlinearRegressionParams),
+  },
+  "binding-saturation": {
+    label: "Binding — Saturation",
+    minColumns: 2,
+    run: (c, p) => runBindingSaturation(c, p as BindingSaturationParams),
+  },
+  "binding-kinetics": {
+    label: "Binding — Kinetics",
+    minColumns: 2,
+    run: (c, p) => runBindingKinetics(c, p as BindingKineticsParams),
   },
   "spline-lowess": {
     label: "Spline and Lowess",
@@ -240,10 +253,11 @@ export function runAnalysis(
   const table = readTable(data);
   // A data set or a column the analysis names (a regression's Y…) must still be there.
   const named = params as
-    | { y?: string; dependent?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string }
+    | { y?: string; y2?: string; dependent?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string }
     | undefined;
   const chosen = [
     named?.y,
+    named?.y2,
     named?.dependent,
     ...(named?.predictors ?? []),
     ...(named?.datasets ?? []),
