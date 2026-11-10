@@ -52,6 +52,25 @@ const EXPECTED_REJECTS: Record<string, string> = {
   // Synthetic graphs-only file: no data tables at all, so the converter
   // refuses rather than writing a .hlx Helix itself can't open.
   "synthetic-graphs-only.prism": "has no data tables Helix can use",
+  // Real-world .prism files that are NOT GraphPad at all: the PRISM
+  // probabilistic model checker uses the same extension. The converter
+  // refuses them cleanly (not a ZIP archive) — that rejection is the
+  // correct behaviour, regression-checked here.
+  "cloud-verification-mdp-zenodo-17746477.prism": "isn't a ZIP archive",
+  "energy-system-zenodo-23184357.prism": "isn't a ZIP archive",
+};
+
+/** Prism nonlinear equation → Helix model the converter maps it to.
+ *  Must mirror converter/src/prism.ts NONLINEAR_MODELS; if the two
+ *  disagree, C5 fails — that is the check working. */
+const NONLINEAR_MODEL_BY_EQUATION: Record<string, string> = {
+  "Sigmoidal, 4PL, X is concentration": "sigmoidal-4pl-x",
+  "Sigmoidal, 4PL, X is log(concentration)": "sigmoidal-4pl-logx",
+  "log(agonist) vs. response -- Variable slope (four parameters)": "sigmoidal-4pl-logx",
+  "log(inhibitor) vs. response -- Variable slope (four parameters)": "sigmoidal-4pl-logx",
+  "One phase decay": "one-phase-decay",
+  Line: "line",
+  "Second order polynomial (quadratic)": "quadratic",
 };
 
 let failures = 0;
@@ -84,16 +103,26 @@ function expectedNames(title: string, dataFormat: string, count: number): string
   if (s === null) return Array.from({ length: count }, (_, i) => `${base}_${i + 1}`);
   return Array.from({ length: count }, (_, i) => `${base}_${i + 1}`);
 }
-/** `1,5` (comma decimal) → `1.5`; same rule as the converter. */
-const normalizeNumber = (value: string | null): string | null =>
-  value !== null && /^-?\d+,\d+$/.test(value) ? value.replace(",", ".") : value;
+/** `1,5` (comma decimal) → `1.5`; same rule as the converter. A Prism
+ *  carriage return inside a quoted field is a multi-line label break, not
+ *  a number — cleanText (same rule as the converter) turns it into one
+ *  space first, so the expectation matches the converted value. */
+const normalizeNumber = (value: string | null): string | null => {
+  if (value === null) return null;
+  const clean = cleanText(value);
+  return /^-?\d+,\d+$/.test(clean) ? clean.replace(",", ".") : clean;
+};
+
+/** Mirror of the converter's cleanText (converter/src/prism.ts): Prism's
+ *  \r line breaks in labels become one space. */
+const cleanText = (value: string): string => value.replace(/\s*\r\n?\s*/g, " ");
 
 /** A Prism title as plain text (see converter/src/prism.ts plainTitle). */
 function plainTitle(value: unknown): string {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return cleanText(value);
   if (value !== null && typeof value === "object") {
     const s = (value as { string?: unknown }).string;
-    if (typeof s === "string") return s;
+    if (typeof s === "string") return cleanText(s);
   }
   return "";
 }
@@ -190,7 +219,9 @@ function expectedRows(sheet: SheetInfo): (string | null)[][] {
       cursor++;
     }
   }
-  const titles = hasTitle ? csv.map((r) => (r[0] === "" ? null : (r[0] ?? null))) : csv.map(() => null);
+  const titles = hasTitle
+    ? csv.map((r) => (r[0] === "" || r[0] === undefined ? null : cleanText(r[0])))
+    : csv.map(() => null);
   const rowCount = sheet.content.numberOfRows;
   return Array.from({ length: rowCount }, (_, r) => [
     titles[r] ?? null,
@@ -365,8 +396,13 @@ async function verifyFile(fileName: string): Promise<void> {
       );
     }
     if (sheet.format === "grouped") {
-      if (data.groups !== sheet.sets.length || data.replicates !== sheet.replicatesCount) {
-        bad.push(`${node.name}: groups=${data.groups} replicates=${data.replicates} vs ${sheet.sets.length}/${sheet.replicatesCount}`);
+      // replicatesCount is absent from some files (seen: marelli, opossum,
+      // endosymbioses, figure-6) — then it is the per-dataset subcolumn
+      // count, the same fallback the converter uses.
+      const expectedReplicates =
+        sheet.replicatesCount ?? Math.max(...sheet.sets.map((s) => repCount(s, 0)));
+      if (data.groups !== sheet.sets.length || data.replicates !== expectedReplicates) {
+        bad.push(`${node.name}: groups=${data.groups} replicates=${data.replicates} vs ${sheet.sets.length}/${expectedReplicates}`);
       }
     }
     // Compare the overlapping cells even when the dims are off, so a
@@ -437,22 +473,48 @@ async function verifyFile(fileName: string): Promise<void> {
     const inputTable = inputUid ? sheets.find((s) => s.uid === inputUid) : undefined;
     const inputConverted = inputTable !== undefined && converted.includes(inputTable.title);
     if (analysisClass === "NONLINEAR_REGRESSION") {
-      const equation = params?.content?.model?.equation?.name ?? "";
-      if (equation === "Sigmoidal, 4PL, X is concentration") {
+      const equation = (params?.content?.model?.equation?.name ?? "").trim();
+      const model = NONLINEAR_MODEL_BY_EQUATION[equation];
+      if (model !== undefined) {
+        // A mapped equation converts onto its input table — one node per
+        // input dataset, carrying the mapped Helix model.
         if (!inputConverted) {
           if (!report.issues.some((i) => i.message.includes(`“${name}”`))) {
-            analysisProblems.push(`${name}: 4PL but input table missing and no warning`);
+            analysisProblems.push(`${name}: ${equation} but input table missing and no warning`);
           }
         } else {
           const want = (sheet.inputDataSets ?? []).map((ds) =>
             plainTitle(ds.title) ? `${name} (${plainTitle(ds.title)})` : name,
           );
-          for (const w of want.length ? want : [name]) {
+          const wantNames = want.length ? want : [name];
+          for (const w of wantNames) {
             if (!report.analyses.includes(w)) analysisProblems.push(`${name}: expected converted node “${w}”`);
           }
+          // The converted nodes must carry the right Helix model, not
+          // just the right name — a wrong-model mapping would otherwise
+          // pass C5 while fitting the wrong curve in Helix.
+          const nodes = Object.values(project.nodes).filter(
+            (n) => n.type === "analysis" && wantNames.includes(n.name),
+          );
+          for (const n of nodes) {
+            const got = (n.analysisParams as { model?: unknown } | undefined)?.model;
+            if (got !== model) {
+              analysisProblems.push(`${name}: node “${n.name}” has model ${String(got)}, want ${model}`);
+            }
+          }
         }
-      } else if (!report.analysesUnsupported.some((u) => u.includes(name))) {
-        analysisProblems.push(`${name}: model “${equation}” not named as unsupported`);
+      } else if (inputConverted) {
+        if (!report.analysesUnsupported.some((u) => u.includes(name))) {
+          analysisProblems.push(`${name}: model “${equation}” not named as unsupported`);
+        }
+      } else if (!report.issues.some((i) => i.message.includes(`“${name}”`))) {
+        // Unmapped equation whose input table is missing: the converter
+        // warns about the missing input instead of naming the model —
+        // same as the mapped case, and the established behaviour for a
+        // left-out analysis (see the synthetic empty-table file).
+        analysisProblems.push(
+          `${name}: model “${equation}” with missing input table, neither named unsupported nor warned about`,
+        );
       }
     } else if (analysisClass === "SURVIVAL") {
       if (inputConverted && !report.analyses.includes(name)) {

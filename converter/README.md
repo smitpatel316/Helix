@@ -72,7 +72,7 @@ leaks into the `.hlx`). Corpus path defaults to
 
 Public files only — Mansi's files are never test material.
 
-### Public corpus — `~/workspace/helix/test-corpus-prism10/` (11 files, 73/73 checks)
+### Public corpus — `~/workspace/helix/test-corpus-prism10/` (66 files, 446/446 checks)
 
 | File | Source | What it covers |
 |---|---|---|
@@ -87,10 +87,67 @@ Public files only — Mansi's files are never test material.
 | `single-case-zenodo-10616381.prism` (143 KB) | Zenodo record 10616381 | 9 tables, 0 analyses — largest single table in the corpus |
 | `dilution-analysis-zenodo-22981103.prism` (40 MB) | Zenodo record 22981103 | 31 tables, 40 analyses — error-bar X (value + error subcolumns) |
 | `violin-plots-zenodo-16883557.prism` (112 KB) | Zenodo record 16883557 | 12 tables, 0 analyses — column tables with no row titles |
+| `cdv-experiments-zenodo-8347134.prism` (33 KB) | Zenodo record 8347134 | 1 table, 0 analyses |
+| `dimensional-analysis-zenodo-8347134.prism` (449 KB) | Zenodo record 8347134 | 3 tables, 9 analyses — first `Line` equation in the wild |
+| `figure-2-analysis-file-zenodo-8356786.prism` (980 KB) | Zenodo record 8356786 | 12 tables, 24 analyses |
+| `figure-3-analysis-file-zenodo-8356786.prism` (664 KB) | Zenodo record 8356786 | 6 tables, 12 analyses |
+| `figure-4-analysis-file-zenodo-8356786.prism` (154 KB) | Zenodo record 8356786 | 9 tables, 12 analyses — **first contingency table + first parts_of_whole tables** in the corpus |
+| `mefs-vps35-wt-and-d620n-with-chx-mg-132-pic-8-and-12-hrs-zenodo-8385479.prism` (200 KB) | Zenodo record 8385479 | 3 tables, 8 analyses |
+| `quantitation-of-gfp-lrrk2-and-tmem192-3ha-colocalisation-vps-zenodo-8385479.prism` (27 KB) | Zenodo record 8385479 | 1 table, 1 analysis |
+| `prism-data-chinese-version-zenodo-10189403.prism` (140 KB) | Zenodo record 10189403 | 3 tables, 0 analyses — **Chinese-language template** (Prism 10.0.2.232) |
+| `angley-summary-graph-zenodo-10616381.prism` (13 KB) | Zenodo record 10616381 | 1 table, 0 analyses |
+| `20240619-collection-manuscript-endosymbioses-zenodo-12189101.prism` (506 KB) | Zenodo record 12189101 | 18 tables, 11 analyses — contingency table; grouped table with no `replicatesCount` |
+| `capsanoicids-241121-pn-zenodo-14204350.prism` (10 MB) | Zenodo record 14204350 | 12 tables, 150 analyses — largest analysis count in the corpus (132 converted nodes) |
+| `fig-1d-e-and-fig-s1e-04-25-zenodo-15257821.prism` (216 KB) | Zenodo record 15257821 | 22 tables, 0 analyses |
+| `fig-3c-right-zenodo-15257821.prism` (13 KB) | Zenodo record 15257821 | 1 table, 0 analyses |
+| `fig-3d-right-zenodo-15257821.prism` (50 KB) | Zenodo record 15257821 | 1 table, 0 analyses |
+| `fig-5c-fig-6b-and-figs6-zenodo-15257821.prism` (1.3 MB) | Zenodo record 15257821 | 86 tables, 0 analyses — most tables in one file |
+| `fig-7c-right-zenodo-15257821.prism` (1.1 MB) | Zenodo record 15257821 | 4 tables, 4 analyses |
+| `fig-7d-zenodo-15257821.prism` (118 KB) | Zenodo record 15257821 | 3 tables, 6 analyses |
+| `fig-7e-zenodo-15257821.prism` (50 KB) | Zenodo record 15257821 | 1 table, 1 analysis |
+| `fig-8a-zenodo-15257821.prism` (37 KB) | Zenodo record 15257821 | 4 tables, 0 analyses |
+| `fig-s3b-zenodo-15257821.prism` (11 KB) | Zenodo record 15257821 | 1 table, 0 analyses |
+| `fig-s7b-zenodo-15257821.prism` (196 KB) | Zenodo record 15257821 | 3 tables, 0 analyses |
+| `opossum-danielle-zenodo-15285264.prism` (193 KB) | Zenodo record 15285264 | 3 tables, 5 analyses — grouped table with no `replicatesCount` |
+| `c2c12kd-transfer-zenodo-15723625.prism` (154 KB) | Zenodo record 15723625 | 8 tables, 4 analyses |
+| `canna-cannb-senolytics-assay-zenodo-15875512.prism` (142 KB) | Zenodo record 15875512 | 8 tables, 6 analyses |
+| `1f-zenodo-16883557.prism` (10 KB) | Zenodo record 16883557 | 1 table, 0 analyses |
+| `3e-zenodo-16883557.prism` (28 KB) | Zenodo record 16883557 | 1 table, 1 analysis |
+| `4b-f-zenodo-16883557.prism` (42 KB) | Zenodo record 16883557 | 5 tables, 0 analyses |
+| `sup3b-zenodo-16883557.prism` (25 KB) | Zenodo record 16883557 | 3 tables, 0 analyses |
+| `sup5a-zenodo-16883557.prism` (16 KB) | Zenodo record 16883557 | 1 table, 0 analyses |
+| `b-domain-paper-ic50-graphs-corrected-dilution-zenodo-17489262.prism` (131 KB) | Zenodo record 17489262 | 4 tables, 5 analyses |
+| `b-domain-paper-serum-elisa-figures-compiled-zenodo-17489262.prism` (1.7 MB) | Zenodo record 17489262 | 11 tables, 94 analyses — first `log(agonist) vs. response` equations (90 converted nodes) |
+| `halo-data-graphs-zenodo-17583211.prism` (150 KB) | Zenodo record 17583211 | 9 tables, 0 analyses |
+| `cloud-verification-mdp-zenodo-17746477.prism` (3.5 KB) | Zenodo record 17746477 | **Not GraphPad at all** — PRISM model-checker file, same extension; expected reject (not a ZIP) |
+| `figure-1-zenodo-18623500.prism` (132 KB) | Zenodo record 18623500 | 6 tables, 2 analyses |
+| `figure-2-zenodo-18623500.prism` (71 KB) | Zenodo record 18623500 | 2 tables, 1 analysis |
+| `figure-3-zenodo-18623500.prism` (36 KB) | Zenodo record 18623500 | 1 table, 1 analysis |
+| `figure-4-zenodo-18623500.prism` (166 KB) | Zenodo record 18623500 | 15 tables, 11 analyses |
+| `figure-5-zenodo-18623500.prism` (123 KB) | Zenodo record 18623500 | 6 tables, 6 analyses |
+| `figure-6-zenodo-18623500.prism` (184 KB) | Zenodo record 18623500 | 7 tables, 3 analyses — `\r` multi-line row titles; grouped table with no `replicatesCount` |
+| `figure-7-zenodo-18623500.prism` (154 KB) | Zenodo record 18623500 | 5 tables, 5 analyses |
+| `figure-s2-zenodo-18623500.prism` (260 KB) | Zenodo record 18623500 | 15 tables, 3 analyses |
+| `figure-s3-zenodo-18623500.prism` (270 KB) | Zenodo record 18623500 | 6 tables, 0 analyses |
+| `figure-s4-zenodo-18623500.prism` (301 KB) | Zenodo record 18623500 | 10 tables, 10 analyses — `\r` multi-line row titles |
+| `figure-s5-zenodo-18623500.prism` (293 KB) | Zenodo record 18623500 | 9 tables, 10 analyses — `\r` multi-line row titles |
+| `figure-s6-zenodo-18623500.prism` (325 KB) | Zenodo record 18623500 | 12 tables, 7 analyses |
+| `figure-s7-zenodo-18623500.prism` (491 KB) | Zenodo record 18623500 | 18 tables, 11 analyses |
+| `prism-file-marelli-et-al-zenodo-20311470.prism` (623 KB) | Zenodo record 20311470 | 11 tables, 7 analyses — first `log(inhibitor) vs. response` equation (analysis with no input sheet, warned + left out); grouped table with no `replicatesCount` |
+| `plasmin-activity-assay-curve-and-analysis-zenodo-21038547.prism` (432 KB) | Zenodo record 21038547 | 6 tables, 19 analyses — first `Second order polynomial (quadratic) ` equation (trailing space) |
+| `sirna-pai-1-manuscript-data-zenodo-21038547.prism` (475 KB) | Zenodo record 21038547 | 55 tables, 0 analyses |
+| `lymph-study-plasma-auc-zenodo-21936291.prism` (154 KB) | Zenodo record 21936291 | 12 tables, 12 analyses |
+| `oral-auc-unesterified-esterified-zenodo-21936291.prism` (337 KB) | Zenodo record 21936291 | 24 tables, 24 analyses |
+| `figure-4abc-zenodo-22933325.prism` (56 KB) | Zenodo record 22933325 | 3 tables, 3 analyses — **Prism 11.1.0.224** (formatVersion 1-6-1); converts cleanly |
+| `figure-5d-zenodo-22933325.prism` (33 KB) | Zenodo record 22933325 | 1 table, 1 analysis — **Prism 11.1.0.224**; converts cleanly |
+| `figure-6d-zenodo-22933325.prism` (41 KB) | Zenodo record 22933325 | 1 table, 1 analysis — **Prism 11.1.0.224**; converts cleanly |
+| `energy-system-zenodo-23184357.prism` (1.4 KB) | Zenodo record 23184357 | **Not GraphPad at all** — PRISM model-checker file, same extension; expected reject (not a ZIP) |
 
-Results (2026-11-10): **73/73 checks pass** — 26,623 cells compared across the
-corpus, 0 mismatches; 10 analyses converted (4PL + survival), 163 named as
-unsupported; every source file's checksum unchanged.
+Results (2026-11-10, round 2): **446/446 checks pass** — 9,528,251 cells compared across the
+corpus, 0 mismatches; 288 analysis nodes converted (4PL both X conventions,
+log(agonist)/log(inhibitor) variable slope, one-phase decay, Line, quadratic —
+plus survival), 375 named as unsupported; every source file's checksum unchanged.
+Prism versions in the corpus: 10.0.0–10.6.1 plus 11.1.0.224 (3 files).
 
 ### Synthetic corpus — `~/workspace/helix/test-corpus-synthetic/` (6 files, 36/36 checks)
 
@@ -123,6 +180,44 @@ never written by Prism:
   `.string` field is used; a title never becomes "[object Object]".
 - **A file with no data tables** used to produce a `.hlx` Helix's own
   parser rejects. Now the converter refuses it cleanly, exit 1.
+
+## Bugs found by the corpus, round 2 (2026-11-10 — 55 new files, all fixed + regression-checked)
+
+- **`\r` inside quoted fields is a real line break, not a leak (value
+  corruption).** Prism writes multi-line row titles with `\r` as the
+  break, inside a quoted CSV field ("BACE-I \r& DOX", "WT\r(3 weeks)") and
+  in JSON titles ("Nonlin fit of 15-HEPE-d5\r A"). The converter passed it
+  through raw, which C8 rightly flags. Now `cleanText` normalises the
+  break to one space, collapsing surrounding whitespace ("BACE-I & DOX",
+  "WT (3 weeks)"); the verifier rebuilds expectations with the same rule.
+- **Grouped tables can omit `replicatesCount`.** Four files carry no
+  `replicatesCount` on grouped tables (marelli, opossum, endosymbioses,
+  figure-6) — the count lives only in each dataset's `replicates` array.
+  The converter already fell back to the per-dataset count; the verifier's
+  expectation used the raw field (`undefined`) and failed. The verifier now
+  uses the same fallback, and the vault spec records it.
+- **Six more nonlinear equations map exactly onto Helix models.** The
+  corpus showed the converter leaving 52 analyses unconverted that Helix
+  already offers: "One phase decay" → `one-phase-decay` (42 analyses;
+  formula and terms match Helix's modelSpec exactly),
+  "log(agonist)/log(inhibitor) vs. response -- Variable slope (four
+  parameters)" → `sigmoidal-4pl-logx` (9 analyses; Prism's
+  `Y=Bottom+(Top-Bottom)/(1+10^((LogEC50-X)*HillSlope))` is Helix's logx
+  fit), "Line" → `line`, "Second order polynomial (quadratic)" →
+  `quadratic`. Equation names are trimmed before lookup — Prism writes the
+  quadratic name with a trailing space. C5 now checks the converted node
+  carries the right model, not just the right name.
+- **An analysis can have no input sheet at all.** Marelli's "Nonlin fit"
+  has `inputSheets: []` (never run, no input recorded) — the converter
+  warns and leaves it out, whatever its equation. C5's non-4PL branch
+  didn't accept that warning; it does now.
+- **`.prism` is also the PRISM model checker's extension.** Two Zenodo
+  files (`cloud-verification-mdp`, `energy-system`) are model-checker
+  text, not GraphPad. The converter refuses them cleanly (not a ZIP) and
+  they are now expected-reject regression tests.
+- **Prism 11 files convert.** Three files written by Prism 11.1.0.224
+  (formatVersion 1-6-1) pass all checks — the converter is not
+  version-gated, and the corpus proves it.
 
 ## Layout
 

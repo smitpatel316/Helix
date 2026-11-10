@@ -142,10 +142,30 @@ const SUBCOLUMN_SUFFIXES: Record<string, string[] | null> = {
   y_high_low: ["_MEAN", "_PLUSERROR", "_MINUSERROR"],
 };
 
-/** Prism nonlinear-regression equation name → Helix model. Only what a corpus
- *  file has shown; anything else is unsupported, never guessed. */
+/** Prism nonlinear-regression equation name → Helix model. Only equations
+ *  whose formula matches a Helix model exactly (checked against
+ *  src/stats/xy/nonlinear-fit.ts modelSpec, not just the label):
+ *  - "Sigmoidal, 4PL, X is concentration" is Helix sigmoidal-4pl-x.
+ *  - "Sigmoidal, 4PL, X is log(concentration)" and the older
+ *    "log(agonist)/log(inhibitor) vs. response -- Variable slope (four
+ *    parameters)" are Helix sigmoidal-4pl-logx: Prism's
+ *    Y=Bottom+(Top-Bottom)/(1+10^((LogEC50-X)*HillSlope)) is the same fit
+ *    (LogIC50 vs LogEC50 is a name, not a different curve).
+ *  - "One phase decay" is Helix one-phase-decay:
+ *    Y=(Y0-Plateau)*exp(-K*X)+Plateau, terms Y0/Plateau/K.
+ *  - "Line" is Helix line (lm y~x); "Second order polynomial (quadratic)"
+ *    is Helix quadratic (lm y~x+I(x^2), terms B0/B1/B2).
+ *  Anything else is unsupported, never guessed. Equation names are trimmed
+ *  before lookup — Prism writes at least one with a trailing space
+ *  ("Second order polynomial (quadratic) "). */
 const NONLINEAR_MODELS: Record<string, NonlinearModel> = {
   "Sigmoidal, 4PL, X is concentration": "sigmoidal-4pl-x",
+  "Sigmoidal, 4PL, X is log(concentration)": "sigmoidal-4pl-logx",
+  "log(agonist) vs. response -- Variable slope (four parameters)": "sigmoidal-4pl-logx",
+  "log(inhibitor) vs. response -- Variable slope (four parameters)": "sigmoidal-4pl-logx",
+  "One phase decay": "one-phase-decay",
+  Line: "line",
+  "Second order polynomial (quadratic)": "quadratic",
 };
 
 const genId = (type: string) => `${type}_${Math.random().toString(36).slice(2, 10)}`;
@@ -155,15 +175,29 @@ const genId = (type: string) => `${type}_${Math.random().toString(36).slice(2, 1
  * writes a rich-text object `{ string, version, formatting }` (seen on
  * dataset and X titles in real files). Anything else is "" and the
  * caller's fallback applies. Never returns "[object Object]".
+ * A title can also carry Prism's multi-line break — a carriage return
+ * inside the string ("BACE-I \r& DOX", "Nonlin fit of 15-HEPE-d5\r A").
+ * Helix labels are single-line, so the break becomes one space (see
+ * cleanText); the title is never left with a bare \r in it.
  */
 function plainTitle(value: unknown): string {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return cleanText(value);
   if (value !== null && typeof value === "object") {
     const s = (value as { string?: unknown }).string;
-    if (typeof s === "string") return s;
+    if (typeof s === "string") return cleanText(s);
   }
   return "";
 }
+
+/**
+ * Prism writes multi-line labels with a carriage return as the line break
+ * — inside a quoted CSV field ("BACE-I \r& DOX") or in a JSON title
+ * string. Helix labels and cell values are single-line: the break becomes
+ * one space, with surrounding whitespace collapsed ("BACE-I & DOX",
+ * "WT (3 weeks)"). A bare \r anywhere else would be a CSV line-ending
+ * leak, and the verifier's C8 check confirms none survives.
+ */
+const cleanText = (value: string): string => value.replace(/\s*\r\n?\s*/g, " ");
 
 /** Parse a Prism date cell: ISO ("2024-09-06 00:00:00") or US ("12/17/2024"). */
 function parsePrismDate(value: string | null): number | null {
@@ -352,7 +386,7 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
     const csvCol = (i: number) =>
       csv.map((r) => {
         const v = r[i];
-        return v === "" || v === undefined ? null : normalizeNumber(v);
+        return v === "" || v === undefined ? null : normalizeNumber(cleanText(v));
       });
     if (hasTitleCol) cursor++; // row titles are read separately below
     if (hasXCol) {
@@ -411,7 +445,7 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
       }
     }
 
-    const rowTitles = hasTitleCol ? csv.map((r) => (r[0] === "" ? null : (r[0] ?? null))) : [];
+    const rowTitles = hasTitleCol ? csv.map((r) => (r[0] === "" || r[0] === undefined ? null : cleanText(r[0]))) : [];
     const hasRowTitles = rowTitles.some((v) => v !== null && v !== "");
     const rowCount = Math.max(0, ...columns.map((c) => c.values.length), rowTitles.length);
     if (rowCount === 0 || columns.length === 0) {
@@ -507,7 +541,7 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
     const analysisClass = sheet.analysisClass ?? params?.analysisClass ?? "";
 
     if (analysisClass === "NONLINEAR_REGRESSION") {
-      const equation = params?.content?.model?.equation?.name ?? "";
+      const equation = (params?.content?.model?.equation?.name ?? "").trim();
       const model = NONLINEAR_MODELS[equation];
       if (!model) {
         report.analysesUnsupported.push(`${name} (nonlinear model “${equation}” — not yet supported in Helix)`);
