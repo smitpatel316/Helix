@@ -22,6 +22,7 @@ export type AnalysisType =
   | "multiple-t-tests"
   | "correlation-matrix"
   | "multiple-regression"
+  | "multiple-logistic-regression"
   | "outliers"
   | "chi-square"
   | "survival-log-rank"
@@ -189,6 +190,16 @@ export interface MultipleRegressionParams {
   predictors?: string[];
 }
 
+/** Params for "multiple-logistic-regression": which variable is the binary (0/1)
+ *  outcome, and which other data-bearing variables to include as predictors.
+ *  `predictors` omitted (or empty) falls back to every other data-bearing variable.
+ *  Same shape as MultipleRegressionParams — a distinct interface so the wizard's
+ *  params stay type-checked per analysis. */
+export interface MultipleLogisticRegressionParams {
+  dependent: string;
+  predictors?: string[];
+}
+
 /** Params for "two-way-anova" on a Grouped table's column-groups × row position:
  *  "ordinary" (parametric, independent samples), "repeated-measures" (parametric,
  *  matched by row — each replicate column is the same subject across every row;
@@ -305,6 +316,7 @@ export type AnalysisParams = DataSetsParam &
     | ThreeWayAnovaParams
     | MultipleTTestsParams
     | MultipleRegressionParams
+    | MultipleLogisticRegressionParams
     | CoxPHParams
     | OutliersParams
     | FrequencyDistributionParams

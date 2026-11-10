@@ -8365,6 +8365,239 @@
    }
   ]
  },
+ "multiple-logistic-regression multipleBinary {\"dependent\":\"Outcome\",\"predictors\":[\"Age\",\"Dose\"]}": {
+  "testType": "multiple-logistic-regression",
+  "subtitle": "Multiple logistic regression",
+  "equation": "logit(p) = -4.833 + 0.09063·Age + 1.901·Dose",
+  "stats": [
+   {
+    "label": "Odds ratio (Age)",
+    "value": 1.094867952
+   },
+   {
+    "label": "Odds ratio 95% CI lower (Age)",
+    "value": 0.951179348
+   },
+   {
+    "label": "Odds ratio 95% CI upper (Age)",
+    "value": 1.260262678
+   },
+   {
+    "label": "Odds ratio (Dose)",
+    "value": 6.692954243
+   },
+   {
+    "label": "Odds ratio 95% CI lower (Dose)",
+    "value": 0.3348382721
+   },
+   {
+    "label": "Odds ratio 95% CI upper (Dose)",
+    "value": 133.7829042
+   },
+   {
+    "label": "Residual deviance",
+    "value": 11.43535628
+   },
+   {
+    "label": "Null deviance",
+    "value": 16.63553233
+   },
+   {
+    "label": "Residual df",
+    "value": 9
+   },
+   {
+    "label": "AIC",
+    "value": 17.43535628
+   },
+   {
+    "label": "P value (model)",
+    "value": 0.07426704055,
+    "p": true
+   },
+   {
+    "label": "McFadden pseudo-R²",
+    "value": 0.3125945083
+   },
+   {
+    "label": "Complete rows (n)",
+    "value": 12
+   },
+   {
+    "label": "Predictors",
+    "value": 2
+   }
+  ],
+  "groups": [
+   {
+    "name": "Outcome",
+    "mean": 0.5,
+    "sd": 0.5222329679,
+    "sem": 0.1507556723,
+    "median": 0.5,
+    "n": 12
+   },
+   {
+    "name": "Age",
+    "mean": 40.5,
+    "sd": 12.82398321,
+    "sem": 3.70196508,
+    "median": 40,
+    "n": 12
+   },
+   {
+    "name": "Dose",
+    "mean": 0.5833333333,
+    "sd": 0.5149286505,
+    "sem": 0.1486470975,
+    "median": 1,
+    "n": 12
+   }
+  ],
+  "notes": "Multiple logistic regression of “Outcome” on 2 predictor(s), fit on 12 complete rows. The odds ratios are per one-unit increase in each predictor, with Wald 95% confidence intervals (a normal approximation). Each predictor's P value tests whether its coefficient differs from zero, holding the others fixed.",
+  "coefficients": [
+   {
+    "term": "Intercept",
+    "estimate": -4.832607713,
+    "stdError": 3.198892367,
+    "t": -1.510712821,
+    "p": 0.1308616343
+   },
+   {
+    "term": "Age",
+    "estimate": 0.09063376426,
+    "stdError": 0.0717787804,
+    "t": 1.262681864,
+    "p": 0.2067035342
+   },
+   {
+    "term": "Dose",
+    "estimate": 1.901055367,
+    "stdError": 1.528144388,
+    "t": 1.244028629,
+    "p": 0.2134890266
+   }
+  ],
+  "statisticLabel": "z"
+ },
+ "multiple-logistic-regression multipleBinary {\"dependent\":\"Outcome\"}": {
+  "testType": "multiple-logistic-regression",
+  "subtitle": "Multiple logistic regression",
+  "equation": "logit(p) = -4.833 + 0.09063·Age + 1.901·Dose",
+  "stats": [
+   {
+    "label": "Odds ratio (Age)",
+    "value": 1.094867952
+   },
+   {
+    "label": "Odds ratio 95% CI lower (Age)",
+    "value": 0.951179348
+   },
+   {
+    "label": "Odds ratio 95% CI upper (Age)",
+    "value": 1.260262678
+   },
+   {
+    "label": "Odds ratio (Dose)",
+    "value": 6.692954243
+   },
+   {
+    "label": "Odds ratio 95% CI lower (Dose)",
+    "value": 0.3348382721
+   },
+   {
+    "label": "Odds ratio 95% CI upper (Dose)",
+    "value": 133.7829042
+   },
+   {
+    "label": "Residual deviance",
+    "value": 11.43535628
+   },
+   {
+    "label": "Null deviance",
+    "value": 16.63553233
+   },
+   {
+    "label": "Residual df",
+    "value": 9
+   },
+   {
+    "label": "AIC",
+    "value": 17.43535628
+   },
+   {
+    "label": "P value (model)",
+    "value": 0.07426704055,
+    "p": true
+   },
+   {
+    "label": "McFadden pseudo-R²",
+    "value": 0.3125945083
+   },
+   {
+    "label": "Complete rows (n)",
+    "value": 12
+   },
+   {
+    "label": "Predictors",
+    "value": 2
+   }
+  ],
+  "groups": [
+   {
+    "name": "Outcome",
+    "mean": 0.5,
+    "sd": 0.5222329679,
+    "sem": 0.1507556723,
+    "median": 0.5,
+    "n": 12
+   },
+   {
+    "name": "Age",
+    "mean": 40.5,
+    "sd": 12.82398321,
+    "sem": 3.70196508,
+    "median": 40,
+    "n": 12
+   },
+   {
+    "name": "Dose",
+    "mean": 0.5833333333,
+    "sd": 0.5149286505,
+    "sem": 0.1486470975,
+    "median": 1,
+    "n": 12
+   }
+  ],
+  "notes": "Multiple logistic regression of “Outcome” on 2 predictor(s), fit on 12 complete rows. The odds ratios are per one-unit increase in each predictor, with Wald 95% confidence intervals (a normal approximation). Each predictor's P value tests whether its coefficient differs from zero, holding the others fixed.",
+  "coefficients": [
+   {
+    "term": "Intercept",
+    "estimate": -4.832607713,
+    "stdError": 3.198892367,
+    "t": -1.510712821,
+    "p": 0.1308616343
+   },
+   {
+    "term": "Age",
+    "estimate": 0.09063376426,
+    "stdError": 0.0717787804,
+    "t": 1.262681864,
+    "p": 0.2067035342
+   },
+   {
+    "term": "Dose",
+    "estimate": 1.901055367,
+    "stdError": 1.528144388,
+    "t": 1.244028629,
+    "p": 0.2134890266
+   }
+  ],
+  "statisticLabel": "z"
+ },
+ "multiple-logistic-regression multipleBinarySeparated {\"dependent\":\"Outcome\",\"predictors\":[\"Age\",\"Dose\"]}": {
+  "error": "The outcome is (nearly) perfectly separated by the predictor(s) — the odds ratios are not estimable. Try different predictors, or collect more data where the outcomes overlap."
+ },
  "chi-square contingency2 {}": {
   "testType": "chi-square",
   "subtitle": "Fisher's exact test",

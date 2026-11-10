@@ -11,6 +11,7 @@ import type {
   CoxPHParams,
   FrequencyDistributionParams,
   MultipleRegressionParams,
+  MultipleLogisticRegressionParams,
   MultipleTTestsParams,
   NonlinearRegressionParams,
   OutliersParams,
@@ -43,6 +44,7 @@ import { runThreeWayAnova } from "./grouped/three-way-anova";
 import { runMultipleTTests } from "./grouped/multiple-t-tests";
 import { runCorrelationMatrix } from "./multiple/correlation-matrix";
 import { runMultipleRegression } from "./multiple/multiple-regression";
+import { runMultipleLogisticRegression } from "./multiple/multiple-logistic-regression";
 import { runChiSquare } from "./contingency/chi-square";
 import { runLogRank } from "./survival/log-rank";
 import { runCoxPH } from "./survival/cox-ph";
@@ -143,6 +145,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Multiple regression",
     minColumns: 2,
     run: (c, p) => runMultipleRegression(c, p as MultipleRegressionParams),
+  },
+  "multiple-logistic-regression": {
+    label: "Multiple logistic regression",
+    minColumns: 2,
+    run: (c, p) => runMultipleLogisticRegression(c, p as MultipleLogisticRegressionParams),
   },
   "chi-square": { label: "Chi-square or Fisher's exact test", minColumns: 2, run: (c) => runChiSquare(c) },
   "survival-log-rank": {

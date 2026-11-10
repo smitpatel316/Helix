@@ -1721,6 +1721,7 @@ check("an analysis whose chosen column is gone says so, whatever the test", asyn
     ["nonlinear-regression", { y: "Gone", model: "line" }],
     ["correlation", { method: "pearson", mode: "two-datasets", datasets: ["Y1", "Gone"] }],
     ["multiple-regression", { dependent: "Y1", predictors: ["X", "Gone"] }],
+    ["multiple-logistic-regression", { dependent: "Y1", predictors: ["X", "Gone"] }],
   ];
   for (const [type, params] of cases) {
     deepStrictEqual(await runAnalysis(type, xy, params as AnalysisParams), { error: missingColumn("Gone") }, type);
@@ -1854,10 +1855,11 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
     ).params,
     { time: "Time", status: "Status", covariates: ["Trt"], ties: "efron" },
   );
-  // The menu offers Cox after Multiple regression on Multiple Variables tables.
+  // The menu offers Multiple logistic regression after Multiple regression on
+  // Multiple Variables tables, and Cox after that.
   deepStrictEqual(
     analysisOptionsForTable("multiple").map((o) => o.value),
-    ["correlation-matrix", "multiple-regression", "cox-proportional-hazards"],
+    ["correlation-matrix", "multiple-regression", "multiple-logistic-regression", "cox-proportional-hazards"],
   );
   // Multiple Variables tables offer the forest plot and survival curves.
   deepStrictEqual(
@@ -1880,6 +1882,68 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
     covariates: ["Treatment", "Years"],
     stratifyBy: "Treatment",
   });
+});
+
+check("the multiple logistic regression wizard offers only 0/1 columns as the outcome", () => {
+  const data: TableData = {
+    columns: ["Title", "Outcome", "Age", "Dose"],
+    rows: [
+      [null, "0", "22", "0"],
+      [null, "1", "31", "1"],
+      [null, "0", "42", "2"],
+    ],
+  };
+  const qs = WIZARDS["multiple-logistic-regression"]!.questions({}, readTable(data)).filter(
+    (q): q is Question => q !== false,
+  );
+  deepStrictEqual(
+    qs.map((q) => q.id),
+    ["dependent", "predictors"],
+  );
+  // Only the binary column is offered as the dependent; with none chosen yet,
+  // the predictors are every data column.
+  const dependent = qs.find((q) => q.id === "dependent");
+  ok(dependent && dependent.kind === "choice");
+  deepStrictEqual(
+    dependent.kind === "choice" ? dependent.options.map((o) => o.value) : [],
+    ["Outcome"],
+  );
+  const predictors = qs.find((q) => q.id === "predictors");
+  ok(predictors && predictors.kind === "names");
+  deepStrictEqual(predictors.kind === "names" ? predictors.options : [], ["Outcome", "Age", "Dose"]);
+  // With a dependent chosen, the predictors exclude it.
+  const asked = WIZARDS["multiple-logistic-regression"]!.questions({ dependent: "Outcome" }, readTable(data)).filter(
+    (q): q is Question => q !== false,
+  );
+  const predictorsAfter = asked.find((q) => q.id === "predictors");
+  deepStrictEqual(predictorsAfter?.kind === "names" ? predictorsAfter.options : [], ["Age", "Dose"]);
+  deepStrictEqual(
+    WIZARDS["multiple-logistic-regression"]!.finish(
+      { dependent: "Outcome", predictors: ["Age", "Dose"] },
+      readTable(data),
+    ),
+    {
+      type: "multiple-logistic-regression",
+      params: { dependent: "Outcome", predictors: ["Age", "Dose"] },
+    },
+  );
+  // With no binary column at all, every data column is offered and the
+  // runner (not the wizard) reports the problem.
+  const noBinary: TableData = {
+    columns: ["Title", "Weight", "Height"],
+    rows: [
+      [null, "70", "175"],
+      [null, "82", "181"],
+    ],
+  };
+  const fallback = WIZARDS["multiple-logistic-regression"]!.questions({}, readTable(noBinary)).filter(
+    (q): q is Question => q !== false,
+  );
+  const fallbackDependent = fallback.find((q) => q.id === "dependent");
+  deepStrictEqual(
+    fallbackDependent?.kind === "choice" ? fallbackDependent.options.map((o) => o.value) : [],
+    ["Weight", "Height"],
+  );
 });
 
 check("an XY table without numbers in X or Y says which, in every XY analysis", async () => {
