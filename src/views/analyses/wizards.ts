@@ -4,6 +4,7 @@
 // A test without an entry here runs as soon as it is picked.
 import { DOSE_MODELS, NONLINEAR_MODELS, ROUT_Q } from "../../stats/types";
 import { MODEL_LABEL } from "../../stats/xy/nonlinear-regression";
+import { dataGroups, pairedGroups } from "../../stats/column/base";
 import { distinctTruthValues } from "../../stats/column/roc-curve";
 
 const isDoseModel = (m: string) => (DOSE_MODELS as readonly string[]).includes(m);
@@ -1309,6 +1310,50 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         ties: (a.ties as CoxPHParams["ties"] | undefined) ?? "efron",
         ...(a.stratifyBy !== undefined && a.stratifyBy !== "none" ? { stratifyBy: a.stratifyBy as string } : {}),
       },
+    }),
+  },
+
+  "chi-square": {
+    questions: (_, table) => {
+      // The trend test only has a direction on a 2×k / k×2 table (k ≥ 3):
+      // a 2×2 has no trend and a 3×3 has no single trend direction.
+      const cols = dataGroups(table.columns).length;
+      const rows = pairedGroups(table.columns)[0]?.values.length ?? 0;
+      const qualifies = (cols === 2 && rows >= 3) || (rows === 2 && cols >= 3);
+      return [
+        qualifies &&
+          choice("trendOrdered", "Are the rows (or columns) in a natural order (age, dose, time) and equally spaced?", [
+            ["no", "No — do not run the test for trend"],
+            ["yes", "Yes — ordered and equally spaced, run the test for trend"],
+          ]),
+      ];
+    },
+    finish: (a) => ({
+      type: "chi-square",
+      params: { trendOrdered: a.trendOrdered === "yes" },
+    }),
+  },
+
+  mcnemar: {
+    questions: () => [
+      // A single-option choice: the dialog's own Cancel is the
+      // "use Chi-square instead" path — the framework has no per-question
+      // cancel, and a checkbox kind that must be ticked does not exist
+      // either. Prism does not offer this test at all; the statement says
+      // so in the result's notes as well.
+      choice(
+        "paired",
+        "These counts are paired outcomes (same subjects measured twice, or matched pairs) — b and c are the pairs that changed. Do NOT use this for two independent groups (use Chi-square instead).",
+        [["yes", "Yes — paired data"]],
+      ),
+      choice("continuityCorrection", "Apply the continuity correction?", [
+        ["yes", "Yes (recommended, R default)"],
+        ["no", "No"],
+      ]),
+    ],
+    finish: (a) => ({
+      type: "mcnemar",
+      params: { continuityCorrection: a.continuityCorrection !== "no" },
     }),
   },
 };

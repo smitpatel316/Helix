@@ -62,7 +62,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
   nested: optionsFor(["nested-t-test", "nested-anova"]),
   multiple: optionsFor(["descriptive-statistics", "correlation-matrix", "multiple-regression", "outliers", "multiple-logistic-regression", "poisson-regression", "cox-proportional-hazards"]),
   survival: optionsFor(["survival", "cox"]),
-  contingency: optionsFor(["chi-square"]),
+  contingency: [...optionsFor(["chi-square"]), { value: "mcnemar", label: "McNemar's test (paired proportions)" }],
 };
 
 /** Whether the table has the ≥ 2 row bands a three-way ANOVA needs. */

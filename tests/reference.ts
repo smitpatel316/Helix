@@ -1486,6 +1486,54 @@ const wide = (t: TableData, width: number): TableData => ({
   columns: [...t.columns, ...Array.from({ length: width }, (_, i) => `Extra ${i + 1}`)],
 });
 const contingencyWide = wide(contingency2, 13);
+
+/** Chi-square test for trend (plan 19): 2 columns × 4 ordered dose groups,
+ *  successes x = [2, 5, 9, 14], totals n = [20, 20, 20, 20]. */
+const contingencyTrend = table(
+  ["Title", "Success", "Failure"],
+  [
+    ["Dose 1", "2", "18"],
+    ["Dose 2", "5", "15"],
+    ["Dose 3", "9", "11"],
+    ["Dose 4", "14", "6"],
+  ],
+);
+/** The same numbers transposed (2 rows × 4 columns): the trend statistic
+ *  must be identical — this catches an orientation bug. */
+const contingencyTrendT = table(
+  ["Title", "Dose 1", "Dose 2", "Dose 3", "Dose 4"],
+  [
+    ["Success", "2", "5", "9", "14"],
+    ["Failure", "18", "15", "11", "6"],
+  ],
+);
+/** McNemar's test (plan 19): 2×2 paired outcomes — a = both yes (20),
+ *  b = yes→no (12), c = no→yes (4), d = both no (30); discordant b + c = 16. */
+const mcnemarTable = table(
+  ["Title", "Second: Yes", "Second: No"],
+  [
+    ["First: Yes", "20", "12"],
+    ["First: No", "4", "30"],
+  ],
+);
+/** No pair changed: McNemar's test is undefined. */
+const mcnemarNoDiscordant = table(
+  ["Title", "Second: Yes", "Second: No"],
+  [
+    ["First: Yes", "10", "0"],
+    ["First: No", "0", "10"],
+  ],
+);
+/** A fractional count: counts must be whole numbers. */
+const contingencyFractional = table(
+  ["Title", "Success", "Failure"],
+  [
+    ["Dose 1", "2.5", "18"],
+    ["Dose 2", "5", "15"],
+    ["Dose 3", "9", "11"],
+    ["Dose 4", "14", "6"],
+  ],
+);
 /** An XY table whose X column is still empty. */
 const xyNoX = table(
   ["Title", "X", "Y1", "Y2"],
@@ -2035,6 +2083,21 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["decimalCounts", decimalCounts, "chi-square"],
   ["noEvent", noEvent, "cox"],
   ["survival3", survival3, "cox", { reference: "Gone" }],
+  // Chi-square test for trend + McNemar's test (plan 19): the trend run
+  // (ordered, equally spaced), the same table with the trend unconfirmed
+  // and with no params (no trend rows — assert the absence, not just the
+  // values), the transposed orientation (same trend statistic), McNemar
+  // with the correction on (default) and off, and the error paths (3×3
+  // table, no discordant pairs, fractional count).
+  ["contingencyTrend", contingencyTrend, "chi-square", { trendOrdered: true }],
+  ["contingencyTrend", contingencyTrend, "chi-square", { trendOrdered: false }],
+  ["contingencyTrend", contingencyTrend, "chi-square"],
+  ["contingencyTrendT", contingencyTrendT, "chi-square", { trendOrdered: true }],
+  ["mcnemarTable", mcnemarTable, "mcnemar"],
+  ["mcnemarTable", mcnemarTable, "mcnemar", { continuityCorrection: false }],
+  ["contingency3", contingency3, "mcnemar"],
+  ["mcnemarNoDiscordant", mcnemarNoDiscordant, "mcnemar"],
+  ["contingencyFractional", contingencyFractional, "chi-square", { trendOrdered: true }],
   ["xyNoX", xyNoX, "linear-regression", { forceOrigin: false }],
   ["xyNoX", xyNoX, "correlation", { method: "pearson", mode: "x-vs-every-y" }],
   // On the data sets chosen, in their order.
@@ -3822,6 +3885,106 @@ async function disagreements(): Promise<string[]> {
         out.push(`Poisson Case B quasi notes missing the SE scaling: ${poisBQ.notes}`);
     }
   }
+  // Chi-square test for trend + McNemar's test (plan 19): the plan's values,
+  // computed in Python (scipy) from the stated tables and confirmed against
+  // R prop.trend.test / mcnemar.test / binom.test in WebR. Tolerances from
+  // the plan: statistics absolute 1e-3 (trend) / 1e-4 (McNemar), P values
+  // relative 1e-3 (trend, small P) / absolute 1e-4 (McNemar).
+  const trend = await runAnalysis("chi-square", contingencyTrend, { trendOrdered: true });
+  const trendOff = await runAnalysis("chi-square", contingencyTrend, { trendOrdered: false });
+  const trendNoParams = await runAnalysis("chi-square", contingencyTrend);
+  const trendT = await runAnalysis("chi-square", contingencyTrendT, { trendOrdered: true });
+  const tStat = (r: AnalysisResult | { error: string }, label: string) =>
+    "error" in r ? null : r.stats.find((s) => s.label === label)?.value;
+  const absClose = (got: number | null | undefined, want: number, tol: number) =>
+    got != null && Math.abs(got - want) <= tol;
+  const relClose19 = (got: number | null | undefined, want: number, tol: number) =>
+    got != null && Math.abs(got - want) <= tol * Math.max(1, Math.abs(want));
+  if ("error" in trend) {
+    out.push(`Trend: ${trend.error}`);
+  } else {
+    if (!absClose(tStat(trend, "Chi-square"), 17.28, 1e-3))
+      out.push(`Trend Pearson chi-square: ${tStat(trend, "Chi-square")}, plan says 17.28`);
+    if (!relClose19(tStat(trend, "P value"), 0.000619, 1e-3))
+      out.push(`Trend Pearson P: ${tStat(trend, "P value")}, plan says 0.000619`);
+    if (!absClose(tStat(trend, "Chi-square for trend"), 17.0667, 1e-3))
+      out.push(`Trend chi-square: ${tStat(trend, "Chi-square for trend")}, plan says 17.0667`);
+    if (!relClose19(tStat(trend, "P value (test for trend)"), 0.000036, 1e-3))
+      out.push(`Trend P: ${tStat(trend, "P value (test for trend)")}, plan says 0.000036`);
+    if (!trend.notes.includes("Cochran–Armitage"))
+      out.push(`Trend notes missing the Cochran–Armitage note: ${trend.notes}`);
+  }
+  // Trend off (and no params): the Pearson rows are identical, and no trend
+  // rows are present at all — assert the absence, not just the values.
+  for (const [label, r] of [
+    ["trendOrdered false", trendOff],
+    ["no params", trendNoParams],
+  ] as const) {
+    if ("error" in r) {
+      out.push(`Trend (${label}): ${r.error}`);
+    } else {
+      if (!absClose(tStat(r, "Chi-square"), 17.28, 1e-3))
+        out.push(`Trend (${label}) Pearson chi-square: ${tStat(r, "Chi-square")}, plan says 17.28`);
+      if (r.stats.some((s) => s.label === "Chi-square for trend"))
+        out.push(`Trend (${label}) reports a trend statistic — it must not run unconfirmed`);
+      if (!r.notes.includes("was not run"))
+        out.push(`Trend (${label}) notes missing the not-run explanation: ${r.notes}`);
+    }
+  }
+  // Transposed orientation: the same trend statistic.
+  if ("error" in trendT) {
+    out.push(`Trend transposed: ${trendT.error}`);
+  } else {
+    if (!absClose(tStat(trendT, "Chi-square for trend"), 17.0667, 1e-3))
+      out.push(`Trend transposed chi-square: ${tStat(trendT, "Chi-square for trend")}, plan says 17.0667`);
+    if (!relClose19(tStat(trendT, "P value (test for trend)"), 0.000036, 1e-3))
+      out.push(`Trend transposed P: ${tStat(trendT, "P value (test for trend)")}, plan says 0.000036`);
+  }
+  const mcnemar = await runAnalysis("mcnemar", mcnemarTable);
+  const mcnemarNoCorr = await runAnalysis("mcnemar", mcnemarTable, { continuityCorrection: false });
+  const mcnemarStat = (r: AnalysisResult | { error: string }, label: string) =>
+    "error" in r ? null : r.stats.find((s) => s.label === label)?.value;
+  if ("error" in mcnemar) {
+    out.push(`McNemar: ${mcnemar.error}`);
+  } else {
+    if (!absClose(mcnemarStat(mcnemar, "McNemar's chi-square"), 3.0625, 1e-4))
+      out.push(`McNemar chi-square (corrected): ${mcnemarStat(mcnemar, "McNemar's chi-square")}, plan says 3.0625`);
+    if (!absClose(mcnemarStat(mcnemar, "P value (McNemar's test)"), 0.0801, 1e-4))
+      out.push(`McNemar P (corrected): ${mcnemarStat(mcnemar, "P value (McNemar's test)")}, plan says 0.0801`);
+    if (!absClose(mcnemarStat(mcnemar, "P value (exact binomial)"), 0.0768, 1e-4))
+      out.push(`McNemar exact P: ${mcnemarStat(mcnemar, "P value (exact binomial)")}, plan says 0.0768`);
+    if (!absClose(mcnemarStat(mcnemar, "Odds ratio (paired, b/c)"), 3.0, 1e-4))
+      out.push(`McNemar OR: ${mcnemarStat(mcnemar, "Odds ratio (paired, b/c)")}, plan says 3.0`);
+    if (mcnemarStat(mcnemar, "Discordant pairs (b + c)") !== 16)
+      out.push(`McNemar discordant pairs: ${mcnemarStat(mcnemar, "Discordant pairs (b + c)")}, expected 16`);
+    const orLo = mcnemarStat(mcnemar, "Odds ratio (paired) 95% CI lower");
+    const orHi = mcnemarStat(mcnemar, "Odds ratio (paired) 95% CI upper");
+    if (orLo == null || orHi == null || !(orLo < 3.0 && 3.0 < orHi))
+      out.push(`McNemar OR 95% CI: [${orLo}, ${orHi}], expected to bracket 3.0`);
+    if (!mcnemar.notes.includes("Prism does not offer this test"))
+      out.push(`McNemar notes missing the Prism-does-not-offer-it note: ${mcnemar.notes}`);
+  }
+  if ("error" in mcnemarNoCorr) {
+    out.push(`McNemar (no correction): ${mcnemarNoCorr.error}`);
+  } else {
+    if (!absClose(mcnemarStat(mcnemarNoCorr, "McNemar's chi-square"), 4.0, 1e-4))
+      out.push(
+        `McNemar chi-square (uncorrected): ${mcnemarStat(mcnemarNoCorr, "McNemar's chi-square")}, plan says 4.0`,
+      );
+    if (!absClose(mcnemarStat(mcnemarNoCorr, "P value (McNemar's test)"), 0.0455, 1e-4))
+      out.push(`McNemar P (uncorrected): ${mcnemarStat(mcnemarNoCorr, "P value (McNemar's test)")}, plan says 0.0455`);
+  }
+  // Error paths: McNemar on a 3×3 table, on a table with no discordant
+  // pairs, and chi-square with a fractional count.
+  const mcnemar3x3 = await runAnalysis("mcnemar", contingency3);
+  if (!("error" in mcnemar3x3) || !mcnemar3x3.error.includes("2 × 2"))
+    out.push(`McNemar on 3×3: ${JSON.stringify(mcnemar3x3)}, expected a "2 × 2" error`);
+  const mcnemarNone = await runAnalysis("mcnemar", mcnemarNoDiscordant);
+  if (!("error" in mcnemarNone) || !mcnemarNone.error.includes("discordant"))
+    out.push(`McNemar with no discordant pairs: ${JSON.stringify(mcnemarNone)}, expected a "discordant" error`);
+  const fractional = await runAnalysis("chi-square", contingencyFractional, { trendOrdered: true });
+  if (!("error" in fractional) || !fractional.error.includes("whole numbers"))
+    out.push(`Chi-square with a fractional count: ${JSON.stringify(fractional)}, expected a "whole numbers" error`);
   // Spline and Lowess (plan 15): the plan's values on doseLog (tolerances:
   // fitted ±0.01, spar/df ±0.01, RSS ±0.5), the boundary overshoot, the RSS
   // ordering, and the GCV overfit asserted as the overfit it is.

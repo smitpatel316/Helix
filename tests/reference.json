@@ -28614,5 +28614,192 @@
     }
    }
   }
+ },
+ "chi-square contingencyTrend {\"trendOrdered\":true}": {
+  "testType": "chi-square",
+  "subtitle": "Pearson's chi-square test",
+  "stats": [
+   {
+    "label": "Chi-square",
+    "value": 17.28
+   },
+   {
+    "label": "df",
+    "value": 3
+   },
+   {
+    "label": "P value",
+    "value": 0.0006189449571,
+    "p": true
+   },
+   {
+    "label": "Chi-square for trend",
+    "value": 17.06666667
+   },
+   {
+    "label": "P value (test for trend)",
+    "value": 0.00003609023237,
+    "p": true
+   }
+  ],
+  "groups": [],
+  "notes": "Contingency table 4×2, N = 80. Pearson's chi-square test. Chi-square test for trend (Cochran–Armitage, 1 df): tests for a linear trend in the proportion in the first column across ordered, equally spaced rows."
+ },
+ "chi-square contingencyTrend {\"trendOrdered\":false}": {
+  "testType": "chi-square",
+  "subtitle": "Pearson's chi-square test",
+  "stats": [
+   {
+    "label": "Chi-square",
+    "value": 17.28
+   },
+   {
+    "label": "df",
+    "value": 3
+   },
+   {
+    "label": "P value",
+    "value": 0.0006189449571,
+    "p": true
+   }
+  ],
+  "groups": [],
+  "notes": "Contingency table 4×2, N = 80. Pearson's chi-square test. The table has ordered-looking dimensions (4 × 2); the chi-square test for trend was not run — confirm the categories are in a natural order and equally spaced to include it."
+ },
+ "chi-square contingencyTrend {}": {
+  "testType": "chi-square",
+  "subtitle": "Pearson's chi-square test",
+  "stats": [
+   {
+    "label": "Chi-square",
+    "value": 17.28
+   },
+   {
+    "label": "df",
+    "value": 3
+   },
+   {
+    "label": "P value",
+    "value": 0.0006189449571,
+    "p": true
+   }
+  ],
+  "groups": [],
+  "notes": "Contingency table 4×2, N = 80. Pearson's chi-square test. The table has ordered-looking dimensions (4 × 2); the chi-square test for trend was not run — confirm the categories are in a natural order and equally spaced to include it."
+ },
+ "chi-square contingencyTrendT {\"trendOrdered\":true}": {
+  "testType": "chi-square",
+  "subtitle": "Pearson's chi-square test",
+  "stats": [
+   {
+    "label": "Chi-square",
+    "value": 17.28
+   },
+   {
+    "label": "df",
+    "value": 3
+   },
+   {
+    "label": "P value",
+    "value": 0.0006189449571,
+    "p": true
+   },
+   {
+    "label": "Chi-square for trend",
+    "value": 17.06666667
+   },
+   {
+    "label": "P value (test for trend)",
+    "value": 0.00003609023237,
+    "p": true
+   }
+  ],
+  "groups": [],
+  "notes": "Contingency table 2×4, N = 80. Pearson's chi-square test. Chi-square test for trend (Cochran–Armitage, 1 df): tests for a linear trend in the proportion in the first row across ordered, equally spaced columns."
+ },
+ "mcnemar mcnemarTable {}": {
+  "testType": "mcnemar",
+  "subtitle": "McNemar's test",
+  "stats": [
+   {
+    "label": "McNemar's chi-square",
+    "value": 3.0625
+   },
+   {
+    "label": "P value (McNemar's test)",
+    "value": 0.08011831373,
+    "p": true
+   },
+   {
+    "label": "P value (exact binomial)",
+    "value": 0.07681274414,
+    "p": true
+   },
+   {
+    "label": "Discordant pairs (b + c)",
+    "value": 16
+   },
+   {
+    "label": "Odds ratio (paired, b/c)",
+    "value": 3
+   },
+   {
+    "label": "Odds ratio (paired) 95% CI lower",
+    "value": 0.9092319809
+   },
+   {
+    "label": "Odds ratio (paired) 95% CI upper",
+    "value": 12.76234447
+   }
+  ],
+  "groups": [],
+  "notes": "McNemar's test for paired proportions (2×2, N = 66, 1 df). Prism does not offer this test — it is included because Prism's own guide directs matched-design users to it. Cells are paired outcomes, not independent groups: rows are the first measurement, columns the second — a = both yes (20), b = yes→no (12), c = no→yes (4), d = both no (30). Odds ratio (paired) = b/c."
+ },
+ "mcnemar mcnemarTable {\"continuityCorrection\":false}": {
+  "testType": "mcnemar",
+  "subtitle": "McNemar's test",
+  "stats": [
+   {
+    "label": "McNemar's chi-square",
+    "value": 4
+   },
+   {
+    "label": "P value (McNemar's test)",
+    "value": 0.0455002639,
+    "p": true
+   },
+   {
+    "label": "P value (exact binomial)",
+    "value": 0.07681274414,
+    "p": true
+   },
+   {
+    "label": "Discordant pairs (b + c)",
+    "value": 16
+   },
+   {
+    "label": "Odds ratio (paired, b/c)",
+    "value": 3
+   },
+   {
+    "label": "Odds ratio (paired) 95% CI lower",
+    "value": 0.9092319809
+   },
+   {
+    "label": "Odds ratio (paired) 95% CI upper",
+    "value": 12.76234447
+   }
+  ],
+  "groups": [],
+  "notes": "McNemar's test for paired proportions (2×2, N = 66, 1 df). Prism does not offer this test — it is included because Prism's own guide directs matched-design users to it. Cells are paired outcomes, not independent groups: rows are the first measurement, columns the second — a = both yes (20), b = yes→no (12), c = no→yes (4), d = both no (30). Odds ratio (paired) = b/c."
+ },
+ "mcnemar contingency3 {}": {
+  "error": "McNemar's test needs a 2 × 2 table of paired outcomes."
+ },
+ "mcnemar mcnemarNoDiscordant {}": {
+  "error": "No discordant pairs (b + c = 0) — McNemar's test cannot be computed."
+ },
+ "chi-square contingencyFractional {\"trendOrdered\":true}": {
+  "error": "Counts must be whole numbers."
  }
 }

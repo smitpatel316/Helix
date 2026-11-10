@@ -2134,6 +2134,103 @@ check("the ROC wizard asks truth, score and positive class, defaulting to the la
   );
 });
 
+check("the chi-square wizard asks about ordering only on a 2×k / k×2 table, defaulting to no trend", () => {
+  const asked = (data: TableData) =>
+    WIZARDS["chi-square"]!.questions({}, readTable(data)).flatMap((q) => (q ? [q.id] : []));
+  const trend2x4: TableData = {
+    columns: ["Title", "Success", "Failure"],
+    rows: [
+      ["Dose 1", "2", "18"],
+      ["Dose 2", "5", "15"],
+      ["Dose 3", "9", "11"],
+      ["Dose 4", "14", "6"],
+    ],
+  };
+  const trend4x2: TableData = {
+    columns: ["Title", "Dose 1", "Dose 2", "Dose 3", "Dose 4"],
+    rows: [
+      ["Success", "2", "5", "9", "14"],
+      ["Failure", "18", "15", "11", "6"],
+    ],
+  };
+  const twoByTwo: TableData = {
+    columns: ["Title", "Outcome A", "Outcome B"],
+    rows: [
+      ["Drug", "15", "5"],
+      ["Placebo", "6", "14"],
+    ],
+  };
+  const threeByThree: TableData = {
+    columns: ["Title", "Outcome A", "Outcome B", "Outcome C"],
+    rows: [
+      ["North", "20", "15", "10"],
+      ["South", "12", "18", "25"],
+      ["East", "14", "16", "15"],
+    ],
+  };
+  deepStrictEqual(asked(trend2x4), ["trendOrdered"]);
+  deepStrictEqual(asked(trend4x2), ["trendOrdered"]);
+  deepStrictEqual(asked(twoByTwo), []);
+  deepStrictEqual(asked(threeByThree), []);
+  const q = WIZARDS["chi-square"]!.questions({}, readTable(trend2x4))[0];
+  ok(q && q.kind === "choice");
+  // "No" comes first: the wizard pre-selects the first option, so the trend
+  // does not run unless the user confirms the ordering.
+  deepStrictEqual(
+    q.kind === "choice" ? q.options.map((o) => o.value) : [],
+    ["no", "yes"],
+  );
+  deepStrictEqual(WIZARDS["chi-square"]!.finish({ trendOrdered: "yes" }, readTable(trend2x4)), {
+    type: "chi-square",
+    params: { trendOrdered: true },
+  });
+  deepStrictEqual(WIZARDS["chi-square"]!.finish({}, readTable(twoByTwo)), {
+    type: "chi-square",
+    params: { trendOrdered: false },
+  });
+  // McNemar's test sits after chi-square on contingency tables.
+  deepStrictEqual(
+    analysisOptionsForTable("contingency").map((o) => o.value),
+    ["chi-square", "mcnemar"],
+  );
+  deepStrictEqual(analysisOptionsForTable("contingency")[1]?.label, "McNemar's test (paired proportions)");
+});
+
+check("the McNemar wizard confirms paired data and defaults the correction on", () => {
+  const data: TableData = {
+    columns: ["Title", "Second: Yes", "Second: No"],
+    rows: [
+      ["First: Yes", "20", "12"],
+      ["First: No", "4", "30"],
+    ],
+  };
+  const asked = (a: Record<string, string>) =>
+    WIZARDS["mcnemar"]!.questions(a, readTable(data)).flatMap((q) => (q ? [q.id] : []));
+  deepStrictEqual(asked({}), ["paired", "continuityCorrection"]);
+  const qs = WIZARDS["mcnemar"]!.questions({}, readTable(data)).filter((q): q is Question => q !== false);
+  const paired = qs.find((q) => q.id === "paired");
+  ok(paired && paired.kind === "choice");
+  deepStrictEqual(
+    paired.kind === "choice" ? paired.options.map((o) => o.value) : [],
+    ["yes"],
+  );
+  ok(paired.ask.includes("paired outcomes") && paired.ask.includes("Do NOT use this for two independent groups"));
+  const correction = qs.find((q) => q.id === "continuityCorrection");
+  ok(correction && correction.kind === "choice");
+  deepStrictEqual(
+    correction.kind === "choice" ? correction.options.map((o) => o.value) : [],
+    ["yes", "no"],
+  );
+  deepStrictEqual(
+    WIZARDS["mcnemar"]!.finish({ paired: "yes", continuityCorrection: "yes" }, readTable(data)),
+    { type: "mcnemar", params: { continuityCorrection: true } },
+  );
+  deepStrictEqual(
+    WIZARDS["mcnemar"]!.finish({ paired: "yes", continuityCorrection: "no" }, readTable(data)),
+    { type: "mcnemar", params: { continuityCorrection: false } },
+  );
+});
+
 check("the Cox wizard asks time, status, covariates, stratifier and ties, with binary-only stratification", () => {
   const data: TableData = {
     columns: ["Title", "Time", "Status", "Trt", "Age"],

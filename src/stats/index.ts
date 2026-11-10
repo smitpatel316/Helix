@@ -9,11 +9,13 @@ import type {
   AreaUnderCurveParams,
   BindingKineticsParams,
   BindingSaturationParams,
+  ChiSquareParams,
   CorrelationParams,
   CoxPHParams,
   DoseResponseSpecialParams,
   EnzymeInhibitionParams,
   FrequencyDistributionParams,
+  McNemarParams,
   MultipleRegressionParams,
   MultipleLogisticRegressionParams,
   MultipleTTestsParams,
@@ -65,6 +67,7 @@ import { runPoissonRegression } from "./multiple/poisson-regression";
 import { runChiSquare } from "./contingency/chi-square";
 import { runSurvival } from "./survival/survival-analysis";
 import { runCox } from "./survival/cox-regression";
+import { runMcNemar } from "./contingency/mcnemar";
 import { runLogRank } from "./survival/log-rank";
 import { runCoxPH } from "./survival/cox-ph";
 import { runBlandAltman } from "./column/bland-altman";
@@ -220,7 +223,12 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     minColumns: 2,
     run: (c, p) => runPoissonRegression(c, p as PoissonRegressionParams),
   },
-  "chi-square": { label: "Chi-square or Fisher's exact test", minColumns: 2, run: (c) => runChiSquare(c) },
+  "chi-square": {
+    label: "Chi-square or Fisher's exact test",
+    minColumns: 2,
+    run: (c, p) => runChiSquare(c, p as ChiSquareParams),
+  },
+  mcnemar: { label: "McNemar's test", minColumns: 2, run: (c, p) => runMcNemar(c, p as McNemarParams) },
   survival: { label: "Survival analysis", minColumns: 3, run: (c, p) => runSurvival(c, p as SurvivalParams) },
   cox: { label: "Cox proportional hazards regression", minColumns: 3, run: (c, p) => runCox(c, p as CoxParams) },
   "survival-log-rank": {

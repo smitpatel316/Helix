@@ -36,6 +36,7 @@ export type AnalysisType =
   | "chi-square"
   | "survival"
   | "cox"
+  | "mcnemar"
   | "survival-log-rank"
   | "cox-proportional-hazards"
   | "bland-altman"
@@ -444,6 +445,19 @@ export interface SplineLowessParams {
   df?: number | null;
 }
 
+/** Params for "chi-square": whether the user confirmed the rows/columns are
+ *  ordered and equally spaced, so the chi-square test for trend
+ *  (Cochran–Armitage) runs on a qualifying 2×k / k×2 table. */
+export interface ChiSquareParams {
+  trendOrdered?: boolean;
+}
+
+/** Params for "mcnemar": the continuity correction (R's mcnemar.test
+ *  default, true). */
+export interface McNemarParams {
+  continuityCorrection?: boolean;
+}
+
 /** Params for "outliers" (Column table): ROUT-style outlier detection — each
  *  column is fit independently to a robust mean, and residuals are flagged
  *  outliers when their FDR-adjusted P falls below Q (Prism's "Q%", the
@@ -537,6 +551,8 @@ export type AnalysisParams = DataSetsParam &
     | PoissonRegressionParams
     | SplineLowessParams
     | CoxPHParams
+    | ChiSquareParams
+    | McNemarParams
     | OutliersParams
     | SurvivalParams
     | CoxParams
