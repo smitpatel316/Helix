@@ -1856,15 +1856,21 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
     { time: "Time", status: "Status", covariates: ["Trt"], ties: "efron" },
   );
   // The menu offers Multiple logistic regression after Multiple regression on
-  // Multiple Variables tables, and Cox after that.
+  // Multiple Variables tables, Poisson regression after that, and Cox after that.
   deepStrictEqual(
     analysisOptionsForTable("multiple").map((o) => o.value),
-    ["correlation-matrix", "multiple-regression", "multiple-logistic-regression", "cox-proportional-hazards"],
+    [
+      "correlation-matrix",
+      "multiple-regression",
+      "multiple-logistic-regression",
+      "poisson-regression",
+      "cox-proportional-hazards",
+    ],
   );
-  // Multiple Variables tables offer the forest plot and survival curves.
+  // Multiple Variables tables offer the forest plot, the observed-vs-fitted graph, and survival curves.
   deepStrictEqual(
     GRAPH_OPTIONS_BY_TABLE["multiple"].map((o) => o.value),
-    ["heatmap", "volcano", "forest-plot", "survival"],
+    ["heatmap", "volcano", "forest-plot", "observed-fitted", "survival"],
   );
   // Renaming a column follows the Cox analysis's params.
   const renamed = followTable(
@@ -1965,6 +1971,97 @@ check("multiple logistic regression refuses a non-binary or constant outcome, an
   // Three complete rows cannot fit two predictors.
   deepStrictEqual(
     await runAnalysis("multiple-logistic-regression", table(["0", "1", "0"], ["22", "25", "28"], ["0", "1", "0"]), params),
+    { error: "Not enough complete rows (3) to fit 2 predictor(s). Enter more data and try again." },
+  );
+});
+
+check("the poisson regression wizard asks for the dependent, predictors, and quasi-Poisson", () => {
+  const data: TableData = {
+    columns: ["Title", "Count", "Dose", "Age"],
+    rows: [
+      [null, "2", "0", "20"],
+      [null, "3", "1", "25"],
+    ],
+  };
+  const qs = WIZARDS["poisson-regression"]!.questions({}, readTable(data)).filter(
+    (q): q is Question => q !== false,
+  );
+  deepStrictEqual(
+    qs.map((q) => q.id),
+    ["dependent", "predictors", "quasi"],
+  );
+  const quasi = qs.find((q) => q.id === "quasi");
+  ok(quasi && quasi.kind === "choice");
+  deepStrictEqual(
+    quasi.kind === "choice" ? quasi.options.map((o) => o.value) : [],
+    ["no", "yes"],
+  );
+  // With a dependent chosen, the predictors exclude it.
+  const asked = WIZARDS["poisson-regression"]!.questions({ dependent: "Count" }, readTable(data)).filter(
+    (q): q is Question => q !== false,
+  );
+  const predictorsAfter = asked.find((q) => q.id === "predictors");
+  deepStrictEqual(predictorsAfter?.kind === "names" ? predictorsAfter.options : [], ["Dose", "Age"]);
+  // "yes" turns the quasi refit on; an unanswered quasi defaults to standard Poisson.
+  deepStrictEqual(
+    WIZARDS["poisson-regression"]!.finish(
+      { dependent: "Count", predictors: ["Dose", "Age"], quasi: "yes" },
+      readTable(data),
+    ),
+    {
+      type: "poisson-regression",
+      params: { dependent: "Count", predictors: ["Dose", "Age"], quasi: true },
+    },
+  );
+  deepStrictEqual(
+    WIZARDS["poisson-regression"]!.finish({ dependent: "Count", predictors: ["Dose", "Age"] }, readTable(data)),
+    {
+      type: "poisson-regression",
+      params: { dependent: "Count", predictors: ["Dose", "Age"], quasi: false },
+    },
+  );
+});
+
+check("poisson regression refuses non-count, all-zero, and too-few-rows outcomes", async () => {
+  const table = (outcome: (string | null)[], dose: (string | null)[], age: (string | null)[]): TableData => ({
+    columns: ["Title", "Count", "Dose", "Age"],
+    rows: outcome.map((v, r) => [null, v, dose[r], age[r]]),
+  });
+  const params = { dependent: "Count", predictors: ["Dose", "Age"], quasi: false };
+  // A 2.5 in the outcome is named, not coerced.
+  deepStrictEqual(
+    await runAnalysis(
+      "poisson-regression",
+      table(["2", "2.5", "3", "5"], ["0", "0", "1", "1"], ["20", "25", "22", "27"]),
+      params,
+    ),
+    { error: "“Count” holds 2.5, but Poisson regression needs whole-number counts (0, 1, 2, …)." },
+  );
+  // A negative count is named too.
+  deepStrictEqual(
+    await runAnalysis(
+      "poisson-regression",
+      table(["2", "-1", "3", "5"], ["0", "0", "1", "1"], ["20", "25", "22", "27"]),
+      params,
+    ),
+    { error: "“Count” holds -1, but Poisson regression needs whole-number counts (0, 1, 2, …)." },
+  );
+  // An all-0 outcome has no information to fit.
+  deepStrictEqual(
+    await runAnalysis(
+      "poisson-regression",
+      table(["0", "0", "0", "0"], ["0", "0", "1", "1"], ["20", "25", "22", "27"]),
+      params,
+    ),
+    { error: "The outcome is all zeros — Poisson regression needs counts that vary." },
+  );
+  // Three complete rows cannot fit two predictors.
+  deepStrictEqual(
+    await runAnalysis(
+      "poisson-regression",
+      table(["2", "3", "5"], ["0", "1", "1"], ["20", "25", "22"]),
+      params,
+    ),
     { error: "Not enough complete rows (3) to fit 2 predictor(s). Enter more data and try again." },
   );
 });

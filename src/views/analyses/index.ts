@@ -50,6 +50,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "correlation-matrix",
     "multiple-regression",
     "multiple-logistic-regression",
+    "poisson-regression",
     "cox-proportional-hazards",
   ]),
   contingency: optionsFor(["chi-square"]),

@@ -698,6 +698,47 @@ const multipleBinarySeparated = table(
   ],
 );
 
+/** Well-behaved counts (Poisson regression, plan 12, Case A): dispersion
+ *  ≈ 0.17, so no overdispersion warning is expected. */
+const poissonCounts = table(
+  ["Title", "Count", "Dose", "Age"],
+  [
+    ["", "2", "0", "20"],
+    ["", "3", "0", "25"],
+    ["", "3", "0", "30"],
+    ["", "5", "1", "22"],
+    ["", "4", "1", "27"],
+    ["", "7", "1", "33"],
+    ["", "6", "2", "24"],
+    ["", "9", "2", "29"],
+    ["", "8", "2", "35"],
+    ["", "12", "3", "26"],
+    ["", "11", "3", "31"],
+    ["", "14", "3", "36"],
+  ],
+);
+
+/** Overdispersed counts (Poisson regression, plan 12, Case B): dispersion
+ *  ≈ 9.14 — the standard fit must warn, and the quasi-Poisson refit must
+ *  flip the Dose P value with identical coefficients. */
+const poissonOverdispersed = table(
+  ["Title", "Count", "Dose", "Age"],
+  [
+    ["", "0", "0", "20"],
+    ["", "9", "0", "25"],
+    ["", "1", "0", "30"],
+    ["", "14", "1", "22"],
+    ["", "2", "1", "27"],
+    ["", "20", "1", "33"],
+    ["", "3", "2", "24"],
+    ["", "25", "2", "29"],
+    ["", "5", "2", "35"],
+    ["", "30", "3", "26"],
+    ["", "4", "3", "31"],
+    ["", "35", "3", "36"],
+  ],
+);
+
 const volcanoTable = table(
   ["Title", "Gene", "Log2 FC", "P"],
   [
@@ -950,6 +991,21 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
     "multiple-logistic-regression",
     { dependent: "Outcome", predictors: ["Age", "Dose"] },
   ],
+  // Poisson regression (plan 12): well-behaved counts, overdispersed counts,
+  // and the overdispersed table refit as quasi-Poisson.
+  ["poissonCounts", poissonCounts, "poisson-regression", { dependent: "Count", predictors: ["Dose", "Age"] }],
+  [
+    "poissonOverdispersed",
+    poissonOverdispersed,
+    "poisson-regression",
+    { dependent: "Count", predictors: ["Dose", "Age"] },
+  ],
+  [
+    "poissonOverdispersed",
+    poissonOverdispersed,
+    "poisson-regression",
+    { dependent: "Count", predictors: ["Dose", "Age"], quasi: true },
+  ],
   ["contingency2", contingency2, "chi-square"],
   ["contingency3", contingency3, "chi-square"],
   ["contingencyWide", contingencyWide, "chi-square"],
@@ -1022,6 +1078,7 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["grouped", grouped, "grouped-stacked"],
   ["grouped", grouped, "grouped-hbars", { center: "median" }],
   ["multiple", multiple, "heatmap"],
+  ["poissonCounts", poissonCounts, "observed-fitted"],
   ["volcano", volcanoTable, "volcano", volcano],
   ["contingency2", contingency2, "grouped-stacked"],
   ["xyNoX", xyNoX, "xy-scatter"],
@@ -2287,6 +2344,138 @@ async function disagreements(): Promise<string[]> {
     const r = await runAnalysis("three-way-anova", data, { posthoc: "none" });
     if (!("error" in r) || !r.error.includes(want))
       out.push(`Three-way ANOVA ${label}: ${"error" in r ? r.error : "ran without error"}, expected an error naming ${want}`);
+  }
+  // Poisson regression (plan 12): the plan's values, computed by the planner
+  // from R glm() in Helix's own webR. Tolerances from the plan: coefficients
+  // / SEs / rate ratios ±0.001, z and P ±0.001 (the tiny Case B P ±1e-8
+  // absolute), deviance / AIC / dispersion ±0.01.
+  const poisParams = { dependent: "Count", predictors: ["Dose", "Age"], quasi: false };
+  const poisA = await runAnalysis("poisson-regression", poissonCounts, poisParams);
+  if ("error" in poisA) {
+    out.push(`Poisson Case A: ${poisA.error}`);
+  } else {
+    const stat = (label: string) => poisA.stats.find((s) => s.label === label)?.value;
+    const close = (got: number | null | undefined, want: number, tol: number) =>
+      got != null && Math.abs(got - want) <= tol;
+    const checkCoef = (term: string, est: number, se: number, z: number, p: number) => {
+      const c = poisA.coefficients?.find((cc) => cc.term === term);
+      if (!close(c?.estimate, est, 1e-3)) out.push(`Poisson Case A ${term} estimate: ${c?.estimate}, plan says ${est}`);
+      if (!close(c?.stdError, se, 1e-3)) out.push(`Poisson Case A ${term} SE: ${c?.stdError}, plan says ${se}`);
+      if (!close(c?.t, z, 1e-3)) out.push(`Poisson Case A ${term} z: ${c?.t}, plan says ${z}`);
+      if (!close(c?.p, p, 1e-3)) out.push(`Poisson Case A ${term} P: ${c?.p}, plan says ${p}`);
+    };
+    checkCoef("Intercept", 0.4735, 0.7023, 0.6742, 0.5002);
+    checkCoef("Dose", 0.4287, 0.1178, 3.6383, 0.000274);
+    checkCoef("Age", 0.0244, 0.0255, 0.9542, 0.34);
+    if (poisA.statisticLabel !== "z") out.push(`Poisson Case A statistic label: ${poisA.statisticLabel}, expected z`);
+    if (!close(stat("Rate ratio (Dose)"), 1.5353, 1e-3))
+      out.push(`Poisson Case A RR Dose: ${stat("Rate ratio (Dose)")}, plan says 1.5353`);
+    if (!close(stat("Rate ratio 95% CI lower (Dose)"), 1.2187, 1e-3))
+      out.push(`Poisson Case A RR Dose lower: ${stat("Rate ratio 95% CI lower (Dose)")}, plan says 1.2187`);
+    if (!close(stat("Rate ratio 95% CI upper (Dose)"), 1.9342, 1e-3))
+      out.push(`Poisson Case A RR Dose upper: ${stat("Rate ratio 95% CI upper (Dose)")}, plan says 1.9342`);
+    if (!close(stat("Rate ratio (Age)"), 1.0247, 1e-3))
+      out.push(`Poisson Case A RR Age: ${stat("Rate ratio (Age)")}, plan says 1.0247`);
+    if (!close(stat("Rate ratio 95% CI lower (Age)"), 0.9746, 1e-3))
+      out.push(`Poisson Case A RR Age lower: ${stat("Rate ratio 95% CI lower (Age)")}, plan says 0.9746`);
+    if (!close(stat("Rate ratio 95% CI upper (Age)"), 1.0772, 1e-3))
+      out.push(`Poisson Case A RR Age upper: ${stat("Rate ratio 95% CI upper (Age)")}, plan says 1.0772`);
+    if (!close(stat("Residual deviance"), 1.4898, 0.01))
+      out.push(`Poisson Case A residual deviance: ${stat("Residual deviance")}, plan says 1.4898`);
+    if (!close(stat("Null deviance"), 24.0778, 0.01))
+      out.push(`Poisson Case A null deviance: ${stat("Null deviance")}, plan says 24.0778`);
+    if (!close(stat("AIC"), 51.3667, 0.01)) out.push(`Poisson Case A AIC: ${stat("AIC")}, plan says 51.3667`);
+    if (!close(stat("Pearson chi-square"), 1.5121, 0.01))
+      out.push(`Poisson Case A Pearson chi-square: ${stat("Pearson chi-square")}, plan says 1.5121`);
+    if (!close(stat("Dispersion (deviance)"), 0.1655, 0.01))
+      out.push(`Poisson Case A dispersion (deviance): ${stat("Dispersion (deviance)")}, plan says 0.1655`);
+    if (!close(stat("Dispersion (Pearson)"), 0.168, 0.01))
+      out.push(`Poisson Case A dispersion (Pearson): ${stat("Dispersion (Pearson)")}, plan says 0.168`);
+    if (stat("Residual df") !== 9) out.push(`Poisson Case A residual df: ${stat("Residual df")}, expected 9`);
+    if (poisA.notes.includes("overdispersed"))
+      out.push(`Poisson Case A notes warn of overdispersion: ${poisA.notes}`);
+    if (!poisA.notes.includes("underdispersed"))
+      out.push(`Poisson Case A notes missing the underdispersion note: ${poisA.notes}`);
+    // The graph's fitted values, computed in TS from the coefficients —
+    // the plan's spot-checks (row 1, row 6, row 12).
+    const { fittedCounts, addObservedFitted } = await import("../src/views/graphs/observed-fitted");
+    const fitted = fittedCounts(plotColumns(readTable(poissonCounts), "observed-fitted"), poisA, poisParams);
+    if (fitted?.length !== 12) out.push(`Poisson Case A fitted rows: ${fitted?.length}, expected 12`);
+    for (const [i, want] of [
+      [0, 2.6136],
+      [5, 5.5077],
+      [11, 13.9672],
+    ] as const) {
+      const got = fitted?.[i]?.fitted;
+      if (got == null || Math.abs(got - want) > 0.01)
+        out.push(`Poisson Case A fitted row ${i + 1}: ${got}, plan says ${want}`);
+    }
+    // The graph itself: one dashed y = x line and the 12 points.
+    const poisOpts = newGraphOptions("observed-fitted");
+    const poisCols = plotColumns(readTable(poissonCounts), "observed-fitted");
+    const poisFig = GRAPHS["observed-fitted"].build(
+      poisCols,
+      poisOpts,
+      paintOf(poisOpts, 1),
+      readTable(poissonCounts).titles,
+    );
+    addObservedFitted(poisFig, poisCols, poisA, poisParams, paintOf(poisOpts, 1));
+    const pTraces = poisFig.data as { mode?: string; x?: number[]; y?: number[]; line?: { dash?: string } }[];
+    const line = pTraces.find((t) => t.mode === "lines");
+    const pts = pTraces.find((t) => t.mode === "markers");
+    if (!line || line.line?.dash !== "dash" || line.x?.[0] !== line.y?.[0] || line.x?.[1] !== line.y?.[1])
+      out.push(
+        `Observed-vs-fitted identity line: ${JSON.stringify(line?.x)} vs ${JSON.stringify(line?.y)}, expected a dashed y = x line`,
+      );
+    if (!pts || pts.x?.length !== 12 || JSON.stringify(pts.x) !== JSON.stringify([2, 3, 3, 5, 4, 7, 6, 9, 8, 12, 11, 14]))
+      out.push(`Observed-vs-fitted points x: ${JSON.stringify(pts?.x)}, expected the 12 observed counts`);
+    if (pts?.y?.some((v, i) => Math.abs(v - (fitted?.[i]?.fitted ?? NaN)) > 1e-9))
+      out.push(`Observed-vs-fitted points y differ from the TS fitted values`);
+  }
+  // Case B, standard and quasi-Poisson.
+  const poisB = await runAnalysis("poisson-regression", poissonOverdispersed, poisParams);
+  const poisBQ = await runAnalysis("poisson-regression", poissonOverdispersed, { ...poisParams, quasi: true });
+  if ("error" in poisB) {
+    out.push(`Poisson Case B: ${poisB.error}`);
+  } else {
+    const stat = (label: string) => poisB.stats.find((s) => s.label === label)?.value;
+    const dose = poisB.coefficients?.find((c) => c.term === "Dose");
+    if (dose?.estimate == null || Math.abs(dose.estimate - 0.4512) > 1e-3)
+      out.push(`Poisson Case B Dose estimate: ${dose?.estimate}, plan says 0.4512`);
+    if (dose?.stdError == null || Math.abs(dose.stdError - 0.0895) > 1e-3)
+      out.push(`Poisson Case B Dose SE: ${dose?.stdError}, plan says 0.0895`);
+    if (dose?.t == null || Math.abs(dose.t - 5.04) > 1e-3) out.push(`Poisson Case B Dose z: ${dose?.t}, plan says 5.04`);
+    if (dose?.p == null || Math.abs(dose.p - 4.66e-7) > 1e-8)
+      out.push(`Poisson Case B Dose P: ${dose?.p}, plan says 4.66e-7`);
+    if (stat("Residual deviance") == null || Math.abs(stat("Residual deviance")! - 95.7988) > 0.01)
+      out.push(`Poisson Case B residual deviance: ${stat("Residual deviance")}, plan says 95.7988`);
+    if (stat("Dispersion (deviance)") == null || Math.abs(stat("Dispersion (deviance)")! - 10.6443) > 0.01)
+      out.push(`Poisson Case B dispersion (deviance): ${stat("Dispersion (deviance)")}, plan says 10.6443`);
+    if (stat("Dispersion (Pearson)") == null || Math.abs(stat("Dispersion (Pearson)")! - 9.1402) > 0.01)
+      out.push(`Poisson Case B dispersion (Pearson): ${stat("Dispersion (Pearson)")}, plan says 9.1402`);
+    if (!poisB.notes.includes("overdispersed") || !poisB.notes.includes("Re-run with quasi-Poisson"))
+      out.push(`Poisson Case B notes missing the overdispersion warning: ${poisB.notes}`);
+    if ("error" in poisBQ) {
+      out.push(`Poisson Case B quasi: ${poisBQ.error}`);
+    } else {
+      const qDose = poisBQ.coefficients?.find((c) => c.term === "Dose");
+      // The refit must not move the coefficients — only the SEs and P values.
+      if (qDose?.estimate == null || dose?.estimate == null || Math.abs(qDose.estimate - dose.estimate) > 1e-9)
+        out.push(`Poisson Case B quasi Dose estimate moved: ${qDose?.estimate} vs ${dose?.estimate}`);
+      if (qDose?.stdError == null || Math.abs(qDose.stdError - 0.2707) > 1e-3)
+        out.push(`Poisson Case B quasi Dose SE: ${qDose?.stdError}, plan says 0.2707`);
+      if (qDose?.p == null || Math.abs(qDose.p - 0.1299) > 1e-3)
+        out.push(`Poisson Case B quasi Dose P: ${qDose?.p}, plan says 0.1299`);
+      if (qDose?.p != null && qDose.p <= 0.05)
+        out.push(`Poisson Case B quasi Dose still significant: P = ${qDose.p}, the refit must flip it`);
+      const qStat = (label: string) => poisBQ.stats.find((s) => s.label === label)?.value;
+      if (qStat("Quasi-Poisson dispersion") == null || Math.abs(qStat("Quasi-Poisson dispersion")! - 9.1402) > 0.01)
+        out.push(`Poisson Case B quasi dispersion: ${qStat("Quasi-Poisson dispersion")}, plan says 9.1402`);
+      if (poisBQ.stats.some((s) => s.label === "AIC"))
+        out.push(`Poisson Case B quasi keeps an AIC row — quasi-likelihood has no true AIC`);
+      if (!poisBQ.notes.includes("scaled by √φ"))
+        out.push(`Poisson Case B quasi notes missing the SE scaling: ${poisBQ.notes}`);
+    }
   }
   return out;
 }

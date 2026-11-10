@@ -321,7 +321,7 @@ export function FormatPanel(props: Props) {
               onChange={(yMin, yMax, yStep) => set({ yMin, yMax, yStep })}
             />
           )}
-          {(family === "xy" || family === "volcano") && (
+          {(family === "xy" || family === "volcano" || family === "multiple") && (
             <AxisRange
               axis="X"
               min={options.xMin}

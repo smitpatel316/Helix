@@ -16,7 +16,7 @@ import {
   type ProjectNode,
   type SeriesStyle,
 } from "../../store/types";
-import type { LinearRegressionParams, CoxPHParams } from "../../stats/types";
+import type { LinearRegressionParams, CoxPHParams, PoissonRegressionParams } from "../../stats/types";
 import { useProjectStore } from "../../store/use-project-store";
 import { groupsOf, readTable, xyProblem } from "../../lib/dataset";
 import { paletteOf } from "../../lib/palettes";
@@ -33,6 +33,7 @@ import { INK, MOVABLE, marginsFor, movedText, paintOf, withCaps } from "./plot-h
 import { useStartAnalysis } from "../analyses/use-analysis-launcher";
 import { loadPlotly } from "./plotly";
 import { addRegression } from "./regression-overlay";
+import { addObservedFitted } from "./observed-fitted";
 import { addSignificance, deriveComparisons } from "./significance-overlay";
 import {
   drawnKeys,
@@ -292,6 +293,19 @@ export function GraphView({ node }: { node: ProjectNode }) {
   );
   const coxResult = coxOutcome && !("error" in coxOutcome) ? coxOutcome : null;
   const coxParams = (coxAnalysis?.analysisParams ?? undefined) as CoxPHParams | undefined;
+  // An observed-vs-fitted graph draws a sibling Poisson regression's fitted
+  // counts (closed-form in TS from its coefficients) — the same cached
+  // runAnalysis result, no extra R call. Without one it draws only its axes.
+  const poissonAnalysis = options.poissonAnalysisId ? nodes[options.poissonAnalysisId] : undefined;
+  const poissonOutcome = useAnalysis(
+    type === "observed-fitted" && poissonAnalysis?.analysisType === "poisson-regression"
+      ? "poisson-regression"
+      : undefined,
+    data,
+    poissonAnalysis?.analysisParams,
+  );
+  const poissonResult = poissonOutcome && !("error" in poissonOutcome) ? poissonOutcome : null;
+  const poissonParams = (poissonAnalysis?.analysisParams ?? undefined) as PoissonRegressionParams | undefined;
   // A survival curve on a Multiple Variables table plots the Cox analysis's
   // time/status columns, stratified by its binary covariate (or one curve for
   // all subjects); without a Cox analysis it draws nothing — the Format panel
@@ -379,6 +393,8 @@ export function GraphView({ node }: { node: ProjectNode }) {
       if (doseFit) addDoseCurve(fig, columns, options, doseFit, paint, interpFit);
       if (logisticFit) addLogisticCurve(fig, columns, logisticFit, paint);
       if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint);
+      if (type === "observed-fitted" && poissonResult)
+        addObservedFitted(fig, columns, poissonResult, poissonParams, paint);
       // The points' names are part of the figure (the volcano places its own, among the
       // genes it names); the selection ring only of the view.
       const labels =
@@ -420,6 +436,8 @@ export function GraphView({ node }: { node: ProjectNode }) {
     interpFit,
     logisticFit,
     coxResult,
+    poissonResult,
+    poissonParams,
     seriesNames.length,
     selected,
     glRatio,

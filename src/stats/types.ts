@@ -23,6 +23,7 @@ export type AnalysisType =
   | "correlation-matrix"
   | "multiple-regression"
   | "multiple-logistic-regression"
+  | "poisson-regression"
   | "outliers"
   | "chi-square"
   | "survival-log-rank"
@@ -200,6 +201,17 @@ export interface MultipleLogisticRegressionParams {
   predictors?: string[];
 }
 
+/** Params for "poisson-regression": which variable is the count outcome, and
+ *  which other data-bearing variables to include as predictors. `predictors`
+ *  omitted (or empty) falls back to every other data-bearing variable.
+ *  `quasi` refits with family quasipoisson — same coefficients, standard errors
+ *  scaled by sqrt(Pearson dispersion) — for overdispersed counts. */
+export interface PoissonRegressionParams {
+  dependent: string;
+  predictors?: string[];
+  quasi: boolean;
+}
+
 /** Params for "two-way-anova" on a Grouped table's column-groups × row position:
  *  "ordinary" (parametric, independent samples), "repeated-measures" (parametric,
  *  matched by row — each replicate column is the same subject across every row;
@@ -317,6 +329,7 @@ export type AnalysisParams = DataSetsParam &
     | MultipleTTestsParams
     | MultipleRegressionParams
     | MultipleLogisticRegressionParams
+    | PoissonRegressionParams
     | CoxPHParams
     | OutliersParams
     | FrequencyDistributionParams

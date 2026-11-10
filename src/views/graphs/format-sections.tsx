@@ -124,6 +124,17 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
     }
     return <CoxControls analyses={sources} options={options} set={set} />;
   }
+  if (graphType === "observed-fitted") {
+    const sources = c.analyses.filter((a) => a.analysisType === "poisson-regression");
+    if (!sources.length) {
+      return (
+        <NoAnalysis test="poisson-regression" onNewAnalysis={c.onNewAnalysis}>
+          Plot the observed counts against the fitted counts of a Poisson regression of this table.
+        </NoAnalysis>
+      );
+    }
+    return <PoissonControls analyses={sources} options={options} set={set} />;
+  }
   if (graphType === "dose-response") {
     const exponential = (EXPONENTIAL_MODELS as readonly string[]).includes(options.doseModel);
     const summaryLabel =
@@ -262,6 +273,26 @@ function CoxControls({
       analyses={analyses}
       value={options.coxAnalysisId}
       onChange={(coxAnalysisId) => set({ coxAnalysisId })}
+    />
+  );
+}
+
+/** Pick a Poisson regression: the observed-vs-fitted graph draws its fitted
+ *  counts against the observed ones. */
+function PoissonControls({
+  analyses,
+  options,
+  set,
+}: {
+  analyses: ProjectNode[];
+  options: GraphOptions;
+  set: SetOptions;
+}) {
+  return (
+    <AnalysisRow
+      analyses={analyses}
+      value={options.poissonAnalysisId}
+      onChange={(poissonAnalysisId) => set({ poissonAnalysisId })}
     />
   );
 }
