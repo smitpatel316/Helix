@@ -8,7 +8,7 @@
 import type { AnalysisOutcome, Column, NonlinearModel, NonlinearRegressionParams, RegressionCoefficient } from "../types";
 import { describe } from "../column/base";
 import { num } from "../../lib/format";
-import { EXPONENTIAL_MODELS, fitError, fitNonlinearModel, MODEL_LABEL, modelSpec, prepareFit } from "./nonlinear-fit";
+import { ENZYME_MODELS, EXPONENTIAL_MODELS, fitError, fitNonlinearModel, MODEL_LABEL, modelSpec, prepareFit } from "./nonlinear-fit";
 
 // Re-exported for upstream importers (wizards.ts, fitted-curve.ts): the labels
 // live in nonlinear-fit.ts now; positiveXOnly matches upstream's helper.
@@ -24,8 +24,8 @@ export const termLabel = (term: string) => TERM_LABEL[term] ?? term;
 // runner: same result shape, plus a fitted equation and a note naming the
 // data-driven starting values. A fitted K ≤ 0 leaves its half-life /
 // doubling time null (see the derived expressions) and is noted, not hidden.
-
 const isExponential = (model: NonlinearModel) => EXPONENTIAL_MODELS.includes(model);
+const isEnzyme = (model: NonlinearModel) => ENZYME_MODELS.includes(model);
 
 const coefOf = (coefficients: RegressionCoefficient[], term: string) => coefficients.find((c) => c.term === term)?.estimate ?? null;
 
@@ -59,6 +59,26 @@ function equation(model: NonlinearModel, coefficients: RegressionCoefficient[]):
     case "exponential-growth":
       if (y0 == null || k == null) return undefined;
       return `Y = ${num(y0)}·exp(${num(k)}·X)`;
+    case "michaelis-menten": {
+      const vmax = coefOf(coefficients, "Vmax");
+      const km = coefOf(coefficients, "Km");
+      if (vmax == null || km == null) return undefined;
+      return `Y = ${num(vmax)}·X / (${num(km)} + X)`;
+    }
+    case "allosteric-sigmoidal": {
+      const vmax = coefOf(coefficients, "Vmax");
+      const khalf = coefOf(coefficients, "Khalf");
+      const h = coefOf(coefficients, "HillSlope");
+      if (vmax == null || khalf == null || h == null) return undefined;
+      return `Y = ${num(vmax)}·X^${num(h)} / (${num(khalf)}^${num(h)} + X^${num(h)})`;
+    }
+    case "substrate-inhibition": {
+      const vmax = coefOf(coefficients, "Vmax");
+      const km = coefOf(coefficients, "Km");
+      const ki = coefOf(coefficients, "Ki");
+      if (vmax == null || km == null || ki == null) return undefined;
+      return `Y = ${num(vmax)}·X / (${num(km)} + X + X²/${num(ki)})`;
+    }
     default:
       return undefined;
   }
@@ -90,6 +110,12 @@ function startingValues(model: NonlinearModel, xs: number[], ys: number[]): stri
       return `Starting values: Y0 = ${num(yAtMinX)}, Plateau = ${num(maxY)}, K = 0.5.`;
     case "exponential-growth":
       return `Starting values: Y0 = ${num(yAtMinX)}, K = 0.1.`;
+    case "michaelis-menten":
+      return `Starting values: Vmax = ${num(maxY * 1.1)}, Km = ${num(median(xs.filter((x) => x > 0)))}.`;
+    case "allosteric-sigmoidal":
+      return `Starting values: Vmax = ${num(maxY * 1.1)}, Khalf = ${num(median(xs.filter((x) => x > 0)))}, Hill slope = 1.`;
+    case "substrate-inhibition":
+      return `Starting values: Vmax = ${num(maxY * 1.5)}, Km = ${num(median(xs.filter((x) => x > 0)))}, Ki = ${num(Math.max(...xs))}.`;
     default:
       return "";
   }
@@ -97,8 +123,12 @@ function startingValues(model: NonlinearModel, xs: number[], ys: number[]): stri
 
 /** Warnings the fit itself cannot express: a fitted K ≤ 0 makes its
  *  half-life / doubling time undefined (the derived row is null), and
- *  K1 ≈ K2 leaves a two-phase fit unidentifiable. */
-function fitWarnings(model: NonlinearModel, coefficients: RegressionCoefficient[]): string[] {
+ *  K1 ≈ K2 leaves a two-phase fit unidentifiable. Enzyme models (plan 09):
+ *  a fitted Km/Ki ≤ 0 or Hill slope ≤ 0 is reported, not hidden (Vmax/Km
+ *  is null when Km ≤ 0), and a substrate range that does not bracket Km /
+ *  Khalf warns that the constant is imprecisely estimated. `xs` is the
+ *  fitted X values (the bracketing check needs them). */
+function fitWarnings(model: NonlinearModel, coefficients: RegressionCoefficient[], xs?: number[]): string[] {
   const out: string[] = [];
   const k = coefOf(coefficients, "K");
   if (model === "one-phase-decay" || model === "plateau-decay" || model === "one-phase-association") {
@@ -112,6 +142,32 @@ function fitWarnings(model: NonlinearModel, coefficients: RegressionCoefficient[
     if (k2 != null && k2 <= 0) out.push("Fitted K2 ≤ 0 — half-life (slow) not defined.");
     if (k1 != null && k2 != null && Math.abs(k1 - k2) / Math.max(Math.abs(k1), Math.abs(k2), 1e-12) < 0.01)
       out.push("K1 ≈ K2 — the two phases are nearly identical, so the separate phase parameters are poorly identified.");
+  }
+  if (isEnzyme(model)) {
+    const km = coefOf(coefficients, "Km");
+    const ki = coefOf(coefficients, "Ki");
+    const vmax = coefOf(coefficients, "Vmax");
+    if (km != null && km <= 0)
+      out.push("Fitted Km ≤ 0 — the data do not constrain Km; check the concentration range.");
+    if (ki != null && ki <= 0)
+      out.push("Fitted Ki ≤ 0 — the data do not constrain Ki; check the concentration range.");
+    if (model === "michaelis-menten" && km != null && km <= 0 && vmax != null)
+      out.push("Vmax/Km is not defined when Km ≤ 0.");
+    if (model === "allosteric-sigmoidal") {
+      const h = coefOf(coefficients, "HillSlope");
+      const khalf = coefOf(coefficients, "Khalf");
+      if (h != null && h <= 0)
+        out.push("Fitted Hill slope ≤ 0 — the curve decreases, which contradicts the allosteric model.");
+      if (xs && khalf != null && khalf > 0) {
+        const positive = xs.filter((x) => x > 0);
+        if (Math.max(...xs) < khalf || Math.min(...positive) > khalf)
+          out.push("The substrate range does not bracket Khalf — Khalf is imprecisely estimated.");
+      }
+    } else if (xs && km != null && km > 0) {
+      const positive = xs.filter((x) => x > 0);
+      if (Math.max(...xs) < km || Math.min(...positive) > km)
+        out.push("The substrate range does not bracket Km — Km is imprecisely estimated.");
+    }
   }
   return out;
 }
@@ -128,12 +184,27 @@ export async function runNonlinearRegression(
   const { xCol, yCol, xs, ys } = prepared;
 
   try {
-    const { coefficients, derived, stats } = await fitNonlinearModel(xs, ys, model);
+    const { coefficients, derived, stats, retried } = await fitNonlinearModel(xs, ys, model);
     const notes = [`Nonlinear least-squares fit ("${MODEL_LABEL[model]}") of "${yCol.name}" on "${xCol.name}".`];
-    const eq = isExponential(model) ? equation(model, coefficients) : undefined;
-    if (isExponential(model)) {
+    const eq = isExponential(model) || isEnzyme(model) ? equation(model, coefficients) : undefined;
+    if (isExponential(model) || isEnzyme(model)) {
       notes.push(startingValues(model, xs, ys));
-      notes.push(...fitWarnings(model, coefficients));
+      if (isEnzyme(model)) {
+        if (xs.includes(0))
+          notes.push("The X = 0 (vehicle) point is included in the fit; the fitted curve is Y = 0 at X = 0.");
+        if (ys.some((y) => y < 0))
+          notes.push("Some velocities are negative — measurement noise around zero; the fit allows negative Y.");
+        if (retried) {
+          const median = (v: number[]) => {
+            const s = [...v].sort((a, b) => a - b);
+            return s.length % 2 === 1 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+          };
+          notes.push(
+            `The first substrate-inhibition fit failed; retried with Ki = ${num(median(xs.filter((x) => x > 0)) * 5)} (5 × median substrate concentration) and converged.`,
+          );
+        }
+      }
+      notes.push(...fitWarnings(model, coefficients, xs));
     }
     return {
       testType: "nonlinear-regression",

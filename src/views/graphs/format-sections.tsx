@@ -134,7 +134,13 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
         ? "Doubling time"
         : exponential
           ? "Half-life"
-          : "EC50 & Hill slope";
+          : options.doseModel === "michaelis-menten"
+            ? "Vmax & Km"
+            : options.doseModel === "allosteric-sigmoidal"
+              ? "Khalf & Hill slope"
+              : options.doseModel === "substrate-inhibition"
+                ? "Km & Ki"
+                : "EC50 & Hill slope";
     return (
       <>
         <Choice
@@ -151,6 +157,10 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
             // Plan 08, 2/2: association + growth.
             { value: "one-phase-association", label: MODEL_LABEL["one-phase-association"] },
             { value: "exponential-growth", label: MODEL_LABEL["exponential-growth"] },
+            // Prism's "Enzyme kinetics" family (plan 09).
+            { value: "michaelis-menten", label: MODEL_LABEL["michaelis-menten"] },
+            { value: "allosteric-sigmoidal", label: MODEL_LABEL["allosteric-sigmoidal"] },
+            { value: "substrate-inhibition", label: MODEL_LABEL["substrate-inhibition"] },
           ]}
         />
         <Toggle

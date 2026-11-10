@@ -69,6 +69,10 @@ export const NONLINEAR_MODELS = [
   "plateau-decay",
   // Plan 08, 2/2: association (growth is already in KINETIC_MODELS).
   "one-phase-association",
+  // Plan 09: enzyme kinetics (substrate–velocity; michaelis-menten is
+  // already in KINETIC_MODELS).
+  "allosteric-sigmoidal",
+  "substrate-inhibition",
 ] as const;
 /** What comparing two curves asks: is the EC50 different, or does one curve fit both. */
 export const CURVE_COMPARISONS = ["ec50", "all"] as const;
@@ -409,7 +413,11 @@ export interface HazardRatioRow {
   p: number | null;
 }
 
-/** One row of a regression coefficients table (intercept or a predictor). */
+/** One row of a regression coefficients table (intercept or a predictor).
+ *  `ciLow`/`ciHigh` are the Wald 95% CIs (estimate ± t(0.975, df)·SE),
+ *  populated by the nonlinear-fit runner (plan 09) — other runners leave
+ *  them undefined, and the results view only shows the CI columns when a
+ *  coefficient carries them. */
 export interface RegressionCoefficient {
   term: string;
   estimate: number | null;
@@ -419,6 +427,11 @@ export interface RegressionCoefficient {
   /** Its 95% confidence interval (asymptotic for a nonlinear fit). */
   low?: number | null;
   high?: number | null;
+  /** The Wald 95% CI (estimate ± t(0.975, df)·SE) from the nonlinear-fit
+   *  runner (plan 09) — kept alongside low/high; the dedup commit renames
+   *  these to low/high per the upstream shape. */
+  ciLow?: number | null;
+  ciHigh?: number | null;
 }
 
 /** One row of best-fit values: a value per data set, or an interval (`ranges`, low and high). */

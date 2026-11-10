@@ -55,6 +55,10 @@ export function evaluate(model: NonlinearModel, coefficients: RegressionCoeffici
       return c("Y0") + (c("Plateau") - c("Y0")) * (1 - Math.exp(-c("K") * x));
     case "michaelis-menten":
       return (c("Vmax") * x) / (c("Km") + x);
+    case "allosteric-sigmoidal":
+      return (c("Vmax") * x ** c("HillSlope")) / (c("Khalf") ** c("HillSlope") + x ** c("HillSlope"));
+    case "substrate-inhibition":
+      return (c("Vmax") * x) / (c("Km") + x + x ** 2 / c("Ki"));
   }
 }
 

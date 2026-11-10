@@ -549,6 +549,10 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         // Prism's "Exponential" family (plan 08, 2/2: association + growth).
         ["one-phase-association", "One-phase association"],
         ["exponential-growth", "Exponential growth"],
+        // Prism's "Enzyme kinetics" family (plan 09).
+        ["michaelis-menten", "Michaelis-Menten"],
+        ["allosteric-sigmoidal", "Allosteric sigmoidal"],
+        ["substrate-inhibition", "Substrate inhibition"],
       ]),
     ],
     finish: (a) => ({

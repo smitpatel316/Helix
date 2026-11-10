@@ -2951,14 +2951,18 @@
     "estimate": 0.9929824561,
     "stdError": 0.1419525361,
     "t": 6.995172354,
-    "p": 0.0004250712706
+    "p": 0.0004250712706,
+    "ciLow": 0.6456371133,
+    "ciHigh": 1.340327799
    },
    {
     "term": "Slope",
     "estimate": 2.012280702,
     "stdError": 0.03224944911,
     "t": 62.39736669,
-    "p": 1.139070697e-9
+    "p": 1.139070697e-9,
+    "ciLow": 1.933369143,
+    "ciHigh": 2.091192261
    }
   ]
  },
@@ -3012,21 +3016,27 @@
     "estimate": 4.955370177,
     "stdError": 0.06404937781,
     "t": 77.36796744,
-    "p": 1.672718889e-7
+    "p": 1.672718889e-7,
+    "ciLow": 4.777540596,
+    "ciHigh": 5.133199759
    },
    {
     "term": "B1",
     "estimate": -0.8602624261,
     "stdError": 0.03912744418,
     "t": -21.98616455,
-    "p": 0.0000253272144
+    "p": 0.0000253272144,
+    "ciLow": -0.968897627,
+    "ciHigh": -0.7516272253
    },
    {
     "term": "B2",
     "estimate": 0.0176659715,
     "stdError": 0.004829172504,
     "t": 3.658177769,
-    "p": 0.02161499159
+    "p": 0.02161499159,
+    "ciLow": 0.004258039137,
+    "ciHigh": 0.03107390386
    }
   ]
  },
@@ -3080,28 +3090,36 @@
     "estimate": 1.028822055,
     "stdError": 0.2358125608,
     "t": 4.362880635,
-    "p": 0.01203494852
+    "p": 0.01203494852,
+    "ciLow": 0.3741014248,
+    "ciHigh": 1.683542685
    },
    {
     "term": "B1",
     "estimate": 2.06468254,
     "stdError": 0.2793250497,
     "t": 7.39168414,
-    "p": 0.001786325663
+    "p": 0.001786325663,
+    "ciLow": 1.289151873,
+    "ciHigh": 2.840213207
    },
    {
     "term": "B2",
     "estimate": -0.03502506266,
     "stdError": 0.08521156772,
     "t": -0.4110364777,
-    "p": 0.7021130339
+    "p": 0.7021130339,
+    "ciLow": -0.2716103028,
+    "ciHigh": 0.2015601774
    },
    {
     "term": "B3",
     "estimate": 0.003801169591,
     "stdError": 0.006944959069,
     "t": 0.5473278608,
-    "p": 0.613258205
+    "p": 0.613258205,
+    "ciLow": -0.01548112802,
+    "ciHigh": 0.0230834672
    }
   ]
  },
@@ -3163,28 +3181,36 @@
     "estimate": 1.278310063,
     "stdError": 0.3572701809,
     "t": 3.577992598,
-    "p": 0.01167127022
+    "p": 0.01167127022,
+    "ciLow": 0.404101423,
+    "ciHigh": 2.152518702
    },
    {
     "term": "Top",
     "estimate": 99.24218728,
     "stdError": 0.3272161451,
     "t": 303.2924529,
-    "p": 8.670812482e-14
+    "p": 8.670812482e-14,
+    "ciLow": 98.44151821,
+    "ciHigh": 100.0428563
    },
    {
     "term": "LogEC50",
     "estimate": -0.8419806437,
     "stdError": 0.007679010652,
     "t": -109.6470212,
-    "p": 3.879305116e-11
+    "p": 3.879305116e-11,
+    "ciLow": -0.8607705059,
+    "ciHigh": -0.8231907816
    },
    {
     "term": "HillSlope",
     "estimate": 0.9769513568,
     "stdError": 0.01584450365,
     "t": 61.65869113,
-    "p": 1.223320237e-9
+    "p": 1.223320237e-9,
+    "ciLow": 0.9381812531,
+    "ciHigh": 1.015721461
    }
   ]
  },
@@ -3246,28 +3272,36 @@
     "estimate": 1.278310063,
     "stdError": 0.3572701809,
     "t": 3.577992598,
-    "p": 0.01167127022
+    "p": 0.01167127022,
+    "ciLow": 0.404101423,
+    "ciHigh": 2.152518702
    },
    {
     "term": "Top",
     "estimate": 99.24218728,
     "stdError": 0.3272161451,
     "t": 303.2924529,
-    "p": 8.670812482e-14
+    "p": 8.670812482e-14,
+    "ciLow": 98.44151821,
+    "ciHigh": 100.0428563
    },
    {
     "term": "LogEC50",
     "estimate": -0.8419806437,
     "stdError": 0.007679010652,
     "t": -109.6470212,
-    "p": 3.879305116e-11
+    "p": 3.879305116e-11,
+    "ciLow": -0.8607705059,
+    "ciHigh": -0.8231907816
    },
    {
     "term": "HillSlope",
     "estimate": 0.9769513568,
     "stdError": 0.01584450365,
     "t": 61.65869113,
-    "p": 1.223320237e-9
+    "p": 1.223320237e-9,
+    "ciLow": 0.9381812531,
+    "ciHigh": 1.015721461
    }
   ],
   "interpolations": [
@@ -3349,28 +3383,36 @@
     "estimate": 1.278310063,
     "stdError": 0.3572701809,
     "t": 3.577992598,
-    "p": 0.01167127022
+    "p": 0.01167127022,
+    "ciLow": 0.404101423,
+    "ciHigh": 2.152518702
    },
    {
     "term": "Top",
     "estimate": 99.24218728,
     "stdError": 0.3272161451,
     "t": 303.2924529,
-    "p": 8.670812482e-14
+    "p": 8.670812482e-14,
+    "ciLow": 98.44151821,
+    "ciHigh": 100.0428563
    },
    {
     "term": "LogEC50",
     "estimate": -0.8419806437,
     "stdError": 0.007679010652,
     "t": -109.6470212,
-    "p": 3.879305116e-11
+    "p": 3.879305116e-11,
+    "ciLow": -0.8607705059,
+    "ciHigh": -0.8231907816
    },
    {
     "term": "HillSlope",
     "estimate": 0.9769513568,
     "stdError": 0.01584450365,
     "t": 61.65869113,
-    "p": 1.223320237e-9
+    "p": 1.223320237e-9,
+    "ciLow": 0.9381812531,
+    "ciHigh": 1.015721461
    }
   ],
   "interpolations": [
@@ -3438,14 +3480,18 @@
     "estimate": 0.9929824561,
     "stdError": 0.1419525361,
     "t": 6.995172354,
-    "p": 0.0004250712706
+    "p": 0.0004250712706,
+    "ciLow": 0.6456371133,
+    "ciHigh": 1.340327799
    },
    {
     "term": "Slope",
     "estimate": 2.012280702,
     "stdError": 0.03224944911,
     "t": 62.39736669,
-    "p": 1.139070697e-9
+    "p": 1.139070697e-9,
+    "ciLow": 1.933369143,
+    "ciHigh": 2.091192261
    }
   ],
   "interpolations": [
@@ -3517,28 +3563,36 @@
     "estimate": 0.9712190483,
     "stdError": 0.760423366,
     "t": 1.277208318,
-    "p": 0.2914099531
+    "p": 0.2914099531,
+    "ciLow": -1.448787483,
+    "ciHigh": 3.39122558
    },
    {
     "term": "Top",
     "estimate": 99.38361559,
     "stdError": 0.3347186826,
     "t": 296.9168461,
-    "p": 8.424584591e-8
+    "p": 8.424584591e-8,
+    "ciLow": 98.31839135,
+    "ciHigh": 100.4488398
    },
    {
     "term": "EC50",
     "estimate": 1.13316317,
     "stdError": 0.02392382471,
     "t": 47.36546868,
-    "p": 0.00002071995365
+    "p": 0.00002071995365,
+    "ciLow": 1.057026883,
+    "ciHigh": 1.209299458
    },
    {
     "term": "HillSlope",
     "estimate": 0.9565525395,
     "stdError": 0.01825043187,
     "t": 52.41259748,
-    "p": 0.00001529659803
+    "p": 0.00001529659803,
+    "ciLow": 0.89847152,
+    "ciHigh": 1.014633559
    }
   ],
   "interpolations": [
@@ -3610,28 +3664,36 @@
     "estimate": 0.9712190483,
     "stdError": 0.760423366,
     "t": 1.277208318,
-    "p": 0.2914099531
+    "p": 0.2914099531,
+    "ciLow": -1.448787483,
+    "ciHigh": 3.39122558
    },
    {
     "term": "Top",
     "estimate": 99.38361559,
     "stdError": 0.3347186826,
     "t": 296.9168461,
-    "p": 8.424584591e-8
+    "p": 8.424584591e-8,
+    "ciLow": 98.31839135,
+    "ciHigh": 100.4488398
    },
    {
     "term": "EC50",
     "estimate": 1.13316317,
     "stdError": 0.02392382471,
     "t": 47.36546868,
-    "p": 0.00002071995365
+    "p": 0.00002071995365,
+    "ciLow": 1.057026883,
+    "ciHigh": 1.209299458
    },
    {
     "term": "HillSlope",
     "estimate": 0.9565525395,
     "stdError": 0.01825043187,
     "t": 52.41259748,
-    "p": 0.00001529659803
+    "p": 0.00001529659803,
+    "ciLow": 0.89847152,
+    "ciHigh": 1.014633559
    }
   ]
  },
@@ -3685,14 +3747,18 @@
     "estimate": 98.4301164,
     "stdError": 0.6482847339,
     "t": 151.8316123,
-    "p": 2.351207812e-10
+    "p": 2.351207812e-10,
+    "ciLow": 96.76364744,
+    "ciHigh": 100.0965854
    },
    {
     "term": "Kd",
     "estimate": 1.071529382,
     "stdError": 0.03506663428,
     "t": 30.55694975,
-    "p": 7.043415608e-7
+    "p": 7.043415608e-7,
+    "ciLow": 0.9813877284,
+    "ciHigh": 1.161671035
    }
   ]
  },
@@ -3746,14 +3812,18 @@
     "estimate": 46.03195951,
     "stdError": 3.864098342,
     "t": 11.91272981,
-    "p": 0.00007345228265
+    "p": 0.00007345228265,
+    "ciLow": 36.0989785,
+    "ciHigh": 55.96494052
    },
    {
     "term": "Slope",
     "estimate": 14.00787048,
     "stdError": 1.50677446,
     "t": 9.296594049,
-    "p": 0.0002422691305
+    "p": 0.0002422691305,
+    "ciLow": 10.13458342,
+    "ciHigh": 17.88115754
    }
   ]
  },
@@ -21073,21 +21143,27 @@
     "estimate": 100,
     "stdError": 2.103189959e-11,
     "t": 4754682265000,
-    "p": 4.807559855e-87
+    "p": 4.807559855e-87,
+    "ciLow": 100,
+    "ciHigh": 100
    },
    {
     "term": "Plateau",
     "estimate": 10,
     "stdError": 1.453528955e-11,
     "t": 687980790900,
-    "p": 3.620270436e-81
+    "p": 3.620270436e-81,
+    "ciLow": 10,
+    "ciHigh": 10
    },
    {
     "term": "K",
     "estimate": 0.5,
     "stdError": 3.301689173e-13,
     "t": 1514376350000,
-    "p": 1.445900706e-83
+    "p": 1.445900706e-83,
+    "ciLow": 0.5,
+    "ciHigh": 0.5
    }
   ]
  },
@@ -21154,35 +21230,45 @@
     "estimate": 10,
     "stdError": 3.164189626e-10,
     "t": 31603668500,
-    "p": 6.020275603e-52
+    "p": 6.020275603e-52,
+    "ciLow": 9.999999999,
+    "ciHigh": 10
    },
    {
     "term": "Span1",
     "estimate": 60,
     "stdError": 1.468068798e-10,
     "t": 408700192300,
-    "p": 1.664484102e-57
+    "p": 1.664484102e-57,
+    "ciLow": 60,
+    "ciHigh": 60
    },
    {
     "term": "K1",
     "estimate": 1,
     "stdError": 2.637560446e-12,
     "t": 379138230400,
-    "p": 2.422791092e-57
+    "p": 2.422791092e-57,
+    "ciLow": 1,
+    "ciHigh": 1
    },
    {
     "term": "Span2",
     "estimate": 30,
     "stdError": 1.884389028e-10,
     "t": 159202794900,
-    "p": 1.85588227e-55
+    "p": 1.85588227e-55,
+    "ciLow": 30,
+    "ciHigh": 30
    },
    {
     "term": "K2",
     "estimate": 0.1,
     "stdError": 2.301626451e-12,
     "t": 43447536820,
-    "p": 1.225964972e-52
+    "p": 1.225964972e-52,
+    "ciLow": 0.09999999999,
+    "ciHigh": 0.1
    }
   ]
  },
@@ -21245,28 +21331,36 @@
     "estimate": 2,
     "stdError": 2.748344589e-12,
     "t": 727710785500,
-    "p": 4.545178071e-70
+    "p": 4.545178071e-70,
+    "ciLow": 2,
+    "ciHigh": 2
    },
    {
     "term": "Y0",
     "estimate": 100,
     "stdError": 1.797864781e-11,
     "t": 5562153564000,
-    "p": 2.279533204e-75
+    "p": 2.279533204e-75,
+    "ciLow": 100,
+    "ciHigh": 100
    },
    {
     "term": "Plateau",
     "estimate": 10,
     "stdError": 2.963645008e-11,
     "t": 337422328700,
-    "p": 4.573628259e-68
+    "p": 4.573628259e-68,
+    "ciLow": 10,
+    "ciHigh": 10
    },
    {
     "term": "K",
     "estimate": 0.5,
     "stdError": 1.092877769e-12,
     "t": 457507705100,
-    "p": 7.360601351e-69
+    "p": 7.360601351e-69,
+    "ciLow": 0.5,
+    "ciHigh": 0.5
    }
   ]
  },
@@ -21335,21 +21429,27 @@
     "estimate": -1.236123968e-7,
     "stdError": 1.965848007e-7,
     "t": -0.62879936,
-    "p": 0.5494407554
+    "p": 0.5494407554,
+    "ciLow": -5.884615839e-7,
+    "ciHigh": 3.412367903e-7
    },
    {
     "term": "Plateau",
     "estimate": 99.99999997,
     "stdError": 3.802480097e-7,
     "t": 262986254.8,
-    "p": 3.03559514e-57
+    "p": 3.03559514e-57,
+    "ciLow": 99.99999907,
+    "ciHigh": 100.0000009
    },
    {
     "term": "K",
     "estimate": 0.3000000051,
     "stdError": 3.230065798e-9,
     "t": 92877366.55,
-    "p": 4.430022694e-54
+    "p": 4.430022694e-54,
+    "ciLow": 0.2999999974,
+    "ciHigh": 0.3000000127
    }
   ]
  },
@@ -21412,21 +21512,27 @@
     "estimate": 10,
     "stdError": 1.79763618e-11,
     "t": 556286089100,
-    "p": 1.602093295e-80
+    "p": 1.602093295e-80,
+    "ciLow": 10,
+    "ciHigh": 10
    },
    {
     "term": "Plateau",
     "estimate": 200,
     "stdError": 3.840673005e-11,
     "t": 5207420672000,
-    "p": 2.543411099e-87
+    "p": 2.543411099e-87,
+    "ciLow": 200,
+    "ciHigh": 200
    },
    {
     "term": "K",
     "estimate": 0.2,
     "stdError": 1.00441853e-13,
     "t": 1991201815000,
-    "p": 2.127983442e-84
+    "p": 2.127983442e-84,
+    "ciLow": 0.2,
+    "ciHigh": 0.2
    }
   ]
  },
@@ -21485,15 +21591,388 @@
     "estimate": 10,
     "stdError": 7.039793085e-12,
     "t": 1420496296000,
-    "p": 6.756117256e-95
+    "p": 6.756117256e-95,
+    "ciLow": 10,
+    "ciHigh": 10
    },
    {
     "term": "K",
     "estimate": 0.2,
     "stdError": 6.685636316e-14,
     "t": 2991487878000,
-    "p": 1.746304782e-97
+    "p": 1.746304782e-97,
+    "ciLow": 0.2,
+    "ciHigh": 0.2
    }
   ]
+ },
+ "nonlinear-regression enzymeS {\"y\":\"A\",\"model\":\"michaelis-menten\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Michaelis-Menten",
+  "equation": "Y = 100·X / (5 + X)",
+  "stats": [
+   {
+    "label": "Vmax/Km",
+    "value": 20
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.399422243e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 2.878613551e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 5
+   },
+   {
+    "label": "N",
+    "value": 7
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 12.64285714,
+    "sd": 17.84823587,
+    "sem": 6.745999066,
+    "median": 5,
+    "n": 7
+   },
+   {
+    "name": "A",
+    "mean": 48.84353741,
+    "sd": 31.84812438,
+    "sem": 12.03745955,
+    "median": 50,
+    "n": 7
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"Michaelis-Menten\") of \"A\" on \"X\". Starting values: Vmax = 100, Km = 5.",
+  "coefficients": [
+   {
+    "term": "Vmax",
+    "estimate": 100,
+    "stdError": 2.730779728e-11,
+    "t": 3661957754000,
+    "p": 2.882286931e-62,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Km",
+    "estimate": 5,
+    "stdError": 4.475433509e-12,
+    "t": 1117210208000,
+    "p": 1.090509331e-59,
+    "ciLow": 5,
+    "ciHigh": 5
+   }
+  ]
+ },
+ "nonlinear-regression enzymeS0 {\"model\":\"michaelis-menten\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Michaelis-Menten",
+  "equation": "Y = 100·X / (5 + X)",
+  "stats": [
+   {
+    "label": "Vmax/Km",
+    "value": 20
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.190362813e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 2.878613551e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 6
+   },
+   {
+    "label": "N",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 11.0625,
+    "sd": 17.11815557,
+    "sem": 6.052181941,
+    "median": 3.5,
+    "n": 8
+   },
+   {
+    "name": "Y",
+    "mean": 42.73809524,
+    "sd": 34.1703671,
+    "sem": 12.08104915,
+    "median": 39.28571429,
+    "n": 8
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"Michaelis-Menten\") of \"Y\" on \"X\". Starting values: Vmax = 100, Km = 5. The X = 0 (vehicle) point is included in the fit; the fitted curve is Y = 0 at X = 0.",
+  "coefficients": [
+   {
+    "term": "Vmax",
+    "estimate": 100,
+    "stdError": 2.492849428e-11,
+    "t": 4011473734000,
+    "p": 1.619869602e-74,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Km",
+    "estimate": 5,
+    "stdError": 4.085493145e-12,
+    "t": 1223842465000,
+    "p": 2.008864592e-71,
+    "ciLow": 5,
+    "ciHigh": 5
+   }
+  ]
+ },
+ "nonlinear-regression enzymeS {\"y\":\"B\",\"model\":\"allosteric-sigmoidal\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Allosteric sigmoidal",
+  "equation": "Y = 100·X^2 / (5^2 + X^2)",
+  "stats": [
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 1.979913559e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 1.568023081e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 4
+   },
+   {
+    "label": "N",
+    "value": 7
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 12.64285714,
+    "sd": 17.84823587,
+    "sem": 6.745999066,
+    "median": 5,
+    "n": 7
+   },
+   {
+    "name": "B",
+    "mean": 48.82241491,
+    "sd": 42.97619011,
+    "sem": 16.24347305,
+    "median": 50,
+    "n": 7
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"Allosteric sigmoidal\") of \"B\" on \"X\". Starting values: Vmax = 108.9, Khalf = 5, Hill slope = 1.",
+  "coefficients": [
+   {
+    "term": "Vmax",
+    "estimate": 100,
+    "stdError": 1.862462806e-11,
+    "t": 5369234739000,
+    "p": 7.219409636e-51,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Khalf",
+    "estimate": 5,
+    "stdError": 2.01855828e-12,
+    "t": 2477015427000,
+    "p": 1.593809478e-49,
+    "ciLow": 5,
+    "ciHigh": 5
+   },
+   {
+    "term": "HillSlope",
+    "estimate": 2,
+    "stdError": 1.329023132e-12,
+    "t": 1504864703000,
+    "p": 1.169934176e-48,
+    "ciLow": 2,
+    "ciHigh": 2
+   }
+  ]
+ },
+ "nonlinear-regression enzymeS {\"y\":\"C\",\"model\":\"substrate-inhibition\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Substrate inhibition",
+  "equation": "Y = 100·X / (2 + X + X²/10)",
+  "stats": [
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.674670922e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 2.861545817e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 4
+   },
+   {
+    "label": "N",
+    "value": 7
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 12.64285714,
+    "sd": 17.84823587,
+    "sem": 6.745999066,
+    "median": 5,
+    "n": 7
+   },
+   {
+    "name": "C",
+    "mean": 34.91643864,
+    "sd": 13.63577008,
+    "sem": 5.153836651,
+    "median": 32.25806452,
+    "n": 7
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"Substrate inhibition\") of \"C\" on \"X\". Starting values: Vmax = 78.95, Km = 5, Ki = 50.",
+  "coefficients": [
+   {
+    "term": "Vmax",
+    "estimate": 100,
+    "stdError": 1.617758989e-10,
+    "t": 618139047000,
+    "p": 4.109666094e-47,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Km",
+    "estimate": 2,
+    "stdError": 5.639690334e-12,
+    "t": 354629400100,
+    "p": 3.793606675e-46,
+    "ciLow": 2,
+    "ciHigh": 2
+   },
+   {
+    "term": "Ki",
+    "estimate": 10,
+    "stdError": 2.899486735e-11,
+    "t": 344888627300,
+    "p": 4.240682472e-46,
+    "ciLow": 10,
+    "ciHigh": 10
+   }
+  ]
+ },
+ "nonlinear-regression enzymeNoisy {\"model\":\"michaelis-menten\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Michaelis-Menten",
+  "equation": "Y = 100.5·X / (5.068 + X)",
+  "stats": [
+   {
+    "label": "Vmax/Km",
+    "value": 19.83574078
+   },
+   {
+    "label": "R squared",
+    "value": 0.9996638002
+   },
+   {
+    "label": "Sy.x",
+    "value": 0.6419721701
+   },
+   {
+    "label": "Sum of squares",
+    "value": 2.060641336
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 5
+   },
+   {
+    "label": "N",
+    "value": 7
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 12.64285714,
+    "sd": 17.84823587,
+    "sem": 6.745999066,
+    "median": 5,
+    "n": 7
+   },
+   {
+    "name": "Y",
+    "mean": 48.91292517,
+    "sd": 31.96147949,
+    "sem": 12.08030375,
+    "median": 49.5,
+    "n": 7
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"Michaelis-Menten\") of \"Y\" on \"X\". Starting values: Vmax = 101, Km = 5.",
+  "coefficients": [
+   {
+    "term": "Vmax",
+    "estimate": 100.5333227,
+    "stdError": 0.7353818191,
+    "t": 136.709013,
+    "p": 3.972548258e-10,
+    "ciLow": 98.64296351,
+    "ciHigh": 102.4236818
+   },
+   {
+    "term": "Km",
+    "estimate": 5.068291815,
+    "stdError": 0.1211010523,
+    "t": 41.85175701,
+    "p": 1.469205303e-7,
+    "ciLow": 4.75699165,
+    "ciHigh": 5.37959198
+   }
+  ]
+ },
+ "nonlinear-regression enzymeNegX {\"model\":\"michaelis-menten\"}": {
+  "error": "Substrate concentrations cannot be negative."
+ },
+ "nonlinear-regression enzymeConstX {\"model\":\"michaelis-menten\"}": {
+  "error": "All substrate concentrations are equal — Km cannot be estimated."
+ },
+ "nonlinear-regression enzymeTooFew {\"model\":\"michaelis-menten\"}": {
+  "error": "Not enough complete points (2) to fit this curve; need at least 3."
  }
 }
