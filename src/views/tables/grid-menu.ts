@@ -5,7 +5,7 @@
 import type { TableData, TableType } from "../../store/types";
 import type { TableMove } from "../../store/references";
 import type { MenuItems } from "../../native";
-import { isGrouped } from "../../lib/dataset";
+import { isGrouped, isNested } from "../../lib/dataset";
 import {
   convertCommaDecimals,
   deleteColumns,
@@ -41,7 +41,8 @@ interface MenuContext {
 }
 
 export function gridMenu({ data, type, zone, range, update, rename, showGroups }: MenuContext): MenuItems {
-  const grouped = isGrouped(data);
+  const nested = isNested(data);
+  const grouped = isGrouped(data) || nested;
   const rows = range.r1 - range.r0 + 1;
   const cols = range.c1 - range.c0 + 1;
   // Row titles (and an XY table's X column) stay first: nothing is inserted before them or deletes them.
@@ -93,7 +94,7 @@ export function gridMenu({ data, type, zone, range, update, rename, showGroups }
 
   if (onCells) {
     items.push(SEPARATOR, {
-      text: grouped && range.c0 > 0 ? "Rename Group" : "Rename Column",
+      text: nested && range.c0 > 0 ? "Rename Subgroup" : grouped && range.c0 > 0 ? "Rename Group" : "Rename Column",
       action: () => rename(range.c0),
     });
   }

@@ -13,6 +13,7 @@ import type {
   MultipleRegressionParams,
   MultipleLogisticRegressionParams,
   MultipleTTestsParams,
+  NestedAnovaParams,
   NonlinearRegressionParams,
   OutliersParams,
   PoissonRegressionParams,
@@ -44,6 +45,8 @@ import { runStandardCurveInterpolation } from "./xy/standard-curve-interpolation
 import { runTwoWayAnova } from "./grouped/two-way-anova";
 import { runThreeWayAnova } from "./grouped/three-way-anova";
 import { runMultipleTTests } from "./grouped/multiple-t-tests";
+import { runNestedTTest } from "./nested/nested-t-test";
+import { runNestedAnova } from "./nested/nested-anova";
 import { runCorrelationMatrix } from "./multiple/correlation-matrix";
 import { runMultipleRegression } from "./multiple/multiple-regression";
 import { runMultipleLogisticRegression } from "./multiple/multiple-logistic-regression";
@@ -139,6 +142,15 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Multiple t tests",
     minColumns: 2,
     run: (c, p, t) => runMultipleTTests(c, p as MultipleTTestsParams, t),
+  },
+  // minColumns is a floor only: the runners validate the group and subgroup
+  // counts themselves (a nested t test needs exactly 2 groups, a nested
+  // ANOVA 3+, each with subcolumns holding values).
+  "nested-t-test": { label: "Nested t test", minColumns: 2, run: (c, p) => runNestedTTest(c, p) },
+  "nested-anova": {
+    label: "Nested one-way ANOVA",
+    minColumns: 3,
+    run: (c, p) => runNestedAnova(c, p as NestedAnovaParams),
   },
   "correlation-matrix": {
     label: "Correlation matrix",

@@ -1,7 +1,7 @@
 // The table types (Prism's data tables). All share one grid; a type decides
 // its default columns and how new columns are named (see table-data.ts).
 import type { TableData, TableType } from "../../store/types";
-import { newGroupedTable, newTable } from "./table-data";
+import { newGroupedTable, newNestedTable, newTable } from "./table-data";
 
 interface TableModule {
   label: string;
@@ -15,6 +15,8 @@ export const TABLES: Record<TableType, TableModule> = {
   xy: { label: "XY", defaultData: () => newTable("xy", 16) },
   // Groups (A, B…) of replicate sub-columns ("A:Y1"…), nested headers.
   grouped: { label: "Grouped", defaultData: () => newGroupedTable(4, 3) },
+  // Groups of subgroups of replicate sub-columns ("A:S1:R1"…), three header rows.
+  nested: { label: "Nested", defaultData: () => newNestedTable(2, 3, 3) },
   // Each column is a variable, each row a subject.
   multiple: { label: "Multiple Variables", defaultData: () => newTable("multiple", 15) },
   // Counts: row categories × outcomes.

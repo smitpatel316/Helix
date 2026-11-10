@@ -14,6 +14,7 @@ import type {
   CoxPHParams,
   FrequencyDistributionParams,
   MultipleTTestsParams,
+  NestedAnovaParams,
   NonlinearRegressionParams,
   OneSampleTParams,
   StandardCurveInterpolationParams,
@@ -574,6 +575,23 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         ...(a.posthoc !== undefined && a.posthoc !== "none"
           ? { posthocTerm: (a.posthocTerm as ThreeWayAnovaParams["posthocTerm"] | undefined) ?? "A" }
           : {}),
+      }),
+    }),
+  },
+
+  "nested-anova": {
+    questions: (_, table) => [
+      ...someSets(table, 3),
+      choice("posthoc", "Compare each pair of groups?", [
+        ["none", "No — only the overall ANOVA"],
+        ["tukey", "Yes — Tukey's multiple comparisons test"],
+        ["bonferroni", "Yes — Bonferroni-corrected comparisons"],
+      ]),
+    ],
+    finish: (a) => ({
+      type: "nested-anova",
+      params: withSets(a, {
+        posthoc: (a.posthoc as NestedAnovaParams["posthoc"] | undefined) ?? "none",
       }),
     }),
   },

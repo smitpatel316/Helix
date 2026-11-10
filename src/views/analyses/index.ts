@@ -47,6 +47,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "survival-log-rank",
   ]),
   grouped: optionsFor(["two-way-anova", "three-way-anova", "multiple-t-tests"]),
+  nested: optionsFor(["nested-t-test", "nested-anova"]),
   multiple: optionsFor([
     "correlation-matrix",
     "multiple-regression",
@@ -63,9 +64,17 @@ export function hasRowGroups(data: TableData | undefined): boolean {
 }
 
 /** The picker/menu options for a table: the three-way ANOVA is offered only
- *  when the table has ≥ 2 row bands — without them it would be a dead test. */
+ *  when the table has ≥ 2 row bands — without them it would be a dead test.
+ *  Likewise the nested tests are offered only for their group count (t test
+ *  for exactly 2 groups with data, ANOVA for 3+) — the runners validate
+ *  either way, so a stale entry point still gets a clear error. */
 export function analysisOptionsForTable(tableType: TableType, data?: TableData): SelectorOption<AnalysisPickerValue>[] {
-  return ANALYSIS_OPTIONS_BY_TABLE[tableType].filter((o) => o.value !== "three-way-anova" || hasRowGroups(data));
+  return ANALYSIS_OPTIONS_BY_TABLE[tableType].filter((o) => {
+    if (o.value === "three-way-anova") return hasRowGroups(data);
+    if (o.value === "nested-t-test") return data === undefined || countDataGroups(data) === 2;
+    if (o.value === "nested-anova") return data === undefined || countDataGroups(data) >= 3;
+    return true;
+  });
 }
 
 /** Count data columns (excluding the leading Title column) that hold ≥1 numeric value. */

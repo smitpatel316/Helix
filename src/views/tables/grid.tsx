@@ -12,7 +12,7 @@ import type { TableMove } from "../../store/references";
 import type { EditCommand } from "../../app-menu";
 import { parseCell } from "../../lib/numeric";
 import { seriesKeyOf } from "../../lib/columns";
-import { isGrouped } from "../../lib/dataset";
+import { isGrouped, isNested } from "../../lib/dataset";
 import { popupMenu } from "../../native";
 import { XIcon } from "@phosphor-icons/react";
 import { cn, IconButton } from "../../ui/controls";
@@ -25,6 +25,7 @@ import {
   parseTSV,
   renameColumn,
   renameGroup,
+  renameSubgroup,
   setColumnWidth,
   toTSV,
   toggleExcluded,
@@ -88,7 +89,8 @@ const inRange = (g: Range, r: number, c: number) => r >= g.r0 && r <= g.r1 && c 
 type Editing =
   | { kind: "cell"; r: number; c: number; value: string; typed: boolean }
   | { kind: "column"; c: number; value: string }
-  | { kind: "group"; key: string; value: string };
+  | { kind: "group"; key: string; value: string }
+  | { kind: "subgroup"; group: string; key: string; value: string };
 
 /** Index of the column whose span holds `x` (xs = left edges, ascending). */
 function columnAt(xs: number[], x: number): number {
@@ -113,18 +115,24 @@ interface GridProps {
 }
 
 export function Grid({ data, type, update, showGroups }: GridProps) {
-  const grouped = isGrouped(data);
+  const nested = isNested(data);
+  const grouped = isGrouped(data) || nested;
   const replicates = data.replicates ?? 1;
-  const headH = HEAD_H * (grouped ? 2 : 1);
+  const subgroups = data.subgroups ?? 1;
+  const headH = HEAD_H * (nested ? 3 : grouped ? 2 : 1);
   // Shown headers: the stored columns, then (except for grouped tables, whose columns
   // come from their groups) the names new columns would get. Grouped sub-columns show
-  // only their part after "A:" — the group row above names the group.
+  // only their part after "A:" — the group row above names the group. Nested
+  // sub-columns show only their part after the last ":" ("R1") — the group and
+  // subgroup rows above name those.
   const headers = React.useMemo(
     () =>
       grouped
-        ? data.columns.map((name, c) => (c > 0 ? name.slice(name.indexOf(":") + 1) : name))
+        ? data.columns.map((name, c) =>
+            c > 0 ? name.slice((nested ? name.lastIndexOf(":") : name.indexOf(":")) + 1) : name,
+          )
         : [...data.columns, ...freshColumnNames(data.columns, type, EXTRA_COLS)],
-    [data.columns, grouped, type],
+    [data.columns, grouped, nested, type],
   );
   const nRows = data.rows.length + EXTRA_ROWS;
   const nCols = headers.length;
@@ -243,8 +251,18 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
   const startRename = (c: number) => {
     if (c >= data.columns.length) return; // an empty column gets its name when data is written to it
     const name = data.columns[c];
-    if (grouped && c > 0) setEditing({ kind: "group", key: seriesKeyOf(name), value: seriesKeyOf(name) });
+    if (nested && c > 0) {
+      // The bottom header names a replicate ("R1") — renaming it renames its subgroup.
+      const parts = name.split(":");
+      setEditing({ kind: "subgroup", group: parts[0], key: parts[1], value: parts[1] });
+    } else if (grouped && c > 0) setEditing({ kind: "group", key: seriesKeyOf(name), value: seriesKeyOf(name) });
     else setEditing({ kind: "column", c, value: name });
+  };
+  /** Renames the subgroup of the column `c` belongs to (the subgroup header row). */
+  const startRenameSubgroup = (c: number) => {
+    if (c >= data.columns.length) return;
+    const parts = data.columns[c].split(":");
+    setEditing({ kind: "subgroup", group: parts[0], key: parts[1], value: parts[1] });
   };
 
   /** Ends editing, saving unless `cancel`, then moves the selection by (dr, dc). */
@@ -262,6 +280,7 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
     }
     if (!cancel && ed.kind === "group")
       update(renameGroup(data, ed.key, value), "Rename Group", { renamed: { [ed.key]: value } });
+    if (!cancel && ed.kind === "subgroup") update(renameSubgroup(data, ed.group, ed.key, value), "Rename Subgroup");
     setEditing(null);
     focusGrid();
   };
@@ -547,7 +566,7 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
         "absolute flex items-center justify-center border-r border-b border-separator px-2 text-secondary",
         selectedCols(c) && "bg-control text-primary",
       )}
-      style={box(c, grouped && c > 0 ? HEAD_H : 0, grouped && c === 0 ? headH : HEAD_H)}
+      style={box(c, grouped && c > 0 ? (nested ? 2 * HEAD_H : HEAD_H) : 0, grouped && c === 0 ? headH : HEAD_H)}
       onPointerDown={(e) => onColumnDown(e, c)}
       onDoubleClick={() => startRename(c)}
       onContextMenu={(e) => showMenu(e, "column")}
@@ -643,8 +662,11 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
             <div className="relative shrink-0 bg-surface" style={{ width: mainW }}>
               {grouped &&
                 Array.from({ length: data.groups! }, (_, g) => {
-                  const lo = 1 + g * replicates;
-                  const hi = lo + replicates - 1;
+                  // A group spans its subgroups × replicates (nested) or its
+                  // replicates (grouped).
+                  const spanCols = nested ? subgroups * replicates : replicates;
+                  const lo = 1 + g * spanCols;
+                  const hi = lo + spanCols - 1;
                   const key = seriesKeyOf(data.columns[lo] ?? "");
                   const span = { ...box(lo, 0, HEAD_H), width: xs[hi + 1] - xs[lo] };
                   return editing?.kind === "group" && editing.key === key ? (
@@ -659,6 +681,32 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
                       style={span}
                       onPointerDown={(e) => onColumnDown(e, lo, hi)}
                       onDoubleClick={() => startRename(lo)}
+                      onContextMenu={(e) => showMenu(e, "column")}
+                    >
+                      {key}
+                    </div>
+                  );
+                })}
+              {nested &&
+                Array.from({ length: data.groups! * subgroups }, (_, gs) => {
+                  // A subgroup spans its replicates, under its group's row.
+                  const lo = 1 + gs * replicates;
+                  const hi = lo + replicates - 1;
+                  const parts = (data.columns[lo] ?? "").split(":");
+                  const key = parts[1] ?? "";
+                  const span = { ...box(lo, HEAD_H, HEAD_H), width: xs[hi + 1] - xs[lo] };
+                  return editing?.kind === "subgroup" && editing.group === parts[0] && editing.key === key ? (
+                    <React.Fragment key={gs}>{headerEditor(editing.value, span)}</React.Fragment>
+                  ) : (
+                    <div
+                      key={gs}
+                      className={cn(
+                        "absolute truncate border-r border-b border-separator px-2 text-center leading-[26px]",
+                        selectedCols(lo) && selectedCols(hi) && "bg-control font-medium",
+                      )}
+                      style={span}
+                      onPointerDown={(e) => onColumnDown(e, lo, hi)}
+                      onDoubleClick={() => startRenameSubgroup(lo)}
                       onContextMenu={(e) => showMenu(e, "column")}
                     >
                       {key}

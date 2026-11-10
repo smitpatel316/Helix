@@ -18,6 +18,18 @@
 //                 graph and the log-rank analysis apply to it)
 //   Contingency → Contingency
 //   PartsOfWhole→ Column    (one Y column, rows named by the row titles)
+//   Nested      → NO verified marker (see below): a Prism nested table is
+//                 one of Prism's eight formats (Prism 8+), with replicates
+//                 stacked into subcolumns, but no public .pzfx file or reader
+//                 shows a distinct TableType/YFormat value for it — checked
+//                 2026-11-10: no nested file in test-corpus/ or tests/testdata/,
+//                 and the open-source readers (R pzfx 0.3.1, pypzfx) know no
+//                 "Nested" TableType. A OneWay/replicates table therefore
+//                 imports as Column (today's behaviour, unchanged) and the
+//                 user converts it to Nested by hand — do NOT auto-convert
+//                 OneWay/replicates to nested on a heuristic, a plain
+//                 replicates Column table is far more common than a nested one.
+//                 If a distinct marker is ever verified, map it here directly.
 // A struck-through value (`<d Excluded="1">`) becomes a Helix excluded cell.
 // A `.prism` file (Prism 10's newer format) is not `.pzfx` and is not imported.
 
