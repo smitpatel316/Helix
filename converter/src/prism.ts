@@ -62,11 +62,12 @@ interface PrismDocument {
     info?: string[];
     data?: string[];
   };
-  sheetAttributesMap?: Record<string, { title?: string }>;
+  sheetAttributesMap?: Record<string, { title?: string | { string?: string } }>;
 }
 
 interface PrismDataSheet {
-  title?: string;
+  /** Sheet title — a plain string, or a rich-text object (see PrismDataSet). */
+  title?: string | { string?: string };
   table?: {
     uid?: string;
     format?: string;
@@ -79,13 +80,20 @@ interface PrismDataSheet {
 }
 
 interface PrismDataSet {
-  title?: string;
+  /**
+   * The dataset's title. Usually a plain string — but Prism sometimes
+   * writes a rich-text object `{ string, version, formatting }` (seen in
+   * real files: dose-curve, dilution, ELISA). `plainTitle` unwraps it.
+   */
+  title?: string | { string?: string };
   format?: string;
   replicates?: unknown[];
   /** `y_replicates` datasets carry this instead of `replicates`: a list of
    *  ranges, each covering one or more replicate subcolumns ("0~1" = two,
    *  "2" = one). */
   "replicate ranges"?: { range?: string }[];
+  /** Survival X datasets carry this: how their dates become durations. */
+  dateTimeConversion?: { units?: string; zeroDate?: string };
 }
 
 /** How many subcolumns a dataset holds: its `replicates` array, else the
@@ -104,10 +112,11 @@ function replicateCount(set: PrismDataSet, table: PrismDataSheet["table"]): numb
 }
 
 interface PrismAnalysisSheet {
-  title?: string;
+  /** Sheet title — a plain string, or a rich-text object (see PrismDataSet). */
+  title?: string | { string?: string };
   analysisClass?: string;
   inputSheets?: { uid?: string; title?: string }[];
-  inputDataSets?: { uid?: string; title?: string; idx?: string }[];
+  inputDataSets?: { uid?: string; title?: string | { string?: string }; idx?: string }[];
 }
 
 interface PrismAnalysisParameters {
@@ -140,6 +149,43 @@ const NONLINEAR_MODELS: Record<string, NonlinearModel> = {
 };
 
 const genId = (type: string) => `${type}_${Math.random().toString(36).slice(2, 10)}`;
+
+/**
+ * A Prism title as plain text. Usually a string — but Prism sometimes
+ * writes a rich-text object `{ string, version, formatting }` (seen on
+ * dataset and X titles in real files). Anything else is "" and the
+ * caller's fallback applies. Never returns "[object Object]".
+ */
+function plainTitle(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value !== null && typeof value === "object") {
+    const s = (value as { string?: unknown }).string;
+    if (typeof s === "string") return s;
+  }
+  return "";
+}
+
+/** Parse a Prism date cell: ISO ("2024-09-06 00:00:00") or US ("12/17/2024"). */
+function parsePrismDate(value: string | null): number | null {
+  if (value === null || value === "") return null;
+  let ms = Date.parse(value.replace(" ", "T"));
+  if (!Number.isNaN(ms)) return ms;
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value.trim());
+  if (m) {
+    ms = Date.parse(`${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}T00:00:00`);
+    if (!Number.isNaN(ms)) return ms;
+  }
+  return null;
+}
+
+/** Days between two Prism date cells, as Helix stores numbers (text). */
+function daysBetween(start: string | null, end: string | null): string | null {
+  const a = parsePrismDate(start);
+  const b = parsePrismDate(end);
+  if (a === null || b === null) return null;
+  const days = (b - a) / 86_400_000;
+  return Number.isInteger(days) ? String(days) : String(Number(days.toFixed(6)));
+}
 
 /** `1,5` (comma decimal) → `1.5`; anything else stays as typed. */
 const normalizeNumber = (value: string | null): string | null =>
@@ -202,7 +248,10 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
   }
   const sheets = doc.sheets ?? {};
   const titles = doc.sheetAttributesMap ?? {};
-  const titleOf = (uid: string, fallback: string) => titles[uid]?.title ?? fallback;
+  const titleOf = (uid: string, fallback: string) => {
+    const t = plainTitle(titles[uid]?.title);
+    return t !== "" ? t : fallback;
+  };
 
   const nodes: Record<string, ProjectNode> = {};
   const rootOrder: string[] = [];
@@ -231,7 +280,7 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
       continue;
     }
     const table = sheet.table;
-    const name = sheet.title ?? titleOf(sheetUid, "Imported table");
+    const name = plainTitle(sheet.title) || titleOf(sheetUid, "Imported table");
     const displayName = `“${name}”`;
     const tableUid = table.uid as string;
 
@@ -262,12 +311,33 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
       issues.push({ severity: "warning", message: `${displayName} holds no data columns. It was left out.` });
       continue;
     }
+    // The CSV's first column holds row titles only when the table has a
+    // row-titles dataset. Never assume it from the format: column tables
+    // usually have none, and XY tables sometimes have one (empty titles).
+    const hasTitleCol = table.rowTitlesDataSet != null;
+    // An X dataset can hold more than one subcolumn (an error-bar X has
+    // value + error; a survival date X has start + end dates). All of
+    // them sit in the CSV and must be consumed, or every dataset after
+    // them shifts by one.
     let xTitle: string | null = null;
+    let xCount = 0;
+    let xFormat = "";
     if (table.xDataSet) {
       const xSet = await readJson<PrismDataSet>(`data/sets/${table.xDataSet}.json`);
-      xTitle = xSet?.title && xSet.title !== "" ? xSet.title : "X";
+      if (xSet) {
+        const t = plainTitle(xSet.title);
+        xTitle = t !== "" ? t : "X";
+        xCount = replicateCount(xSet, table);
+        xFormat = xSet.format ?? "";
+      } else {
+        issues.push({
+          severity: "warning",
+          message: `${displayName}: the X dataset “${table.xDataSet}” is missing; one column was read as X.`,
+        });
+        xTitle = "X";
+        xCount = 1;
+      }
     }
-    const hasTitleCol = format !== "xy";
     const hasXCol = xTitle !== null;
 
     // Helix columns: [Title, ...data]. Each entry: name + values per row.
@@ -276,8 +346,8 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
       values: (string | null)[];
     }
     const columns: ImportColumn[] = [];
-    // CSV column cursor: title col, then X col, then each dataset's subcolumns.
-    // An empty CSV field is an empty cell (null in .hlx), not "".
+    // CSV column cursor: title col, then X subcolumns, then each dataset's
+    // subcolumns. An empty CSV field is an empty cell (null in .hlx), not "".
     let cursor = 0;
     const csvCol = (i: number) =>
       csv.map((r) => {
@@ -286,8 +356,36 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
       });
     if (hasTitleCol) cursor++; // row titles are read separately below
     if (hasXCol) {
-      columns.push({ name: xTitle as string, values: csvCol(cursor) });
-      cursor++;
+      const xCols: (string | null)[][] = [];
+      for (let i = 0; i < xCount; i++) {
+        xCols.push(csvCol(cursor));
+        cursor++;
+      }
+      if (xCount === 1) {
+        columns.push({ name: xTitle as string, values: xCols[0] });
+      } else if (format === "survival" && xFormat.startsWith("date") && xCount >= 2) {
+        // A survival table's X is time. With dates Prism stores start and
+        // end dates; time is the gap between them, in days — exactly what
+        // Prism's own survival analysis uses.
+        const durations = xCols[0].map((start, r) => daysBetween(start, xCols[1][r] ?? null));
+        const unparsed = xCols[0].filter(
+          (v, r) => v !== null && v !== "" && durations[r] === null && xCols[1][r] !== null && xCols[1][r] !== "",
+        ).length;
+        columns.push({ name: xTitle as string, values: durations });
+        issues.push({
+          severity: "warning",
+          message: `${displayName}: the X dates were converted to durations in days (end − start), which is what the survival analysis uses as time.` +
+            (unparsed > 0 ? ` ${unparsed} row(s) had a date that couldn't be read, so their time is empty.` : ""),
+        });
+      } else {
+        // Helix tables hold one X column: keep the first subcolumn (the
+        // value; for an error-bar X the second is the error) and say so.
+        columns.push({ name: xTitle as string, values: xCols[0] });
+        issues.push({
+          severity: "warning",
+          message: `${displayName}: the X dataset has ${xCount} subcolumns; only the first was imported as X.`,
+        });
+      }
     }
     let groups: number | undefined;
     let replicates: number | undefined;
@@ -295,7 +393,7 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
       groups = sets.length;
       replicates = table.replicatesCount ?? Math.max(...sets.map((s) => replicateCount(s, table)));
       sets.forEach((set) => {
-        const group = set.title && set.title !== "" ? set.title : "Group";
+        const group = plainTitle(set.title) || "Group";
         const count = replicateCount(set, table);
         for (let i = 0; i < count; i++) {
           columns.push({ name: `${group}:Y${i + 1}`, values: csvCol(cursor) });
@@ -305,7 +403,7 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
     } else {
       for (const set of sets) {
         const count = replicateCount(set, table);
-        const names = subcolumnNames(set.title ?? "", dataFormat, count);
+        const names = subcolumnNames(plainTitle(set.title), dataFormat, count);
         for (let i = 0; i < count; i++) {
           columns.push({ name: names[i], values: csvCol(cursor) });
           cursor++;
@@ -320,11 +418,15 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
       issues.push({ severity: "warning", message: `${displayName} holds no data. It was left out.` });
       continue;
     }
-    const expectedCols = (hasTitleCol ? 1 : 0) + (hasXCol ? 1 : 0) + columns.length;
-    if (typeof content?.numberOfColumns === "number" && content.numberOfColumns > expectedCols) {
+    // CSV columns the converter consumed: title + every X subcolumn + every
+    // dataset subcolumn. (Helix holds fewer columns when X subcolumns
+    // collapse into one X — that is expected, not a leftover.)
+    const datasetCols = columns.length - (hasXCol ? 1 : 0);
+    const consumedCols = (hasTitleCol ? 1 : 0) + xCount + datasetCols;
+    if (typeof content?.numberOfColumns === "number" && content.numberOfColumns > consumedCols) {
       issues.push({
         severity: "warning",
-        message: `${displayName}: the file holds ${content.numberOfColumns} columns but only ${expectedCols} map to Helix columns; the extra columns were left out.`,
+        message: `${displayName}: the file holds ${content.numberOfColumns} columns but only ${consumedCols} map to Helix columns; the extra columns were left out.`,
       });
     }
 
@@ -391,7 +493,7 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
       issues.push({ severity: "warning", message: `Analysis “${analysisUid}” has no sheet.json; it was left out.` });
       continue;
     }
-    const name = sheet.title ?? titleOf(analysisUid, "Imported analysis");
+    const name = plainTitle(sheet.title) || titleOf(analysisUid, "Imported analysis");
     const inputSheetUid = sheet.inputSheets?.[0]?.uid;
     const parentId = inputSheetUid ? tableNodeBySheet.get(inputSheetUid) : undefined;
     if (!parentId) {
@@ -412,7 +514,7 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
         continue;
       }
       for (const ds of sheet.inputDataSets ?? []) {
-        const y = ds.title ?? "";
+        const y = plainTitle(ds.title);
         const node: ProjectNode = {
           id: genId("analysis"),
           type: "analysis",
@@ -466,6 +568,17 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
   for (const path of Object.keys(zip.files)) {
     const m = /^data\/tables\/([0-9A-F-]+)\/content\.json$/i.exec(path);
     if (m && !referencedTables.has(m[1].toUpperCase())) report.unreferencedTablesIgnored++;
+  }
+
+  // A project with no tables is not a project Helix can open — its own
+  // parser rejects it ("no readable data tables"). Refuse cleanly instead
+  // of writing a .hlx that Helix itself won't read.
+  if (report.tables.length === 0) {
+    const dataSheets = sheets.data?.length ?? 0;
+    throw new Error(
+      `“${sourceName}” has no data tables Helix can use — all ${dataSheets} data sheet(s) were left out, ` +
+        `and graphs/layouts are not transferred. Nothing was written.`,
+    );
   }
 
   return {
