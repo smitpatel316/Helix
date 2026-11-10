@@ -96,8 +96,10 @@ export function GraphView({ node }: { node: ProjectNode }) {
 
   const dataset = data ? readTable(data) : null;
   const columns = React.useMemo(() => (dataset ? plotColumns(dataset, type) : []), [dataset, type]);
-  // An XY graph needs numbers in X and in a Y column, and says which it lacks.
-  const xyLack = family === "xy" && dataset ? xyProblem(dataset.columns) : undefined;
+  // An XY graph needs numbers in X and in a Y column, and says which it lacks —
+  // except the ROC curve, whose truth (X) may be text ("Diseased"/"Healthy"):
+  // its build draws nothing when the truth has other than two classes.
+  const xyLack = family === "xy" && type !== "roc-curve" && dataset ? xyProblem(dataset.columns) : undefined;
   const hasData = !xyLack && columns.some((c) => c.values.length > 0);
 
   // A volcano on a grouped table: Helix computes the DEGs between two of its groups

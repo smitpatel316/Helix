@@ -13,6 +13,7 @@ import type {
   MultipleTTestsParams,
   NonlinearRegressionParams,
   OutliersParams,
+  RocParams,
   SimpleLogisticRegressionParams,
   StandardCurveInterpolationParams,
   ThreeWayAnovaParams,
@@ -44,6 +45,7 @@ import { runMultipleRegression } from "./multiple/multiple-regression";
 import { runChiSquare } from "./contingency/chi-square";
 import { runLogRank } from "./survival/log-rank";
 import { runBlandAltman } from "./column/bland-altman";
+import { runRocCurve } from "./column/roc-curve";
 import { runFrequencyDistribution } from "./column/frequency-distribution";
 import type { TableData } from "../store/types";
 import { readTable, setColumns, type Column } from "../lib/dataset";
@@ -147,6 +149,10 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     run: (c) => runLogRank(c),
   },
   "bland-altman": { label: "Bland-Altman method comparison", minColumns: 2, run: (c) => runBlandAltman(c) },
+  // minColumns 1: the truth column may be text ("Diseased"/"Healthy"), so a
+  // table can hold only one numeric column (the score) — the runner checks
+  // the truth column and the pairing itself.
+  "roc-curve": { label: "ROC curve", minColumns: 1, run: (c, p) => runRocCurve(c, p as RocParams) },
   "frequency-distribution": {
     label: "Frequency distribution",
     minColumns: 1,

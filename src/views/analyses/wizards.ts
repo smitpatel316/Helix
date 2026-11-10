@@ -3,11 +3,8 @@
 // and how the answers make the test's params; analysis-wizard.tsx asks them.
 // A test without an entry here runs as soon as it is picked.
 import { ROUT_Q } from "../../stats/types";
-import {
-  floorToWidth,
-  niceWidthUp,
-  sturgesCount,
-} from "../../stats/column/frequency-distribution";
+import { distinctTruthValues } from "../../stats/column/roc-curve";
+import { floorToWidth, niceWidthUp, sturgesCount } from "../../stats/column/frequency-distribution";
 import type {
   AnalysisParams,
   AnalysisPickerValue,
@@ -332,6 +329,51 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       ];
     },
     finish: (a) => ({ type: "bland-altman", params: { sets: [a.first as string, a.second as string] } }),
+  },
+
+  "roc-curve": {
+    questions: (a, table) => {
+      // The truth column may be text ("Diseased"/"Healthy"), so it is picked
+      // among all columns; the score must hold numbers.
+      const truthCol = table.columns.find((c) => c.name === a.truth) ?? table.columns[0];
+      const distinct = truthCol ? distinctTruthValues(truthCol) : [];
+      // The default positive class is the largest value, so it comes first
+      // (the wizard pre-selects the first option); the question says so, so
+      // a text-outcome user picks deliberately.
+      const ordered = [...distinct].sort((x, y) => {
+        const nx = Number(x);
+        const ny = Number(y);
+        if (Number.isFinite(nx) && Number.isFinite(ny)) return ny - nx;
+        return y.localeCompare(x);
+      });
+      return [
+        choice(
+          "truth",
+          "Which column holds the known outcome (e.g. diseased / healthy)?",
+          names(table.columns.map((c) => c.name)),
+        ),
+        choice("score", "Which column holds the test score?", names(dataNames(table).filter((n) => n !== a.truth))),
+        distinct.length > 0 &&
+          choice(
+            "positive",
+            "Which outcome value counts as positive (diseased)? The largest value is the default.",
+            names(ordered),
+          ),
+      ];
+    },
+    finish: (a, table) => {
+      const truthCol = table.columns.find((c) => c.name === a.truth);
+      const distinct = truthCol ? distinctTruthValues(truthCol) : [];
+      const numeric = distinct.length > 0 && distinct.every((v) => Number.isFinite(Number(v)));
+      return {
+        type: "roc-curve",
+        params: {
+          truth: a.truth as string,
+          score: a.score as string,
+          positive: a.positive === undefined ? undefined : numeric ? Number(a.positive) : (a.positive as string),
+        },
+      };
+    },
   },
 
   correlation: {
