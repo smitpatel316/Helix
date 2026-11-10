@@ -21,10 +21,10 @@ export type AnalysisType =
   | "multiple-regression"
   | "outliers"
   | "chi-square"
-  | "chi-square"
   | "survival"
   | "cox"
-  | "survival-log-rank";
+  | "survival-log-rank"
+  | "bland-altman";
 
 /** What the New Analysis picker offers: a test, or "Compare more than two groups",
  *  which its wizard resolves to one-way ANOVA, Kruskal-Wallis, repeated-measures ANOVA

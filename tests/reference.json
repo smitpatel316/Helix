@@ -17708,5 +17708,346 @@
     ]
    }
   }
+ },
+ "bland-altman blandAltman {\"sets\":[\"Method A\",\"Method B\"]}": {
+  "testType": "bland-altman",
+  "subtitle": "Bland-Altman method comparison",
+  "stats": [
+   {
+    "label": "Bias (mean difference)",
+    "value": -0.36
+   },
+   {
+    "label": "SD of differences",
+    "value": 0.2503331114
+   },
+   {
+    "label": "Lower limit of agreement",
+    "value": -0.8506528984
+   },
+   {
+    "label": "Upper limit of agreement",
+    "value": 0.1306528984
+   },
+   {
+    "label": "Bias 95% CI lower",
+    "value": -0.53907752
+   },
+   {
+    "label": "Bias 95% CI upper",
+    "value": -0.18092248
+   },
+   {
+    "label": "Lower limit 95% CI lower",
+    "value": -1.160824262
+   },
+   {
+    "label": "Lower limit 95% CI upper",
+    "value": -0.5404815352
+   },
+   {
+    "label": "Upper limit 95% CI lower",
+    "value": -0.1795184648
+   },
+   {
+    "label": "Upper limit 95% CI upper",
+    "value": 0.4408242616
+   },
+   {
+    "label": "N (pairs)",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "Method A",
+    "mean": 12.15,
+    "sd": 0.7397447007,
+    "sem": 0.2339278141,
+    "median": 12.15,
+    "n": 10
+   },
+   {
+    "name": "Method B",
+    "mean": 12.51,
+    "sd": 0.7519604008,
+    "sem": 0.2377907577,
+    "median": 12.45,
+    "n": 10
+   }
+  ],
+  "notes": "Difference is “Method A” − “Method B”. Uses complete rows only (every subject measured in every group). Limits of agreement are bias ± 1.96 × SD of the differences. The differences are assumed to be approximately normally distributed; run a Shapiro-Wilk normality test on the differences to check this."
+ },
+ "graph bland-altman blandAltman": {
+  "data": [
+   {
+    "type": "scatter",
+    "mode": "markers",
+    "name": "Method A − Method B",
+    "x": [
+     12.25,
+     11.65,
+     13.1,
+     13.15,
+     11.05,
+     12.7,
+     11.9,
+     13.3,
+     12.35,
+     11.85
+    ],
+    "y": [
+     -0.3,
+     -0.5,
+     0.2,
+     -0.7,
+     -0.3,
+     -0.4,
+     -0.2,
+     -0.6,
+     -0.3,
+     -0.5
+    ],
+    "customdata": [
+     "Method A#0",
+     "Method A#1",
+     "Method A#2",
+     "Method A#3",
+     "Method A#4",
+     "Method A#5",
+     "Method A#6",
+     "Method A#7",
+     "Method A#8",
+     "Method A#9"
+    ],
+    "marker": {
+     "color": [
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)"
+     ],
+     "size": [
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7
+     ],
+     "symbol": [
+      "circle",
+      "circle",
+      "circle",
+      "circle",
+      "circle",
+      "circle",
+      "circle",
+      "circle",
+      "circle",
+      "circle"
+     ],
+     "line": {
+      "color": [
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000"
+      ],
+      "width": [
+       1.5,
+       1.5,
+       1.5,
+       1.5,
+       1.5,
+       1.5,
+       1.5,
+       1.5,
+       1.5,
+       1.5
+      ]
+     }
+    },
+    "hoverinfo": "x+y",
+    "showlegend": false
+   },
+   {
+    "type": "scatter",
+    "mode": "lines",
+    "name": "Bias -0.36",
+    "x": [
+     10.9375,
+     13.4125
+    ],
+    "y": [
+     -0.36,
+     -0.36
+    ],
+    "line": {
+     "color": "#111827",
+     "width": 2,
+     "dash": "solid"
+    },
+    "hoverinfo": "y+name",
+    "showlegend": false
+   },
+   {
+    "type": "scatter",
+    "mode": "lines",
+    "name": "Lower limit -0.8507",
+    "x": [
+     10.9375,
+     13.4125
+    ],
+    "y": [
+     -0.8506528984,
+     -0.8506528984
+    ],
+    "line": {
+     "color": "#9CA3AF",
+     "width": 2,
+     "dash": "dash"
+    },
+    "hoverinfo": "y+name",
+    "showlegend": false
+   },
+   {
+    "type": "scatter",
+    "mode": "lines",
+    "name": "Upper limit 0.1307",
+    "x": [
+     10.9375,
+     13.4125
+    ],
+    "y": [
+     0.1306528984,
+     0.1306528984
+    ],
+    "line": {
+     "color": "#9CA3AF",
+     "width": 2,
+     "dash": "dash"
+    },
+    "hoverinfo": "y+name",
+    "showlegend": false
+   }
+  ],
+  "layout": {
+   "paper_bgcolor": "#ffffff",
+   "plot_bgcolor": "#ffffff",
+   "dragmode": false,
+   "font": {
+    "color": "#111827",
+    "family": "system-ui, -apple-system, sans-serif",
+    "size": 13
+   },
+   "margin": {
+    "l": 16,
+    "r": 16,
+    "t": 16,
+    "b": 16
+   },
+   "showlegend": false,
+   "legend": {
+    "x": 1.02,
+    "y": 1,
+    "xanchor": "left"
+   },
+   "xaxis": {
+    "type": "linear",
+    "showgrid": false,
+    "zeroline": false,
+    "linecolor": "#111827",
+    "linewidth": 1,
+    "ticks": "outside",
+    "tickwidth": 1,
+    "fixedrange": true,
+    "automargin": true,
+    "title": {
+     "text": "Mean of Method A and Method B",
+     "standoff": 12
+    }
+   },
+   "yaxis": {
+    "showgrid": false,
+    "zeroline": false,
+    "linecolor": "#111827",
+    "linewidth": 1,
+    "ticks": "outside",
+    "tickwidth": 1,
+    "fixedrange": true,
+    "automargin": true,
+    "title": {
+     "text": "Method A − Method B",
+     "standoff": 2
+    }
+   },
+   "annotations": [
+    {
+     "name": "bland-bias",
+     "x": 13.4125,
+     "y": -0.36,
+     "xref": "x",
+     "yref": "y",
+     "text": "Bias -0.36",
+     "showarrow": false,
+     "xanchor": "right",
+     "yanchor": "bottom",
+     "yshift": 4,
+     "font": {
+      "color": "#111827",
+      "size": 12
+     }
+    },
+    {
+     "name": "bland-lower",
+     "x": 13.4125,
+     "y": -0.8506528984,
+     "xref": "x",
+     "yref": "y",
+     "text": "Lower limit -0.8507",
+     "showarrow": false,
+     "xanchor": "right",
+     "yanchor": "top",
+     "yshift": -4,
+     "font": {
+      "color": "#111827",
+      "size": 12
+     }
+    },
+    {
+     "name": "bland-upper",
+     "x": 13.4125,
+     "y": 0.1306528984,
+     "xref": "x",
+     "yref": "y",
+     "text": "Upper limit 0.1307",
+     "showarrow": false,
+     "xanchor": "right",
+     "yanchor": "bottom",
+     "yshift": 4,
+     "font": {
+      "color": "#111827",
+      "size": 12
+     }
+    }
+   ]
+  }
  }
 }

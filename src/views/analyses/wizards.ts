@@ -280,6 +280,21 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
     finish: (a) => ({ type: "outliers", params: withSets(a, { q: a.q as number }) }),
   },
 
+  "bland-altman": {
+    questions: (a, table) => {
+      const methods = dataNames(table);
+      return [
+        choice("first", "Which column is the first method?", names(methods)),
+        choice(
+          "second",
+          "Which column is the second method? The difference is computed as first − second.",
+          names(methods.filter((n) => n !== a.first)),
+        ),
+      ];
+    },
+    finish: (a) => ({ type: "bland-altman", params: { sets: [a.first as string, a.second as string] } }),
+  },
+
   correlation: {
     questions: (a, table) => {
       const ys = yNames(table);
