@@ -37,6 +37,7 @@ import {
   CORRECTIONS,
   CORRELATION_METHODS,
   CORRELATION_MODES,
+  DOSE_RESPONSE_SPECIAL_MODELS,
   ENZYME_INHIBITION_MODELS,
   NONLINEAR_MODELS,
   POSTHOC_TARGETS,
@@ -162,11 +163,11 @@ type ParamKind =
   | Limits;
 // prettier-ignore
 const PARAMS = {
-  paired: "yes/no", gaussian: "yes/no", equalVariance: "yes/no", ratio: "yes/no", forceOrigin: "yes/no", pooledSd: "yes/no", quasi: "yes/no",
+  paired: "yes/no", gaussian: "yes/no", equalVariance: "yes/no", ratio: "yes/no", forceOrigin: "yes/no", pooledSd: "yes/no", quasi: "yes/no", fixHillSlope: "yes/no",
   tails: TAILS, posthoc: [...POSTHOCS, ...RANK_POSTHOCS],
   // `model` is shared by nonlinear-regression and the binding runners:
   // the reader only sanitizes, each runner validates its own.
-  model: [...NONLINEAR_MODELS, ...BINDING_SATURATION_MODELS, ...BINDING_KINETICS_MODELS, ...ENZYME_INHIBITION_MODELS],
+  model: [...NONLINEAR_MODELS, ...BINDING_SATURATION_MODELS, ...BINDING_KINETICS_MODELS, ...ENZYME_INHIBITION_MODELS, ...DOSE_RESPONSE_SPECIAL_MODELS],
   // `method` is shared by correlation ("pearson"/"spearman") and Spline/Lowess
   // ("spline"/"lowess"): the reader only sanitizes, each runner validates its own.
   method: [...CORRELATION_METHODS, "spline", "lowess"],
@@ -176,9 +177,11 @@ const PARAMS = {
   ligandConcentration: "number", koff: "number", hotNM: "number", time0: "number",
   enzymeConcentration: "number", substrateConcentration: "number", kmForMorrison: "number",
   inhibitorConcentrations: "numbers-by-name",
+  antagonistConcentrations: "numbers-by-name",
+  bUnits: ["M", "nM", "µM"],
   binMode: BIN_MODES, binWidth: "number", binCount: { min: 2, max: 100 }, startAt: "number",
   posthocTerm: THREE_WAY_TERMS,
-  y: "name-or-names", y2: "name", dependent: "name", datasets: "names", predictors: "names", sets: "names", unknowns: "numbers",
+  y: "name-or-names", y2: "name", ys: "names", dependent: "name", datasets: "names", predictors: "names", sets: "names", unknowns: "numbers",
   truth: "name", score: "name", positive: "name-or-number",
   time: "name", status: "name", covariates: "names", stratifyBy: "name", ties: ["efron", "breslow"],
 } satisfies Record<ParamKey, ParamKind>;
@@ -337,8 +340,7 @@ function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: num
     rows,
     groups: isCount(d.groups) && isCount(d.replicates) ? d.groups : undefined,
     replicates: isCount(d.groups) && isCount(d.replicates) ? d.replicates : undefined,
-    subgroups:
-      isCount(d.groups) && isCount(d.replicates) && isCount(d.subgroups) ? d.subgroups : undefined,
+    subgroups: isCount(d.groups) && isCount(d.replicates) && isCount(d.subgroups) ? d.subgroups : undefined,
     rowGroups: readRowGroups(d.rowGroups),
     excluded: excluded.length ? excluded : undefined,
     widths: Object.keys(widths).length ? (widths as Record<string, number>) : undefined,
@@ -358,10 +360,7 @@ function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: num
       .map((c) => c.split(":"))
       .filter((p) => p.length === 3);
     const groups = [...new Set(parts.map((p) => p[0]))];
-    const subgroups = Math.max(
-      0,
-      ...groups.map((g) => new Set(parts.filter((p) => p[0] === g).map((p) => p[1])).size),
-    );
+    const subgroups = Math.max(0, ...groups.map((g) => new Set(parts.filter((p) => p[0] === g).map((p) => p[1])).size));
     const replicates = Math.max(
       0,
       ...groups.flatMap((g) =>
@@ -402,8 +401,7 @@ function readParam(kind: ParamKind, v: unknown): unknown {
   if (kind === "name-or-number") return typeof v === "string" || isFiniteNumber(v) ? v : undefined;
   if (kind === "name-or-names")
     return typeof v === "string" ? v : Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
-  if (kind === "numbers-by-name")
-    return isObj(v) && Object.values(v).every(isFiniteNumber) ? v : undefined;
+  if (kind === "numbers-by-name") return isObj(v) && Object.values(v).every(isFiniteNumber) ? v : undefined;
   if (kind === "names") return Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
   return Array.isArray(kind) ? oneOf(kind, v) : within(v, kind as Limits);
 }

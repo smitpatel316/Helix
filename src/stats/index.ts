@@ -11,6 +11,7 @@ import type {
   BindingSaturationParams,
   CorrelationParams,
   CoxPHParams,
+  DoseResponseSpecialParams,
   EnzymeInhibitionParams,
   FrequencyDistributionParams,
   MultipleRegressionParams,
@@ -47,6 +48,7 @@ import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
 import { runBindingKinetics, runBindingSaturation } from "./xy/binding";
 import { runEnzymeInhibition } from "./xy/enzyme-inhibition";
+import { runDoseResponseSpecial } from "./xy/dose-response-special";
 import { runSplineLowess } from "./xy/spline-lowess";
 import { runStandardCurveInterpolation } from "./xy/standard-curve-interpolation";
 import { runTwoWayAnova } from "./grouped/two-way-anova";
@@ -148,6 +150,14 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     minColumns: 2,
     run: (c, p) => runEnzymeInhibition(c, p as EnzymeInhibitionParams),
   },
+  // minColumns is a floor only: every model needs X + ≥ 2 Y series
+  // (control + ≥ 1 shifted curve; full agonist + ≥ 1 partial agonist) —
+  // the runner enforces it.
+  "dose-response-special": {
+    label: "Dose-response — Special (EC50 shift / Schild / operational)",
+    minColumns: 2,
+    run: (c, p) => runDoseResponseSpecial(c, p as DoseResponseSpecialParams),
+  },
   "spline-lowess": {
     label: "Spline and Lowess",
     minColumns: 2,
@@ -238,9 +248,7 @@ export function packageGate(type: AnalysisType): {
   const required = ANALYSES[type]?.requiredPackages ?? [];
   const failed = required.filter((n) => packageStatus(n).status === "failed");
   if (!failed.length) return { blocked: false, message: null, packages: required };
-  const detail = failed
-    .map((n) => packageStatus(n).error ?? `The R package “${n}” could not be installed.`)
-    .join(" ");
+  const detail = failed.map((n) => packageStatus(n).error ?? `The R package “${n}” could not be installed.`).join(" ");
   return {
     blocked: true,
     message: `${failed.map((n) => `“${n}”`).join(", ")} ${failed.length > 1 ? "are" : "is"} unavailable — ${detail}`,
@@ -268,10 +276,22 @@ export function runAnalysis(
   // fail the check below (found in the plan-17 GUI pass: the wizard always
   // sets `y`, so its fits hit this path while the `y`-less fixtures did not).
   const named = params as
-    | { y?: string | string[]; y2?: string; dependent?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string }
+    | {
+        y?: string | string[];
+        ys?: string[];
+        y2?: string;
+        dependent?: string;
+        predictors?: string[];
+        datasets?: string[];
+        time?: string;
+        status?: string;
+        covariates?: string[];
+        stratifyBy?: string;
+      }
     | undefined;
   const chosen = [
     ...(Array.isArray(named?.y) ? named.y : named?.y !== undefined ? [named.y] : []),
+    ...(named?.ys ?? []),
     named?.y2,
     named?.dependent,
     ...(named?.predictors ?? []),

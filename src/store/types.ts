@@ -23,6 +23,7 @@ export type GraphType =
   | "pie"
   | "donut"
   | "dose-response"
+  | "schild-plot"
   | "logistic-curve"
   | "heatmap"
   | "survival"
@@ -45,7 +46,18 @@ export const GRAPH_CHOICES = {
   pieValue: ["sum", "mean"],
   groupLayout: ["interleaved", "separated"],
   sigDisplay: ["stars", "pvalue"],
-  doseModel: ["sigmoidal-4pl-logx", "sigmoidal-4pl-x", "one-phase-decay", "two-phase-decay", "plateau-decay", "one-phase-association", "exponential-growth", "michaelis-menten", "allosteric-sigmoidal", "substrate-inhibition"],
+  doseModel: [
+    "sigmoidal-4pl-logx",
+    "sigmoidal-4pl-x",
+    "one-phase-decay",
+    "two-phase-decay",
+    "plateau-decay",
+    "one-phase-association",
+    "exponential-growth",
+    "michaelis-menten",
+    "allosteric-sigmoidal",
+    "substrate-inhibition",
+  ],
   survivalMode: ["codes", "counts"],
   volcanoEffect: ["log2ratio", "difference"],
   volcanoSignificance: ["pvalue", "fdr"],

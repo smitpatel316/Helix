@@ -4,7 +4,7 @@
 import * as React from "react";
 import { Button, Checkbox, Input, Select, cn } from "../../ui/controls";
 import { Row, Stepper } from "../../components/common/inspector";
-import type { AnalysisPickerValue, AnalysisType } from "../../stats/types";
+import type { AnalysisPickerValue, AnalysisType, DoseResponseSpecialParams } from "../../stats/types";
 import { EXPONENTIAL_MODELS, MODEL_LABEL } from "../../stats/xy/nonlinear-fit";
 import { analysisLabel } from "../analyses";
 import {
@@ -218,6 +218,24 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
       </>
     );
   }
+  if (graphType === "schild-plot") {
+    // The plot draws from a sibling Gaddum/Schild analysis — nothing to
+    // configure on the graph itself; without one, offer to start it.
+    const sources = c.analyses.filter(
+      (a) =>
+        a.analysisType === "dose-response-special" &&
+        ((a.analysisParams as DoseResponseSpecialParams | undefined)?.model === "schild" ||
+          (a.analysisParams as DoseResponseSpecialParams | undefined)?.model === "schild-slope-1"),
+    );
+    if (!sources.length) {
+      return (
+        <NoAnalysis test="dose-response-special" onNewAnalysis={c.onNewAnalysis}>
+          Draw log(DR − 1) against log[B] from a Gaddum/Schild analysis of this table.
+        </NoAnalysis>
+      );
+    }
+    return null;
+  }
   if (graphType === "volcano") {
     // Cutoffs are entered on the plotted scale (e.g. 1.3 when Y is −log10).
     const sig = c.volcanoGroups && options.volcanoSignificance === "fdr" ? "FDR" : "P";
@@ -292,15 +310,7 @@ function AnalysisRow({
 /** Pick a Cox proportional-hazards regression: the forest plot draws its
  *  hazard ratios, and a survival curve on a Multiple Variables table
  *  stratifies by its binary covariate. */
-function CoxControls({
-  analyses,
-  options,
-  set,
-}: {
-  analyses: ProjectNode[];
-  options: GraphOptions;
-  set: SetOptions;
-}) {
+function CoxControls({ analyses, options, set }: { analyses: ProjectNode[]; options: GraphOptions; set: SetOptions }) {
   return (
     <AnalysisRow
       analyses={analyses}
@@ -447,8 +457,16 @@ function DemingControls({
       />
       {options.demingAnalysisId ? (
         <>
-          <Toggle label="Deming line" checked={options.demingShowLine} onChange={(demingShowLine) => set({ demingShowLine })} />
-          <Toggle label="OLS line" checked={options.demingShowOls} onChange={(demingShowOls) => set({ demingShowOls })} />
+          <Toggle
+            label="Deming line"
+            checked={options.demingShowLine}
+            onChange={(demingShowLine) => set({ demingShowLine })}
+          />
+          <Toggle
+            label="OLS line"
+            checked={options.demingShowOls}
+            onChange={(demingShowOls) => set({ demingShowOls })}
+          />
           <Toggle
             label="Equations"
             checked={options.demingShowEquation}

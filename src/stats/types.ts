@@ -31,6 +31,7 @@ export type AnalysisType =
   | "binding-saturation"
   | "binding-kinetics"
   | "enzyme-inhibition"
+  | "dose-response-special"
   | "outliers"
   | "chi-square"
   | "survival-log-rank"
@@ -99,6 +100,13 @@ export const ENZYME_INHIBITION_MODELS = [
   "mixed",
   "morrison",
 ] as const;
+/** Dose-response — Special models (plan 18): global fits over several
+ *  dose-response curves — EC50 shift (each curve its own LogEC50; Bottom,
+ *  Top, HillSlope shared), Gaddum/Schild (all parameters shared; the
+ *  SchildSlope = 1 variant reports pA2 = pKb), and the operational model
+ *  for partial agonists (full agonist as a 4PL; partial agonists via
+ *  Black & Leff, sharing Basal, Effectmax and n). */
+export const DOSE_RESPONSE_SPECIAL_MODELS = ["ec50-shift", "schild", "schild-slope-1", "operational-partial"] as const;
 export const CORRELATION_MODES = ["x-vs-every-y", "two-datasets", "matrix"] as const;
 export const TWO_WAY_DESIGNS = ["ordinary", "repeated-measures", "nonparametric"] as const;
 export const POSTHOC_TARGETS = ["groups", "rows"] as const;
@@ -359,6 +367,31 @@ export interface EnzymeInhibitionParams {
   kmForMorrison?: number;
 }
 
+/** Params for "dose-response-special" (XY table, X = log agonist
+ *  concentration): which Y series to include (default: all — order
+ *  matters, the first is the control / full agonist), which special
+ *  model, and the per-series antagonist concentration B for Schild /
+ *  EC50 shift — from the column titles when numeric, else wizard-filled.
+ *  `bUnits` is the units B was entered in (default "M"): pA2 is the
+ *  negative log of B in these units, and Kb is reported in them.
+ *  `fixHillSlope` (Schild only, default false) constrains HillSlope to
+ *  1.0. The operational model takes no B: the first series is the full
+ *  agonist, the rest partial agonists. */
+export type DoseResponseSpecialModel = (typeof DOSE_RESPONSE_SPECIAL_MODELS)[number];
+export interface DoseResponseSpecialParams {
+  /** Omitted defaults to all Y data columns, in table order — the first
+   *  is the control (no antagonist) for Schild / EC50 shift, the full
+   *  agonist for the operational model. */
+  ys?: string[];
+  model: DoseResponseSpecialModel;
+  /** Per-series B, keyed by Y column name (Schild / EC50 shift only). */
+  antagonistConcentrations?: Record<string, number>;
+  /** Units B was entered in — shown next to pA2; default "M". */
+  bUnits?: string;
+  /** Constrain HillSlope to 1.0 (Schild only, default false). */
+  fixHillSlope?: boolean;
+}
+
 /** Params for "spline-lowess" (XY table): smooth a chosen Y series against X
  *  with no model assumed — Lowess (locally weighted smoothing, span `f`) or a
  *  smoothing spline (`spar`, or `df`, or neither for the GCV auto-choice).
@@ -457,6 +490,7 @@ export type AnalysisParams = DataSetsParam &
     | BindingSaturationParams
     | BindingKineticsParams
     | EnzymeInhibitionParams
+    | DoseResponseSpecialParams
     | TwoWayAnovaParams
     | ThreeWayAnovaParams
     | MultipleTTestsParams
