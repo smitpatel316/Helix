@@ -2587,6 +2587,100 @@
    }
   ]
  },
+ "simple-logistic-regression logistic {}": {
+  "testType": "simple-logistic-regression",
+  "subtitle": "Simple logistic regression",
+  "equation": "P(Y=1) = 1 / (1 + exp(-(1.302*X − 5.857)))",
+  "stats": [
+   {
+    "label": "Odds ratio (per 1 unit X)",
+    "value": 3.675313008
+   },
+   {
+    "label": "Odds ratio 95% CI lower",
+    "value": 0.7084129707
+   },
+   {
+    "label": "Odds ratio 95% CI upper",
+    "value": 19.06786897
+   },
+   {
+    "label": "Slope 95% CI lower",
+    "value": -0.3447280633
+   },
+   {
+    "label": "Slope 95% CI upper",
+    "value": 2.948004666
+   },
+   {
+    "label": "Null deviance",
+    "value": 13.86294361
+   },
+   {
+    "label": "Null deviance DF",
+    "value": 9
+   },
+   {
+    "label": "Residual deviance",
+    "value": 5.01801741
+   },
+   {
+    "label": "Residual deviance DF",
+    "value": 8
+   },
+   {
+    "label": "McFadden pseudo-R²",
+    "value": 0.6380265584
+   },
+   {
+    "label": "AIC",
+    "value": 9.01801741
+   },
+   {
+    "label": "N",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 4.5,
+    "sd": 3.027650354,
+    "sem": 0.9574271078,
+    "median": 4.5,
+    "n": 10
+   },
+   {
+    "name": "Response",
+    "mean": 0.5,
+    "sd": 0.5270462767,
+    "sem": 0.1666666667,
+    "median": 0.5,
+    "n": 10
+   }
+  ],
+  "notes": "Simple logistic regression of “Response” on “X” (n = 10). The odds ratio is per one-unit increase in X. The 95% confidence intervals are Wald intervals (a normal approximation).",
+  "coefficients": [
+   {
+    "term": "Intercept",
+    "estimate": -5.857372356,
+    "stdError": 3.948802183,
+    "t": -1.483328889,
+    "p": 0.1379870505
+   },
+   {
+    "term": "X",
+    "estimate": 1.301638301,
+    "stdError": 0.8399828391,
+    "t": 1.549601064,
+    "p": 0.1212372974
+   }
+  ],
+  "statisticLabel": "z"
+ },
+ "simple-logistic-regression logisticSeparated {}": {
+  "error": "The outcome is (nearly) perfectly separated by X — the odds ratio is not estimable. Try a different predictor, or collect more data where the outcomes overlap."
+ },
  "survival-log-rank survival {}": {
   "testType": "survival-log-rank",
   "subtitle": "Log-rank (Mantel-Cox) test",
@@ -6653,6 +6747,173 @@
     "tickwidth": 1,
     "fixedrange": true,
     "automargin": true
+   }
+  }
+ },
+ "graph logistic-curve logistic": {
+  "data": [
+   {
+    "type": "scatter",
+    "mode": "markers",
+    "name": "Response",
+    "x": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9
+    ],
+    "y": [
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     1,
+     1,
+     1,
+     1
+    ],
+    "customdata": [
+     "Response#0",
+     "Response#1",
+     "Response#2",
+     "Response#3",
+     "Response#4",
+     "Response#5",
+     "Response#6",
+     "Response#7",
+     "Response#8",
+     "Response#9"
+    ],
+    "marker": {
+     "color": [
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)",
+      "rgba(0,0,0,1)"
+     ],
+     "size": [
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7
+     ],
+     "symbol": [
+      "circle",
+      "circle",
+      "circle",
+      "circle",
+      "circle",
+      "circle",
+      "circle",
+      "circle",
+      "circle",
+      "circle"
+     ],
+     "line": {
+      "color": [
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000",
+       "#000000"
+      ],
+      "width": [
+       1.5,
+       1.5,
+       1.5,
+       1.5,
+       1.5,
+       1.5,
+       1.5,
+       1.5,
+       1.5,
+       1.5
+      ]
+     }
+    },
+    "hoverinfo": "x+y"
+   }
+  ],
+  "layout": {
+   "paper_bgcolor": "#ffffff",
+   "plot_bgcolor": "#ffffff",
+   "dragmode": false,
+   "font": {
+    "color": "#111827",
+    "family": "system-ui, -apple-system, sans-serif",
+    "size": 13
+   },
+   "margin": {
+    "l": 16,
+    "r": 16,
+    "t": 16,
+    "b": 16
+   },
+   "showlegend": false,
+   "legend": {
+    "x": 1.02,
+    "y": 1,
+    "xanchor": "left"
+   },
+   "xaxis": {
+    "type": "linear",
+    "showgrid": false,
+    "zeroline": false,
+    "linecolor": "#111827",
+    "linewidth": 1,
+    "ticks": "outside",
+    "tickwidth": 1,
+    "fixedrange": true,
+    "automargin": true,
+    "title": {
+     "text": "X",
+     "standoff": 12
+    }
+   },
+   "yaxis": {
+    "showgrid": false,
+    "zeroline": false,
+    "linecolor": "#111827",
+    "linewidth": 1,
+    "ticks": "outside",
+    "tickwidth": 1,
+    "fixedrange": true,
+    "automargin": true,
+    "range": [
+     -0.05,
+     1.05
+    ],
+    "autorange": false,
+    "tickmode": "array",
+    "tickvals": [
+     0,
+     1
+    ]
    }
   }
  },

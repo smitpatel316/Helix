@@ -12,6 +12,7 @@ export type AnalysisType =
   | "shapiro-wilk"
   | "correlation"
   | "linear-regression"
+  | "simple-logistic-regression"
   | "area-under-curve"
   | "nonlinear-regression"
   | "two-way-anova"
@@ -93,6 +94,13 @@ export interface LinearRegressionParams {
   /** Omitted defaults to the first Y data column. */
   y?: string;
   forceOrigin: boolean;
+}
+
+/** Params for "simple-logistic-regression" (XY table): which Y series is the
+ *  binary (0/1) outcome. Predictor is always X. */
+export interface SimpleLogisticRegressionParams {
+  /** Omitted defaults to the first Y data column. */
+  y?: string;
 }
 
 /** Params for "area-under-curve": trapezoidal-rule AUC of every Y series against X,
@@ -190,6 +198,7 @@ export type AnalysisParams = DataSetsParam &
     | CorrelationParams
     | XYCorrelationParams
     | LinearRegressionParams
+    | SimpleLogisticRegressionParams
     | AreaUnderCurveParams
     | NonlinearRegressionParams
     | TwoWayAnovaParams
@@ -293,6 +302,9 @@ export interface AnalysisResult {
   matrix?: CorrelationMatrix;
   /** Optional regression coefficients table (multiple regression). */
   coefficients?: RegressionCoefficient[];
+  /** What the coefficients table's statistic column is ("t" by default): a
+   *  logistic regression's is a z-statistic, so it says "z". */
+  statisticLabel?: string;
   /** Optional per-Y correlations table ("correlation", "x-vs-every-y" mode). */
   correlations?: CorrelationRow[];
   /** Optional per-Y area-under-curve table ("area-under-curve"). */

@@ -205,7 +205,7 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
             { label: "" },
             { label: "Estimate", numeric: true },
             { label: "Std. error", numeric: true },
-            { label: "t", numeric: true },
+            { label: result.statisticLabel ?? "t", numeric: true },
             { label: "P value", numeric: true },
           ]}
           rows={result.coefficients.map((c) => [c.term, num(c.estimate), num(c.stdError), num(c.t), <P p={c.p} />])}

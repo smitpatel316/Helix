@@ -23,6 +23,7 @@ export type GraphType =
   | "pie"
   | "donut"
   | "dose-response"
+  | "logistic-curve"
   | "heatmap"
   | "survival"
   | "volcano";

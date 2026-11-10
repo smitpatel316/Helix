@@ -27,6 +27,7 @@ import { groupedStacked } from "./grouped-stacked";
 import { groupedHbars } from "./grouped-hbars";
 import { pie, donut } from "./pie";
 import { doseResponse } from "./dose-response";
+import { logisticCurveGraph } from "./logistic-curve";
 import { heatmap } from "./heatmap";
 import { survival } from "./survival";
 import { volcano, VOLCANO_SERIES } from "./volcano";
@@ -78,6 +79,7 @@ export const GRAPHS: Record<GraphType, GraphModule> = {
   pie,
   donut,
   "dose-response": doseResponse,
+  "logistic-curve": logisticCurveGraph,
   heatmap,
   survival,
   volcano,
@@ -119,7 +121,7 @@ const optionsFor = (types: GraphType[]): SelectorOption<GraphType>[] =>
  *  Mirrors `ANALYSIS_OPTIONS_BY_TABLE`. */
 export const GRAPH_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<GraphType>[]> = {
   column: optionsFor(["individual", "box-violin", "mean-error", "pie", "donut"]),
-  xy: optionsFor(["xy-scatter", "xy-bar", "xy-area", "dose-response", "survival"]),
+  xy: optionsFor(["xy-scatter", "xy-bar", "xy-area", "dose-response", "logistic-curve", "survival"]),
   grouped: optionsFor([
     "grouped-scatter",
     "grouped-bars",

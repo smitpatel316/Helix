@@ -104,6 +104,40 @@ const survivalTable = table(
   ],
 );
 
+/** Binary outcome vs. one predictor (simple logistic regression). */
+const logistic = table(
+  ["Title", "X", "Response"],
+  [
+    ["", "0", "0"],
+    ["", "1", "0"],
+    ["", "2", "0"],
+    ["", "3", "0"],
+    ["", "4", "1"],
+    ["", "5", "0"],
+    ["", "6", "1"],
+    ["", "7", "1"],
+    ["", "8", "1"],
+    ["", "9", "1"],
+  ],
+);
+
+/** Completely separated: the outcome flips exactly at X = 5, so glm diverges. */
+const logisticSeparated = table(
+  ["Title", "X", "Response"],
+  [
+    ["", "0", "0"],
+    ["", "1", "0"],
+    ["", "2", "0"],
+    ["", "3", "0"],
+    ["", "4", "0"],
+    ["", "5", "1"],
+    ["", "6", "1"],
+    ["", "7", "1"],
+    ["", "8", "1"],
+    ["", "9", "1"],
+  ],
+);
+
 const grouped = table(
   ["Title", "A:Y1", "A:Y2", "A:Y3", "B:Y1", "B:Y2", "B:Y3", "C:Y1", "C:Y2", "C:Y3"],
   [
@@ -257,6 +291,8 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "sigmoidal-4pl-x" }],
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "hyperbola" }],
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "semilog-line" }],
+  ["logistic", logistic, "simple-logistic-regression", {}],
+  ["logisticSeparated", logisticSeparated, "simple-logistic-regression", {}],
   ["survival", survivalTable, "survival-log-rank"],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "none", posthocTarget: "groups" }],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "tukey", posthocTarget: "groups" }],
@@ -332,6 +368,7 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["xy", xy, "xy-bar"],
   ["xy", xy, "xy-area"],
   ["doseLog", doseLog, "dose-response"],
+  ["logistic", logistic, "logistic-curve"],
   ["survival", survivalTable, "survival"],
   ["grouped", grouped, "grouped-scatter"],
   ["grouped", grouped, "grouped-bars", { groupLayout: "separated" }],
@@ -421,6 +458,32 @@ async function disagreements(): Promise<string[]> {
     ["c", 50],
   ] as const) {
     if (Math.abs(tCrit95(df) - q[key]!) > 1e-9) out.push(`t critical value, df ${df}: ${tCrit95(df)}, R: ${q[key]}`);
+  }
+  // Logistic spot check: this data set is symmetric about X = 4.5, so the
+  // fitted P(Y=1) there is 0.5.
+  const log = await runAnalysis("simple-logistic-regression", logistic, {});
+  if ("error" in log) {
+    out.push(`Logistic spot check: ${log.error}`);
+  } else {
+    const b0 = log.coefficients?.find((c) => c.term === "Intercept")?.estimate;
+    const b1 = log.coefficients?.find((c) => c.term === "X")?.estimate;
+    const p = b0 == null || b1 == null ? NaN : 1 / (1 + Math.exp(-(b0 + b1 * 4.5)));
+    if (!Number.isFinite(p) || Math.abs(p - 0.5) > 1e-6)
+      out.push(`Logistic P(Y=1) at X=4.5: ${p}, expected 0.5`);
+    // The logistic-curve graph's sigmoid overlay, from the same cached result.
+    const { addLogisticCurve } = await import("../src/views/graphs/logistic-curve");
+    const fig = GRAPHS["logistic-curve"].build(
+      plotColumns(readTable(logistic), "logistic-curve"),
+      newGraphOptions("logistic-curve"),
+      paintOf(newGraphOptions("logistic-curve"), 1),
+      readTable(logistic).titles,
+    );
+    addLogisticCurve(fig, plotColumns(readTable(logistic), "logistic-curve"), log, paintOf(newGraphOptions("logistic-curve"), 1));
+    const traces = fig.data as { x?: number[]; y?: number[] }[];
+    const curve = traces.find((t) => t.x?.length === 101);
+    const mid = curve?.y?.[50];
+    if (!curve || mid == null || Math.abs(mid - 0.5) > 1e-6)
+      out.push(`Logistic curve at X=4.5: ${mid}, expected 0.5`);
   }
   return out;
 }

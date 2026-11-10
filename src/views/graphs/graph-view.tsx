@@ -24,6 +24,7 @@ import { computeGroupedDEG } from "../../lib/deg";
 import { useAnalysis } from "../analyses/use-analysis";
 import { GRAPHS, graphSeries, plotColumns } from ".";
 import { addDoseCurve } from "./dose-response-curve";
+import { addLogisticCurve } from "./logistic-curve";
 import { FormatPanel } from "./format-panel";
 import { copyGraphImage, saveGraphImage } from "./graph-export";
 import { INK, MOVABLE, marginsFor, movedText, paintOf, withCaps } from "./plot-helpers";
@@ -241,6 +242,15 @@ export function GraphView({ node }: { node: ProjectNode }) {
     model: options.doseModel,
   });
   const doseFit = doseOutcome && !("error" in doseOutcome) ? doseOutcome : null;
+  // A logistic-curve graph fits its own curve (no analysis node needed): the
+  // first Y series is the binary outcome, as in the analysis's default.
+  const logisticY = columns[1]?.name;
+  const logisticOutcome = useAnalysis(
+    type === "logistic-curve" && logisticY ? "simple-logistic-regression" : undefined,
+    data,
+    { y: logisticY },
+  );
+  const logisticFit = logisticOutcome && !("error" in logisticOutcome) ? logisticOutcome : null;
 
   // ── Drawing ──────────────────────────────────────────────────────────
 
@@ -316,6 +326,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
       if (family === "column" && options.sigAnalysisId) addSignificance(fig, columns, type, options, comparisons ?? []);
       if (type === "xy-scatter" && options.regAnalysisId) addRegression(fig, columns, options, regParams, paint);
       if (doseFit) addDoseCurve(fig, columns, options, doseFit, paint);
+      if (logisticFit) addLogisticCurve(fig, columns, logisticFit, paint);
       // The points' names are part of the figure (the volcano places its own, among the
       // genes it names); the selection ring only of the view.
       const labels =
@@ -353,6 +364,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
     comparisons,
     regParams,
     doseFit,
+    logisticFit,
     seriesNames.length,
     selected,
     glRatio,
