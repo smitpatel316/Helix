@@ -2106,6 +2106,29 @@ check("the multiple logistic regression wizard offers only 0/1 columns as the ou
   );
 });
 
+check("multiple logistic regression refuses a non-binary or constant outcome, and too few rows", async () => {
+  const table = (outcome: (string | null)[], age: (string | null)[], dose: (string | null)[]): TableData => ({
+    columns: ["Title", "Outcome", "Age", "Dose"],
+    rows: outcome.map((v, r) => [null, v, age[r], dose[r]]),
+  });
+  const params = { dependent: "Outcome", predictors: ["Age", "Dose"] };
+  // A 2 in the outcome is named, not coerced.
+  deepStrictEqual(
+    await runAnalysis("multiple-logistic-regression", table(["0", "2", "1", "0"], ["22", "25", "28", "31"], ["0", "0", "1", "0"]), params),
+    { error: "“Outcome” holds 2, but the outcome must hold only 0s and 1s (1 = event, 0 = no event)." },
+  );
+  // All-0 outcome has no contrast to fit.
+  deepStrictEqual(
+    await runAnalysis("multiple-logistic-regression", table(["0", "0", "0", "0"], ["22", "25", "28", "31"], ["0", "0", "1", "0"]), params),
+    { error: "The outcome has only one value (all 0s / all 1s). Logistic regression needs both outcomes." },
+  );
+  // Three complete rows cannot fit two predictors.
+  deepStrictEqual(
+    await runAnalysis("multiple-logistic-regression", table(["0", "1", "0"], ["22", "25", "28"], ["0", "1", "0"]), params),
+    { error: "Not enough complete rows (3) to fit 2 predictor(s). Enter more data and try again." },
+  );
+});
+
 check("an XY table without numbers in X or Y says which, in every XY analysis", async () => {
   const table = (x: (string | null)[], y: (string | null)[]): TableData => ({
     columns: ["Title", "Time", "Y1"],
