@@ -2360,22 +2360,25 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
     ).params,
     { time: "Time", status: "Status", covariates: ["Trt"], ties: "efron" },
   );
-  // The menu offers Multiple logistic regression after Multiple regression on
-  // Multiple Variables tables, Poisson regression after that, and Cox after that.
+  // The menu offers Principal component analysis after Multiple regression
+  // on Multiple Variables tables, Multiple logistic regression after that,
+  // Poisson regression after that, and Cox after that.
   deepStrictEqual(
     analysisOptionsForTable("multiple").map((o) => o.value),
     [
       "correlation-matrix",
       "multiple-regression",
+      "principal-component-analysis",
       "multiple-logistic-regression",
       "poisson-regression",
       "cox-proportional-hazards",
     ],
   );
-  // Multiple Variables tables offer the forest plot, the observed-vs-fitted graph, and survival curves.
+  // Multiple Variables tables offer the forest plot, the observed-vs-fitted graph, the scree plot,
+  // the scores biplot, and survival curves.
   deepStrictEqual(
     GRAPH_OPTIONS_BY_TABLE["multiple"].map((o) => o.value),
-    ["heatmap", "volcano", "forest-plot", "observed-fitted", "survival"],
+    ["heatmap", "volcano", "forest-plot", "observed-fitted", "scree-plot", "pca-biplot", "survival"],
   );
   // Renaming a column follows the Cox analysis's params.
   const renamed = followTable(
@@ -2392,6 +2395,49 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
     status: "Status",
     covariates: ["Treatment", "Years"],
     stratifyBy: "Treatment",
+  });
+});
+
+check("the PCA wizard asks scale then components, defaulting to the correlation matrix and all components", () => {
+  const data: TableData = {
+    columns: ["Title", "Var1", "Var2", "Var3"],
+    rows: [
+      [null, "2.5", "2.4", "1.0"],
+      [null, "0.5", "0.7", "0.2"],
+    ],
+  };
+  const qs = WIZARDS["principal-component-analysis"]!.questions({}, readTable(data)).filter(
+    (q): q is Question => q !== false,
+  );
+  deepStrictEqual(
+    qs.map((q) => q.id),
+    ["scale", "components"],
+  );
+  const scale = qs.find((q) => q.id === "scale");
+  ok(scale && scale.kind === "choice");
+  deepStrictEqual(
+    scale.kind === "choice" ? scale.options.map((o) => o.value) : [],
+    ["correlation", "covariance"],
+  );
+  const components = qs.find((q) => q.id === "components");
+  ok(components && components.kind === "number");
+  if (components?.kind === "number") {
+    strictEqual(components.initial, 0);
+    strictEqual(components.validate?.(-1), "Enter a whole number of components (0 = all).");
+    strictEqual(components.validate?.(1.5), "Enter a whole number of components (0 = all).");
+    strictEqual(components.validate?.(2), undefined);
+  }
+  deepStrictEqual(
+    WIZARDS["principal-component-analysis"]!.finish({ scale: "covariance", components: 2 }, readTable(data)),
+    {
+      type: "principal-component-analysis",
+      params: { scale: "covariance", components: 2 },
+    },
+  );
+  // No answers: the correlation matrix (first choice) and all components.
+  deepStrictEqual(WIZARDS["principal-component-analysis"]!.finish({}, readTable(data)), {
+    type: "principal-component-analysis",
+    params: { scale: "correlation", components: undefined },
   });
 });
 

@@ -40,6 +40,8 @@ import { loadPlotly } from "./plotly";
 import { addRegression } from "./regression-overlay";
 import { addDeming } from "./deming-overlay";
 import { addObservedFitted } from "./observed-fitted";
+import { addScreePlot } from "./scree-plot";
+import { addPcaBiplot } from "./pca-biplot";
 import { addSignificance, deriveComparisons } from "./significance-overlay";
 import {
   drawnKeys,
@@ -363,6 +365,20 @@ export function GraphView({ node }: { node: ProjectNode }) {
   );
   const poissonResult = poissonOutcome && !("error" in poissonOutcome) ? poissonOutcome : null;
   const poissonParams = (poissonAnalysis?.analysisParams ?? undefined) as PoissonRegressionParams | undefined;
+  // A scree plot or scores biplot draws a sibling Principal component
+  // analysis's variance/loadings/scores — the same cached runAnalysis result
+  // (no extra R call). Without one it draws only its axes, and the Format
+  // panel says to run the analysis first — exactly like the forest plot.
+  const pcaAnalysis = options.pcaAnalysisId ? nodes[options.pcaAnalysisId] : undefined;
+  const pcaOutcome = useAnalysis(
+    (type === "scree-plot" || type === "pca-biplot") &&
+      pcaAnalysis?.analysisType === "principal-component-analysis"
+      ? "principal-component-analysis"
+      : undefined,
+    data,
+    pcaAnalysis?.analysisParams,
+  );
+  const pcaResult = pcaOutcome && !("error" in pcaOutcome) ? pcaOutcome : null;
   // A smooth-curve graph draws a sibling Spline and Lowess analysis's fitted
   // curve — the same cached runAnalysis result (no extra R call). Without one
   // it draws only the points, and the Format panel prompts for one.
@@ -483,6 +499,14 @@ export function GraphView({ node }: { node: ProjectNode }) {
       if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint);
       if (type === "observed-fitted" && poissonResult)
         addObservedFitted(fig, columns, poissonResult, poissonParams, paint);
+      if (type === "scree-plot") {
+        if (pcaResult) addScreePlot(fig, pcaResult, paint);
+        else addNote(fig, "Run a Principal component analysis on this table to draw the scree plot.", options);
+      }
+      if (type === "pca-biplot") {
+        if (pcaResult) addPcaBiplot(fig, pcaResult, options, paint);
+        else addNote(fig, "Run a Principal component analysis on this table to draw the scores biplot.", options);
+      }
       // The points' names are part of the figure (the volcano places its own, among the
       // genes it names); the selection ring only of the view.
       const labels =
@@ -535,6 +559,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
     coxResult,
     poissonResult,
     poissonParams,
+    pcaResult,
     seriesNames.length,
     selected,
     glRatio,

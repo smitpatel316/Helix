@@ -26,6 +26,7 @@ import type {
   SurvivalParams,
   CoxParams,
   PoissonRegressionParams,
+  PrincipalComponentAnalysisParams,
   RocParams,
   SimpleLogisticRegressionParams,
   SplineLowessParams,
@@ -65,6 +66,7 @@ import { runCorrelationMatrix } from "./multiple/correlation-matrix";
 import { runMultipleRegression } from "./multiple/multiple-regression";
 import { runMultipleLogisticRegression } from "./multiple/multiple-logistic-regression";
 import { runPoissonRegression } from "./multiple/poisson-regression";
+import { runPrincipalComponentAnalysis } from "./multiple/principal-component-analysis";
 import { runChiSquare } from "./contingency/chi-square";
 import { runSurvival } from "./survival/survival-analysis";
 import { runCox } from "./survival/cox-regression";
@@ -224,6 +226,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Poisson regression",
     minColumns: 2,
     run: (c, p) => runPoissonRegression(c, p as PoissonRegressionParams),
+  },
+  "principal-component-analysis": {
+    label: "Principal component analysis",
+    minColumns: 2,
+    run: (c, p, t) => runPrincipalComponentAnalysis(c, p as PrincipalComponentAnalysisParams, t),
   },
   "chi-square": {
     label: "Chi-square or Fisher's exact test",

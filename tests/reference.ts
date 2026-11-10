@@ -1484,6 +1484,59 @@ const multipleBinarySeparated = table(
   ],
 );
 
+/** Principal component analysis (plan 21): the plan's 6×3 set. NOTE the
+ *  plan's "correlation matrix" values are the COVARIANCE values — confirmed
+ *  in WebR prcomp (and an independent NumPy SVD): scale.=TRUE gives sdev
+ *  1.7097/0.2535/0.1126, scale.=FALSE gives the plan's 1.2649/0.2172/0.0542.
+ *  The correlation case pins the true scale.=TRUE values; the covariance
+ *  case pins the plan's numbers. */
+const pca = table(
+  ["Title", "Var1", "Var2", "Var3"],
+  [
+    ["", "2.5", "2.4", "1.0"],
+    ["", "0.5", "0.7", "0.2"],
+    ["", "2.2", "2.9", "1.1"],
+    ["", "1.9", "2.2", "0.9"],
+    ["", "3.1", "3.0", "1.4"],
+    ["", "2.3", "2.7", "1.2"],
+  ],
+);
+
+/** A constant variable: the correlation matrix cannot standardise it (the
+ *  runner must name it), while the covariance matrix runs with it
+ *  contributing no variance. */
+const pcaConstant = table(
+  ["Title", "Var1", "Var2", "Var3"],
+  [
+    ["", "2.5", "2.4", "1"],
+    ["", "0.5", "0.7", "1"],
+    ["", "2.2", "2.9", "1"],
+    ["", "1.9", "2.2", "1"],
+  ],
+);
+
+/** Fewer complete rows (2) than variables (3): rank-deficient, one component. */
+const pcaFewRows = table(
+  ["Title", "Var1", "Var2", "Var3"],
+  [
+    ["", "2.5", "2.4", "1.0"],
+    ["", "0.5", "0.7", "0.2"],
+  ],
+);
+
+/** Var3 = Var1 + Var2 exactly: perfectly collinear, one zero eigenvalue. */
+const pcaCollinear = table(
+  ["Title", "Var1", "Var2", "Var3"],
+  [
+    ["", "1", "2", "3"],
+    ["", "2", "1", "3"],
+    ["", "3", "3", "6"],
+    ["", "4", "2", "6"],
+    ["", "5", "4", "9"],
+    ["", "6", "3", "9"],
+  ],
+);
+
 /** Well-behaved counts (Poisson regression, plan 12, Case A): dispersion
  *  ≈ 0.17, so no overdispersion warning is expected. */
 const poissonCounts = table(
@@ -2155,6 +2208,20 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
     "poisson-regression",
     { dependent: "Count", predictors: ["Dose", "Age"], quasi: true },
   ],
+  // Principal component analysis (plan 21): the correlation run (default),
+  // the no-params run (same numbers), the covariance run (the plan's
+  // numbers — see the `pca` table note), the first-two-components run, the
+  // over-asked run (clamped to 3, noted), and the edge cases (constant
+  // variable, too few rows, perfectly collinear variables).
+  ["pca", pca, "principal-component-analysis", { scale: "correlation" }],
+  ["pca", pca, "principal-component-analysis", {}],
+  ["pca", pca, "principal-component-analysis", { scale: "covariance" }],
+  ["pca", pca, "principal-component-analysis", { scale: "correlation", components: 2 }],
+  ["pca", pca, "principal-component-analysis", { scale: "correlation", components: 9 }],
+  ["pcaConstant", pcaConstant, "principal-component-analysis", { scale: "correlation" }],
+  ["pcaConstant", pcaConstant, "principal-component-analysis", { scale: "covariance" }],
+  ["pcaFewRows", pcaFewRows, "principal-component-analysis", { scale: "correlation" }],
+  ["pcaCollinear", pcaCollinear, "principal-component-analysis", { scale: "correlation" }],
   ["contingency2", contingency2, "chi-square"],
   ["contingency3", contingency3, "chi-square"],
   ["contingencyWide", contingencyWide, "chi-square"],
@@ -2280,6 +2347,8 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["multiple", multiple, "heatmap"],
   ["multiple", multiple, "xy-scatter", { xVariable: "Height", yVariable: "Weight" }],
   ["poissonCounts", poissonCounts, "observed-fitted"],
+  ["pca", pca, "scree-plot"],
+  ["pca", pca, "pca-biplot"],
   ["volcano", volcanoTable, "volcano", volcano],
   ["volcanoXY", volcanoXY, "volcano", { volcanoY: "P" }],
   ["volcanoLog", volcanoLog, "volcano", { volcanoY: "-log10 P", volcanoYIsPValue: false }],
@@ -3825,6 +3894,314 @@ async function disagreements(): Promise<string[]> {
       })
     )
       out.push(`Mixed-effects wizard finish (grouped escape): ${JSON.stringify(mixGrpEscape)}`);
+  }
+  // Principal component analysis (plan 21). The plan's "correlation matrix"
+  // values are the COVARIANCE values — WebR prcomp (confirmed by an
+  // independent NumPy SVD) gives, for scale.=TRUE, sdev 1.7097/0.2535/0.1126
+  // and proportions 0.9744/0.0214/0.0042, while scale.=FALSE gives exactly
+  // the plan's 1.2649/0.2172/0.0542 and 0.9696/0.0286/0.0018. The correlation
+  // case below pins the true scale.=TRUE values; the covariance case pins
+  // the plan's numbers. Loadings/scores are asserted sign-canonicalised
+  // (the runner flips each component so its largest-|loading| entry is
+  // positive), so they are stable whatever sign R's SVD returns.
+  {
+    const pcaStat = (r: AnalysisResult, label: string) => r.stats.find((s) => s.label === label)?.value;
+    const close = (got: number | null | undefined, want: number, tol: number, label: string) => {
+      if (got == null || Math.abs(got - want) > tol) out.push(`PCA ${label}: ${got}, expected ${want} ± ${tol}`);
+    };
+    const closeAll = (
+      got: (number | null | undefined)[],
+      want: number[],
+      tol: number,
+      label: string,
+    ) => {
+      if (got.length !== want.length) {
+        out.push(`PCA ${label}: ${got.length} values, expected ${want.length}`);
+        return;
+      }
+      got.forEach((g, i) => close(g, want[i], tol, `${label}[${i}]`));
+    };
+    const pcaCorr = await runAnalysis("principal-component-analysis", pca, { scale: "correlation" });
+    if ("error" in pcaCorr) {
+      out.push(`PCA correlation: ${pcaCorr.error}`);
+    } else {
+      closeAll(
+        pcaCorr.pcaVariance?.map((v) => v.sd) ?? [],
+        [1.7097, 0.2535, 0.1126],
+        1e-3,
+        "correlation sdev",
+      );
+      closeAll(
+        pcaCorr.pcaVariance?.map((v) => v.eigenvalue) ?? [],
+        [2.9231, 0.0642, 0.0127],
+        1e-3,
+        "correlation eigenvalue",
+      );
+      closeAll(
+        pcaCorr.pcaVariance?.map((v) => v.proportion) ?? [],
+        [0.9744, 0.0214, 0.0042],
+        1e-3,
+        "correlation proportion",
+      );
+      closeAll(
+        pcaCorr.pcaVariance?.map((v) => v.cumulative) ?? [],
+        [0.9744, 0.9958, 1.0],
+        1e-3,
+        "correlation cumulative",
+      );
+      closeAll(
+        pcaCorr.pcaLoadings?.find((l) => l.variable === "Var1")?.loadings ?? [],
+        [0.5738, 0.7505, -0.3279],
+        1e-3,
+        "correlation loadings Var1",
+      );
+      closeAll(
+        pcaCorr.pcaLoadings?.find((l) => l.variable === "Var2")?.loadings ?? [],
+        [0.5759, -0.6544, -0.49],
+        1e-3,
+        "correlation loadings Var2",
+      );
+      closeAll(
+        pcaCorr.pcaLoadings?.find((l) => l.variable === "Var3")?.loadings ?? [],
+        [0.5823, -0.0923, 0.8077],
+        1e-3,
+        "correlation loadings Var3",
+      );
+      closeAll(
+        pcaCorr.pcaScores?.map((s) => s.scores[0]) ?? [],
+        [0.3776, -3.2207, 0.6612, -0.2938, 1.7438, 0.7319],
+        1e-3,
+        "correlation scores PC1",
+      );
+      closeAll(
+        pcaCorr.pcaScores?.map((s) => s.scores[1]) ?? [],
+        [0.2865, 0.0587, -0.3801, -0.0526, 0.2495, -0.1619],
+        1e-3,
+        "correlation scores PC2",
+      );
+      closeAll(
+        pcaCorr.pcaScores?.map((s) => s.scores[2]) ?? [],
+        [-0.1396, 0.031, -0.1205, 0.006, 0.07, 0.1531],
+        1e-3,
+        "correlation scores PC3",
+      );
+      close(pcaStat(pcaCorr, "Total variance"), 3, 1e-3, "correlation total variance");
+      close(pcaStat(pcaCorr, "Number of components"), 3, 0, "correlation component count");
+      close(pcaStat(pcaCorr, "Variance explained by PC1"), 0.9744, 1e-3, "correlation PC1 share");
+      close(pcaStat(pcaCorr, "Variance explained by PC1+PC2"), 0.9958, 1e-3, "correlation PC1+PC2 share");
+      close(pcaStat(pcaCorr, "Complete rows (n)"), 6, 0, "correlation n");
+      close(pcaStat(pcaCorr, "Variables (p)"), 3, 0, "correlation p");
+      if (!pcaCorr.notes.includes("correlation matrix")) out.push(`PCA correlation notes: matrix missing`);
+      if (!pcaCorr.notes.includes("standardised")) out.push(`PCA correlation notes: standardised missing`);
+      if (pcaCorr.pcaScores?.map((s) => s.row).join(",") !== "Row 1,Row 2,Row 3,Row 4,Row 5,Row 6")
+        out.push(`PCA score rows: ${pcaCorr.pcaScores?.map((s) => s.row).join(",")}, expected Row 1..Row 6`);
+    }
+    // The defaults (no params) give the same numbers as the explicit
+    // correlation run.
+    const pcaDef = await runAnalysis("principal-component-analysis", pca, {});
+    if ("error" in pcaDef) {
+      out.push(`PCA defaults: ${pcaDef.error}`);
+    } else if (!("error" in pcaCorr)) {
+      for (const s of pcaCorr.stats) {
+        const got = pcaStat(pcaDef, s.label);
+        if (got !== s.value) out.push(`PCA defaults ${s.label}: ${got}, explicit run: ${s.value}`);
+      }
+    }
+    // Covariance: the plan's numbers, exactly.
+    const pcaCov = await runAnalysis("principal-component-analysis", pca, { scale: "covariance" });
+    if ("error" in pcaCov) {
+      out.push(`PCA covariance: ${pcaCov.error}`);
+    } else {
+      closeAll(
+        pcaCov.pcaVariance?.map((v) => v.sd) ?? [],
+        [1.2649, 0.2172, 0.0542],
+        1e-3,
+        "covariance sdev (plan's values)",
+      );
+      closeAll(
+        pcaCov.pcaVariance?.map((v) => v.proportion) ?? [],
+        [0.9696, 0.0286, 0.0018],
+        1e-3,
+        "covariance proportion (plan's values)",
+      );
+      closeAll(
+        pcaCov.pcaVariance?.map((v) => v.cumulative) ?? [],
+        [0.9696, 0.9982, 1.0],
+        1e-3,
+        "covariance cumulative (plan's values)",
+      );
+      closeAll(
+        pcaCov.pcaLoadings?.find((l) => l.variable === "Var1")?.loadings ?? [],
+        [0.6791, 0.71, -0.1865],
+        1e-3,
+        "covariance loadings Var1 (plan's values)",
+      );
+      closeAll(
+        pcaCov.pcaLoadings?.find((l) => l.variable === "Var2")?.loadings ?? [],
+        [0.6587, -0.7015, -0.2719],
+        1e-3,
+        "covariance loadings Var2 (plan's values)",
+      );
+      closeAll(
+        pcaCov.pcaLoadings?.find((l) => l.variable === "Var3")?.loadings ?? [],
+        [0.3239, -0.0618, 0.9441],
+        1e-3,
+        "covariance loadings Var3 (plan's values)",
+      );
+      closeAll(
+        pcaCov.pcaScores?.map((s) => s.scores[0]) ?? [],
+        [0.3486, -2.3885, 0.5067, -0.2229, 1.2809, 0.4752],
+        1e-3,
+        "covariance scores PC1 (plan's values)",
+      );
+      closeAll(
+        pcaCov.pcaScores?.map((s) => s.scores[1]) ?? [],
+        [0.2353, 0.0574, -0.3346, -0.0442, 0.2157, -0.1295],
+        1e-3,
+        "covariance scores PC2 (plan's values)",
+      );
+      close(pcaStat(pcaCov, "Total variance"), 1.65, 1e-3, "covariance total variance");
+      close(pcaStat(pcaCov, "Variance explained by PC1"), 0.9696, 1e-3, "covariance PC1 share");
+      close(pcaStat(pcaCov, "Variance explained by PC1+PC2"), 0.9982, 1e-3, "covariance PC1+PC2 share");
+      if (!pcaCov.notes.includes("covariance matrix")) out.push(`PCA covariance notes: matrix missing`);
+    }
+    // First two components only: every table is two wide, and the note says so.
+    const pcaTwo = await runAnalysis("principal-component-analysis", pca, { scale: "correlation", components: 2 });
+    if ("error" in pcaTwo) {
+      out.push(`PCA two components: ${pcaTwo.error}`);
+    } else {
+      if (pcaTwo.pcaVariance?.length !== 2) out.push(`PCA two components: ${pcaTwo.pcaVariance?.length} rows`);
+      if (pcaTwo.pcaLoadings?.some((l) => l.loadings.length !== 2))
+        out.push(`PCA two components: loadings not 2 wide`);
+      if (pcaTwo.pcaScores?.some((s) => s.scores.length !== 2)) out.push(`PCA two components: scores not 2 wide`);
+      if (!pcaTwo.notes.includes("Showing the first 2 of 3 components"))
+        out.push(`PCA two components notes: ${pcaTwo.notes}`);
+    }
+    // Over-asked: clamped to the 3 available, and the note says so.
+    const pcaNine = await runAnalysis("principal-component-analysis", pca, { scale: "correlation", components: 9 });
+    if ("error" in pcaNine) {
+      out.push(`PCA nine components: ${pcaNine.error}`);
+    } else {
+      if (pcaNine.pcaVariance?.length !== 3) out.push(`PCA nine components: ${pcaNine.pcaVariance?.length} rows`);
+      if (!pcaNine.notes.includes("Asked for 9 components; only 3 available"))
+        out.push(`PCA nine components notes: ${pcaNine.notes}`);
+    }
+    // Edge cases: a constant variable names itself on the correlation
+    // matrix but runs on the covariance matrix (2 components, Var3
+    // contributing nothing); too few rows and perfect collinearity each
+    // report only the non-zero components and note the rank deficiency.
+    const pcaConstCorr = await runAnalysis("principal-component-analysis", pcaConstant, { scale: "correlation" });
+    if (!("error" in pcaConstCorr) || !pcaConstCorr.error.includes("Var3"))
+      out.push(
+        `PCA constant (correlation): ${"error" in pcaConstCorr ? pcaConstCorr.error : "ran without error"}, expected an error naming Var3`,
+      );
+    const pcaConstCov = await runAnalysis("principal-component-analysis", pcaConstant, { scale: "covariance" });
+    if ("error" in pcaConstCov) {
+      out.push(`PCA constant (covariance): ${pcaConstCov.error}`);
+    } else if (pcaConstCov.pcaVariance?.length !== 2) {
+      out.push(`PCA constant (covariance): ${pcaConstCov.pcaVariance?.length} components, expected 2`);
+    }
+    const pcaFew = await runAnalysis("principal-component-analysis", pcaFewRows, { scale: "correlation" });
+    if ("error" in pcaFew) {
+      out.push(`PCA few rows: ${pcaFew.error}`);
+    } else {
+      if (pcaFew.pcaVariance?.length !== 1) out.push(`PCA few rows: ${pcaFew.pcaVariance?.length} components`);
+      if (!pcaFew.notes.includes("rank-deficient")) out.push(`PCA few rows notes: ${pcaFew.notes}`);
+      if (pcaFew.stats.find((s) => s.label === "Variance explained by PC1+PC2")?.value !== null)
+        out.push(`PCA few rows: PC1+PC2 should be blank with one component`);
+    }
+    const pcaColl = await runAnalysis("principal-component-analysis", pcaCollinear, { scale: "correlation" });
+    if ("error" in pcaColl) {
+      out.push(`PCA collinear: ${pcaColl.error}`);
+    } else {
+      if (pcaColl.pcaVariance?.length !== 2) out.push(`PCA collinear: ${pcaColl.pcaVariance?.length} components`);
+      if (!pcaColl.notes.includes("rank-deficient")) out.push(`PCA collinear notes: ${pcaColl.notes}`);
+    }
+    // The scree plot for the correlation run: bars are the % variance
+    // (97.44, 2.14, 0.42), the line the cumulative % (97.44, 99.58, 100),
+    // on a category X axis with a 0–100 secondary axis.
+    if (!("error" in pcaCorr)) {
+      const { addScreePlot } = await import("../src/views/graphs/scree-plot");
+      const screeOpts = newGraphOptions("scree-plot");
+      const screeFig = GRAPHS["scree-plot"].build(
+        plotColumns(readTable(pca), "scree-plot", screeOpts, "multiple"),
+        screeOpts,
+        paintOf(screeOpts, 1),
+        readTable(pca).titles,
+      );
+      addScreePlot(screeFig, pcaCorr, paintOf(screeOpts, 1));
+      const traces = screeFig.data as { type?: string; x?: string[]; y?: number[]; yaxis?: string }[];
+      const bars = traces.find((t) => t.type === "bar");
+      const line = traces.find((t) => t.type === "scatter");
+      if (!bars || JSON.stringify(bars.x) !== JSON.stringify(["PC1", "PC2", "PC3"]))
+        out.push(`Scree bars x: ${JSON.stringify(bars?.x)}, expected ["PC1","PC2","PC3"]`);
+      closeAll(bars?.y ?? [], [97.44, 2.14, 0.42], 0.01, "scree bar heights");
+      closeAll(line?.y ?? [], [97.44, 99.58, 100], 0.01, "scree cumulative line");
+      if (line?.yaxis !== "y2") out.push(`Scree line axis: ${line?.yaxis}, expected "y2"`);
+      const xaxis = screeFig.layout.xaxis as { type?: string };
+      if (xaxis.type !== "category") out.push(`Scree x-axis: ${xaxis.type}, expected "category"`);
+      const yaxis2 = screeFig.layout.yaxis2 as { range?: number[] } | undefined;
+      if (!yaxis2 || JSON.stringify(yaxis2.range) !== JSON.stringify([0, 100]))
+        out.push(`Scree secondary axis: ${JSON.stringify(yaxis2?.range)}, expected [0, 100]`);
+      // The biplot for the same run: points are the PC1/PC2 scores, labelled
+      // by row, with one arrow per variable scaled to the score cloud — the
+      // longest arrow (Var1, PC2 loading 0.7505) reaches the largest score
+      // (3.2207), so its tip is (2.4626, 3.2207).
+      const { addPcaBiplot } = await import("../src/views/graphs/pca-biplot");
+      const biplotOpts = newGraphOptions("pca-biplot");
+      const biplotFig = GRAPHS["pca-biplot"].build(
+        plotColumns(readTable(pca), "pca-biplot", biplotOpts, "multiple"),
+        biplotOpts,
+        paintOf(biplotOpts, 1),
+        readTable(pca).titles,
+      );
+      addPcaBiplot(biplotFig, pcaCorr, biplotOpts, paintOf(biplotOpts, 1));
+      const points = (biplotFig.data as { type?: string; x?: number[]; y?: number[]; text?: string[] }[]).find(
+        (t) => t.type === "scatter",
+      );
+      closeAll(points?.x ?? [], [0.3776, -3.2207, 0.6612, -0.2938, 1.7438, 0.7319], 1e-3, "biplot x (PC1 scores)");
+      closeAll(points?.y ?? [], [0.2865, 0.0587, -0.3801, -0.0526, 0.2495, -0.1619], 1e-3, "biplot y (PC2 scores)");
+      if (JSON.stringify(points?.text) !== JSON.stringify(["Row 1", "Row 2", "Row 3", "Row 4", "Row 5", "Row 6"]))
+        out.push(`Biplot labels: ${JSON.stringify(points?.text)}, expected Row 1..Row 6`);
+      const arrows = (biplotFig.layout.annotations as { x?: number; y?: number; text?: string }[] | undefined) ?? [];
+      if (arrows.length !== 3) out.push(`Biplot arrows: ${arrows.length}, expected 3`);
+      const var1 = arrows.find((a) => a.text === "Var1");
+      if (var1 == null || Math.abs((var1.x ?? 0) - 2.4626) > 0.01 || Math.abs((var1.y ?? 0) - 3.2207) > 0.01)
+        out.push(`Biplot Var1 arrow tip: (${var1?.x}, ${var1?.y}), expected (2.4626, 3.2207)`);
+      const yaxis = biplotFig.layout.yaxis as { scaleanchor?: string; scaleratio?: number; title?: { text?: string } };
+      if (yaxis.scaleanchor !== "x" || yaxis.scaleratio !== 1)
+        out.push(`Biplot aspect: scaleanchor ${yaxis.scaleanchor}/${yaxis.scaleratio}, expected "x"/1`);
+      const xaxisB = biplotFig.layout.xaxis as { title?: { text?: string } };
+      if (xaxisB.title?.text !== "PC1 (97.4%)") out.push(`Biplot x title: ${xaxisB.title?.text}, expected "PC1 (97.4%)"`);
+      if (yaxis.title?.text !== "PC2 (2.1%)") out.push(`Biplot y title: ${yaxis.title?.text}, expected "PC2 (2.1%)"`);
+      // The component selector: PC1 vs PC3 plots the third component's
+      // scores on Y; asking for the same component twice falls back to the
+      // other of PC1/PC2.
+      const biplotOpts13 = { ...newGraphOptions("pca-biplot"), pcaX: 1, pcaY: 3 };
+      const biplotFig13 = GRAPHS["pca-biplot"].build(
+        plotColumns(readTable(pca), "pca-biplot", biplotOpts13, "multiple"),
+        biplotOpts13,
+        paintOf(biplotOpts13, 1),
+        readTable(pca).titles,
+      );
+      addPcaBiplot(biplotFig13, pcaCorr, biplotOpts13, paintOf(biplotOpts13, 1));
+      const points13 = (biplotFig13.data as { type?: string; y?: number[] }[]).find((t) => t.type === "scatter");
+      closeAll(points13?.y ?? [], [-0.1396, 0.031, -0.1205, 0.006, 0.07, 0.1531], 1e-3, "biplot PC1 vs PC3 y");
+      const biplotOpts22 = { ...newGraphOptions("pca-biplot"), pcaX: 2, pcaY: 2 };
+      const biplotFig22 = GRAPHS["pca-biplot"].build(
+        plotColumns(readTable(pca), "pca-biplot", biplotOpts22, "multiple"),
+        biplotOpts22,
+        paintOf(biplotOpts22, 1),
+        readTable(pca).titles,
+      );
+      addPcaBiplot(biplotFig22, pcaCorr, biplotOpts22, paintOf(biplotOpts22, 1));
+      const xaxis22 = biplotFig22.layout.xaxis as { title?: { text?: string } };
+      const yaxis22 = biplotFig22.layout.yaxis as { title?: { text?: string } };
+      if (xaxis22.title?.text !== "PC2 (2.1%)" || yaxis22.title?.text !== "PC1 (97.4%)")
+        out.push(
+          `Biplot same-component fallback: ${xaxis22.title?.text} vs ${yaxis22.title?.text}, expected PC2 (2.1%) vs PC1 (97.4%)`,
+        );
+    }
   }
   // Kolmogorov-Smirnov: the plan's values, computed independently in Python
   // with scipy.stats.ks_2samp(..., method='exact') (scipy 1.11.4) and verified

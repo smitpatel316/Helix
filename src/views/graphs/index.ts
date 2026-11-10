@@ -38,6 +38,8 @@ import { volcano, VOLCANO_SERIES } from "./volcano";
 import { blandAltmanGraph } from "./bland-altman";
 import { rocCurveGraph } from "./roc-curve";
 import { observedFitted, OBSERVED_FITTED_SERIES } from "./observed-fitted";
+import { screePlot, SCREE_SERIES } from "./scree-plot";
+import { pcaBiplot, PCA_BIPLOT_SERIES } from "./pca-biplot";
 import { histogram } from "./histogram";
 
 /** A Plotly figure (untyped traces/layout — built as plain objects per module). */
@@ -101,6 +103,8 @@ export const GRAPHS: Record<GraphType, GraphModule> = {
   "bland-altman": blandAltmanGraph,
   "roc-curve": rocCurveGraph,
   "observed-fitted": observedFitted,
+  "scree-plot": screePlot,
+  "pca-biplot": pcaBiplot,
   histogram,
 };
 
@@ -147,6 +151,10 @@ export function plotColumns(
 export function graphSeries(type: GraphType, data: TableData, tableType: TableType, options: GraphOptions): string[] {
   const { family } = GRAPHS[type];
   if (type === "observed-fitted") return [OBSERVED_FITTED_SERIES];
+  // The PCA graphs draw one series each (the scree bars, the score points),
+  // not the table's variables — the Series section styles that series.
+  if (type === "scree-plot") return [SCREE_SERIES];
+  if (type === "pca-biplot") return [PCA_BIPLOT_SERIES];
   if (family === "volcano") return Object.keys(VOLCANO_SERIES);
   if (family === "heatmap") return [];
   if (family === "xy" && tableType === "multiple") {
@@ -213,7 +221,7 @@ export const GRAPH_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<GraphType>
   // `groupsOf`, which takes a nested column's group prefix ("A" for
   // "A:S1:R1"), so bars, scatter and lines all draw from nested columns.
   nested: optionsFor(["grouped-bars", "grouped-scatter", "grouped-lines"]),
-  multiple: optionsFor(["xy-scatter", "heatmap", "volcano", "forest-plot", "observed-fitted", "survival"]),
+  multiple: optionsFor(["xy-scatter", "heatmap", "volcano", "forest-plot", "observed-fitted", "scree-plot", "pca-biplot", "survival"]),
   // Outcomes as series across the row categories, as Prism graphs contingency tables.
   contingency: optionsFor(["grouped-bars", "grouped-stacked", "grouped-hbars", "heatmap"]),
   survival: optionsFor(["survival"]),

@@ -321,6 +321,48 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
+      {result.pcaVariance && result.pcaVariance.length > 0 && (
+        <Table
+          title="Variance explained"
+          columns={[
+            { label: "Component" },
+            { label: "SD", numeric: true },
+            { label: "Eigenvalue", numeric: true },
+            { label: "Proportion of variance", numeric: true },
+            { label: "Cumulative proportion", numeric: true },
+          ]}
+          rows={result.pcaVariance.map((v) => [
+            v.component,
+            num(v.sd),
+            num(v.eigenvalue),
+            num(v.proportion),
+            num(v.cumulative),
+          ])}
+        />
+      )}
+
+      {result.pcaLoadings && result.pcaLoadings.length > 0 && (
+        <Table
+          title="Loadings"
+          columns={[
+            { label: "Variable" },
+            ...(result.pcaVariance ?? []).map((v) => ({ label: v.component, numeric: true })),
+          ]}
+          rows={result.pcaLoadings.map((row) => [row.variable, ...row.loadings.map((l) => num(l))])}
+        />
+      )}
+
+      {result.pcaScores && result.pcaScores.length > 0 && (
+        <Table
+          title="Scores"
+          columns={[
+            { label: "Row" },
+            ...(result.pcaVariance ?? []).map((v) => ({ label: v.component, numeric: true })),
+          ]}
+          rows={result.pcaScores.map((row) => [row.row, ...row.scores.map((s) => num(s))])}
+        />
+      )}
+
       {result.fitted && result.fitted.length > 0 && (
         <Table
           title="Fitted values and residuals"

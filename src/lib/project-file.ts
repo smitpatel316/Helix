@@ -133,7 +133,7 @@ type OptionalOption = {
 // prettier-ignore
 const OPTIONAL_OPTIONS = {
   yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number",
-  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", doseY: "text", xVariable: "text", yVariable: "text",
+  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", pcaAnalysisId: "text", doseY: "text", xVariable: "text", yVariable: "text",
   volcanoX: "text", volcanoY: "text", volcanoLabel: "text", volcanoGroupA: "text", volcanoGroupB: "text",
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",
@@ -188,6 +188,9 @@ const PARAMS = {
   posthocTerm: THREE_WAY_TERMS,
   truth: "name", score: "name", positive: "name-or-number",
   time: "name", status: "name", covariates: "names", stratifyBy: "name", ties: ["efron", "breslow"],
+  // Principal component analysis (plan 21): the matrix, and how many
+  // components to report (0 = all).
+  scale: ["correlation", "covariance"], components: "number",
   // Mixed-effects model (plan 20): the random structure and the subject
   // identity are choices; `subjectFactor` is one name + its per-row levels.
   randomStructure: ["intercept", "slope"], subjectId: ["row", "replicate"], interaction: "yes/no",
@@ -582,6 +585,7 @@ export function parseProjectFile(
       (o.demingAnalysisId && !nodeOf(o.demingAnalysisId)) ||
       (o.coxAnalysisId && !nodeOf(o.coxAnalysisId)) ||
       (o.poissonAnalysisId && !nodeOf(o.poissonAnalysisId)) ||
+      (o.pcaAnalysisId && !nodeOf(o.pcaAnalysisId)) ||
       (o.smoothAnalysisId && !nodeOf(o.smoothAnalysisId))
     ) {
       issues.push({

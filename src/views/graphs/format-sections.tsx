@@ -183,6 +183,17 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
     }
     return <PoissonControls analyses={sources} options={options} set={set} />;
   }
+  if (graphType === "scree-plot" || graphType === "pca-biplot") {
+    const sources = c.analyses.filter((a) => a.analysisType === "principal-component-analysis");
+    if (!sources.length) {
+      return (
+        <NoAnalysis test="principal-component-analysis" onNewAnalysis={c.onNewAnalysis}>
+          Draw the components of a Principal component analysis of this table.
+        </NoAnalysis>
+      );
+    }
+    return <PcaControls analyses={sources} options={options} set={set} components={graphType === "pca-biplot"} />;
+  }
   if (graphType === "dose-response") {
     const exponential = (EXPONENTIAL_MODELS as readonly string[]).includes(options.doseModel);
     const summaryLabel =
@@ -352,6 +363,49 @@ function PoissonControls({
       value={options.poissonAnalysisId}
       onChange={(poissonAnalysisId) => set({ poissonAnalysisId })}
     />
+  );
+}
+
+/** Pick a Principal component analysis: the scree plot draws its variance
+ *  explained, the biplot its scores and loadings — and the biplot also picks
+ *  which two components to plot (PC1 vs PC2 by default). */
+function PcaControls({
+  analyses,
+  options,
+  set,
+  components,
+}: {
+  analyses: ProjectNode[];
+  options: GraphOptions;
+  set: SetOptions;
+  components: boolean;
+}) {
+  return (
+    <>
+      <AnalysisRow
+        analyses={analyses}
+        value={options.pcaAnalysisId}
+        onChange={(pcaAnalysisId) => set({ pcaAnalysisId })}
+      />
+      {components && (
+        <>
+          <Stepper
+            label="X component"
+            value={options.pcaX}
+            {...GRAPH_LIMITS.pcaX}
+            step={1}
+            onChange={(pcaX) => set({ pcaX })}
+          />
+          <Stepper
+            label="Y component"
+            value={options.pcaY}
+            {...GRAPH_LIMITS.pcaY}
+            step={1}
+            onChange={(pcaY) => set({ pcaY })}
+          />
+        </>
+      )}
+    </>
   );
 }
 

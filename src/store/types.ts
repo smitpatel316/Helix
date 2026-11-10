@@ -36,6 +36,8 @@ export type GraphType =
   | "roc-curve"
   | "observed-fitted"
   | "smooth-curve"
+  | "scree-plot"
+  | "pca-biplot"
   | "histogram";
 
 /** The choices of a graph's options, one list each: the types come from them, and a
@@ -98,6 +100,10 @@ export const GRAPH_LIMITS = {
   volcanoLabelCount: { min: 0, max: 50 },
   volcanoFcThreshold: { min: 0, max: Infinity },
   volcanoPThreshold: { min: 0, max: Infinity },
+  /** The biplot's plotted components, 1-based (PC1 vs PC2 by default);
+   *  clamped to the components the linked PCA actually reported. */
+  pcaX: { min: 1, max: 20 },
+  pcaY: { min: 1, max: 20 },
 } as const;
 
 /**
@@ -173,6 +179,14 @@ export interface GraphOptions {
   // fitted counts from (see observed-fitted.ts) — the graph runs the same
   // cached runAnalysis result.
   poissonAnalysisId?: string;
+  // Principal component analysis (Multiple Variables only): the sibling
+  // "Principal component analysis" a scree plot or scores biplot draws from
+  // (see scree-plot.ts and pca-biplot.ts) — the graph runs the same cached
+  // runAnalysis result. `pcaX`/`pcaY` are the biplot's plotted components,
+  // 1-based (PC1 vs PC2 by default).
+  pcaAnalysisId?: string;
+  pcaX: number;
+  pcaY: number;
   // Dose-response curve (XY family only): a one-click sigmoidal 4PL fit of the
   // chosen Y series against X, run via WebR (see dose-response-curve.ts) — no
   // sibling analysis node needed, unlike the Linear-regression overlay above.
@@ -313,6 +327,8 @@ export const DEFAULT_GRAPH_OPTIONS: GraphOptions = {
   volcanoLabelCount: 10,
   volcanoEffect: "log2ratio",
   volcanoSignificance: "pvalue",
+  pcaX: 1,
+  pcaY: 2,
   title: "",
   xLabel: "",
   yLabel: "",

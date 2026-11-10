@@ -29277,5 +29277,1246 @@
     "sd": 0.9249466897
    }
   ]
+ },
+ "principal-component-analysis pca {\"scale\":\"correlation\"}": {
+  "testType": "principal-component-analysis",
+  "subtitle": "Principal component analysis",
+  "stats": [
+   {
+    "label": "Total variance",
+    "value": 3
+   },
+   {
+    "label": "Number of components",
+    "value": 3
+   },
+   {
+    "label": "Variance explained by PC1",
+    "value": 0.9743605779
+   },
+   {
+    "label": "Variance explained by PC1+PC2",
+    "value": 0.9957769701
+   },
+   {
+    "label": "Complete rows (n)",
+    "value": 6
+   },
+   {
+    "label": "Variables (p)",
+    "value": 3
+   }
+  ],
+  "groups": [
+   {
+    "name": "Var1",
+    "mean": 2.083333333,
+    "sd": 0.8727351641,
+    "sem": 0.3562926388,
+    "median": 2.25,
+    "n": 6
+   },
+   {
+    "name": "Var2",
+    "mean": 2.316666667,
+    "sd": 0.8471520918,
+    "sem": 0.3458483932,
+    "median": 2.55,
+    "n": 6
+   },
+   {
+    "name": "Var3",
+    "mean": 0.9666666667,
+    "sd": 0.4131182236,
+    "sem": 0.1686548085,
+    "median": 1.05,
+    "n": 6
+   }
+  ],
+  "notes": "Principal component analysis on the correlation matrix — each variable standardised to mean 0, SD 1 before the components were computed. Scores are on centred and scaled data. Uses 6 complete rows.",
+  "pcaVariance": [
+   {
+    "component": "PC1",
+    "eigenvalue": 2.923081734,
+    "sd": 1.709702235,
+    "proportion": 0.9743605779,
+    "cumulative": 0.9743605779
+   },
+   {
+    "component": "PC2",
+    "eigenvalue": 0.06424917664,
+    "sd": 0.253474213,
+    "proportion": 0.02141639221,
+    "cumulative": 0.9957769701
+   },
+   {
+    "component": "PC3",
+    "eigenvalue": 0.01266908974,
+    "sd": 0.112557051,
+    "proportion": 0.004223029912,
+    "cumulative": 1
+   }
+  ],
+  "pcaLoadings": [
+   {
+    "variable": "Var1",
+    "loadings": [
+     0.5738115427,
+     0.7504594226,
+     -0.3279496433
+    ]
+   },
+   {
+    "variable": "Var2",
+    "loadings": [
+     0.5758909242,
+     -0.6544428955,
+     -0.4899532019
+    ]
+   },
+   {
+    "variable": "Var3",
+    "loadings": [
+     0.5823143111,
+     -0.09227757951,
+     0.8077096579
+    ]
+   }
+  ],
+  "pcaScores": [
+   {
+    "row": "Row 1",
+    "scores": [
+     0.3775876687,
+     0.2864666429,
+     -0.1395960796
+    ]
+   },
+   {
+    "row": "Row 2",
+    "scores": [
+     -3.220685885,
+     0.05866004396,
+     0.03102596186
+    ]
+   },
+   {
+    "row": "Row 3",
+    "scores": [
+     0.6611957755,
+     -0.380098864,
+     -0.1205256772
+    ]
+   },
+   {
+    "row": "Row 4",
+    "scores": [
+     -0.2938193274,
+     -0.05262847239,
+     0.006022541716
+    ]
+   },
+   {
+    "row": "Row 5",
+    "scores": [
+     1.743780772,
+     0.2495427675,
+     0.06999011696
+    ]
+   },
+   {
+    "row": "Row 6",
+    "scores": [
+     0.7319409964,
+     -0.161942118,
+     0.1530831362
+    ]
+   }
+  ]
+ },
+ "principal-component-analysis pca {}": {
+  "testType": "principal-component-analysis",
+  "subtitle": "Principal component analysis",
+  "stats": [
+   {
+    "label": "Total variance",
+    "value": 3
+   },
+   {
+    "label": "Number of components",
+    "value": 3
+   },
+   {
+    "label": "Variance explained by PC1",
+    "value": 0.9743605779
+   },
+   {
+    "label": "Variance explained by PC1+PC2",
+    "value": 0.9957769701
+   },
+   {
+    "label": "Complete rows (n)",
+    "value": 6
+   },
+   {
+    "label": "Variables (p)",
+    "value": 3
+   }
+  ],
+  "groups": [
+   {
+    "name": "Var1",
+    "mean": 2.083333333,
+    "sd": 0.8727351641,
+    "sem": 0.3562926388,
+    "median": 2.25,
+    "n": 6
+   },
+   {
+    "name": "Var2",
+    "mean": 2.316666667,
+    "sd": 0.8471520918,
+    "sem": 0.3458483932,
+    "median": 2.55,
+    "n": 6
+   },
+   {
+    "name": "Var3",
+    "mean": 0.9666666667,
+    "sd": 0.4131182236,
+    "sem": 0.1686548085,
+    "median": 1.05,
+    "n": 6
+   }
+  ],
+  "notes": "Principal component analysis on the correlation matrix — each variable standardised to mean 0, SD 1 before the components were computed. Scores are on centred and scaled data. Uses 6 complete rows.",
+  "pcaVariance": [
+   {
+    "component": "PC1",
+    "eigenvalue": 2.923081734,
+    "sd": 1.709702235,
+    "proportion": 0.9743605779,
+    "cumulative": 0.9743605779
+   },
+   {
+    "component": "PC2",
+    "eigenvalue": 0.06424917664,
+    "sd": 0.253474213,
+    "proportion": 0.02141639221,
+    "cumulative": 0.9957769701
+   },
+   {
+    "component": "PC3",
+    "eigenvalue": 0.01266908974,
+    "sd": 0.112557051,
+    "proportion": 0.004223029912,
+    "cumulative": 1
+   }
+  ],
+  "pcaLoadings": [
+   {
+    "variable": "Var1",
+    "loadings": [
+     0.5738115427,
+     0.7504594226,
+     -0.3279496433
+    ]
+   },
+   {
+    "variable": "Var2",
+    "loadings": [
+     0.5758909242,
+     -0.6544428955,
+     -0.4899532019
+    ]
+   },
+   {
+    "variable": "Var3",
+    "loadings": [
+     0.5823143111,
+     -0.09227757951,
+     0.8077096579
+    ]
+   }
+  ],
+  "pcaScores": [
+   {
+    "row": "Row 1",
+    "scores": [
+     0.3775876687,
+     0.2864666429,
+     -0.1395960796
+    ]
+   },
+   {
+    "row": "Row 2",
+    "scores": [
+     -3.220685885,
+     0.05866004396,
+     0.03102596186
+    ]
+   },
+   {
+    "row": "Row 3",
+    "scores": [
+     0.6611957755,
+     -0.380098864,
+     -0.1205256772
+    ]
+   },
+   {
+    "row": "Row 4",
+    "scores": [
+     -0.2938193274,
+     -0.05262847239,
+     0.006022541716
+    ]
+   },
+   {
+    "row": "Row 5",
+    "scores": [
+     1.743780772,
+     0.2495427675,
+     0.06999011696
+    ]
+   },
+   {
+    "row": "Row 6",
+    "scores": [
+     0.7319409964,
+     -0.161942118,
+     0.1530831362
+    ]
+   }
+  ]
+ },
+ "principal-component-analysis pca {\"scale\":\"covariance\"}": {
+  "testType": "principal-component-analysis",
+  "subtitle": "Principal component analysis",
+  "stats": [
+   {
+    "label": "Total variance",
+    "value": 1.65
+   },
+   {
+    "label": "Number of components",
+    "value": 3
+   },
+   {
+    "label": "Variance explained by PC1",
+    "value": 0.9696276547
+   },
+   {
+    "label": "Variance explained by PC1+PC2",
+    "value": 0.9982175341
+   },
+   {
+    "label": "Complete rows (n)",
+    "value": 6
+   },
+   {
+    "label": "Variables (p)",
+    "value": 3
+   }
+  ],
+  "groups": [
+   {
+    "name": "Var1",
+    "mean": 2.083333333,
+    "sd": 0.8727351641,
+    "sem": 0.3562926388,
+    "median": 2.25,
+    "n": 6
+   },
+   {
+    "name": "Var2",
+    "mean": 2.316666667,
+    "sd": 0.8471520918,
+    "sem": 0.3458483932,
+    "median": 2.55,
+    "n": 6
+   },
+   {
+    "name": "Var3",
+    "mean": 0.9666666667,
+    "sd": 0.4131182236,
+    "sem": 0.1686548085,
+    "median": 1.05,
+    "n": 6
+   }
+  ],
+  "notes": "Principal component analysis on the covariance matrix — variables kept in their original units. Scores are on centred data. Uses 6 complete rows.",
+  "pcaVariance": [
+   {
+    "component": "PC1",
+    "eigenvalue": 1.59988563,
+    "sd": 1.264865855,
+    "proportion": 0.9696276547,
+    "cumulative": 0.9696276547
+   },
+   {
+    "component": "PC2",
+    "eigenvalue": 0.04717330113,
+    "sd": 0.2171941554,
+    "proportion": 0.02858987947,
+    "cumulative": 0.9982175341
+   },
+   {
+    "component": "PC3",
+    "eigenvalue": 0.002941068655,
+    "sd": 0.05423162043,
+    "proportion": 0.001782465851,
+    "cumulative": 1
+   }
+  ],
+  "pcaLoadings": [
+   {
+    "variable": "Var1",
+    "loadings": [
+     0.6790797137,
+     0.7099734227,
+     -0.1865167056
+    ]
+   },
+   {
+    "variable": "Var2",
+    "loadings": [
+     0.6587317299,
+     -0.7015107722,
+     -0.2719469516
+    ]
+   },
+   {
+    "variable": "Var3",
+    "loadings": [
+     0.3239185862,
+     -0.06180918588,
+     0.9440637553
+    ]
+   }
+  ],
+  "pcaScores": [
+   {
+    "row": "Row 1",
+    "scores": [
+     0.3486414777,
+     0.2353027223,
+     -0.06890874814
+    ]
+   },
+   {
+    "row": "Row 2",
+    "scores": [
+     -2.388496759,
+     0.05737153831,
+     0.01118347662
+    ]
+   },
+   {
+    "row": "Row 3",
+    "scores": [
+     0.5066752872,
+     -0.3346256093,
+     -0.05452083672
+    ]
+   },
+   {
+    "row": "Row 4",
+    "scores": [
+     -0.2229445551,
+     -0.04419825835,
+     0.002984290034
+    ]
+   },
+   {
+    "row": "Row 5",
+    "scores": [
+     1.280895778,
+     0.2156566382,
+     0.03363855964
+    ]
+   },
+   {
+    "row": "Row 6",
+    "scores": [
+     0.4752287712,
+     -0.1295070311,
+     0.07562325857
+    ]
+   }
+  ]
+ },
+ "principal-component-analysis pca {\"scale\":\"correlation\",\"components\":2}": {
+  "testType": "principal-component-analysis",
+  "subtitle": "Principal component analysis",
+  "stats": [
+   {
+    "label": "Total variance",
+    "value": 3
+   },
+   {
+    "label": "Number of components",
+    "value": 2
+   },
+   {
+    "label": "Variance explained by PC1",
+    "value": 0.9743605779
+   },
+   {
+    "label": "Variance explained by PC1+PC2",
+    "value": 0.9957769701
+   },
+   {
+    "label": "Complete rows (n)",
+    "value": 6
+   },
+   {
+    "label": "Variables (p)",
+    "value": 3
+   }
+  ],
+  "groups": [
+   {
+    "name": "Var1",
+    "mean": 2.083333333,
+    "sd": 0.8727351641,
+    "sem": 0.3562926388,
+    "median": 2.25,
+    "n": 6
+   },
+   {
+    "name": "Var2",
+    "mean": 2.316666667,
+    "sd": 0.8471520918,
+    "sem": 0.3458483932,
+    "median": 2.55,
+    "n": 6
+   },
+   {
+    "name": "Var3",
+    "mean": 0.9666666667,
+    "sd": 0.4131182236,
+    "sem": 0.1686548085,
+    "median": 1.05,
+    "n": 6
+   }
+  ],
+  "notes": "Principal component analysis on the correlation matrix — each variable standardised to mean 0, SD 1 before the components were computed. Scores are on centred and scaled data. Uses 6 complete rows. Showing the first 2 of 3 components.",
+  "pcaVariance": [
+   {
+    "component": "PC1",
+    "eigenvalue": 2.923081734,
+    "sd": 1.709702235,
+    "proportion": 0.9743605779,
+    "cumulative": 0.9743605779
+   },
+   {
+    "component": "PC2",
+    "eigenvalue": 0.06424917664,
+    "sd": 0.253474213,
+    "proportion": 0.02141639221,
+    "cumulative": 0.9957769701
+   }
+  ],
+  "pcaLoadings": [
+   {
+    "variable": "Var1",
+    "loadings": [
+     0.5738115427,
+     0.7504594226
+    ]
+   },
+   {
+    "variable": "Var2",
+    "loadings": [
+     0.5758909242,
+     -0.6544428955
+    ]
+   },
+   {
+    "variable": "Var3",
+    "loadings": [
+     0.5823143111,
+     -0.09227757951
+    ]
+   }
+  ],
+  "pcaScores": [
+   {
+    "row": "Row 1",
+    "scores": [
+     0.3775876687,
+     0.2864666429
+    ]
+   },
+   {
+    "row": "Row 2",
+    "scores": [
+     -3.220685885,
+     0.05866004396
+    ]
+   },
+   {
+    "row": "Row 3",
+    "scores": [
+     0.6611957755,
+     -0.380098864
+    ]
+   },
+   {
+    "row": "Row 4",
+    "scores": [
+     -0.2938193274,
+     -0.05262847239
+    ]
+   },
+   {
+    "row": "Row 5",
+    "scores": [
+     1.743780772,
+     0.2495427675
+    ]
+   },
+   {
+    "row": "Row 6",
+    "scores": [
+     0.7319409964,
+     -0.161942118
+    ]
+   }
+  ]
+ },
+ "principal-component-analysis pca {\"scale\":\"correlation\",\"components\":9}": {
+  "testType": "principal-component-analysis",
+  "subtitle": "Principal component analysis",
+  "stats": [
+   {
+    "label": "Total variance",
+    "value": 3
+   },
+   {
+    "label": "Number of components",
+    "value": 3
+   },
+   {
+    "label": "Variance explained by PC1",
+    "value": 0.9743605779
+   },
+   {
+    "label": "Variance explained by PC1+PC2",
+    "value": 0.9957769701
+   },
+   {
+    "label": "Complete rows (n)",
+    "value": 6
+   },
+   {
+    "label": "Variables (p)",
+    "value": 3
+   }
+  ],
+  "groups": [
+   {
+    "name": "Var1",
+    "mean": 2.083333333,
+    "sd": 0.8727351641,
+    "sem": 0.3562926388,
+    "median": 2.25,
+    "n": 6
+   },
+   {
+    "name": "Var2",
+    "mean": 2.316666667,
+    "sd": 0.8471520918,
+    "sem": 0.3458483932,
+    "median": 2.55,
+    "n": 6
+   },
+   {
+    "name": "Var3",
+    "mean": 0.9666666667,
+    "sd": 0.4131182236,
+    "sem": 0.1686548085,
+    "median": 1.05,
+    "n": 6
+   }
+  ],
+  "notes": "Principal component analysis on the correlation matrix — each variable standardised to mean 0, SD 1 before the components were computed. Scores are on centred and scaled data. Uses 6 complete rows. Asked for 9 components; only 3 available — showing all 3.",
+  "pcaVariance": [
+   {
+    "component": "PC1",
+    "eigenvalue": 2.923081734,
+    "sd": 1.709702235,
+    "proportion": 0.9743605779,
+    "cumulative": 0.9743605779
+   },
+   {
+    "component": "PC2",
+    "eigenvalue": 0.06424917664,
+    "sd": 0.253474213,
+    "proportion": 0.02141639221,
+    "cumulative": 0.9957769701
+   },
+   {
+    "component": "PC3",
+    "eigenvalue": 0.01266908974,
+    "sd": 0.112557051,
+    "proportion": 0.004223029912,
+    "cumulative": 1
+   }
+  ],
+  "pcaLoadings": [
+   {
+    "variable": "Var1",
+    "loadings": [
+     0.5738115427,
+     0.7504594226,
+     -0.3279496433
+    ]
+   },
+   {
+    "variable": "Var2",
+    "loadings": [
+     0.5758909242,
+     -0.6544428955,
+     -0.4899532019
+    ]
+   },
+   {
+    "variable": "Var3",
+    "loadings": [
+     0.5823143111,
+     -0.09227757951,
+     0.8077096579
+    ]
+   }
+  ],
+  "pcaScores": [
+   {
+    "row": "Row 1",
+    "scores": [
+     0.3775876687,
+     0.2864666429,
+     -0.1395960796
+    ]
+   },
+   {
+    "row": "Row 2",
+    "scores": [
+     -3.220685885,
+     0.05866004396,
+     0.03102596186
+    ]
+   },
+   {
+    "row": "Row 3",
+    "scores": [
+     0.6611957755,
+     -0.380098864,
+     -0.1205256772
+    ]
+   },
+   {
+    "row": "Row 4",
+    "scores": [
+     -0.2938193274,
+     -0.05262847239,
+     0.006022541716
+    ]
+   },
+   {
+    "row": "Row 5",
+    "scores": [
+     1.743780772,
+     0.2495427675,
+     0.06999011696
+    ]
+   },
+   {
+    "row": "Row 6",
+    "scores": [
+     0.7319409964,
+     -0.161942118,
+     0.1530831362
+    ]
+   }
+  ]
+ },
+ "principal-component-analysis pcaConstant {\"scale\":\"correlation\"}": {
+  "error": "“Var3” is constant — PCA on the correlation matrix cannot standardise a variable with no variation. Remove it from the table, or run PCA on the covariance matrix instead."
+ },
+ "principal-component-analysis pcaConstant {\"scale\":\"covariance\"}": {
+  "testType": "principal-component-analysis",
+  "subtitle": "Principal component analysis",
+  "stats": [
+   {
+    "label": "Total variance",
+    "value": 1.679166667
+   },
+   {
+    "label": "Number of components",
+    "value": 2
+   },
+   {
+    "label": "Variance explained by PC1",
+    "value": 0.968728186
+   },
+   {
+    "label": "Variance explained by PC1+PC2",
+    "value": 1
+   },
+   {
+    "label": "Complete rows (n)",
+    "value": 4
+   },
+   {
+    "label": "Variables (p)",
+    "value": 3
+   }
+  ],
+  "groups": [
+   {
+    "name": "Var1",
+    "mean": 1.775,
+    "sd": 0.8845903006,
+    "sem": 0.4422951503,
+    "median": 2.05,
+    "n": 4
+   },
+   {
+    "name": "Var2",
+    "mean": 2.05,
+    "sd": 0.9469248474,
+    "sem": 0.4734624237,
+    "median": 2.3,
+    "n": 4
+   },
+   {
+    "name": "Var3",
+    "mean": 1,
+    "sd": 0,
+    "sem": 0,
+    "median": 1,
+    "n": 4
+   }
+  ],
+  "notes": "Principal component analysis on the covariance matrix — variables kept in their original units. Scores are on centred data. Uses 4 complete rows. Only 2 components have non-zero variance — some variables are linear combinations of the others, so the fit is rank-deficient.",
+  "pcaVariance": [
+   {
+    "component": "PC1",
+    "eigenvalue": 1.626656079,
+    "sd": 1.275404281,
+    "proportion": 0.968728186,
+    "cumulative": 0.968728186
+   },
+   {
+    "component": "PC2",
+    "eigenvalue": 0.05251058768,
+    "sd": 0.2291518878,
+    "proportion": 0.03127181401,
+    "cumulative": 1
+   }
+  ],
+  "pcaLoadings": [
+   {
+    "variable": "Var1",
+    "loadings": [
+     0.6809823341,
+     0.7322998434
+    ]
+   },
+   {
+    "variable": "Var2",
+    "loadings": [
+     0.7322998434,
+     -0.6809823341
+    ]
+   },
+   {
+    "variable": "Var3",
+    "loadings": [
+     0,
+     0
+    ]
+   }
+  ],
+  "pcaScores": [
+   {
+    "row": "Row 1",
+    "scores": [
+     0.7500171374,
+     0.2925735695
+    ]
+   },
+   {
+    "row": "Row 2",
+    "scores": [
+     -1.856857265,
+     -0.01435614921
+    ]
+   },
+   {
+    "row": "Row 3",
+    "scores": [
+     0.9118723589,
+     -0.2676075506
+    ]
+   },
+   {
+    "row": "Row 4",
+    "scores": [
+     0.1949677683,
+     -0.0106098697
+    ]
+   }
+  ]
+ },
+ "principal-component-analysis pcaFewRows {\"scale\":\"correlation\"}": {
+  "testType": "principal-component-analysis",
+  "subtitle": "Principal component analysis",
+  "stats": [
+   {
+    "label": "Total variance",
+    "value": 3
+   },
+   {
+    "label": "Number of components",
+    "value": 1
+   },
+   {
+    "label": "Variance explained by PC1",
+    "value": 1
+   },
+   {
+    "label": "Variance explained by PC1+PC2",
+    "value": null
+   },
+   {
+    "label": "Complete rows (n)",
+    "value": 2
+   },
+   {
+    "label": "Variables (p)",
+    "value": 3
+   }
+  ],
+  "groups": [
+   {
+    "name": "Var1",
+    "mean": 1.5,
+    "sd": 1.414213562,
+    "sem": 1,
+    "median": 1.5,
+    "n": 2
+   },
+   {
+    "name": "Var2",
+    "mean": 1.55,
+    "sd": 1.202081528,
+    "sem": 0.85,
+    "median": 1.55,
+    "n": 2
+   },
+   {
+    "name": "Var3",
+    "mean": 0.6,
+    "sd": 0.5656854249,
+    "sem": 0.4,
+    "median": 0.6,
+    "n": 2
+   }
+  ],
+  "notes": "Principal component analysis on the correlation matrix — each variable standardised to mean 0, SD 1 before the components were computed. Scores are on centred and scaled data. Uses 2 complete rows. Only 1 component have non-zero variance — there are fewer complete rows (2) than variables (3), so the fit is rank-deficient.",
+  "pcaVariance": [
+   {
+    "component": "PC1",
+    "eigenvalue": 3,
+    "sd": 1.732050808,
+    "proportion": 1,
+    "cumulative": 1
+   }
+  ],
+  "pcaLoadings": [
+   {
+    "variable": "Var1",
+    "loadings": [
+     0.5773502692
+    ]
+   },
+   {
+    "variable": "Var2",
+    "loadings": [
+     0.5773502692
+    ]
+   },
+   {
+    "variable": "Var3",
+    "loadings": [
+     0.5773502692
+    ]
+   }
+  ],
+  "pcaScores": [
+   {
+    "row": "Row 1",
+    "scores": [
+     1.224744871
+    ]
+   },
+   {
+    "row": "Row 2",
+    "scores": [
+     -1.224744871
+    ]
+   }
+  ]
+ },
+ "principal-component-analysis pcaCollinear {\"scale\":\"correlation\"}": {
+  "testType": "principal-component-analysis",
+  "subtitle": "Principal component analysis",
+  "stats": [
+   {
+    "label": "Total variance",
+    "value": 3
+   },
+   {
+    "label": "Number of components",
+    "value": 2
+   },
+   {
+    "label": "Variance explained by PC1",
+    "value": 0.8844938203
+   },
+   {
+    "label": "Variance explained by PC1+PC2",
+    "value": 1
+   },
+   {
+    "label": "Complete rows (n)",
+    "value": 6
+   },
+   {
+    "label": "Variables (p)",
+    "value": 3
+   }
+  ],
+  "groups": [
+   {
+    "name": "Var1",
+    "mean": 3.5,
+    "sd": 1.870828693,
+    "sem": 0.7637626158,
+    "median": 3.5,
+    "n": 6
+   },
+   {
+    "name": "Var2",
+    "mean": 2.5,
+    "sd": 1.048808848,
+    "sem": 0.4281744193,
+    "median": 2.5,
+    "n": 6
+   },
+   {
+    "name": "Var3",
+    "mean": 6,
+    "sd": 2.683281573,
+    "sem": 1.095445115,
+    "median": 6,
+    "n": 6
+   }
+  ],
+  "notes": "Principal component analysis on the correlation matrix — each variable standardised to mean 0, SD 1 before the components were computed. Scores are on centred and scaled data. Uses 6 complete rows. Only 2 components have non-zero variance — some variables are linear combinations of the others, so the fit is rank-deficient.",
+  "pcaVariance": [
+   {
+    "component": "PC1",
+    "eigenvalue": 2.653481461,
+    "sd": 1.628951031,
+    "proportion": 0.8844938203,
+    "cumulative": 0.8844938203
+   },
+   {
+    "component": "PC2",
+    "eigenvalue": 0.3465185392,
+    "sd": 0.5886582533,
+    "proportion": 0.1155061797,
+    "cumulative": 1
+   }
+  ],
+  "pcaLoadings": [
+   {
+    "variable": "Var1",
+    "loadings": [
+     0.5725533266,
+     -0.612839717
+    ]
+   },
+   {
+    "variable": "Var2",
+    "loadings": [
+     0.5452220088,
+     0.7807128935
+    ]
+   },
+   {
+    "variable": "Var3",
+    "loadings": [
+     0.6123035598,
+     -0.1221264066
+    ]
+   }
+  ],
+  "pcaScores": [
+   {
+    "row": "Row 1",
+    "scores": [
+     -1.709607151,
+     0.5832927242
+    ]
+   },
+   {
+    "row": "Row 2",
+    "scores": [
+     -1.923413313,
+     -0.4886644204
+    ]
+   },
+   {
+    "row": "Row 3",
+    "scores": [
+     0.106903081,
+     0.5359785723
+    ]
+   },
+   {
+    "row": "Row 4",
+    "scores": [
+     -0.106903081,
+     -0.5359785723
+    ]
+   },
+   {
+    "row": "Row 5",
+    "scores": [
+     1.923413313,
+     0.4886644204
+    ]
+   },
+   {
+    "row": "Row 6",
+    "scores": [
+     1.709607151,
+     -0.5832927242
+    ]
+   }
+  ]
+ },
+ "graph scree-plot pca": {
+  "data": [],
+  "layout": {
+   "paper_bgcolor": "#ffffff",
+   "plot_bgcolor": "#ffffff",
+   "dragmode": false,
+   "font": {
+    "color": "#111827",
+    "family": "system-ui, -apple-system, sans-serif",
+    "size": 13
+   },
+   "margin": {
+    "l": 16,
+    "r": 16,
+    "t": 16,
+    "b": 16
+   },
+   "showlegend": false,
+   "legend": {
+    "x": 1.02,
+    "y": 1,
+    "xanchor": "left"
+   },
+   "xaxis": {
+    "type": "linear",
+    "showgrid": false,
+    "zeroline": false,
+    "linecolor": "#111827",
+    "linewidth": 1,
+    "ticks": "outside",
+    "tickwidth": 1,
+    "fixedrange": true,
+    "automargin": true,
+    "title": {
+     "text": "Component",
+     "standoff": 12
+    }
+   },
+   "yaxis": {
+    "showgrid": false,
+    "zeroline": false,
+    "linecolor": "#111827",
+    "linewidth": 1,
+    "ticks": "outside",
+    "tickwidth": 1,
+    "fixedrange": true,
+    "automargin": true,
+    "title": {
+     "text": "Variance explained (%)",
+     "standoff": 2
+    }
+   }
+  }
+ },
+ "graph pca-biplot pca": {
+  "data": [],
+  "layout": {
+   "paper_bgcolor": "#ffffff",
+   "plot_bgcolor": "#ffffff",
+   "dragmode": false,
+   "font": {
+    "color": "#111827",
+    "family": "system-ui, -apple-system, sans-serif",
+    "size": 13
+   },
+   "margin": {
+    "l": 16,
+    "r": 16,
+    "t": 16,
+    "b": 16
+   },
+   "showlegend": false,
+   "legend": {
+    "x": 1.02,
+    "y": 1,
+    "xanchor": "left"
+   },
+   "xaxis": {
+    "type": "linear",
+    "showgrid": false,
+    "zeroline": false,
+    "linecolor": "#111827",
+    "linewidth": 1,
+    "ticks": "outside",
+    "tickwidth": 1,
+    "fixedrange": true,
+    "automargin": true,
+    "title": {
+     "text": "PC1",
+     "standoff": 12
+    }
+   },
+   "yaxis": {
+    "showgrid": false,
+    "zeroline": false,
+    "linecolor": "#111827",
+    "linewidth": 1,
+    "ticks": "outside",
+    "tickwidth": 1,
+    "fixedrange": true,
+    "automargin": true,
+    "title": {
+     "text": "PC2",
+     "standoff": 2
+    }
+   }
+  }
  }
 }

@@ -27,6 +27,7 @@ export type AnalysisType =
   | "multiple-regression"
   | "multiple-logistic-regression"
   | "poisson-regression"
+  | "principal-component-analysis"
   | "spline-lowess"
   | "binding-saturation"
   | "binding-kinetics"
@@ -298,6 +299,16 @@ export interface PoissonRegressionParams {
   dependent: string;
   predictors?: string[];
   quasi: boolean;
+}
+
+/** Params for "principal-component-analysis" (Multiple Variables table):
+ *  `scale` picks the matrix PCA runs on — "correlation" standardises each
+ *  variable first (recommended when variables are on different scales),
+ *  "covariance" keeps the original units. `components` is how many
+ *  components to report (0 or omitted = all). */
+export interface PrincipalComponentAnalysisParams {
+  scale: "correlation" | "covariance";
+  components?: number;
 }
 
 /** Params for "two-way-anova" on a Grouped table's column-groups × row position:
@@ -577,6 +588,7 @@ export type AnalysisParams = DataSetsParam &
     | MultipleRegressionParams
     | MultipleLogisticRegressionParams
     | PoissonRegressionParams
+    | PrincipalComponentAnalysisParams
     | SplineLowessParams
     | CoxPHParams
     | MixedEffectsParams
@@ -768,6 +780,32 @@ export interface FrequencyBins {
   bins: FrequencyBinRow[];
 }
 
+/** One row of a PCA variance-explained table ("principal-component-analysis"):
+ *  one component's standard deviation, eigenvalue (variance), and share of
+ *  the total variance, with the running total. */
+export interface PcaVarianceRow {
+  component: string;
+  eigenvalue: number | null;
+  sd: number | null;
+  proportion: number | null;
+  cumulative: number | null;
+}
+
+/** One row of a PCA loadings table: one variable's loading on every reported
+ *  component, in component order. */
+export interface PcaLoadingRow {
+  variable: string;
+  loadings: (number | null)[];
+}
+
+/** One row of a PCA scores table: one subject's (complete row's) score on
+ *  every reported component, in component order. `row` is the row title, or
+ *  the row number when the table has none. */
+export interface PcaScoreRow {
+  row: string;
+  scores: (number | null)[];
+}
+
 /** One fitted point of a smoother ("spline-lowess"): `y` is the fitted value
  *  at `x`; `observed` is the data's Y at that X, carried so the results view
  *  can show residuals without re-reading the table. */
@@ -823,6 +861,14 @@ export interface AnalysisResult {
   /** Optional ROC points ("roc-curve"): one row per threshold (unique score
    *  values, descending); Youden's J is computed at render time. */
   rocCurve?: RocPoint[];
+  /** Optional PCA tables ("principal-component-analysis"): the variance
+   *  explained per component, the loadings (one row per variable) and the
+   *  scores (one row per complete subject row). Loadings and scores are
+   *  sign-canonicalised per component (see the runner), so a stored result
+   *  is stable across runs. */
+  pcaVariance?: PcaVarianceRow[];
+  pcaLoadings?: PcaLoadingRow[];
+  pcaScores?: PcaScoreRow[];
   /** Optional per-point smoother output ("spline-lowess"), the shared
    *  per-point-result mechanism for later plans: `fitted` = the fitted
    *  values at the data X's, in ascending X order; `curve` = the same

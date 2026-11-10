@@ -31,6 +31,7 @@ import type {
   OneSampleTParams,
   SurvivalParams,
   CoxParams,
+  PrincipalComponentAnalysisParams,
   SplineLowessParams,
   StandardCurveInterpolationParams,
   ThreeWayAnovaParams,
@@ -1426,6 +1427,35 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         dependent: a.dependent as string,
         predictors: a.predictors as string[],
         quasi: a.quasi === "yes",
+      },
+    }),
+  },
+
+  "principal-component-analysis": {
+    questions: () => [
+      choice("scale", "Standardise variables before PCA?", [
+        [
+          "correlation",
+          "Use the correlation matrix — standardise each variable (recommended when variables are on different scales)",
+        ],
+        ["covariance", "Use the covariance matrix — keep original units"],
+      ]),
+      {
+        id: "components",
+        ask: "Components to report (0 = all).",
+        kind: "number",
+        label: "Components to report (0 = all)",
+        initial: 0,
+        min: 0,
+        validate: (v) =>
+          Number.isInteger(v) && v >= 0 ? undefined : "Enter a whole number of components (0 = all).",
+      },
+    ],
+    finish: (a) => ({
+      type: "principal-component-analysis",
+      params: {
+        scale: (a.scale as PrincipalComponentAnalysisParams["scale"] | undefined) ?? "correlation",
+        components: a.components as number,
       },
     }),
   },
