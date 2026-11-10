@@ -11,6 +11,8 @@ import { useProjectStore } from "../../store/use-project-store";
 import { checkNormality } from "./normality-check";
 import { useAnalysisLauncher } from "./use-analysis-launcher";
 import { analysisLabel } from ".";
+import { packageGate } from "../../stats";
+import { ensurePackages } from "../../stats/webr";
 import { chosenSets, toggled, WIZARDS, type Answer, type Answers, type Question, type Wizard } from "./wizards";
 
 const NOT_SURE = { value: "check", label: "Not sure — check for normality first (Shapiro-Wilk)" };
@@ -60,6 +62,7 @@ function Steps({
   const [answers, setAnswers] = React.useState<Answers>({});
   const [step, setStep] = React.useState(0);
   const [checking, setChecking] = React.useState(false);
+  const [retrying, setRetrying] = React.useState(false);
   // Each question takes the keyboard (its chosen answer), so ↑↓ and Return go on working.
   const field = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
@@ -77,6 +80,21 @@ function Steps({
     setValue(initialAnswer(next, a[next.id]));
   };
   const last = value !== NOT_SURE.value && asked({ ...answers, [q.id]: value ?? undefined }).length === step + 1;
+  // The test this wizard would create once the step is answered (finish is a
+  // pure mapping), so a required package that already failed to install
+  // blocks Run before it is pressed — with Retry. A package that merely
+  // is not loaded yet does not block: the analysis installs it on first run.
+  const finished = last ? wizard.finish({ ...answers, [q.id]: value ?? undefined }, table) : null;
+  const gate = finished ? packageGate(finished.type) : { blocked: false, message: null, packages: [] as string[] };
+  const retry = async () => {
+    setRetrying(true);
+    try {
+      await ensurePackages(gate.packages);
+    } catch {
+      // The gate recomputes from packageStatus on the next render.
+    }
+    setRetrying(false);
+  };
 
   const next = async () => {
     let answer = value!;
@@ -91,6 +109,7 @@ function Steps({
     if (asked(a).length > step + 1) go(step + 1, a);
     else {
       const { type, params } = wizard.finish(a, table);
+      if (packageGate(type).blocked) return; // re-checked: Run was disabled, but status can change
       onDone(type, params);
     }
   };
@@ -103,12 +122,17 @@ function Steps({
       onClose={checking ? undefined : onClose}
       onReturn={ready && !checking ? () => void next() : undefined}
       title={title}
-      description={checking ? "Running the Shapiro-Wilk normality test…" : q.ask}
+      description={gate.blocked ? gate.message! : checking ? "Running the Shapiro-Wilk normality test…" : q.ask}
       footer={
         !checking && (
           <>
             {step > 0 && <Button onClick={() => go(step - 1, answers)}>Back</Button>}
-            <Button variant="accent" disabled={!ready} onClick={() => void next()}>
+            {gate.blocked && (
+              <Button disabled={retrying} onClick={() => void retry()}>
+                {retrying ? "Retrying…" : "Retry installing packages"}
+              </Button>
+            )}
+            <Button variant="accent" disabled={!ready || gate.blocked} onClick={() => void next()}>
               {last ? "Run" : "Next"}
             </Button>
           </>

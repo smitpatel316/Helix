@@ -47,6 +47,7 @@ import { runBlandAltman } from "./column/bland-altman";
 import { runFrequencyDistribution } from "./column/frequency-distribution";
 import type { TableData } from "../store/types";
 import { readTable, setColumns, type Column } from "../lib/dataset";
+import { ensurePackages, packageErrorMessage, packageStatus } from "./webr";
 
 /** How every test runs: the columns of its data sets (`sets`, all by default), the
  *  wizard's params, and the row titles, which name the rows in grouped-table results. */
@@ -62,6 +63,10 @@ interface Analysis {
   name?: (params: AnalysisParams | undefined) => string;
   /** Data columns (holding numbers) the test needs; checked before it is created. */
   minColumns: number;
+  /** R packages the test needs (plan 00 registry names). `runAnalysis` installs
+   *  them before the test runs and fails clearly when one is unavailable, so
+   *  no analysis can start a computation it cannot finish. Absent: none. */
+  requiredPackages?: string[];
   run: Runner;
 }
 
@@ -142,6 +147,28 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
   },
 };
 
+/** Whether the wizard for `type` may run: `blocked` when a required package
+ *  already failed to install (the Run button stays disabled and the dialog
+ *  shows `message` plus Retry); a `not-loaded` package does not block — the
+ *  analysis installs it on first run. */
+export function packageGate(type: AnalysisType): {
+  blocked: boolean;
+  message: string | null;
+  packages: string[];
+} {
+  const required = ANALYSES[type]?.requiredPackages ?? [];
+  const failed = required.filter((n) => packageStatus(n).status === "failed");
+  if (!failed.length) return { blocked: false, message: null, packages: required };
+  const detail = failed
+    .map((n) => packageStatus(n).error ?? `The R package “${n}” could not be installed.`)
+    .join(" ");
+  return {
+    blocked: true,
+    message: `${failed.map((n) => `“${n}”`).join(", ")} ${failed.length > 1 ? "are" : "is"} unavailable — ${detail}`,
+    packages: failed,
+  };
+}
+
 // One result per table version, test and params, shared by everyone who asks:
 // the analysis view and the graphs' overlays read the same run, so R works once.
 // An edit makes a new TableData, which starts a fresh set of results.
@@ -171,11 +198,27 @@ export function runAnalysis(
   let result = byTest.get(key);
   if (!result) {
     const columns = params?.sets ? setColumns(table, params.sets) : table.columns;
-    result = analysis.run(columns, params, table.titles).catch((err: unknown) => {
-      // A failure (an R error, R not starting) is shown, not kept: asking again retries.
-      byTest.delete(key);
-      return { error: `Could not run the test: ${err instanceof Error ? err.message : String(err)}` };
-    });
+    result = (async () => {
+      // A package-dependent test installs its packages first; a failure is a
+      // user-facing error, never a raw R error — and the run is not cached,
+      // so asking again retries the install.
+      const required = analysis.requiredPackages ?? [];
+      if (required.length) {
+        try {
+          await ensurePackages(required);
+        } catch (err) {
+          byTest.delete(key);
+          return { error: packageErrorMessage(err) };
+        }
+      }
+      try {
+        return await analysis.run(columns, params, table.titles);
+      } catch (err: unknown) {
+        // A failure (an R error, R not starting) is shown, not kept: asking again retries.
+        byTest.delete(key);
+        return { error: `Could not run the test: ${err instanceof Error ? err.message : String(err)}` };
+      }
+    })();
     byTest.set(key, result);
   }
   return result;
