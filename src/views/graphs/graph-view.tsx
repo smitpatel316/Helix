@@ -101,9 +101,11 @@ export function GraphView({ node }: { node: ProjectNode }) {
     () => (dataset && parent?.tableType ? plotColumns(dataset, type, options, parent.tableType) : []),
     [dataset, type, options.center, options.xVariable, options.yVariable, parent?.tableType],
   );
-  // A graph of a table with an X needs numbers in X and in a Y column, and says which it lacks.
+  // A graph of a table with an X needs numbers in X and in a Y column, and says which it lacks —
+  // except the ROC curve, whose truth (X) may be text ("Diseased"/"Healthy"):
+  // its build draws nothing when the truth has other than two classes.
   const xyLack =
-    family === "xy" && parent?.tableType && hasXColumn(parent.tableType) && dataset
+    family === "xy" && type !== "roc-curve" && parent?.tableType && hasXColumn(parent.tableType) && dataset
       ? xyProblem(dataset.columns)
       : undefined;
   const hasData = !xyLack && columns.some((c) => c.values.length > 0);

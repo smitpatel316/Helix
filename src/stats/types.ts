@@ -28,6 +28,7 @@ export type AnalysisType =
   | "cox"
   | "survival-log-rank"
   | "bland-altman"
+  | "roc-curve"
   | "frequency-distribution";
 
 /** What the New Analysis picker offers: a test, or "Compare more than two groups",
@@ -267,6 +268,27 @@ export interface FrequencyDistributionParams {
   startAt?: number;
 }
 
+/** Params for "roc-curve": a binary truth column against a continuous score
+ *  column, paired by row. */
+export interface RocParams {
+  /** Truth column; defaults to the first data column. */
+  truth?: string;
+  /** Score column; defaults to the second data column. */
+  score?: string;
+  /** Which truth value counts as "positive" (e.g. 1, or "Diseased").
+      Defaults to the larger/maximum distinct truth value. */
+  positive?: string | number;
+}
+
+/** One ROC point: at this threshold (a score value), predict positive iff
+ *  score ≥ threshold. The (0,0) and (1,1) endpoints have no score threshold —
+ *  the graph adds them when it draws the curve. */
+export interface RocPoint {
+  threshold: number;
+  sensitivity: number;
+  specificity: number;
+}
+
 /** The data sets an analysis runs on, in this order: columns, or a grouped table's groups.
  *  Absent (files before Helix 1.0.5): all of them, the first two for a two-group test. */
 interface DataSetsParam {
@@ -297,6 +319,7 @@ export type AnalysisParams = DataSetsParam &
     | SurvivalParams
     | CoxParams
     | FrequencyDistributionParams
+    | RocParams
   );
 
 /** Params for "survival" (Survival table): the test comparing the curves — log-rank,
@@ -495,6 +518,9 @@ export interface AnalysisResult {
   hazardRatios?: HazardRatioRow[];
   /** Optional per-column frequency-distribution bins ("frequency-distribution"). */
   frequencyBins?: FrequencyBins[];
+  /** Optional ROC points ("roc-curve"): one row per threshold (unique score
+   *  values, descending); Youden's J is computed at render time. */
+  rocCurve?: RocPoint[];
 }
 
 /** A test returns either a result or a user-facing error message. */

@@ -38,6 +38,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "kolmogorov-smirnov",
     "outliers",
     "bland-altman",
+    "roc-curve",
   ]),
   xy: optionsFor([
     "correlation",
@@ -48,6 +49,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "standard-curve-interpolation",
     "bland-altman",
     "interpolate",
+    "roc-curve",
     "survival-log-rank",
   ]),
   grouped: optionsFor(["two-way-anova", "three-way-anova", "multiple-t-tests"]),
@@ -63,13 +65,8 @@ export function hasRowGroups(data: TableData | undefined): boolean {
 
 /** The picker/menu options for a table: the three-way ANOVA is offered only
  *  when the table has ≥ 2 row bands — without them it would be a dead test. */
-export function analysisOptionsForTable(
-  tableType: TableType,
-  data?: TableData,
-): SelectorOption<AnalysisPickerValue>[] {
-  return ANALYSIS_OPTIONS_BY_TABLE[tableType].filter(
-    (o) => o.value !== "three-way-anova" || hasRowGroups(data),
-  );
+export function analysisOptionsForTable(tableType: TableType, data?: TableData): SelectorOption<AnalysisPickerValue>[] {
+  return ANALYSIS_OPTIONS_BY_TABLE[tableType].filter((o) => o.value !== "three-way-anova" || hasRowGroups(data));
 }
 
 /** Count data columns (excluding the leading Title column) that hold ≥1 numeric value. */

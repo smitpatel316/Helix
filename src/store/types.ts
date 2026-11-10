@@ -31,6 +31,7 @@ export type GraphType =
   | "survival"
   | "volcano"
   | "bland-altman"
+  | "roc-curve"
   | "histogram";
 
 /** The choices of a graph's options, one list each: the types come from them, and a

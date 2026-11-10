@@ -450,6 +450,74 @@ const blandAltman = table(
   ],
 );
 
+/** ROC curve (plan 05): 10 diseased (Truth 1) + 10 healthy (Truth 0), rows
+ *  interleaved. AUC 0.97, DeLong SE 0.0302, CI [0.9108, 1.0000] (raw upper
+ *  1.0292, truncated); Youden optimum 0.71 (sens 0.80, spec 1.00, J 0.80),
+ *  tied with 0.65 and 0.58 — the tie rule picks 0.71, the highest threshold. */
+const rocTable = table(
+  ["Title", "Truth", "Score"],
+  [
+    ["", "1", "0.82"],
+    ["", "0", "0.42"],
+    ["", "1", "0.76"],
+    ["", "0", "0.55"],
+    ["", "1", "0.91"],
+    ["", "0", "0.31"],
+    ["", "1", "0.65"],
+    ["", "0", "0.61"],
+    ["", "1", "0.88"],
+    ["", "0", "0.48"],
+    ["", "1", "0.71"],
+    ["", "0", "0.39"],
+    ["", "1", "0.95"],
+    ["", "0", "0.66"],
+    ["", "1", "0.58"],
+    ["", "0", "0.28"],
+    ["", "1", "0.79"],
+    ["", "0", "0.52"],
+    ["", "1", "0.84"],
+    ["", "0", "0.45"],
+  ],
+);
+
+/** The same scores with a text truth column ("Diseased"/"Healthy"). */
+const rocTableText = table(
+  ["Title", "Truth", "Score"],
+  [
+    ["", "Diseased", "0.82"],
+    ["", "Healthy", "0.42"],
+    ["", "Diseased", "0.76"],
+    ["", "Healthy", "0.55"],
+    ["", "Diseased", "0.91"],
+    ["", "Healthy", "0.31"],
+    ["", "Diseased", "0.65"],
+    ["", "Healthy", "0.61"],
+    ["", "Diseased", "0.88"],
+    ["", "Healthy", "0.48"],
+    ["", "Diseased", "0.71"],
+    ["", "Healthy", "0.39"],
+    ["", "Diseased", "0.95"],
+    ["", "Healthy", "0.66"],
+    ["", "Diseased", "0.58"],
+    ["", "Healthy", "0.28"],
+    ["", "Diseased", "0.79"],
+    ["", "Healthy", "0.52"],
+    ["", "Diseased", "0.84"],
+    ["", "Healthy", "0.45"],
+  ],
+);
+
+/** A single-class truth: AUC is undefined — an error, not 0.5. */
+const rocTableSingle = table(
+  ["Title", "Truth", "Score"],
+  [
+    ["", "1", "0.82"],
+    ["", "1", "0.42"],
+    ["", "1", "0.76"],
+    ["", "1", "0.55"],
+  ],
+);
+
 const grouped = table(
   ["Title", "A:Y1", "A:Y2", "A:Y3", "B:Y1", "B:Y2", "B:Y3", "C:Y1", "C:Y2", "C:Y3"],
   [
@@ -766,6 +834,13 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["logistic", logistic, "simple-logistic-regression", {}],
   ["logisticSeparated", logisticSeparated, "simple-logistic-regression", {}],
   ["blandAltman", blandAltman, "bland-altman", { sets: ["Method A", "Method B"] }],
+  // ROC curve (plan 05): the reference run, the defaults (same numbers),
+  // the text-truth run, the single-class error and the unknown-positive error.
+  ["rocTable", rocTable, "roc-curve", { truth: "Truth", score: "Score", positive: 1 }],
+  ["rocTable", rocTable, "roc-curve", {}],
+  ["rocTableText", rocTableText, "roc-curve", { truth: "Truth", score: "Score", positive: "Diseased" }],
+  ["rocTableSingle", rocTableSingle, "roc-curve", { truth: "Truth", score: "Score", positive: 1 }],
+  ["rocTable", rocTable, "roc-curve", { truth: "Truth", score: "Score", positive: 2 }],
   // Frequency distribution (plan 06): A explicit width, B explicit count, B2
   // empty bins, C auto (Sturges + pretty), D on-edge values, plus the constant,
   // too-few and invalid-params edge cases and a multi-column run (the shared
@@ -910,6 +985,7 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["doseLog", doseLog, "dose-response"],
   ["logistic", logistic, "logistic-curve"],
   ["blandAltman", blandAltman, "bland-altman"],
+  ["rocTable", rocTable, "roc-curve"],
   ["freqCol", freqCol, "histogram"],
   ["survival", survivalTable, "survival"],
   ["freireich", freireich, "survival", { survivalShowBand: true }],
@@ -1361,6 +1437,125 @@ async function disagreements(): Promise<string[]> {
     }
     if (stat("N (pairs)") !== 10) out.push(`Bland-Altman N: ${stat("N (pairs)")}, expected 10`);
   }
+  // ROC curve (plan 05): the plan's values, computed independently in Python
+  // (numpy 1.26.4 / scipy 1.11.4: Mann-Whitney U for AUC, DeLong
+  // placement-variance for the CI, exact counting for sens/spec) and
+  // re-verified before locking. Tolerances: absolute 1e-3 on AUC/SE/CI;
+  // sensitivity/specificity exact (they are rational counts).
+  const roc = await runAnalysis("roc-curve", rocTable, { truth: "Truth", score: "Score", positive: 1 });
+  if ("error" in roc) {
+    out.push(`ROC curve: ${roc.error}`);
+  } else {
+    const stat = (label: string) => roc.stats.find((s) => s.label === label)?.value;
+    const plan: [string, number][] = [
+      ["AUC", 0.97],
+      ["AUC standard error", 0.0302],
+      ["AUC 95% CI lower", 0.9108],
+      ["AUC 95% CI upper", 1],
+      ["Optimal cutpoint (Youden)", 0.71],
+      ["Sensitivity at cutpoint", 0.8],
+      ["Specificity at cutpoint", 1],
+      ["Youden's J", 0.8],
+      ["N positive", 10],
+      ["N negative", 10],
+    ];
+    for (const [label, value] of plan) {
+      const got = stat(label);
+      if (got == null || Math.abs(got - value) > 1e-3) out.push(`ROC ${label}: ${got}, plan says ${value}`);
+    }
+    if (roc.subtitle !== "ROC curve analysis") out.push(`ROC subtitle: ${roc.subtitle}`);
+    // The raw upper limit is 1.0292 — the stored value must be the truncated 1.
+    if (!roc.notes.includes("the upper limit hit 1 and was truncated"))
+      out.push(`ROC notes missing the truncation: ${roc.notes}`);
+    if (!roc.notes.includes("among tied J values the highest threshold is reported"))
+      out.push(`ROC notes missing the tie rule: ${roc.notes}`);
+    // Tie check: J = 0.80 also at 0.65 (sens 0.90, spec 0.90) and 0.58
+    // (sens 1.00, spec 0.80) — the optimum is 0.71, the highest threshold.
+    const at = (t: number) => roc.rocCurve?.find((p) => p.threshold === t);
+    const youden = (t: number) => {
+      const p = at(t);
+      return p === undefined ? null : p.sensitivity + p.specificity - 1;
+    };
+    if (youden(0.65) == null || Math.abs(youden(0.65)! - 0.8) > 1e-12)
+      out.push(`ROC J at 0.65: ${youden(0.65)}, expected 0.80`);
+    if (youden(0.58) == null || Math.abs(youden(0.58)! - 0.8) > 1e-12)
+      out.push(`ROC J at 0.58: ${youden(0.58)}, expected 0.80`);
+    // Spot checks on the ROC-points table.
+    const s65 = at(0.65);
+    if (s65?.sensitivity !== 0.9 || s65?.specificity !== 0.9)
+      out.push(`ROC at 0.65: sens ${s65?.sensitivity}, spec ${s65?.specificity}, expected 0.90/0.90`);
+    const s61 = at(0.61);
+    if (s61?.sensitivity !== 0.9 || s61?.specificity !== 0.8)
+      out.push(`ROC at 0.61: sens ${s61?.sensitivity}, spec ${s61?.specificity}, expected 0.90/0.80`);
+    if (roc.rocCurve?.length !== 20) out.push(`ROC points: ${roc.rocCurve?.length}, expected 20 thresholds`);
+    // The graph smoke: the curve passes through (1 − spec, sens) = (0.00, 0.80)
+    // at the optimal point and includes (0,0) and (1,1); the diagonal and the
+    // optimal-point marker are drawn.
+    const rocFig = GRAPHS["roc-curve"].build(
+      plotColumns(readTable(rocTable), "roc-curve", newGraphOptions("roc-curve"), "xy"),
+      newGraphOptions("roc-curve"),
+      paintOf(newGraphOptions("roc-curve"), 2),
+      readTable(rocTable).titles,
+    );
+    const traces = rocFig.data as { mode?: string; x?: number[]; y?: number[] }[];
+    const curve = traces.find((t) => t.mode === "lines+markers");
+    const has = (x: number, y: number) =>
+      curve?.x?.some((v, i) => Math.abs(v - x) < 1e-12 && Math.abs(curve.y![i] - y) < 1e-12);
+    if (!curve || !has(0, 0) || !has(0, 0.8) || !has(1, 1))
+      out.push(
+        `ROC curve points: ${JSON.stringify(curve?.x)}/${JSON.stringify(curve?.y)}, expected (0,0), (0,0.80) and (1,1)`,
+      );
+    const diagonal = traces.find((t) => t.mode === "lines");
+    if (
+      !diagonal ||
+      JSON.stringify(diagonal.x) !== JSON.stringify([0, 1]) ||
+      JSON.stringify(diagonal.y) !== JSON.stringify([0, 1])
+    )
+      out.push(`ROC diagonal: ${JSON.stringify(diagonal?.x)}/${JSON.stringify(diagonal?.y)}, expected (0,0)–(1,1)`);
+    const marker = traces.find((t) => t.mode === "markers");
+    if (!marker || marker.x?.[0] !== 0 || marker.y?.[0] !== 0.8)
+      out.push(`ROC optimal marker: ${JSON.stringify(marker?.x)}/${JSON.stringify(marker?.y)}, expected (0, 0.80)`);
+  }
+  // The defaults (no params) give the same numbers as the explicit run.
+  const rocDef = await runAnalysis("roc-curve", rocTable, {});
+  if ("error" in rocDef) {
+    out.push(`ROC defaults: ${rocDef.error}`);
+  } else if ("error" in roc) {
+    out.push(`ROC defaults: no explicit run to compare against`);
+  } else {
+    for (const s of roc.stats) {
+      const got = rocDef.stats.find((t) => t.label === s.label)?.value;
+      if (got !== s.value) out.push(`ROC defaults ${s.label}: ${got}, explicit run: ${s.value}`);
+    }
+  }
+  // A text truth column ("Diseased"/"Healthy") gives the same numbers.
+  const rocText = await runAnalysis("roc-curve", rocTableText, {
+    truth: "Truth",
+    score: "Score",
+    positive: "Diseased",
+  });
+  if ("error" in rocText) {
+    out.push(`ROC text truth: ${rocText.error}`);
+  } else if ("error" in roc) {
+    out.push(`ROC text truth: no numeric run to compare against`);
+  } else {
+    for (const s of roc.stats) {
+      const got = rocText.stats.find((t) => t.label === s.label)?.value;
+      if (got == null || Math.abs(got - (s.value ?? 0)) > 1e-12)
+        out.push(`ROC text truth ${s.label}: ${got}, numeric truth: ${s.value}`);
+    }
+  }
+  // The edge cases are errors, not numbers.
+  const rocSingle = await runAnalysis("roc-curve", rocTableSingle, { truth: "Truth", score: "Score", positive: 1 });
+  if (!("error" in rocSingle) || !rocSingle.error.includes("exactly two values (found 1)"))
+    out.push(
+      `ROC single-class truth: ${"error" in rocSingle ? rocSingle.error : "ran without error"}, expected an error naming found 1`,
+    );
+  const rocBad = await runAnalysis("roc-curve", rocTable, { truth: "Truth", score: "Score", positive: 2 });
+  if (!("error" in rocBad) || !rocBad.error.includes("is not in the outcome column"))
+    out.push(
+      `ROC unknown positive: ${"error" in rocBad ? rocBad.error : "ran without error"}, expected an error naming the outcome column`,
+    );
   // Kolmogorov-Smirnov: the plan's values, computed independently in Python
   // with scipy.stats.ks_2samp(..., method='exact') (scipy 1.11.4) and verified
   // by a manual ECDF-difference calculation in the same script — both agreed

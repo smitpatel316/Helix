@@ -1919,6 +1919,58 @@ check("a wizard asks which data sets only when there is a choice", () => {
   );
 });
 
+check("the ROC wizard asks truth, score and positive class, defaulting to the largest value", () => {
+  const data: TableData = {
+    columns: ["Title", "Truth", "Score"],
+    rows: [
+      [null, "Diseased", "0.9"],
+      [null, "Healthy", "0.2"],
+    ],
+  };
+  const asked = (a: Record<string, string>) =>
+    WIZARDS["roc-curve"]!.questions(a, readTable(data)).flatMap((q) => (q ? [q.id] : []));
+  deepStrictEqual(asked({}), ["truth", "score", "positive"]);
+  // The positive question lists the largest value first (the wizard
+  // pre-selects the first option) and says so in the question.
+  const positive = WIZARDS["roc-curve"]!.questions({ truth: "Truth" }, readTable(data))[2];
+  ok(positive && positive.kind === "choice");
+  deepStrictEqual(
+    positive.options.map((o) => o.value),
+    ["Healthy", "Diseased"],
+  );
+  ok(positive.ask.includes("largest value"));
+  // finish keeps a text positive value as text, a numeric one as a number.
+  deepStrictEqual(
+    WIZARDS["roc-curve"]!.finish({ truth: "Truth", score: "Score", positive: "Diseased" }, readTable(data)).params,
+    { truth: "Truth", score: "Score", positive: "Diseased" },
+  );
+  const numeric: TableData = {
+    columns: ["Title", "Truth", "Score"],
+    rows: [
+      [null, "1", "0.9"],
+      [null, "0", "0.2"],
+    ],
+  };
+  deepStrictEqual(
+    WIZARDS["roc-curve"]!.finish({ truth: "Truth", score: "Score", positive: "1" }, readTable(numeric)).params,
+    { truth: "Truth", score: "Score", positive: 1 },
+  );
+  // The menu offers ROC curve after Bland-Altman on column tables, and after
+  // Bland-Altman (before survival) on XY tables.
+  deepStrictEqual(
+    analysisOptionsForTable("column")
+      .map((o) => o.value)
+      .slice(-2),
+    ["bland-altman", "roc-curve"],
+  );
+  deepStrictEqual(
+    analysisOptionsForTable("xy")
+      .map((o) => o.value)
+      .slice(-2),
+    ["roc-curve", "survival-log-rank"],
+  );
+});
+
 check("an XY table without numbers in X or Y says which, in every XY analysis", async () => {
   const table = (x: (string | null)[], y: (string | null)[]): TableData => ({
     columns: ["Title", "Time", "Y1"],

@@ -317,9 +317,33 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
               { label: "Cumulative count", numeric: true },
               { label: "Cumulative frequency", numeric: true },
             ]}
-            rows={f.bins.map((b) => [b.bin, b.count, num(b.relativeFrequency), b.cumulativeCount, num(b.cumulativeFrequency)])}
+            rows={f.bins.map((b) => [
+              b.bin,
+              b.count,
+              num(b.relativeFrequency),
+              b.cumulativeCount,
+              num(b.cumulativeFrequency),
+            ])}
           />
         ))}
+
+      {result.rocCurve && result.rocCurve.length > 0 && (
+        <Table
+          title="Sensitivity and specificity at each threshold"
+          columns={[
+            { label: "Threshold", numeric: true },
+            { label: "Sensitivity", numeric: true },
+            { label: "Specificity", numeric: true },
+            { label: "Youden's J", numeric: true },
+          ]}
+          rows={result.rocCurve.map((p) => [
+            num(p.threshold),
+            num(p.sensitivity),
+            num(p.specificity),
+            num(p.sensitivity + p.specificity - 1),
+          ])}
+        />
+      )}
 
       {groups.length > 0 && (
         <Table

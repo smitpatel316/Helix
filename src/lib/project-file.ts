@@ -149,7 +149,7 @@ GRAPH_LIMITS satisfies Record<NumberOption, Limits>;
 // limits), or the user's names (of columns). The R code is written with them: anything
 // else is left out (the test takes its default), so a file can't slip R code into it.
 type ParamKey = AnalysisParams extends infer P ? (P extends unknown ? keyof P : never) : never;
-type ParamKind = "yes/no" | "number" | "numbers" | "name" | "names" | readonly string[] | Limits;
+type ParamKind = "yes/no" | "number" | "numbers" | "name" | "names" | "name-or-number" | readonly string[] | Limits;
 // prettier-ignore
 const PARAMS = {
   paired: "yes/no", gaussian: "yes/no", equalVariance: "yes/no", ratio: "yes/no", forceOrigin: "yes/no", pooledSd: "yes/no",
@@ -159,6 +159,7 @@ const PARAMS = {
   y: "name", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names", unknowns: "numbers",
   binMode: BIN_MODES, binWidth: "number", binCount: { min: 2, max: 100 }, startAt: "number",
   posthocTerm: THREE_WAY_TERMS,
+  truth: "name", score: "name", positive: "name-or-number",
 } satisfies Record<ParamKey, ParamKind>;
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -352,6 +353,7 @@ function readParam(kind: ParamKind, v: unknown): unknown {
   if (kind === "number") return isFiniteNumber(v) ? v : undefined;
   if (kind === "numbers") return Array.isArray(v) && v.every(isFiniteNumber) ? v : undefined;
   if (kind === "name") return typeof v === "string" ? v : undefined;
+  if (kind === "name-or-number") return typeof v === "string" || isFiniteNumber(v) ? v : undefined;
   if (kind === "names") return Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
   return Array.isArray(kind) ? oneOf(kind, v) : within(v, kind as Limits);
 }

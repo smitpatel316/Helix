@@ -33,6 +33,7 @@ import { heatmap } from "./heatmap";
 import { survival } from "./survival";
 import { volcano, VOLCANO_SERIES } from "./volcano";
 import { blandAltmanGraph } from "./bland-altman";
+import { rocCurveGraph } from "./roc-curve";
 import { histogram } from "./histogram";
 
 /** A Plotly figure (untyped traces/layout — built as plain objects per module). */
@@ -88,6 +89,7 @@ export const GRAPHS: Record<GraphType, GraphModule> = {
   survival,
   volcano,
   "bland-altman": blandAltmanGraph,
+  "roc-curve": rocCurveGraph,
   histogram,
 };
 
@@ -111,6 +113,10 @@ export function plotColumns(
   tableType: TableType,
 ): Column[] {
   const { family } = GRAPHS[type];
+  // The ROC curve plots a text-or-numeric truth column against its score:
+  // the first two data columns, whatever they hold (the graph errors empty
+  // when the truth has other than two classes or the score has no numbers).
+  if (type === "roc-curve") return columns.slice(0, 2);
   if (family === "volcano") return columns;
   if (family === "heatmap")
     return sets.filter((s) => s.columns.some((c) => c.values.length)).map((s) => centerColumn(s, options.center));
@@ -156,8 +162,27 @@ const optionsFor = (types: GraphType[]): SelectorOption<GraphType>[] =>
  *  variables) and Contingency (counts) plot as a heatmap too.
  *  Mirrors `ANALYSIS_OPTIONS_BY_TABLE`. */
 export const GRAPH_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<GraphType>[]> = {
-  column: optionsFor(["individual", "box-violin", "mean-error", "histogram", "pie", "donut", "bland-altman"]),
-  xy: optionsFor(["xy-scatter", "xy-bar", "xy-area", "dose-response", "logistic-curve", "survival", "volcano", "bland-altman"]),
+  column: optionsFor([
+    "individual",
+    "box-violin",
+    "mean-error",
+    "histogram",
+    "pie",
+    "donut",
+    "bland-altman",
+    "roc-curve",
+  ]),
+  xy: optionsFor([
+    "xy-scatter",
+    "xy-bar",
+    "xy-area",
+    "dose-response",
+    "logistic-curve",
+    "survival",
+    "volcano",
+    "bland-altman",
+    "roc-curve",
+  ]),
   grouped: optionsFor([
     "grouped-scatter",
     "grouped-box",
