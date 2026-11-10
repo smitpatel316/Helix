@@ -32,6 +32,10 @@ case "$ARCHS" in
   *) echo "usage: $0 [both|aarch64|x86_64]" >&2; exit 2 ;;
 esac
 
+# The vendored R package repo (plan 00) ships inside the app bundle; build
+# it first so the DMG is offline-capable. Skips downloads already on disk.
+./scripts/build-webr-repo.sh
+
 for TARGET in $TARGETS; do
   echo "=== $TARGET: tauri build (DMG step may succeed or fail) ==="
   npx tauri build --target "$TARGET" || true

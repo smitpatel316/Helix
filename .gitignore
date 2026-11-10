@@ -6,3 +6,8 @@ src-tauri/gen/
 
 # Linux dev/test run artefacts (logs, pid files, probe scripts)
 logs/
+
+# Vendored webR package repo (plan 00): build artefact, not source — it is
+# 57 MB of .tgz files rebuilt by scripts/build-webr-repo.sh from the pinned
+# manifest. Never commit it; a build without it falls back to the CDN.
+webr-repo/
