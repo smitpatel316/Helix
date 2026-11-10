@@ -135,6 +135,36 @@ export function parseRequiredNonNegative(text: string, label: string): { value?:
   return { value: v };
 }
 
+/** Split a comma-separated per-row group-level list (the mixed-effects
+ *  subject factor): one level per table row, in row order. */
+export function splitGroupLevels(text: string): string[] {
+  return text.split(",").map((e) => e.trim());
+}
+
+/** Validate a per-row group-level list against the table's row count: blank
+ *  is an error (the wizard must not proceed without it), as is a count that
+ *  does not match the rows, a blank level, or a single distinct level. */
+export function parseGroupLevels(text: string, rowCount: number): { values: string[]; error?: string } {
+  const levels = splitGroupLevels(text);
+  if (levels.length === 1 && levels[0] === "") {
+    return { values: [], error: `Enter one group level per row (${rowCount} rows), separated by commas.` };
+  }
+  if (levels.length !== rowCount) {
+    return {
+      values: [],
+      error: `Enter one group level per row — found ${levels.length} for ${rowCount} rows.`,
+    };
+  }
+  const blank = levels.findIndex((l) => l === "");
+  if (blank !== -1) {
+    return { values: [], error: `Every row needs a group level — row ${blank + 1} is blank.` };
+  }
+  if (new Set(levels).size < 2) {
+    return { values: [], error: `The group factor needs at least two levels — all rows are “${levels[0]}”.` };
+  }
+  return { values: levels };
+}
+
 export interface Wizard {
   /** Every question, given the answers so far (false: not asked with these answers). */
   questions: (a: Answers, table: Dataset) => (Question | false)[];
@@ -336,8 +366,12 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
     // Dataset alone must tell them apart: multi-column sets, or a ":" in a
     // column name (a grouped table with one replicate per group has
     // one-column sets). v1 is random-intercept only: the random structure
-    // is stated, never chosen, and the choice arrives in v2.
-    questions: (_, table) => {
+    // is stated, never chosen, and the choice arrives in v2. On a Column
+    // table the wizard also asks for an optional between-subject factor
+    // (one level per row): without it the fit is y ~ T only, with it the
+    // two-factor fit the reference test pins (y ~ Treatment + T) — the
+    // table layout alone cannot express the factor, so the wizard must ask.
+    questions: (a, table) => {
       const grouped = isGroupedTable(table);
       if (grouped) {
         return [
@@ -359,6 +393,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           ),
         ];
       }
+      const rowCount = table.numeric[0]?.byRow.length ?? 0;
       return [
         {
           id: "sets",
@@ -375,6 +410,35 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
             ["not-matched", "Rows are NOT matched subjects — stop and use one-way ANOVA instead"],
           ],
         ),
+        choice(
+          "groups",
+          "Do the subjects (rows) fall into groups — for example a treatment arm? A between-subject factor adds one fixed effect per group; without one, the model fits the repeated-measure factor only.",
+          [
+            ["no", "No — all subjects are one group"],
+            ["yes", "Yes — subjects fall into groups"],
+          ],
+        ),
+        a.groups === "yes" && {
+          id: "groupName",
+          ask: "What is the group factor called?",
+          kind: "text" as const,
+          label: "Group factor name",
+          initial: "Treatment",
+          placeholder: "Treatment",
+          // A text question without `parse` falls back to comma-separated
+          // numbers (the standard-curve unknowns) — a factor name needs its
+          // own parse, else "Treatment" errors as "not a number".
+          parse: (text: string) => (text.trim() === "" ? { error: "Enter a group factor name." } : {}),
+        },
+        a.groups === "yes" && {
+          id: "groupLevels",
+          ask: `Enter one group level per row, in row order, separated by commas — e.g. Control, Control, Control, Treated, Treated, Treated (${rowCount} rows).`,
+          kind: "text" as const,
+          label: "Group level for each row",
+          initial: "",
+          placeholder: "Control, Control, Control, Treated, Treated, Treated",
+          parse: (text: string) => parseGroupLevels(text, rowCount),
+        },
       ];
     },
     finish: (a, table) => {
@@ -400,12 +464,26 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       }
       const chosen = chosenSets(a) ?? dataNames(table);
       const cols = table.numeric.filter((c) => chosen.includes(c.name));
+      const timeName = columnFactorName(cols.length ? cols : table.numeric);
+      if (a.groups === "yes") {
+        const name = String(a.groupName ?? "").trim() || "Treatment";
+        const levels = splitGroupLevels(String(a.groupLevels ?? ""));
+        return {
+          type: "mixed-effects",
+          params: withSets(a, {
+            subjectId: "row",
+            randomStructure: "intercept",
+            fixedFactors: [name, timeName],
+            subjectFactor: { name, levels },
+          }) as AnalysisParams,
+        };
+      }
       return {
         type: "mixed-effects",
         params: withSets(a, {
           subjectId: "row",
           randomStructure: "intercept",
-          fixedFactors: [columnFactorName(cols.length ? cols : table.numeric)],
+          fixedFactors: [timeName],
         }) as AnalysisParams,
       };
     },

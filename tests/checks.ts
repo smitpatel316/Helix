@@ -56,7 +56,7 @@ import { deletePalette, keepPalette, loadMyPalettes } from "../src/store/my-pale
 import { GRAPHS, GRAPH_OPTIONS_BY_TABLE, newGraphOptions, type GraphFigure } from "../src/views/graphs";
 import { isGrouped, isNested, readTable, setColumns } from "../src/lib/dataset";
 import { incompleteRows, missingColumn } from "../src/stats/column/base";
-import { toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
+import { parseGroupLevels, toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
 import { addNote, movedText, paintOf, vectorTraces, visibleOutline, withCaps } from "../src/views/graphs/plot-helpers";
 import {
   drawnKeys,
@@ -2142,9 +2142,11 @@ check("the ROC wizard asks truth, score and positive class, defaulting to the la
 check("the mixed-effects wizard asks the layout's questions, and the menu offers it next to the analysis it replaces", () => {
   const asked = (data: TableData, a: Record<string, string | string[]> = {}) =>
     WIZARDS["mixed-effects"]!.questions(a, readTable(data)).flatMap((q) => (q ? [q.id] : []));
-  // A Column table: the repeated-measure columns, then the matched-subjects question.
+  // A Column table: the repeated-measure columns, then the matched-subjects
+  // question, then the optional between-subject-factor question.
   const column = treatments(["T0", "T1", "T2", "T3"]);
-  deepStrictEqual(asked(column), ["sets", "matched"]);
+  deepStrictEqual(asked(column), ["sets", "matched", "groups"]);
+  deepStrictEqual(asked(column, { groups: "yes" }), ["sets", "matched", "groups", "groupName", "groupLevels"]);
   const setsQ = WIZARDS["mixed-effects"]!.questions({}, readTable(column))[0];
   ok(setsQ && setsQ.kind === "names" && setsQ.min === 3);
   // A Grouped table: interaction, then matched-subjects.
@@ -2157,6 +2159,32 @@ check("the mixed-effects wizard asks the layout's questions, and the menu offers
       params: { subjectId: "row", randomStructure: "intercept", fixedFactors: ["T"], sets: ["T0", "T1", "T2", "T3"] },
     },
   );
+  // With groups answered, the finish carries the subject factor (two-factor fit).
+  deepStrictEqual(
+    WIZARDS["mixed-effects"]!.finish(
+      {
+        sets: ["T0", "T1", "T2", "T3"],
+        matched: "matched",
+        groups: "yes",
+        groupName: "Treatment",
+        groupLevels: "Control, Control, Control, Treated, Treated, Treated",
+      },
+      readTable(column),
+    ),
+    {
+      type: "mixed-effects",
+      params: {
+        subjectId: "row",
+        randomStructure: "intercept",
+        fixedFactors: ["Treatment", "T"],
+        subjectFactor: {
+          name: "Treatment",
+          levels: ["Control", "Control", "Control", "Treated", "Treated", "Treated"],
+        },
+        sets: ["T0", "T1", "T2", "T3"],
+      },
+    },
+  );
   // The menu offers it after "Compare more than two groups" on column tables
   // (next to the repeated-measures ANOVA it replaces when data are missing),
   // and after two-way ANOVA on grouped tables.
@@ -2164,6 +2192,32 @@ check("the mixed-effects wizard asks the layout's questions, and the menu offers
   strictEqual(columnOrder[columnOrder.indexOf("mixed-effects") - 1], "compare-many-groups");
   const groupedOrder = analysisOptionsForTable("grouped").map((o) => o.value);
   strictEqual(groupedOrder[groupedOrder.indexOf("mixed-effects") - 1], "two-way-anova");
+});
+
+check("parseGroupLevels validates the mixed-effects per-row group list", () => {
+  deepStrictEqual(parseGroupLevels("Control, Control, Control, Treated, Treated, Treated", 6).values, [
+    "Control",
+    "Control",
+    "Control",
+    "Treated",
+    "Treated",
+    "Treated",
+  ]);
+  ok(parseGroupLevels("", 6).error?.includes("6 rows"));
+  ok(parseGroupLevels("Control, Treated", 6).error?.includes("found 2 for 6 rows"));
+  ok(parseGroupLevels("Control, , Control, Treated, Treated, Treated", 6).error?.includes("row 2 is blank"));
+  ok(parseGroupLevels("Control, Control, Control, Control, Control, Control", 6).error?.includes("at least two levels"));
+  // The group-name question needs its own parse: a text question without one
+  // falls back to comma-separated numbers, so "Treatment" would error as
+  // "not a number" and the wizard could never advance (caught in the GUI).
+  const groupNameQ = WIZARDS["mixed-effects"]!
+    .questions({ groups: "yes" }, readTable(treatments(["T0", "T1", "T2", "T3"])))
+    .find((q): q is Question => q !== false && q.id === "groupName");
+  ok(groupNameQ && groupNameQ.kind === "text");
+  if (groupNameQ?.kind === "text") {
+    strictEqual(groupNameQ.parse?.("Treatment")?.error, undefined);
+    ok(groupNameQ.parse?.("")?.error);
+  }
 });
 
 check("the chi-square wizard asks about ordering only on a 2×k / k×2 table, defaulting to no trend", () => {

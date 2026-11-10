@@ -764,15 +764,23 @@ const coxZeroTime = table(
  *  table (subjects 1–3 Control, 4–6 Treated; subject intercepts [0, 2, −1, 0, 2, −1];
  *  y = 10 + 5·treated + 1.5·time + intercept), with seeded noise (sd 0.5, seed 11 —
  *  the P-07 construction). The plan's noiseless values are NOT lme4 ground truth:
- *  on the noiseless table lme4 reports "Model failed to converge with max|grad| =
- *  0.661141" and "nearly unidentifiable", and nlme refuses it outright
+ *  on the noiseless table lme4 reports "Model failed to converge" and "nearly
+ *  unidentifiable" (3 warnings, conv=1, unident=1), and nlme refuses it outright
  *  ("system is computationally singular") — the fixed effects it returns are
- *  unconverged optimizer artifacts (intercept 10.4225 vs the plan's 10.3333,
- *  subject variance 0.4457 vs 1.8667) and the Satterthwaite p-values are
- *  meaningless (p ≈ 0.92 for |t| = 27). The noisy table converges cleanly
- *  (0 warnings, not singular) and its fixed effects equal the OLS fit on the
- *  same cells to 1e-11 — and match the P-07-pinned values (same construction)
- *  to 1e-5, which is the independent reshaping check. */
+ *  unconverged optimizer artifacts whose values depend on the vector ordering:
+ *  column-major (the runner's flatten order) gives max|grad| = 19,910, intercept
+ *  10.1892, treatment 5.2211, subject variance 0.4483, p ≈ 0.95; row-major gives
+ *  max|grad| = 9,584, intercept 10.4225, treatment 4.9398, subject variance
+ *  0.4457, p ≈ 0.92 (both re-measured for the Plan 20 fix; the earlier quoted
+ *  max|grad| = 0.661141 matches neither ordering and was wrong). The Satterthwaite
+ *  p-values are meaningless on the unconverged fit. The noisy table converges
+ *  cleanly (0 warnings, not singular) and its fixed effects equal the numpy OLS
+ *  fit on the same cells to ~3e-9 (OLS 10.1926158 / 4.9656083 / 1.4972117 vs
+ *  lme4 10.19261583 / 4.96560833 / 1.49721167 — recomputed for the fix) — and
+ *  match the P-07-pinned values (same construction) to 1e-5, which is the
+ *  independent reshaping check. Realised noise variance (sample variance,
+ *  ddof=1, of the 24 seeded-minus-noiseless residuals) is 0.1561; the lme4
+ *  REML residual variance 0.1337 sits 14% below it. */
 const mixedBalanced = table(
   ["Title", "T0", "T1", "T2", "T3"],
   [
@@ -3630,7 +3638,15 @@ async function disagreements(): Promise<string[]> {
       rel(mixCoef(mix, "T")?.p, 4.5688e-14, 1e-3, "balanced time p");
       rel(mixVar(mix, "Subject")?.variance, 2.9336, 1e-3, "balanced subject variance");
       rel(mixVar(mix, "Subject")?.sd, 1.7128, 1e-3, "balanced subject SD");
-      rel(mixVar(mix, "Residual")?.variance, 0.1337, 1e-3, "balanced residual variance");
+      // Residual variance is checked against the realised noise variance
+      // (sample variance, ddof=1, of the 24 seeded-minus-noiseless residuals
+      // = 0.1561 — see the mixedBalanced comment), not the plan's noiseless
+      // < 1e-6: that check applies to the noiseless case only, which does not
+      // converge in lme4 and is not asserted. ±25%: the REML residual estimate
+      // on 19 residual df has ~32% sampling sd, so the band must be wide; a
+      // reshaping error would move the residual by far more. The exact value
+      // (0.1337) is pinned in reference.json.
+      rel(mixVar(mix, "Residual")?.variance, 0.1561, 0.25, "balanced residual variance vs realised noise");
       rel(mixStat(mix, "AIC"), 53.6558, 1e-3, "balanced AIC");
       rel(mixStat(mix, "BIC"), 59.5461, 1e-3, "balanced BIC");
       rel(mixStat(mix, "Log-likelihood"), -21.8279, 1e-3, "balanced log-likelihood");
@@ -3699,13 +3715,22 @@ async function disagreements(): Promise<string[]> {
         out.push(`Mixed-effects grouped equation: ${mixGrouped.equation}`);
     }
     // The wizard asks the repeated-measure columns + the matched-subjects
-    // question on a Column table, and interaction + matched-subjects on a
-    // Grouped table; finish maps the answers to the runner's params, and
-    // the not-matched escape resolves to the ordinary ANOVA instead.
+    // question + the optional between-subject-factor question on a Column
+    // table, and interaction + matched-subjects on a Grouped table; finish
+    // maps the answers to the runner's params, and the not-matched escape
+    // resolves to the ordinary ANOVA instead. With no groups the finish is
+    // the single-factor fit (y ~ T); with groups it carries the subject
+    // factor, and feeding those params to the runner must reproduce the
+    // two-factor reference fit — that is the GUI path to the pinned values.
     const mixAsked = (a: Record<string, string | string[]>, data: TableData) =>
       WIZARDS["mixed-effects"]!.questions(a, readTable(data)).flatMap((q) => (q ? [q.id] : []));
-    if (JSON.stringify(mixAsked({}, mixedBalanced)) !== JSON.stringify(["sets", "matched"]))
+    if (JSON.stringify(mixAsked({}, mixedBalanced)) !== JSON.stringify(["sets", "matched", "groups"]))
       out.push(`Mixed-effects wizard (column): ${JSON.stringify(mixAsked({}, mixedBalanced))}`);
+    if (
+      JSON.stringify(mixAsked({ groups: "yes" }, mixedBalanced)) !==
+      JSON.stringify(["sets", "matched", "groups", "groupName", "groupLevels"])
+    )
+      out.push(`Mixed-effects wizard (column, groups): ${JSON.stringify(mixAsked({ groups: "yes" }, mixedBalanced))}`);
     if (JSON.stringify(mixAsked({}, grouped)) !== JSON.stringify(["interaction", "matched"]))
       out.push(`Mixed-effects wizard (grouped): ${JSON.stringify(mixAsked({}, grouped))}`);
     const mixSetsQ = WIZARDS["mixed-effects"]!.questions({}, readTable(mixedBalanced))[0];
@@ -3723,6 +3748,45 @@ async function disagreements(): Promise<string[]> {
       })
     )
       out.push(`Mixed-effects wizard finish (column): ${JSON.stringify(mixColFinished)}`);
+    const mixColGrouped = WIZARDS["mixed-effects"]!.finish(
+      {
+        sets: ["T0", "T1", "T2", "T3"],
+        matched: "matched",
+        groups: "yes",
+        groupName: "Treatment",
+        groupLevels: "Control, Control, Control, Treated, Treated, Treated",
+      },
+      readTable(mixedBalanced),
+    );
+    if (
+      JSON.stringify(mixColGrouped) !==
+      JSON.stringify({
+        type: "mixed-effects",
+        params: {
+          subjectId: "row",
+          randomStructure: "intercept",
+          fixedFactors: ["Treatment", "T"],
+          subjectFactor: {
+            name: "Treatment",
+            levels: ["Control", "Control", "Control", "Treated", "Treated", "Treated"],
+          },
+          sets: ["T0", "T1", "T2", "T3"],
+        },
+      })
+    )
+      out.push(`Mixed-effects wizard finish (column, grouped): ${JSON.stringify(mixColGrouped)}`);
+    if (mixColGrouped.params) {
+      const mixGui = await runAnalysis("mixed-effects", mixedBalanced, mixColGrouped.params);
+      if ("error" in mixGui) {
+        out.push(`Mixed-effects wizard two-factor fit: ${mixGui.error}`);
+      } else {
+        close(mixCoef(mixGui, "Intercept")?.estimate, 10.1926, 1e-3, "wizard two-factor intercept");
+        close(mixCoef(mixGui, "Treatment (Treated vs Control)")?.estimate, 4.9656, 1e-3, "wizard two-factor treatment");
+        close(mixCoef(mixGui, "T")?.estimate, 1.4972, 1e-3, "wizard two-factor time");
+        rel(mixVar(mixGui, "Subject")?.variance, 2.9336, 1e-3, "wizard two-factor subject variance");
+        rel(mixVar(mixGui, "Residual")?.variance, 0.1561, 0.25, "wizard two-factor residual variance");
+      }
+    }
     const mixColEscape = WIZARDS["mixed-effects"]!.finish(
       { sets: ["T0", "T1", "T2", "T3"], matched: "not-matched" },
       readTable(mixedBalanced),

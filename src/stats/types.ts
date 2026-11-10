@@ -488,7 +488,9 @@ export interface FrequencyDistributionParams {
  *  factors are "Group" and "Row" unless the wizard says otherwise).
  *  `subjectFactor` is a between-subject factor on Column tables (one level per
  *  table row, in row order — the reference test's Treatment arm); the v1
- *  wizard never asks it. `randomStructure` is "intercept" in v1 — "slope"
+ *  wizard asks for it (optional "groups" question: factor name + one level
+ *  per row) — without it the fit is the repeated-measure factor only.
+ *  `randomStructure` is "intercept" in v1 — "slope"
  *  (with `slopeVariable`) is the v2 follow-on, and the runner errors on it
  *  rather than fitting something else. */
 export interface MixedEffectsParams {
