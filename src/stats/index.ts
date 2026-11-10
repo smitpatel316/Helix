@@ -14,6 +14,7 @@ import type {
   NonlinearRegressionParams,
   OutliersParams,
   SimpleLogisticRegressionParams,
+  StandardCurveInterpolationParams,
   TwoWayAnovaParams,
   XYCorrelationParams,
 } from "./types";
@@ -33,6 +34,7 @@ import { linearRegressionSpec } from "./xy/linear-regression";
 import { runSimpleLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
+import { runStandardCurveInterpolation } from "./xy/standard-curve-interpolation";
 import { runTwoWayAnova } from "./grouped/two-way-anova";
 import { runMultipleTTests } from "./grouped/multiple-t-tests";
 import { runCorrelationMatrix } from "./multiple/correlation-matrix";
@@ -102,6 +104,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Nonlinear regression",
     minColumns: 2,
     run: (c, p) => runNonlinearRegression(c, p as NonlinearRegressionParams),
+  },
+  "standard-curve-interpolation": {
+    label: "Interpolate from a standard curve",
+    minColumns: 2,
+    run: (c, p) => runStandardCurveInterpolation(c, p as StandardCurveInterpolationParams),
   },
   "two-way-anova": {
     label: "Two-way ANOVA",

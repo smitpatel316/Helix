@@ -2,7 +2,7 @@
 // a time, Cancel, Back, then Next — or Run on the last one. A "Not sure" answer
 // runs Shapiro-Wilk and answers for the user. Mounts fresh for each analysis.
 import * as React from "react";
-import { Button, Checkbox, Field, NumberInput, RadioList } from "../../ui/controls";
+import { Button, Checkbox, Field, Input, NumberInput, RadioList } from "../../ui/controls";
 import { Dialog } from "../../ui/dialog";
 import { readTable } from "../../lib/dataset";
 import type { AnalysisParams, AnalysisType } from "../../stats/types";
@@ -13,7 +13,7 @@ import { useAnalysisLauncher } from "./use-analysis-launcher";
 import { analysisLabel } from ".";
 import { packageGate } from "../../stats";
 import { ensurePackages } from "../../stats/webr";
-import { chosenSets, WIZARDS, type Answer, type Answers, type Question, type Wizard } from "./wizards";
+import { chosenSets, parseUnknowns, WIZARDS, type Answer, type Answers, type Question, type Wizard } from "./wizards";
 
 const NOT_SURE = { value: "check", label: "Not sure — check for normality first (Shapiro-Wilk)" };
 
@@ -42,6 +42,7 @@ export function AnalysisWizard() {
 function initialAnswer(q: Question, given: Answer | undefined): Answer | null {
   if (q.kind === "choice") return q.options.some((o) => o.value === given) ? given! : q.options[0].value;
   if (q.kind === "number") return typeof given === "number" ? given : q.initial;
+  if (q.kind === "text") return typeof given === "string" ? given : q.initial;
   return Array.isArray(given) ? given.filter((n) => q.options.includes(n)) : q.options;
 }
 
@@ -114,7 +115,14 @@ function Steps({
     }
   };
 
-  const ready = value !== null && !(Array.isArray(value) && value.length < (q.kind === "names" ? (q.min ?? 1) : 1));
+  // A free-text answer only counts once it parses (comma-separated numbers);
+  // its error, when the user has typed something, replaces the question text.
+  const textError =
+    q.kind === "text" && String(value ?? "").trim() !== "" ? (parseUnknowns(String(value ?? "")).error ?? null) : null;
+  const ready =
+    value !== null &&
+    !(Array.isArray(value) && value.length < (q.kind === "names" ? (q.min ?? 1) : 1)) &&
+    !(q.kind === "text" && parseUnknowns(String(value ?? "")).error);
 
   return (
     <Dialog
@@ -122,7 +130,9 @@ function Steps({
       onClose={checking ? undefined : onClose}
       onReturn={ready && !checking ? () => void next() : undefined}
       title={title}
-      description={gate.blocked ? gate.message! : checking ? "Running the Shapiro-Wilk normality test…" : q.ask}
+      description={
+        gate.blocked ? gate.message! : checking ? "Running the Shapiro-Wilk normality test…" : (textError ?? q.ask)
+      }
       footer={
         !checking && (
           <>
@@ -170,6 +180,17 @@ function AnswerField({
     return (
       <Field label={q.label}>
         <NumberInput value={value as number | null} onChange={onChange} min={q.min} max={q.max} step={q.step} />
+      </Field>
+    );
+  }
+  if (q.kind === "text") {
+    return (
+      <Field label={q.label}>
+        <Input
+          value={(value as string | null) ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={q.placeholder}
+        />
       </Field>
     );
   }

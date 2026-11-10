@@ -242,6 +242,18 @@ export function GraphView({ node }: { node: ProjectNode }) {
     model: options.doseModel,
   });
   const doseFit = doseOutcome && !("error" in doseOutcome) ? doseOutcome : null;
+  // A dose-response graph also draws the drop-lines of a sibling
+  // standard-curve-interpolation analysis on the same table: its cached run
+  // (no extra R call), when it fits the same model and Y series — the curve
+  // it was interpolated from. Without one, the graph is just the curve.
+  const interpAnalysis =
+    type === "dose-response" ? analyses.find((n) => n.analysisType === "standard-curve-interpolation") : undefined;
+  const interpOutcome = useAnalysis(
+    interpAnalysis ? "standard-curve-interpolation" : undefined,
+    data,
+    interpAnalysis?.analysisParams,
+  );
+  const interpFit = interpOutcome && !("error" in interpOutcome) ? interpOutcome : null;
   // A logistic-curve graph fits its own curve (no analysis node needed): the
   // first Y series is the binary outcome, as in the analysis's default.
   const logisticY = columns[1]?.name;
@@ -325,7 +337,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
       fig.data = withCaps(fig.data, options);
       if (family === "column" && options.sigAnalysisId) addSignificance(fig, columns, type, options, comparisons ?? []);
       if (type === "xy-scatter" && options.regAnalysisId) addRegression(fig, columns, options, regParams, paint);
-      if (doseFit) addDoseCurve(fig, columns, options, doseFit, paint);
+      if (doseFit) addDoseCurve(fig, columns, options, doseFit, paint, interpFit);
       if (logisticFit) addLogisticCurve(fig, columns, logisticFit, paint);
       // The points' names are part of the figure (the volcano places its own, among the
       // genes it names); the selection ring only of the view.
@@ -364,6 +376,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
     comparisons,
     regParams,
     doseFit,
+    interpFit,
     logisticFit,
     seriesNames.length,
     selected,

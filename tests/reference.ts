@@ -443,6 +443,12 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["xy", xy, "nonlinear-regression", { y: "Y3", model: "quadratic" }],
   ["xy", xy, "nonlinear-regression", { y: "Y1", model: "cubic" }],
   ["doseLog", doseLog, "nonlinear-regression", { model: "sigmoidal-4pl-logx" }],
+  // Standard-curve interpolation (plan 02): the reference 4PL fit, the
+  // out-of-range case, the lm band path (line), and the 4PL-X band path.
+  ["doseLog", doseLog, "standard-curve-interpolation", { model: "sigmoidal-4pl-logx", unknowns: [20, 50, 80] }],
+  ["doseLog", doseLog, "standard-curve-interpolation", { model: "sigmoidal-4pl-logx", unknowns: [20, 150] }],
+  ["xy", xy, "standard-curve-interpolation", { model: "line", unknowns: [5, 10] }],
+  ["doseRaw", doseRaw, "standard-curve-interpolation", { model: "sigmoidal-4pl-x", unknowns: [30, 60] }],
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "sigmoidal-4pl-x" }],
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "hyperbola" }],
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "semilog-line" }],
@@ -661,6 +667,106 @@ async function disagreements(): Promise<string[]> {
     const curve = traces.find((t) => t.x?.length === 101);
     const mid = curve?.y?.[50];
     if (!curve || mid == null || Math.abs(mid - 0.5) > 1e-6) out.push(`Logistic curve at X=4.5: ${mid}, expected 0.5`);
+  }
+  // Standard-curve interpolation (plan 02): the fit equals the
+  // nonlinear-regression fit on the same table (the shared-fit refactor's
+  // proof, beyond the unchanged reference entries); the point estimates
+  // match the planner's scipy values; the band-inversion CIs sit within
+  // 0.02 of the planner's delta-method CIs (cross-check only — the locked
+  // values are the band-inversion ones from WebR).
+  const interp = await runAnalysis("standard-curve-interpolation", doseLog, {
+    model: "sigmoidal-4pl-logx",
+    unknowns: [20, 50, 80],
+  });
+  const nonlin = await runAnalysis("nonlinear-regression", doseLog, { model: "sigmoidal-4pl-logx" });
+  if ("error" in interp) {
+    out.push(`Standard-curve interpolation: ${interp.error}`);
+  } else if ("error" in nonlin) {
+    out.push(`Standard-curve interpolation: nonlinear-regression comparison failed: ${nonlin.error}`);
+  } else {
+    const close = (a: number | null | undefined, b: number | null | undefined, tol: number) =>
+      a != null && b != null && Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));
+    (interp.coefficients ?? []).forEach((c, i) => {
+      const n = nonlin.coefficients?.[i];
+      if (!n || !close(c.estimate, n.estimate, 1e-9) || !close(c.stdError, n.stdError, 1e-9))
+        out.push(
+          `Interpolation fit ${c.term}: ${c.estimate} ± ${c.stdError}, nonlinear-regression: ${n?.estimate} ± ${n?.stdError}`,
+        );
+    });
+    (interp.stats ?? []).forEach((s) => {
+      const n = nonlin.stats.find((t) => t.label === s.label);
+      if (!n || !close(s.value, n.value, 1e-9))
+        out.push(`Interpolation stat ${s.label}: ${s.value}, nonlinear-regression: ${n?.value}`);
+    });
+    const planX: [number, number][] = [
+      [20, -1.4834],
+      [50, -0.8467],
+      [80, -0.2157],
+    ];
+    const planCI: [number, number, number][] = [
+      [20, -1.5011, -1.4657],
+      [50, -0.8577, -0.8358],
+      [80, -0.2332, -0.1982],
+    ];
+    for (const [y0, x] of planX) {
+      const row = interp.interpolations?.find((r) => r.unknownY === y0);
+      if (!row || !close(row.x, x, 1e-3)) out.push(`Interpolation Y=${y0}: x=${row?.x}, plan says ${x}`);
+    }
+    for (const [y0, lo, hi] of planCI) {
+      const row = interp.interpolations?.find((r) => r.unknownY === y0);
+      if (
+        !row ||
+        row.ciLow == null ||
+        row.ciHigh == null ||
+        Math.abs(row.ciLow - lo) > 0.02 ||
+        Math.abs(row.ciHigh - hi) > 0.02
+      )
+        out.push(`Interpolation Y=${y0}: CI=[${row?.ciLow}, ${row?.ciHigh}], delta-method cross-check [${lo}, ${hi}]`);
+    }
+    // The dose-response graph's drop-lines, from the same cached result.
+    const { addDoseCurve } = await import("../src/views/graphs/dose-response-curve");
+    const doseOpts = { ...newGraphOptions("dose-response"), doseModel: "sigmoidal-4pl-logx" as const };
+    const doseColumns = plotColumns(readTable(doseLog), "dose-response");
+    const doseFig = GRAPHS["dose-response"].build(
+      doseColumns,
+      doseOpts,
+      paintOf(doseOpts, 1),
+      readTable(doseLog).titles,
+    );
+    addDoseCurve(doseFig, doseColumns, doseOpts, nonlin, paintOf(doseOpts, 1), interp);
+    const traces = doseFig.data as { mode?: string; x?: number[]; y?: number[]; line?: { dash?: string } }[];
+    const dashed = traces.filter((t) => t.line?.dash === "dash");
+    const dropMarkers = traces.filter(
+      (t) => t.mode === "markers" && t.x?.length === 3 && JSON.stringify(t.y) === JSON.stringify([20, 50, 80]),
+    );
+    const xs = (interp.interpolations ?? []).map((r) => r.x);
+    if (dashed.length !== 6) out.push(`Dose-response drop-lines: ${dashed.length} dashed traces, expected 6`);
+    if (dropMarkers.length !== 1 || JSON.stringify(dropMarkers[0]?.x) !== JSON.stringify(xs))
+      out.push(`Dose-response drop-line markers: ${JSON.stringify(dropMarkers[0]?.x)}, expected ${JSON.stringify(xs)}`);
+    for (const y0 of [20, 50, 80]) {
+      const row = interp.interpolations?.find((r) => r.unknownY === y0);
+      const horiz = dashed.find((t) => t.y?.[0] === y0 && t.y?.[1] === y0);
+      if (!horiz || horiz.x?.[1] !== row?.x)
+        out.push(`Dose-response drop-line Y=${y0}: horizontal to ${horiz?.x?.[1]}, expected ${row?.x}`);
+      const vert = dashed.find((t) => t.x?.[0] === row?.x && t.x?.[1] === row?.x);
+      if (!vert || vert.y?.[1] !== y0)
+        out.push(`Dose-response drop-line Y=${y0}: vertical to ${vert?.y?.[1]}, expected ${y0}`);
+    }
+  }
+  // Out of range: Y = 150 is above the curve's Top — a null row, not an error.
+  const oor = await runAnalysis("standard-curve-interpolation", doseLog, {
+    model: "sigmoidal-4pl-logx",
+    unknowns: [20, 150],
+  });
+  if ("error" in oor) {
+    out.push(`Standard-curve interpolation out-of-range: ${oor.error}`);
+  } else {
+    const row150 = oor.interpolations?.find((r) => r.unknownY === 150);
+    const row20 = oor.interpolations?.find((r) => r.unknownY === 20);
+    if (!row150 || row150.x !== null) out.push(`Interpolation Y=150: x=${row150?.x}, expected null`);
+    if (!row20 || row20.x == null) out.push(`Interpolation Y=150 run: Y=20 row missing: ${JSON.stringify(row20)}`);
+    if (!oor.notes.includes("Y = 150 is above the fitted curve's maximum"))
+      out.push(`Interpolation out-of-range note missing: ${oor.notes}`);
   }
   // Bland-Altman: the plot's three lines equal the analysis's bias and limits.
   const ba = await runAnalysis("bland-altman", blandAltman, { sets: ["Method A", "Method B"] });

@@ -212,6 +212,19 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
+      {result.interpolations && result.interpolations.length > 0 && (
+        <Table
+          title="Interpolated unknowns"
+          columns={[
+            { label: "Unknown Y", numeric: true },
+            { label: "Interpolated X", numeric: true },
+            { label: "95% CI lower", numeric: true },
+            { label: "95% CI upper", numeric: true },
+          ]}
+          rows={result.interpolations.map((r) => [num(r.unknownY), num(r.x), num(r.ciLow), num(r.ciHigh)])}
+        />
+      )}
+
       {result.frequencyBins &&
         result.frequencyBins.map((f) => (
           <Table
