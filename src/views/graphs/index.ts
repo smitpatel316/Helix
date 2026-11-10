@@ -28,6 +28,7 @@ import { groupedStacked } from "./grouped-stacked";
 import { groupedHbars } from "./grouped-hbars";
 import { pie, donut } from "./pie";
 import { doseResponse } from "./dose-response";
+import { smoothCurve } from "./smooth-curve";
 import { logisticCurveGraph } from "./logistic-curve";
 import { heatmap } from "./heatmap";
 import { survival } from "./survival";
@@ -89,6 +90,7 @@ export const GRAPHS: Record<GraphType, GraphModule> = {
   pie,
   donut,
   "dose-response": doseResponse,
+  "smooth-curve": smoothCurve,
   "logistic-curve": logisticCurveGraph,
   heatmap,
   survival,
@@ -186,6 +188,7 @@ export const GRAPH_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<GraphType>
     "xy-bar",
     "xy-area",
     "dose-response",
+    "smooth-curve",
     "logistic-curve",
     "survival",
     "volcano",

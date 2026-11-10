@@ -27,6 +27,7 @@ export type AnalysisType =
   | "multiple-regression"
   | "multiple-logistic-regression"
   | "poisson-regression"
+  | "spline-lowess"
   | "outliers"
   | "chi-square"
   | "survival"
@@ -301,6 +302,22 @@ export interface MultipleTTestsParams {
   correction: (typeof CORRECTIONS)[number];
 }
 
+/** Params for "spline-lowess" (XY table): smooth a chosen Y series against X
+ *  with no model assumed — Lowess (locally weighted smoothing, span `f`) or a
+ *  smoothing spline (`spar`, or `df`, or neither for the GCV auto-choice).
+ *  Only one of `spar`/`df` may be set. */
+export interface SplineLowessParams {
+  /** Omitted defaults to the first Y data column. */
+  y?: string;
+  method: "spline" | "lowess";
+  /** Lowess span: the fraction of points in each local fit (default 2/3, range (0, 1]). */
+  f: number;
+  /** Spline smoothing parameter (null = choose automatically by GCV, the default). */
+  spar?: number | null;
+  /** Alternative spline control: the equivalent degrees of freedom. */
+  df?: number | null;
+}
+
 /** Params for "outliers" (Column table): ROUT-style outlier detection — each
  *  column is fit independently to a robust mean, and residuals are flagged
  *  outliers when their FDR-adjusted P falls below Q (Prism's "Q%", the
@@ -388,6 +405,7 @@ export type AnalysisParams = DataSetsParam &
     | MultipleRegressionParams
     | MultipleLogisticRegressionParams
     | PoissonRegressionParams
+    | SplineLowessParams
     | CoxPHParams
     | OutliersParams
     | SurvivalParams
@@ -565,6 +583,15 @@ export interface FrequencyBins {
   bins: FrequencyBinRow[];
 }
 
+/** One fitted point of a smoother ("spline-lowess"): `y` is the fitted value
+ *  at `x`; `observed` is the data's Y at that X, carried so the results view
+ *  can show residuals without re-reading the table. */
+export interface FittedPoint {
+  x: number;
+  y: number;
+  observed?: number;
+}
+
 /** Unified result shape returned by every analysis module. */
 export interface AnalysisResult {
   testType: AnalysisType;
@@ -608,6 +635,12 @@ export interface AnalysisResult {
   /** Optional ROC points ("roc-curve"): one row per threshold (unique score
    *  values, descending); Youden's J is computed at render time. */
   rocCurve?: RocPoint[];
+  /** Optional per-point smoother output ("spline-lowess"), the shared
+   *  per-point-result mechanism for later plans: `fitted` = the fitted
+   *  values at the data X's, in ascending X order; `curve` = the same
+   *  smoother on a dense grid (100 points across the X range) for drawing. */
+  fitted?: FittedPoint[];
+  curve?: { x: number; y: number }[];
 }
 
 /** A test returns either a result or a user-facing error message. */

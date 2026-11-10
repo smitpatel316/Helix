@@ -150,6 +150,17 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
       </>
     );
   }
+  if (graphType === "smooth-curve") {
+    const sources = c.analyses.filter((a) => a.analysisType === "spline-lowess");
+    if (!sources.length) {
+      return (
+        <NoAnalysis test="spline-lowess" onNewAnalysis={c.onNewAnalysis}>
+          Draw the smooth curve of a Spline and Lowess analysis of this table.
+        </NoAnalysis>
+      );
+    }
+    return <SmoothControls analyses={sources} options={options} set={set} />;
+  }
   if (graphType === "forest-plot") {
     const sources = c.analyses.filter((a) => a.analysisType === "cox-proportional-hazards");
     if (!sources.length) {
@@ -399,6 +410,34 @@ function SignificanceControls({
             </p>
           )}
         </>
+      ) : null}
+    </>
+  );
+}
+
+/** Pick a Spline and Lowess analysis, then whether to draw its curve. */
+function SmoothControls({
+  analyses,
+  options,
+  set,
+}: {
+  analyses: ProjectNode[];
+  options: GraphOptions;
+  set: SetOptions;
+}) {
+  return (
+    <>
+      <AnalysisRow
+        analyses={analyses}
+        value={options.smoothAnalysisId}
+        onChange={(smoothAnalysisId) => set({ smoothAnalysisId })}
+      />
+      {options.smoothAnalysisId ? (
+        <Toggle
+          label="Smooth curve"
+          checked={options.smoothShowCurve}
+          onChange={(smoothShowCurve) => set({ smoothShowCurve })}
+        />
       ) : null}
     </>
   );

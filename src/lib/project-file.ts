@@ -129,7 +129,7 @@ type OptionalOption = {
 // prettier-ignore
 const OPTIONAL_OPTIONS = {
   yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number",
-  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", doseY: "text", xVariable: "text", yVariable: "text",
+  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", doseY: "text", xVariable: "text", yVariable: "text",
   volcanoX: "text", volcanoY: "text", volcanoLabel: "text", volcanoGroupA: "text", volcanoGroupB: "text",
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",
@@ -153,9 +153,13 @@ type ParamKind = "yes/no" | "number" | "numbers" | "name" | "names" | "name-or-n
 // prettier-ignore
 const PARAMS = {
   paired: "yes/no", gaussian: "yes/no", equalVariance: "yes/no", ratio: "yes/no", forceOrigin: "yes/no", pooledSd: "yes/no", quasi: "yes/no",
-  equalSd: "yes/no", sphericity: "yes/no", interpolate: "yes/no", tails: TAILS, posthoc: [...ANOVA_POSTHOCS, ...RANK_POSTHOCS], model: NONLINEAR_MODELS, method: CORRELATION_METHODS,
+  equalSd: "yes/no", sphericity: "yes/no", interpolate: "yes/no", tails: TAILS, posthoc: [...ANOVA_POSTHOCS, ...RANK_POSTHOCS], model: NONLINEAR_MODELS,
+  // `method` is shared by correlation ("pearson"/"spearman") and Spline/Lowess
+  // ("spline"/"lowess"): the reader only sanitizes, each runner validates its own.
+  method: [...CORRELATION_METHODS, "spline", "lowess"],
   mode: CORRELATION_MODES, design: TWO_WAY_DESIGNS, posthocTarget: POSTHOC_TARGETS, correction: CORRECTIONS, curveTest: CURVE_TESTS, compare: CURVE_COMPARISONS,
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q, lambda: "number",
+  f: "number", spar: "number", df: "number",
   y: "name", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names", unknowns: "numbers",
   binMode: BIN_MODES, binWidth: "number", binCount: { min: 2, max: 100 }, startAt: "number",
   posthocTerm: THREE_WAY_TERMS,
@@ -544,7 +548,8 @@ export function parseProjectFile(
       (o.regAnalysisId && !nodeOf(o.regAnalysisId)) ||
       (o.demingAnalysisId && !nodeOf(o.demingAnalysisId)) ||
       (o.coxAnalysisId && !nodeOf(o.coxAnalysisId)) ||
-      (o.poissonAnalysisId && !nodeOf(o.poissonAnalysisId))
+      (o.poissonAnalysisId && !nodeOf(o.poissonAnalysisId)) ||
+      (o.smoothAnalysisId && !nodeOf(o.smoothAnalysisId))
     ) {
       issues.push({
         severity: "warning",
