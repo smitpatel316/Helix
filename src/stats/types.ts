@@ -51,6 +51,9 @@ export const NONLINEAR_MODELS = [
   "one-phase-decay",
   "two-phase-decay",
   "plateau-decay",
+  // Plan 08, 2/2: association and growth.
+  "one-phase-association",
+  "exponential-growth",
 ] as const;
 export const CORRELATION_METHODS = ["pearson", "spearman"] as const;
 export const CORRELATION_MODES = ["x-vs-every-y", "two-datasets", "matrix"] as const;

@@ -51,6 +51,13 @@ export function evaluateFittedCurve(model: DoseModel, coefficients: RegressionCo
         : coef(coefficients, "Plateau") +
             (coef(coefficients, "Y0") - coef(coefficients, "Plateau")) *
               Math.exp(-coef(coefficients, "K") * (x - coef(coefficients, "X0")));
+    case "one-phase-association":
+      return (
+        coef(coefficients, "Y0") +
+        (coef(coefficients, "Plateau") - coef(coefficients, "Y0")) * (1 - Math.exp(-coef(coefficients, "K") * x))
+      );
+    case "exponential-growth":
+      return coef(coefficients, "Y0") * Math.exp(coef(coefficients, "K") * x);
   }
 }
 
@@ -87,6 +94,8 @@ function doseResponseLabel(model: DoseModel, coefficients: RegressionCoefficient
   } else if (model === "two-phase-decay") {
     lines.push(`Half-life (fast) = ${num(stat(stats, "Half-life (fast)"))}`);
     lines.push(`Half-life (slow) = ${num(stat(stats, "Half-life (slow)"))}`);
+  } else if (model === "exponential-growth") {
+    lines.push(`Doubling time = ${num(stat(stats, "Doubling time"))}`);
   } else if ((EXPONENTIAL_MODELS as readonly string[]).includes(model)) {
     lines.push(`Half-life = ${num(stat(stats, "Half-life"))}`);
   }

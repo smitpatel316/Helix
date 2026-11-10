@@ -451,6 +451,9 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         ["one-phase-decay", "One-phase decay"],
         ["two-phase-decay", "Two-phase decay"],
         ["plateau-decay", "Plateau followed by one-phase decay"],
+        // Prism's "Exponential" family (plan 08, 2/2: association + growth).
+        ["one-phase-association", "One-phase association"],
+        ["exponential-growth", "Exponential growth"],
       ]),
     ],
     finish: (a) => ({
