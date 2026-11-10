@@ -11,3 +11,7 @@ logs/
 # 57 MB of .tgz files rebuilt by scripts/build-webr-repo.sh from the pinned
 # manifest. Never commit it; a build without it falls back to the CDN.
 webr-repo/
+
+# QA artefacts and public test fixtures: deliberately uncommitted.
+qa/
+test-corpus/
