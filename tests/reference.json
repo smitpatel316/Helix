@@ -28801,5 +28801,481 @@
  },
  "chi-square contingencyFractional {\"trendOrdered\":true}": {
   "error": "Counts must be whole numbers."
+ },
+ "mixed-effects mixedBalanced {\"subjectId\":\"row\",\"randomStructure\":\"intercept\",\"fixedFactors\":[\"Treatment\",\"T\"],\"subjectFactor\":{\"name\":\"Treatment\",\"levels\":[\"Control\",\"Control\",\"Control\",\"Treated\",\"Treated\",\"Treated\"]}}": {
+  "testType": "mixed-effects",
+  "subtitle": "Mixed-effects model (random intercept)",
+  "equation": "y ~ Treatment + T + (1 | subject)",
+  "stats": [
+   {
+    "label": "AIC",
+    "value": 53.6558373
+   },
+   {
+    "label": "BIC",
+    "value": 59.54610645
+   },
+   {
+    "label": "Log-likelihood",
+    "value": -21.82791865
+   },
+   {
+    "label": "REML criterion",
+    "value": 43.6558373
+   },
+   {
+    "label": "Observations used",
+    "value": 24
+   },
+   {
+    "label": "Observations in table",
+    "value": 24
+   },
+   {
+    "label": "Observations dropped as missing",
+    "value": 0
+   },
+   {
+    "label": "Subjects (groups)",
+    "value": 6
+   },
+   {
+    "label": "Residual DF",
+    "value": 19
+   }
+  ],
+  "groups": [
+   {
+    "name": "T0",
+    "mean": 12.67481667,
+    "sd": 2.954581827,
+    "sem": 1.20620298,
+    "median": 13.12395,
+    "n": 6
+   },
+   {
+    "name": "T1",
+    "mean": 14.22538333,
+    "sd": 3.320446364,
+    "sem": 1.355566552,
+    "median": 14.2625,
+    "n": 6
+   },
+   {
+    "name": "T2",
+    "mean": 15.56615,
+    "sd": 3.128925654,
+    "sem": 1.277378549,
+    "median": 16.22025,
+    "n": 6
+   },
+   {
+    "name": "T3",
+    "mean": 17.2186,
+    "sd": 3.158046686,
+    "sem": 1.289267161,
+    "median": 17.7444,
+    "n": 6
+   }
+  ],
+  "notes": "Mixed-effects model: y ~ Treatment + T + (1 | subject). Random intercept per subject, fitted by restricted maximum likelihood (REML). P-values by Satterthwaite's approximation (lmerTest). 24 of 24 observations used (0 observations dropped as missing).",
+  "coefficients": [
+   {
+    "term": "Intercept",
+    "estimate": 10.19261583,
+    "stdError": 0.9995174644,
+    "t": 10.19753651,
+    "p": 0.0004699419066
+   },
+   {
+    "term": "Treatment (Treated vs Control)",
+    "estimate": 4.965608333,
+    "stdError": 1.40641905,
+    "t": 3.530674826,
+    "p": 0.02421586088
+   },
+   {
+    "term": "T",
+    "estimate": 1.497211667,
+    "stdError": 0.06675956928,
+    "t": 22.4269222,
+    "p": 4.568815052e-14
+   }
+  ],
+  "varianceComponents": [
+   {
+    "group": "Subject",
+    "component": "Intercept",
+    "variance": 2.933595514,
+    "sd": 1.712774216
+   },
+   {
+    "group": "Residual",
+    "component": "Residual",
+    "variance": 0.1337052027,
+    "sd": 0.3656572202
+   }
+  ]
+ },
+ "mixed-effects mixedMissing {\"subjectId\":\"row\",\"randomStructure\":\"intercept\",\"fixedFactors\":[\"Treatment\",\"T\"],\"subjectFactor\":{\"name\":\"Treatment\",\"levels\":[\"Control\",\"Control\",\"Control\",\"Treated\",\"Treated\",\"Treated\"]}}": {
+  "testType": "mixed-effects",
+  "subtitle": "Mixed-effects model (random intercept)",
+  "equation": "y ~ Treatment + T + (1 | subject)",
+  "stats": [
+   {
+    "label": "AIC",
+    "value": 51.80808196
+   },
+   {
+    "label": "BIC",
+    "value": 57.48555304
+   },
+   {
+    "label": "Log-likelihood",
+    "value": -20.90404098
+   },
+   {
+    "label": "REML criterion",
+    "value": 41.80808196
+   },
+   {
+    "label": "Observations used",
+    "value": 23
+   },
+   {
+    "label": "Observations in table",
+    "value": 24
+   },
+   {
+    "label": "Observations dropped as missing",
+    "value": 1
+   },
+   {
+    "label": "Subjects (groups)",
+    "value": 6
+   },
+   {
+    "label": "Residual DF",
+    "value": 18
+   }
+  ],
+  "groups": [
+   {
+    "name": "T0",
+    "mean": 12.67481667,
+    "sd": 2.954581827,
+    "sem": 1.20620298,
+    "median": 13.12395,
+    "n": 6
+   },
+   {
+    "name": "T1",
+    "mean": 14.22538333,
+    "sd": 3.320446364,
+    "sem": 1.355566552,
+    "median": 14.2625,
+    "n": 6
+   },
+   {
+    "name": "T2",
+    "mean": 15.54702,
+    "sd": 3.497852914,
+    "sem": 1.564287378,
+    "median": 16.7787,
+    "n": 5
+   },
+   {
+    "name": "T3",
+    "mean": 17.2186,
+    "sd": 3.158046686,
+    "sem": 1.289267161,
+    "median": 17.7444,
+    "n": 6
+   }
+  ],
+  "notes": "Mixed-effects model: y ~ Treatment + T + (1 | subject). Random intercept per subject, fitted by restricted maximum likelihood (REML). P-values by Satterthwaite's approximation (lmerTest). 23 of 24 observations used (1 observation dropped as missing).",
+  "coefficients": [
+   {
+    "term": "Intercept",
+    "estimate": 10.16022024,
+    "stdError": 0.9760693297,
+    "t": 10.4093223,
+    "p": 0.0004358798082
+   },
+   {
+    "term": "Treatment (Treated vs Control)",
+    "estimate": 5.011887746,
+    "stdError": 1.373334553,
+    "t": 3.649429585,
+    "p": 0.02183635428
+   },
+   {
+    "term": "T",
+    "estimate": 1.487955784,
+    "stdError": 0.06602431192,
+    "t": 22.53648302,
+    "p": 1.516272978e-13
+   }
+  ],
+  "varianceComponents": [
+   {
+    "group": "Subject",
+    "component": "Intercept",
+    "variance": 2.79492823,
+    "sd": 1.671803885
+   },
+   {
+    "group": "Residual",
+    "component": "Residual",
+    "variance": 0.1293269063,
+    "sd": 0.3596205031
+   }
+  ]
+ },
+ "mixed-effects mixedSingleObs {\"subjectId\":\"row\",\"randomStructure\":\"intercept\",\"fixedFactors\":[\"Treatment\",\"T\"],\"subjectFactor\":{\"name\":\"Treatment\",\"levels\":[\"Control\",\"Control\",\"Control\",\"Treated\",\"Treated\",\"Treated\"]}}": {
+  "testType": "mixed-effects",
+  "subtitle": "Mixed-effects model (random intercept)",
+  "equation": "y ~ Treatment + T + (1 | subject)",
+  "stats": [
+   {
+    "label": "AIC",
+    "value": 51.42566508
+   },
+   {
+    "label": "BIC",
+    "value": 56.64827727
+   },
+   {
+    "label": "Log-likelihood",
+    "value": -20.71283254
+   },
+   {
+    "label": "REML criterion",
+    "value": 41.42566508
+   },
+   {
+    "label": "Observations used",
+    "value": 21
+   },
+   {
+    "label": "Observations in table",
+    "value": 24
+   },
+   {
+    "label": "Observations dropped as missing",
+    "value": 3
+   },
+   {
+    "label": "Subjects (groups)",
+    "value": 6
+   },
+   {
+    "label": "Residual DF",
+    "value": 16
+   }
+  ],
+  "groups": [
+   {
+    "name": "T0",
+    "mean": 12.67481667,
+    "sd": 2.954581827,
+    "sem": 1.20620298,
+    "median": 13.12395,
+    "n": 6
+   },
+   {
+    "name": "T1",
+    "mean": 13.97204,
+    "sd": 3.646962262,
+    "sem": 1.630971106,
+    "median": 13.0329,
+    "n": 5
+   },
+   {
+    "name": "T2",
+    "mean": 15.32364,
+    "sd": 3.434623186,
+    "sem": 1.536010184,
+    "median": 15.6618,
+    "n": 5
+   },
+   {
+    "name": "T3",
+    "mean": 16.92706,
+    "sd": 3.439346857,
+    "sem": 1.538122674,
+    "median": 16.8125,
+    "n": 5
+   }
+  ],
+  "notes": "Mixed-effects model: y ~ Treatment + T + (1 | subject). Random intercept per subject, fitted by restricted maximum likelihood (REML). P-values by Satterthwaite's approximation (lmerTest). 21 of 24 observations used (3 observations dropped as missing). 1 subject has only a single observation and contributes no within-subject information.",
+  "coefficients": [
+   {
+    "term": "Intercept",
+    "estimate": 10.22760884,
+    "stdError": 1.029841332,
+    "t": 9.931247197,
+    "p": 0.0005412071775
+   },
+   {
+    "term": "Treatment (Treated vs Control)",
+    "estimate": 4.888370649,
+    "stdError": 1.451862447,
+    "t": 3.366965417,
+    "p": 0.02811902774
+   },
+   {
+    "term": "T",
+    "estimate": 1.473882996,
+    "stdError": 0.07721642767,
+    "t": 19.08768692,
+    "p": 1.841378127e-11
+   }
+  ],
+  "varianceComponents": [
+   {
+    "group": "Subject",
+    "component": "Intercept",
+    "variance": 3.104104694,
+    "sd": 1.761846955
+   },
+   {
+    "group": "Residual",
+    "component": "Residual",
+    "variance": 0.1494750744,
+    "sd": 0.3866200646
+   }
+  ]
+ },
+ "mixed-effects mixedTwoSubjects {\"subjectId\":\"row\",\"randomStructure\":\"intercept\",\"fixedFactors\":[\"Treatment\",\"T\"],\"subjectFactor\":{\"name\":\"Treatment\",\"levels\":[\"Control\",\"Treated\"]}}": {
+  "error": "Mixed-effects model needs at least 3 subjects (random-effect groups) — this table has 2."
+ },
+ "mixed-effects grouped {\"subjectId\":\"replicate\",\"randomStructure\":\"intercept\",\"fixedFactors\":[\"Group\",\"Row\"],\"interaction\":true}": {
+  "testType": "mixed-effects",
+  "subtitle": "Mixed-effects model (random intercept)",
+  "equation": "y ~ Group * Row + (1 | subject)",
+  "stats": [
+   {
+    "label": "AIC",
+    "value": 139.1382803
+   },
+   {
+    "label": "BIC",
+    "value": 153.4117973
+   },
+   {
+    "label": "Log-likelihood",
+    "value": -61.56914013
+   },
+   {
+    "label": "REML criterion",
+    "value": 123.1382803
+   },
+   {
+    "label": "Observations used",
+    "value": 44
+   },
+   {
+    "label": "Observations in table",
+    "value": 45
+   },
+   {
+    "label": "Observations dropped as missing",
+    "value": 1
+   },
+   {
+    "label": "Subjects (groups)",
+    "value": 3
+   },
+   {
+    "label": "Residual DF",
+    "value": 36
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 15.6,
+    "sd": 3.775863194,
+    "sem": 0.9749236844,
+    "median": 15,
+    "n": 15
+   },
+   {
+    "name": "B",
+    "mean": 22.53333333,
+    "sd": 6.479270976,
+    "sem": 1.672940572,
+    "median": 22,
+    "n": 15
+   },
+   {
+    "name": "C",
+    "mean": 12,
+    "sd": 1.664100589,
+    "sem": 0.44474959,
+    "median": 12,
+    "n": 14
+   }
+  ],
+  "notes": "Mixed-effects model: y ~ Group * Row + (1 | subject). Random intercept per subject, fitted by restricted maximum likelihood (REML). P-values by Satterthwaite's approximation (lmerTest). 44 of 45 observations used (1 observation dropped as missing).",
+  "coefficients": [
+   {
+    "term": "Intercept",
+    "estimate": 10.6,
+    "stdError": 0.4891364851,
+    "t": 21.67084305,
+    "p": 1.64247093e-11
+   },
+   {
+    "term": "Group (B vs A)",
+    "estimate": 3.2,
+    "stdError": 0.5849876508,
+    "t": 5.470200945,
+    "p": 0.000003543902926
+   },
+   {
+    "term": "Group (C vs A)",
+    "estimate": -0.5199460087,
+    "stdError": 0.5998237631,
+    "t": -0.866831294,
+    "p": 0.391766108
+   },
+   {
+    "term": "Row",
+    "estimate": 2.5,
+    "stdError": 0.1688713888,
+    "t": 14.80416557,
+    "p": 6.881028354e-17
+   },
+   {
+    "term": "Group × Row (B vs A)",
+    "estimate": 1.866666667,
+    "stdError": 0.2388202084,
+    "t": 7.816200645,
+    "p": 2.865740702e-9
+   },
+   {
+    "term": "Group × Row (C vs A)",
+    "estimate": -1.570013498,
+    "stdError": 0.2411093458,
+    "t": -6.511624395,
+    "p": 1.441071256e-7
+   }
+  ],
+  "varianceComponents": [
+   {
+    "group": "Subject",
+    "component": "Intercept",
+    "variance": 0.2044476757,
+    "sd": 0.4521589054
+   },
+   {
+    "group": "Residual",
+    "component": "Residual",
+    "variance": 0.8555263788,
+    "sd": 0.9249466897
+   }
+  ]
  }
 }

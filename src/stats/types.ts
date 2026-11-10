@@ -39,6 +39,7 @@ export type AnalysisType =
   | "mcnemar"
   | "survival-log-rank"
   | "cox-proportional-hazards"
+  | "mixed-effects"
   | "bland-altman"
   | "roc-curve"
   | "frequency-distribution";
@@ -477,6 +478,31 @@ export interface FrequencyDistributionParams {
   startAt?: number;
 }
 
+/** Params for "mixed-effects" (Column or Grouped table): a repeated-measures
+ *  model fit with lme4::lmer + lmerTest Satterthwaite p-values (plan 20).
+ *  `subjectId` says what a subject is — a table row (Column tables) or a
+ *  replicate column within each group (Grouped tables) — and so selects the
+ *  layout; the wizard always sets it, the runner auto-detects when it is absent.
+ *  `fixedFactors` names the fixed factors in model order (the column/time
+ *  factor's name is the columns' shared prefix, else "Condition"; the Grouped
+ *  factors are "Group" and "Row" unless the wizard says otherwise).
+ *  `subjectFactor` is a between-subject factor on Column tables (one level per
+ *  table row, in row order — the reference test's Treatment arm); the v1
+ *  wizard never asks it. `randomStructure` is "intercept" in v1 — "slope"
+ *  (with `slopeVariable`) is the v2 follow-on, and the runner errors on it
+ *  rather than fitting something else. */
+export interface MixedEffectsParams {
+  fixedFactors?: string[];
+  randomStructure: "intercept" | "slope";
+  slopeVariable?: string;
+  subjectId?: "row" | "replicate";
+  /** Between-subject factor (Column tables): one level per subject row, in row order. */
+  subjectFactor?: { name: string; levels: string[] };
+  /** Include the subject-factor × column-factor interaction (default false;
+   *  Grouped tables default it on — see the wizard). */
+  interaction?: boolean;
+}
+
 /** Params for "cox-proportional-hazards" (Multiple Variables table): which
  *  column holds survival times, which holds the 1 = event / 0 = censored
  *  codes, and which columns are the covariates. `ties` is the coxph tie
@@ -551,6 +577,7 @@ export type AnalysisParams = DataSetsParam &
     | PoissonRegressionParams
     | SplineLowessParams
     | CoxPHParams
+    | MixedEffectsParams
     | ChiSquareParams
     | McNemarParams
     | OutliersParams
@@ -685,6 +712,16 @@ export interface InterpolatedRow {
   extrapolated: boolean;
 }
 
+/** One row of a mixed-effects variance-components table: the random-effect
+ *  variance and SD for one grouping (`group` "Subject" / "Residual",
+ *  `component` e.g. "Intercept"). */
+export interface VarianceComponent {
+  group: string;
+  component: string;
+  variance: number | null;
+  sd: number | null;
+}
+
 /** One row of "correlation" results in "x-vs-every-y" mode: X vs. one Y series. */
 export interface CorrelationRow {
   variable: string;
@@ -759,6 +796,9 @@ export interface AnalysisResult {
   fit?: { sets: string[]; rows: FitRow[] };
   /** A standard curve's unknowns, interpolated. */
   interpolated?: InterpolatedRow[];
+  /** Optional variance components ("mixed-effects"): one row per
+   *  random-effects grouping (subject intercept + residual in v1). */
+  varianceComponents?: VarianceComponent[];
   /** What the coefficients table's statistic column is ("t" by default): a
    *  logistic regression's is a z-statistic, so it says "z". */
   statisticLabel?: string;

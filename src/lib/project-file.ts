@@ -161,6 +161,7 @@ type ParamKind =
   | "names"
   | "name-or-names"
   | "name-or-number"
+  | "name-and-names"
   | "numbers-by-name"
   | readonly string[]
   | Limits;
@@ -187,6 +188,10 @@ const PARAMS = {
   posthocTerm: THREE_WAY_TERMS,
   truth: "name", score: "name", positive: "name-or-number",
   time: "name", status: "name", covariates: "names", stratifyBy: "name", ties: ["efron", "breslow"],
+  // Mixed-effects model (plan 20): the random structure and the subject
+  // identity are choices; `subjectFactor` is one name + its per-row levels.
+  randomStructure: ["intercept", "slope"], subjectId: ["row", "replicate"], interaction: "yes/no",
+  fixedFactors: "names", slopeVariable: "name", subjectFactor: "name-and-names",
 } satisfies Record<ParamKey, ParamKind>;
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -405,6 +410,13 @@ function readParam(kind: ParamKind, v: unknown): unknown {
   if (kind === "name-or-names")
     return typeof v === "string" ? v : Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
   if (kind === "numbers-by-name") return isObj(v) && Object.values(v).every(isFiniteNumber) ? v : undefined;
+  if (kind === "name-and-names")
+    return isObj(v) &&
+      typeof v.name === "string" &&
+      Array.isArray(v.levels) &&
+      v.levels.every((s) => typeof s === "string")
+      ? v
+      : undefined;
   if (kind === "names") return Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
   return Array.isArray(kind) ? oneOf(kind, v) : within(v, kind as Limits);
 }

@@ -760,6 +760,85 @@ const coxZeroTime = table(
   ],
 );
 
+/** Mixed-effects model (plan 20): the plan's balanced 6-subject × 4-time-point
+ *  table (subjects 1–3 Control, 4–6 Treated; subject intercepts [0, 2, −1, 0, 2, −1];
+ *  y = 10 + 5·treated + 1.5·time + intercept), with seeded noise (sd 0.5, seed 11 —
+ *  the P-07 construction). The plan's noiseless values are NOT lme4 ground truth:
+ *  on the noiseless table lme4 reports "Model failed to converge with max|grad| =
+ *  0.661141" and "nearly unidentifiable", and nlme refuses it outright
+ *  ("system is computationally singular") — the fixed effects it returns are
+ *  unconverged optimizer artifacts (intercept 10.4225 vs the plan's 10.3333,
+ *  subject variance 0.4457 vs 1.8667) and the Satterthwaite p-values are
+ *  meaningless (p ≈ 0.92 for |t| = 27). The noisy table converges cleanly
+ *  (0 warnings, not singular) and its fixed effects equal the OLS fit on the
+ *  same cells to 1e-11 — and match the P-07-pinned values (same construction)
+ *  to 1e-5, which is the independent reshaping check. */
+const mixedBalanced = table(
+  ["Title", "T0", "T1", "T2", "T3"],
+  [
+    ["", "9.7045", "11.5133", "12.2417", "13.8187"],
+    ["", "12.5892", "13.0329", "15.6618", "16.8125"],
+    ["", "8.9771", "9.9979", "11.5858", "13.3258"],
+    ["", "14.2309", "16.3722", "17.4250", "19.5062"],
+    ["", "16.8885", "18.9439", "19.7039", "21.1721"],
+    ["", "13.6587", "15.4921", "16.7787", "18.6763"],
+  ],
+);
+
+/** The same table with one cell blanked (S2/T2): the point of the analysis —
+ *  23 observations used, no subject dropped. */
+const mixedMissing = table(
+  ["Title", "T0", "T1", "T2", "T3"],
+  [
+    ["", "9.7045", "11.5133", "12.2417", "13.8187"],
+    ["", "12.5892", "13.0329", "", "16.8125"],
+    ["", "8.9771", "9.9979", "11.5858", "13.3258"],
+    ["", "14.2309", "16.3722", "17.4250", "19.5062"],
+    ["", "16.8885", "18.9439", "19.7039", "21.1721"],
+    ["", "13.6587", "15.4921", "16.7787", "18.6763"],
+  ],
+);
+
+/** The same table with all of S6's values blanked except one: the
+ *  single-observation warning. */
+const mixedSingleObs = table(
+  ["Title", "T0", "T1", "T2", "T3"],
+  [
+    ["", "9.7045", "11.5133", "12.2417", "13.8187"],
+    ["", "12.5892", "13.0329", "15.6618", "16.8125"],
+    ["", "8.9771", "9.9979", "11.5858", "13.3258"],
+    ["", "14.2309", "16.3722", "17.4250", "19.5062"],
+    ["", "16.8885", "18.9439", "19.7039", "21.1721"],
+    ["", "13.6587", "", "", ""],
+  ],
+);
+
+/** Two subjects only: a random intercept is not estimable. */
+const mixedTwoSubjects = table(
+  ["Title", "T0", "T1", "T2", "T3"],
+  [
+    ["", "9.7045", "11.5133", "12.2417", "13.8187"],
+    ["", "12.5892", "13.0329", "15.6618", "16.8125"],
+  ],
+);
+
+/** The subject-factor params for the Column reference tables (Treatment arm
+ *  by subject group, as the plan's table encodes it). */
+const mixedColumnParams: AnalysisParams = {
+  subjectId: "row",
+  randomStructure: "intercept",
+  fixedFactors: ["Treatment", "T"],
+  subjectFactor: { name: "Treatment", levels: ["Control", "Control", "Control", "Treated", "Treated", "Treated"] },
+};
+
+/** Two subjects, one per arm: the subject factor lists one level per row. */
+const mixedTwoSubjectsParams: AnalysisParams = {
+  subjectId: "row",
+  randomStructure: "intercept",
+  fixedFactors: ["Treatment", "T"],
+  subjectFactor: { name: "Treatment", levels: ["Control", "Treated"] },
+};
+
 /** Binary outcome vs. one predictor (simple logistic regression). */
 const logistic = table(
   ["Title", "X", "Response"],
@@ -1970,6 +2049,20 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
     { time: "Time", status: "Status", covariates: ["Trt", "Age"] },
   ],
   ["coxTable", coxTable, "cox-proportional-hazards", { time: "Time", status: "Status", covariates: [] }],
+  // Mixed-effects model (plan 20): the balanced Column case, the one-missing-cell
+  // case (23 observations, no subject dropped), the single-observation case,
+  // the 2-subject error, and the Grouped case (groups × rows with interaction,
+  // on the existing `grouped` table — 44 observations, 3 subjects).
+  ["mixedBalanced", mixedBalanced, "mixed-effects", mixedColumnParams],
+  ["mixedMissing", mixedMissing, "mixed-effects", mixedColumnParams],
+  ["mixedSingleObs", mixedSingleObs, "mixed-effects", mixedColumnParams],
+  ["mixedTwoSubjects", mixedTwoSubjects, "mixed-effects", mixedTwoSubjectsParams],
+  [
+    "grouped",
+    grouped,
+    "mixed-effects",
+    { subjectId: "replicate", randomStructure: "intercept", fixedFactors: ["Group", "Row"], interaction: true },
+  ],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "none", posthocTarget: "groups" }],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "tukey", posthocTarget: "groups" }],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "bonferroni", posthocTarget: "rows" }],
@@ -2200,9 +2293,9 @@ async function run() {
   );
   const out: Record<string, unknown> = {};
   for (const [name, data, type, params] of ANALYSES) {
-    // Without the bundled repo the Cox cases cannot run (see the repo note
-    // above) — skipped, never silently passed.
-    if (!repoReady && type === "cox-proportional-hazards") continue;
+    // Without the bundled repo the Cox and mixed-effects cases cannot run
+    // (see the repo note above) — skipped, never silently passed.
+    if (!repoReady && (type === "cox-proportional-hazards" || type === "mixed-effects")) continue;
     out[`${type} ${name} ${JSON.stringify(params ?? {})}`] = await runAnalysis(type, data, params);
   }
   for (const [name, data, type, options] of GRAPH_CASES) {
@@ -3500,6 +3593,174 @@ async function disagreements(): Promise<string[]> {
       if (JSON.stringify(names) !== JSON.stringify(["Trt = 0", "Trt = 1"]))
         out.push(`Cox survival curves: ${names.join(",")}, expected "Trt = 0" and "Trt = 1"`);
     }
+  }
+  // Mixed-effects model (plan 20): the reference values are the lme4 fit on
+  // the noisy tables (see the mixedBalanced comment — the plan's noiseless
+  // values do not converge in lme4 and are NOT asserted here). Fixed effects
+  // are checked against the P-07-pinned values (the same seed-11/sd-0.5
+  // construction, fitted from R vectors there and from table cells here —
+  // agreement is the reshaping check) at 1e-3, and the grouped case against
+  // the OLS fit on the same long data at ±0.05 (lmer and OLS agree closely
+  // on a nearly-balanced design, and differ exactly where the missing cell
+  // makes the random-effects weighting matter). Tolerances (plan): fixed
+  // effects ±0.05 absolute on the balanced case is beaten by the 1e-3
+  // P-07 check; the one-missing-cell treatment effect must stay within
+  // ±0.1 of 5.0.
+  if (repoReady) {
+    const mixStat = (r: AnalysisResult, label: string) => r.stats.find((s) => s.label === label)?.value;
+    const mixCoef = (r: AnalysisResult, term: string) => r.coefficients?.find((c) => c.term === term);
+    const mixVar = (r: AnalysisResult, group: string) => r.varianceComponents?.find((v) => v.group === group);
+    const close = (got: number | null | undefined, want: number, tol: number, label: string) => {
+      if (got == null || Math.abs(got - want) > tol) out.push(`Mixed-effects ${label}: ${got}, expected ${want} ± ${tol}`);
+    };
+    const rel = (got: number | null | undefined, want: number, relTol: number, label: string) => {
+      if (got == null || Math.abs(got - want) > relTol * Math.abs(want))
+        out.push(`Mixed-effects ${label}: ${got}, expected ${want} ± ${relTol * 100}%`);
+    };
+    // Balanced Column case.
+    const mix = await runAnalysis("mixed-effects", mixedBalanced, mixedColumnParams);
+    if ("error" in mix) {
+      out.push(`Mixed-effects balanced: ${mix.error}`);
+    } else {
+      close(mixCoef(mix, "Intercept")?.estimate, 10.1926, 1e-3, "balanced intercept");
+      close(mixCoef(mix, "Treatment (Treated vs Control)")?.estimate, 4.9656, 1e-3, "balanced treatment");
+      close(mixCoef(mix, "Treatment (Treated vs Control)")?.stdError, 1.4064, 1e-3, "balanced treatment SE");
+      rel(mixCoef(mix, "Treatment (Treated vs Control)")?.p, 0.02422, 1e-3, "balanced treatment p");
+      close(mixCoef(mix, "T")?.estimate, 1.4972, 1e-3, "balanced time");
+      rel(mixCoef(mix, "T")?.p, 4.5688e-14, 1e-3, "balanced time p");
+      rel(mixVar(mix, "Subject")?.variance, 2.9336, 1e-3, "balanced subject variance");
+      rel(mixVar(mix, "Subject")?.sd, 1.7128, 1e-3, "balanced subject SD");
+      rel(mixVar(mix, "Residual")?.variance, 0.1337, 1e-3, "balanced residual variance");
+      rel(mixStat(mix, "AIC"), 53.6558, 1e-3, "balanced AIC");
+      rel(mixStat(mix, "BIC"), 59.5461, 1e-3, "balanced BIC");
+      rel(mixStat(mix, "Log-likelihood"), -21.8279, 1e-3, "balanced log-likelihood");
+      rel(mixStat(mix, "REML criterion"), 43.6558, 1e-3, "balanced REML criterion");
+      close(mixStat(mix, "Observations used"), 24, 0, "balanced observations used");
+      close(mixStat(mix, "Observations in table"), 24, 0, "balanced observations in table");
+      close(mixStat(mix, "Observations dropped as missing"), 0, 0, "balanced dropped");
+      close(mixStat(mix, "Subjects (groups)"), 6, 0, "balanced subjects");
+      close(mixStat(mix, "Residual DF"), 19, 0, "balanced residual DF");
+      if (mix.equation !== "y ~ Treatment + T + (1 | subject)")
+        out.push(`Mixed-effects balanced equation: ${mix.equation}`);
+      if (mix.subtitle !== "Mixed-effects model (random intercept)")
+        out.push(`Mixed-effects balanced subtitle: ${mix.subtitle}`);
+      if (!mix.notes.includes("P-values by Satterthwaite's approximation (lmerTest)"))
+        out.push(`Mixed-effects balanced notes: Satterthwaite sentence missing`);
+      if (!mix.notes.includes("0 observations dropped as missing"))
+        out.push(`Mixed-effects balanced notes: explicit 0-dropped sentence missing — ${mix.notes}`);
+    }
+    // One cell blanked: 23 observations, no subject dropped, treatment within ±0.1 of 5.0.
+    const mixMiss = await runAnalysis("mixed-effects", mixedMissing, mixedColumnParams);
+    if ("error" in mixMiss) {
+      out.push(`Mixed-effects missing-cell: ${mixMiss.error}`);
+    } else {
+      close(mixStat(mixMiss, "Observations used"), 23, 0, "missing-cell observations used");
+      close(mixStat(mixMiss, "Observations dropped as missing"), 1, 0, "missing-cell dropped");
+      close(mixStat(mixMiss, "Subjects (groups)"), 6, 0, "missing-cell subjects (no subject dropped)");
+      close(mixCoef(mixMiss, "Treatment (Treated vs Control)")?.estimate, 5.0, 0.1, "missing-cell treatment");
+      if (!mixMiss.notes.includes("1 observation dropped as missing"))
+        out.push(`Mixed-effects missing-cell notes: 1-dropped sentence missing — ${mixMiss.notes}`);
+    }
+    // One subject with a single observation: runs, and the notes warn.
+    const mixSingle = await runAnalysis("mixed-effects", mixedSingleObs, mixedColumnParams);
+    if ("error" in mixSingle) {
+      out.push(`Mixed-effects single-observation: ${mixSingle.error}`);
+    } else if (!mixSingle.notes.includes("single observation")) {
+      out.push(`Mixed-effects single-observation notes: warning missing — ${mixSingle.notes}`);
+    }
+    // Two subjects: an error naming the subject requirement.
+    const mixTwo = await runAnalysis("mixed-effects", mixedTwoSubjects, mixedTwoSubjectsParams);
+    if (!("error" in mixTwo) || !mixTwo.error.includes("at least 3 subjects"))
+      out.push(
+        `Mixed-effects two-subjects: ${"error" in mixTwo ? mixTwo.error : "ran without error"}, expected an error naming "at least 3 subjects"`,
+      );
+    // Grouped case (groups × rows, interaction): fixed effects against the
+    // OLS fit on the same 44 long-format observations; the one missing cell
+    // (B:Y2 Day 2) is a missing observation, not a missing subject.
+    const mixGrouped = await runAnalysis("mixed-effects", grouped, {
+      subjectId: "replicate",
+      randomStructure: "intercept",
+      fixedFactors: ["Group", "Row"],
+      interaction: true,
+    });
+    if ("error" in mixGrouped) {
+      out.push(`Mixed-effects grouped: ${mixGrouped.error}`);
+    } else {
+      close(mixCoef(mixGrouped, "Intercept")?.estimate, 10.6, 0.05, "grouped intercept (OLS)");
+      close(mixCoef(mixGrouped, "Group (B vs A)")?.estimate, 3.2, 0.05, "grouped B vs A (OLS)");
+      close(mixCoef(mixGrouped, "Group (C vs A)")?.estimate, -0.5333, 0.05, "grouped C vs A (OLS)");
+      close(mixCoef(mixGrouped, "Row")?.estimate, 2.5, 0.05, "grouped row (OLS)");
+      close(mixCoef(mixGrouped, "Group × Row (B vs A)")?.estimate, 1.8667, 0.05, "grouped B×Row (OLS)");
+      close(mixCoef(mixGrouped, "Group × Row (C vs A)")?.estimate, -1.5667, 0.05, "grouped C×Row (OLS)");
+      close(mixStat(mixGrouped, "Observations used"), 44, 0, "grouped observations used");
+      close(mixStat(mixGrouped, "Observations dropped as missing"), 1, 0, "grouped dropped");
+      close(mixStat(mixGrouped, "Subjects (groups)"), 3, 0, "grouped subjects");
+      if (mixGrouped.equation !== "y ~ Group * Row + (1 | subject)")
+        out.push(`Mixed-effects grouped equation: ${mixGrouped.equation}`);
+    }
+    // The wizard asks the repeated-measure columns + the matched-subjects
+    // question on a Column table, and interaction + matched-subjects on a
+    // Grouped table; finish maps the answers to the runner's params, and
+    // the not-matched escape resolves to the ordinary ANOVA instead.
+    const mixAsked = (a: Record<string, string | string[]>, data: TableData) =>
+      WIZARDS["mixed-effects"]!.questions(a, readTable(data)).flatMap((q) => (q ? [q.id] : []));
+    if (JSON.stringify(mixAsked({}, mixedBalanced)) !== JSON.stringify(["sets", "matched"]))
+      out.push(`Mixed-effects wizard (column): ${JSON.stringify(mixAsked({}, mixedBalanced))}`);
+    if (JSON.stringify(mixAsked({}, grouped)) !== JSON.stringify(["interaction", "matched"]))
+      out.push(`Mixed-effects wizard (grouped): ${JSON.stringify(mixAsked({}, grouped))}`);
+    const mixSetsQ = WIZARDS["mixed-effects"]!.questions({}, readTable(mixedBalanced))[0];
+    if (!mixSetsQ || mixSetsQ.kind !== "names" || mixSetsQ.min !== 3)
+      out.push(`Mixed-effects wizard sets question: ${JSON.stringify(mixSetsQ)}`);
+    const mixColFinished = WIZARDS["mixed-effects"]!.finish(
+      { sets: ["T0", "T1", "T2", "T3"], matched: "matched" },
+      readTable(mixedBalanced),
+    );
+    if (
+      JSON.stringify(mixColFinished) !==
+      JSON.stringify({
+        type: "mixed-effects",
+        params: { subjectId: "row", randomStructure: "intercept", fixedFactors: ["T"], sets: ["T0", "T1", "T2", "T3"] },
+      })
+    )
+      out.push(`Mixed-effects wizard finish (column): ${JSON.stringify(mixColFinished)}`);
+    const mixColEscape = WIZARDS["mixed-effects"]!.finish(
+      { sets: ["T0", "T1", "T2", "T3"], matched: "not-matched" },
+      readTable(mixedBalanced),
+    );
+    if (
+      JSON.stringify(mixColEscape) !==
+      JSON.stringify({ type: "anova", params: { posthoc: "none", sets: ["T0", "T1", "T2", "T3"] } })
+    )
+      out.push(`Mixed-effects wizard finish (column escape): ${JSON.stringify(mixColEscape)}`);
+    const mixGrpFinished = WIZARDS["mixed-effects"]!.finish(
+      { interaction: "yes", matched: "matched" },
+      readTable(grouped),
+    );
+    if (
+      JSON.stringify(mixGrpFinished) !==
+      JSON.stringify({
+        type: "mixed-effects",
+        params: {
+          subjectId: "replicate",
+          randomStructure: "intercept",
+          fixedFactors: ["Group", "Row"],
+          interaction: true,
+        },
+      })
+    )
+      out.push(`Mixed-effects wizard finish (grouped): ${JSON.stringify(mixGrpFinished)}`);
+    const mixGrpEscape = WIZARDS["mixed-effects"]!.finish(
+      { interaction: "yes", matched: "not-matched" },
+      readTable(grouped),
+    );
+    if (
+      JSON.stringify(mixGrpEscape) !==
+      JSON.stringify({
+        type: "two-way-anova",
+        params: { design: "ordinary", posthoc: "none", posthocTarget: "groups" },
+      })
+    )
+      out.push(`Mixed-effects wizard finish (grouped escape): ${JSON.stringify(mixGrpEscape)}`);
   }
   // Kolmogorov-Smirnov: the plan's values, computed independently in Python
   // with scipy.stats.ks_2samp(..., method='exact') (scipy 1.11.4) and verified
@@ -5082,10 +5343,13 @@ if (process.argv.includes("--update")) {
   console.log(`Reference updated: ${Object.keys(actual).length} results.`);
 } else {
   const expected = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
-  // Without the bundled repo the Cox cases were skipped above — the same keys
-  // are dropped from the expectation, so the comparison stays exact.
+  // Without the bundled repo the Cox and mixed-effects cases were skipped
+  // above — the same keys are dropped from the expectation, so the
+  // comparison stays exact.
   if (!repoReady) {
-    for (const k of Object.keys(expected)) if (k.startsWith("cox-proportional-hazards ")) delete expected[k];
+    for (const k of Object.keys(expected)) {
+      if (k.startsWith("cox-proportional-hazards ") || k.startsWith("mixed-effects ")) delete expected[k];
+    }
   }
   const keys = new Set([...Object.keys(expected), ...Object.keys(actual)]);
   const changed = [...keys].filter((k) => JSON.stringify(expected[k]) !== JSON.stringify(actual[k]));

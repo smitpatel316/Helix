@@ -308,6 +308,19 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
+      {result.varianceComponents && result.varianceComponents.length > 0 && (
+        <Table
+          title="Variance components"
+          columns={[
+            { label: "Group" },
+            { label: "Component" },
+            { label: "Variance", numeric: true },
+            { label: "SD", numeric: true },
+          ]}
+          rows={result.varianceComponents.map((v) => [v.group, v.component, num(v.variance), num(v.sd)])}
+        />
+      )}
+
       {result.fitted && result.fitted.length > 0 && (
         <Table
           title="Fitted values and residuals"

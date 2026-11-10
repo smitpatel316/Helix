@@ -16,6 +16,7 @@ import type {
   EnzymeInhibitionParams,
   FrequencyDistributionParams,
   McNemarParams,
+  MixedEffectsParams,
   MultipleRegressionParams,
   MultipleLogisticRegressionParams,
   MultipleTTestsParams,
@@ -70,6 +71,7 @@ import { runCox } from "./survival/cox-regression";
 import { runMcNemar } from "./contingency/mcnemar";
 import { runLogRank } from "./survival/log-rank";
 import { runCoxPH } from "./survival/cox-ph";
+import { runMixedEffects } from "./mixed/mixed-effects";
 import { runBlandAltman } from "./column/bland-altman";
 import { runRocCurve } from "./column/roc-curve";
 import { runFrequencyDistribution } from "./column/frequency-distribution";
@@ -241,6 +243,12 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     minColumns: 3,
     requiredPackages: ["survival"],
     run: (c, p) => runCoxPH(c, p as CoxPHParams),
+  },
+  "mixed-effects": {
+    label: "Mixed-effects model",
+    minColumns: 3,
+    requiredPackages: ["lme4", "lmerTest"],
+    run: (c, p) => runMixedEffects(c, p as MixedEffectsParams),
   },
   "bland-altman": { label: "Bland-Altman method comparison", minColumns: 2, run: (c) => runBlandAltman(c) },
   // minColumns 1: the truth column may be text ("Diseased"/"Healthy"), so a

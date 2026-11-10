@@ -38,6 +38,7 @@ import type {
   XYCorrelationParams,
 } from "../../stats/types";
 import { parseInhibitorConcentration } from "../../stats/xy/enzyme-inhibition";
+import { columnFactorName } from "../../stats/mixed/mixed-effects";
 import { splitXY, type Dataset } from "../../lib/dataset";
 
 export type Answer = string | number | string[];
@@ -195,6 +196,13 @@ const withSets = <P extends object>(a: Answers, params?: P) => {
   return sets ? { ...params, sets } : params;
 };
 
+/** Whether the table is a Grouped one (column groups with replicate columns),
+ *  for the wizards that serve both layouts (mixed-effects): multi-column
+ *  sets, or a ":" in a column name (a grouped table with one replicate per
+ *  group has one-column sets). */
+const isGroupedTable = (table: Dataset) =>
+  table.sets.some((s) => s.columns.length > 1) || table.columns.some((c) => c.name.includes(":"));
+
 const GAUSSIAN = "Assume the data are sampled from Gaussian (normal) distributions?";
 const PAIRED = "How were the data collected?";
 
@@ -320,6 +328,86 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       };
       const rm = type === "rm-anova" && { sphericity: a.sphericity === "yes" };
       return { type, params: withSets(a, { posthoc: a.posthoc, ...anova, ...rm }) as AnalysisParams };
+    },
+  },
+
+  "mixed-effects": {
+    // One wizard serves both layouts (Column and Grouped tables) — the
+    // Dataset alone must tell them apart: multi-column sets, or a ":" in a
+    // column name (a grouped table with one replicate per group has
+    // one-column sets). v1 is random-intercept only: the random structure
+    // is stated, never chosen, and the choice arrives in v2.
+    questions: (_, table) => {
+      const grouped = isGroupedTable(table);
+      if (grouped) {
+        return [
+          choice(
+            "interaction",
+            "Fixed factor A is the column groups, fixed factor B is the rows (time/condition). The interaction A×B is included by default.",
+            [
+              ["yes", "Include the A×B interaction"],
+              ["no", "Main effects only — no interaction"],
+            ],
+          ),
+          choice(
+            "matched",
+            "Subjects are the replicate columns within each group: replicate 1 in group A is the same subject as replicate 1 in group B, measured at every row. The model fits a random intercept per subject, so it uses every observed value even when some are missing.",
+            [
+              ["matched", "Replicates are the same subjects across groups — continue"],
+              ["not-matched", "Replicates are NOT the same subjects — stop and use ordinary two-way ANOVA instead"],
+            ],
+          ),
+        ];
+      }
+      return [
+        {
+          id: "sets",
+          ask: "Which columns are the repeated measurements? Each column is one time point or condition, measured on every subject (row).",
+          kind: "names",
+          options: dataNames(table),
+          min: 3,
+        },
+        choice(
+          "matched",
+          "Subjects are the rows: each row is one subject, measured in every column. The model fits a random intercept per subject (one intercept per row), so it uses every observed value even when some are missing.",
+          [
+            ["matched", "Rows are matched subjects — continue"],
+            ["not-matched", "Rows are NOT matched subjects — stop and use one-way ANOVA instead"],
+          ],
+        ),
+      ];
+    },
+    finish: (a, table) => {
+      if (isGroupedTable(table)) {
+        if (a.matched === "not-matched") {
+          return {
+            type: "two-way-anova",
+            params: { design: "ordinary", posthoc: "none", posthocTarget: "groups" } as AnalysisParams,
+          };
+        }
+        return {
+          type: "mixed-effects",
+          params: {
+            subjectId: "replicate",
+            randomStructure: "intercept",
+            fixedFactors: ["Group", "Row"],
+            interaction: a.interaction !== "no",
+          },
+        };
+      }
+      if (a.matched === "not-matched") {
+        return { type: "anova", params: withSets(a, { posthoc: "none" }) as AnalysisParams };
+      }
+      const chosen = chosenSets(a) ?? dataNames(table);
+      const cols = table.numeric.filter((c) => chosen.includes(c.name));
+      return {
+        type: "mixed-effects",
+        params: withSets(a, {
+          subjectId: "row",
+          randomStructure: "intercept",
+          fixedFactors: [columnFactorName(cols.length ? cols : table.numeric)],
+        }) as AnalysisParams,
+      };
     },
   },
 

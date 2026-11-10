@@ -918,13 +918,18 @@ check("the three-way ANOVA is offered only with at least 2 row bands", () => {
     ],
   };
   const values = (data?: TableData) => analysisOptionsForTable("grouped", data).map((o) => o.value);
-  deepStrictEqual(values(withBands), ["two-way-anova", "three-way-anova", "multiple-t-tests"]);
+  deepStrictEqual(values(withBands), ["two-way-anova", "mixed-effects", "three-way-anova", "multiple-t-tests"]);
   deepStrictEqual(values({ ...withBands, rowGroups: [{ name: "All rows", count: 2 }] }), [
     "two-way-anova",
+    "mixed-effects",
     "multiple-t-tests",
   ]);
-  deepStrictEqual(values({ ...withBands, rowGroups: undefined }), ["two-way-anova", "multiple-t-tests"]);
-  deepStrictEqual(values(), ["two-way-anova", "multiple-t-tests"]);
+  deepStrictEqual(values({ ...withBands, rowGroups: undefined }), [
+    "two-way-anova",
+    "mixed-effects",
+    "multiple-t-tests",
+  ]);
+  deepStrictEqual(values(), ["two-way-anova", "mixed-effects", "multiple-t-tests"]);
 });
 
 check("the three-way ANOVA wizard asks for a post-hoc term only when comparing", () => {
@@ -2132,6 +2137,33 @@ check("the ROC wizard asks truth, score and positive class, defaulting to the la
       .slice(-2),
     ["roc-curve", "survival-log-rank"],
   );
+});
+
+check("the mixed-effects wizard asks the layout's questions, and the menu offers it next to the analysis it replaces", () => {
+  const asked = (data: TableData, a: Record<string, string | string[]> = {}) =>
+    WIZARDS["mixed-effects"]!.questions(a, readTable(data)).flatMap((q) => (q ? [q.id] : []));
+  // A Column table: the repeated-measure columns, then the matched-subjects question.
+  const column = treatments(["T0", "T1", "T2", "T3"]);
+  deepStrictEqual(asked(column), ["sets", "matched"]);
+  const setsQ = WIZARDS["mixed-effects"]!.questions({}, readTable(column))[0];
+  ok(setsQ && setsQ.kind === "names" && setsQ.min === 3);
+  // A Grouped table: interaction, then matched-subjects.
+  deepStrictEqual(asked(grouped()), ["interaction", "matched"]);
+  // The finish names the time factor from the columns' shared prefix (T0–T3 → "T").
+  deepStrictEqual(
+    WIZARDS["mixed-effects"]!.finish({ sets: ["T0", "T1", "T2", "T3"], matched: "matched" }, readTable(column)),
+    {
+      type: "mixed-effects",
+      params: { subjectId: "row", randomStructure: "intercept", fixedFactors: ["T"], sets: ["T0", "T1", "T2", "T3"] },
+    },
+  );
+  // The menu offers it after "Compare more than two groups" on column tables
+  // (next to the repeated-measures ANOVA it replaces when data are missing),
+  // and after two-way ANOVA on grouped tables.
+  const columnOrder = analysisOptionsForTable("column").map((o) => o.value);
+  strictEqual(columnOrder[columnOrder.indexOf("mixed-effects") - 1], "compare-many-groups");
+  const groupedOrder = analysisOptionsForTable("grouped").map((o) => o.value);
+  strictEqual(groupedOrder[groupedOrder.indexOf("mixed-effects") - 1], "two-way-anova");
 });
 
 check("the chi-square wizard asks about ordering only on a 2×k / k×2 table, defaulting to no trend", () => {
