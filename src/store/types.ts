@@ -42,7 +42,7 @@ export const GRAPH_CHOICES = {
   pieValue: ["sum", "mean"],
   groupLayout: ["interleaved", "separated"],
   sigDisplay: ["stars", "pvalue"],
-  doseModel: ["sigmoidal-4pl-logx", "sigmoidal-4pl-x"],
+  doseModel: ["sigmoidal-4pl-logx", "sigmoidal-4pl-x", "one-phase-decay", "two-phase-decay", "plateau-decay"],
   survivalMode: ["codes", "counts"],
   volcanoEffect: ["log2ratio", "difference"],
   volcanoSignificance: ["pvalue", "fdr"],

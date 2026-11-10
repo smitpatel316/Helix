@@ -47,6 +47,10 @@ export const NONLINEAR_MODELS = [
   "hyperbola",
   "quadratic",
   "cubic",
+  // Exponential family (plan 08, 1/2: decay first).
+  "one-phase-decay",
+  "two-phase-decay",
+  "plateau-decay",
 ] as const;
 export const CORRELATION_METHODS = ["pearson", "spearman"] as const;
 export const CORRELATION_MODES = ["x-vs-every-y", "two-datasets", "matrix"] as const;

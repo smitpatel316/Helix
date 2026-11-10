@@ -447,6 +447,10 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         ["hyperbola", "Hyperbola (X is concentration)"],
         ["quadratic", "Second order polynomial (quadratic)"],
         ["cubic", "Third order polynomial (cubic)"],
+        // Prism's "Exponential" family (plan 08, 1/2: decay first).
+        ["one-phase-decay", "One-phase decay"],
+        ["two-phase-decay", "Two-phase decay"],
+        ["plateau-decay", "Plateau followed by one-phase decay"],
       ]),
     ],
     finish: (a) => ({

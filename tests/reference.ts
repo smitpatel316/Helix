@@ -91,6 +91,53 @@ const doseRaw = table(
   ],
 );
 
+/** Exponential curves (plan 08, 1/2: decay): noiseless by construction on the
+ *  shared X grid 0–12, so each fit must recover its generating parameters.
+ *  A: one-phase decay Y0=100, Plateau=10, K=0.5. B: two-phase decay
+ *  Plateau=10, Span1=60, K1=1, Span2=30, K2=0.1. E: plateau-then-decay
+ *  X0=2, Y0=100, Plateau=10, K=0.5. (C/D/D2 land in 2/2.) */
+const expX = table(
+  ["Title", "X", "A", "B", "E"],
+  [
+    ["", "0", "100", "100", "100"],
+    ["", "0.5", "80.0920704764", "74.9287223178", "100"],
+    ["", "1", "64.5877593741", "59.2178890114", "100"],
+    ["", "2", "43.1091497054", "42.6820395865", "100"],
+    ["", "3", "30.0817144134", "35.2117707225", "64.5877593741"],
+    ["", "4", "22.1801754913", "31.2085397144", "43.1091497054"],
+    ["", "6", "14.4808361531", "26.6130742134", "22.1801754913"],
+    ["", "8", "11.6484075", "23.4999966812", "14.4808361531"],
+    ["", "10", "10.6064152299", "21.0391072309", "11.6484075"],
+    ["", "12", "10.2230876959", "19.0361950101", "10.6064152299"],
+  ],
+);
+
+/** Plateau-then-decay with no points above the breakpoint (median X = 2):
+ *  X0 is unidentifiable, so the runner must error before calling R. */
+const plateauOneSided = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "0", "100"],
+    ["", "1", "99"],
+    ["", "2", "98"],
+    ["", "2", "97"],
+    ["", "2", "96"],
+    ["", "2", "95"],
+  ],
+);
+
+/** Two-phase decay needs ≥ 6 points (5 parameters + 1) — this has 5. */
+const expTooFew = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "0", "100"],
+    ["", "0.5", "74.9287223178"],
+    ["", "1", "59.2178890114"],
+    ["", "2", "42.6820395865"],
+    ["", "3", "35.2117707225"],
+  ],
+);
+
 const survivalTable = table(
   ["Title", "Days", "Treated", "Placebo"],
   [
@@ -562,6 +609,13 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "sigmoidal-4pl-x" }],
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "hyperbola" }],
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "semilog-line" }],
+  // Exponential curves (plan 08, 1/2: decay) — noiseless fixtures A/B/E, the
+  // one-sided-breakpoint error, and the too-few-points error for two-phase.
+  ["expX", expX, "nonlinear-regression", { y: "A", model: "one-phase-decay" }],
+  ["expX", expX, "nonlinear-regression", { y: "B", model: "two-phase-decay" }],
+  ["expX", expX, "nonlinear-regression", { y: "E", model: "plateau-decay" }],
+  ["plateauOneSided", plateauOneSided, "nonlinear-regression", { model: "plateau-decay" }],
+  ["expTooFew", expTooFew, "nonlinear-regression", { model: "two-phase-decay" }],
   ["logistic", logistic, "simple-logistic-regression", {}],
   ["logisticSeparated", logisticSeparated, "simple-logistic-regression", {}],
   ["blandAltman", blandAltman, "bland-altman", { sets: ["Method A", "Method B"] }],
@@ -882,6 +936,150 @@ async function disagreements(): Promise<string[]> {
         out.push(`Dose-response drop-line Y=${y0}: vertical to ${vert?.y?.[1]}, expected ${y0}`);
     }
   }
+  // Exponential curves (plan 08, 1/2: decay): the plan's values, by
+  // construction (noiseless fixtures) and re-verified against WebR nls()
+  // before locking. Tolerances from the plan: parameters 1e-3 relative,
+  // R² 1e-6 absolute, half-life 1e-3 relative. The growth/association
+  // cases (C/D/D2) land in 2/2.
+  const relClose = (got: number | null | undefined, want: number, tol: number) =>
+    got != null && Math.abs(got - want) <= tol * Math.max(1, Math.abs(want));
+  const checkExp = async (
+    label: string,
+    y: string,
+    model: "one-phase-decay" | "two-phase-decay" | "plateau-decay",
+    coefs: [string, number][],
+    stats: [string, number][],
+  ) => {
+    const r = await runAnalysis("nonlinear-regression", expX, { y, model });
+    if ("error" in r) {
+      out.push(`Exponential ${label}: ${r.error}`);
+      return null;
+    }
+    for (const [term, want] of coefs) {
+      const got = r.coefficients?.find((c) => c.term === term)?.estimate;
+      if (!relClose(got, want, 1e-3)) out.push(`Exponential ${label} ${term}: ${got}, plan says ${want}`);
+    }
+    for (const [name, want] of stats) {
+      const got = r.stats.find((s) => s.label === name)?.value;
+      const ok = name === "R squared" ? got != null && Math.abs(got - want) <= 1e-6 : relClose(got, want, 1e-3);
+      if (!ok) out.push(`Exponential ${label} ${name}: ${got}, plan says ${want}`);
+    }
+    return r;
+  };
+  const fitA = await checkExp(
+    "one-phase decay",
+    "A",
+    "one-phase-decay",
+    [
+      ["Y0", 100],
+      ["Plateau", 10],
+      ["K", 0.5],
+    ],
+    [
+      ["Half-life", 1.3863],
+      ["Span", 90],
+      ["R squared", 1],
+    ],
+  );
+  if (fitA) {
+    if (fitA.equation !== "Y = (100 − 10)·exp(−0.5·X) + 10")
+      out.push(`Exponential one-phase decay equation: ${fitA.equation}`);
+    if (!fitA.notes.includes("Starting values: Y0 = 100, Plateau = 10.22, K = 0.5."))
+      out.push(`Exponential one-phase decay notes missing starts: ${fitA.notes}`);
+    // The fitted-curve overlay: passes through (0, 100) and (12, ~10.2),
+    // monotone decreasing, and the TypeScript evaluator matches an
+    // independent R evaluation of the fitted formula at the data X to 1e-6.
+    const { addDoseCurve, evaluateFittedCurve } = await import("../src/views/graphs/dose-response-curve");
+    const expOpts = { ...newGraphOptions("dose-response"), doseModel: "one-phase-decay" as const, doseY: "A" };
+    const expColumns = plotColumns(readTable(expX), "dose-response");
+    const expFig = GRAPHS["dose-response"].build(
+      expColumns,
+      expOpts,
+      paintOf(expOpts, 1),
+      readTable(expX).titles,
+    );
+    addDoseCurve(expFig, expColumns, expOpts, fitA, paintOf(expOpts, 1));
+    const traces = expFig.data as { mode?: string; x?: number[]; y?: number[] }[];
+    const curve = traces.find((t) => t.mode === "lines" && t.x?.length === 101);
+    if (!curve || curve.x?.[0] !== 0 || curve.y?.[0] == null || Math.abs(curve.y[0] - 100) > 1e-9)
+      out.push(`Exponential overlay start: ${JSON.stringify(curve?.y?.slice(0, 1))}, expected 100 at X=0`);
+    const lastY = curve?.y?.at(-1);
+    if (!curve || curve.x?.at(-1) !== 12 || lastY == null || Math.abs(lastY - 10.2230876959) > 1e-6)
+      out.push(`Exponential overlay end: ${lastY}, expected ~10.223 at X=12`);
+    if (curve?.y?.some((v, i, a) => i > 0 && v >= a[i - 1]!))
+      out.push(`Exponential overlay is not monotone decreasing`);
+    const anns = (expFig.layout.annotations as { text?: string }[] | undefined) ?? [];
+    if (!anns.some((a) => a.text?.includes("Half-life = 1.386")))
+      out.push(`Exponential overlay note missing half-life: ${JSON.stringify(anns.map((a) => a.text))}`);
+    const y0 = fitA.coefficients?.find((c) => c.term === "Y0")?.estimate;
+    const pl = fitA.coefficients?.find((c) => c.term === "Plateau")?.estimate;
+    const k = fitA.coefficients?.find((c) => c.term === "K")?.estimate;
+    if (y0 != null && pl != null && k != null) {
+      const xs = [0, 0.5, 1, 2, 3, 4, 6, 8, 10, 12];
+      const rY = await evalNamedVector(
+        `x<-c(${xs.join(",")});yv<-(${y0.toPrecision(15)}-${pl.toPrecision(15)})*exp(-${k.toPrecision(15)}*x)+${pl.toPrecision(15)};` +
+          `c(${xs.map((_, i) => `y${i}=yv[${i + 1}]`).join(",")})`,
+      );
+      xs.forEach((x, i) => {
+        const ts = evaluateFittedCurve("one-phase-decay", fitA.coefficients ?? [], x);
+        const rv = rY[`y${i}`];
+        if (rv == null || Math.abs(ts - rv) > 1e-6)
+          out.push(`Exponential overlay at X=${x}: TS ${ts}, R ${rv}`);
+      });
+    }
+  }
+  await checkExp(
+    "two-phase decay",
+    "B",
+    "two-phase-decay",
+    [
+      ["Plateau", 10],
+      ["Span1", 60],
+      ["K1", 1],
+      ["Span2", 30],
+      ["K2", 0.1],
+    ],
+    [
+      ["Half-life (fast)", 0.6931],
+      ["Half-life (slow)", 6.9315],
+      ["Span", 90],
+      ["R squared", 1],
+    ],
+  );
+  const fitE = await checkExp(
+    "plateau-decay",
+    "E",
+    "plateau-decay",
+    [
+      ["X0", 2],
+      ["Y0", 100],
+      ["Plateau", 10],
+      ["K", 0.5],
+    ],
+    [
+      ["Half-life", 1.3863],
+      ["Span", 90],
+      ["R squared", 1],
+    ],
+  );
+  if (fitE) {
+    if (fitE.equation !== "Y = 100 for X < 2; Y = 10 + (100 − 10)·exp(−0.5·(X − 2)) for X ≥ 2")
+      out.push(`Exponential plateau-decay equation: ${fitE.equation}`);
+    if (!fitE.notes.includes("Starting values: X0 = 3.5, Y0 = 92.92, Plateau = 10.61, K = 0.5."))
+      out.push(`Exponential plateau-decay notes missing starts: ${fitE.notes}`);
+  }
+  // The edge cases are errors, not fits — and the plateau error must come
+  // from the runner before R is called.
+  const oneSided = await runAnalysis("nonlinear-regression", plateauOneSided, { model: "plateau-decay" });
+  if (!("error" in oneSided) || !oneSided.error.includes("both sides of the breakpoint"))
+    out.push(
+      `Exponential plateau one-sided: ${"error" in oneSided ? oneSided.error : "ran without error"}, expected an error naming both sides of the breakpoint`,
+    );
+  const tooFew = await runAnalysis("nonlinear-regression", expTooFew, { model: "two-phase-decay" });
+  if (!("error" in tooFew) || !tooFew.error.includes("need at least 6"))
+    out.push(
+      `Exponential two-phase too-few: ${"error" in tooFew ? tooFew.error : "ran without error"}, expected an error naming at least 6 points`,
+    );
   // Out of range: Y = 150 is above the curve's Top — a null row, not an error.
   const oor = await runAnalysis("standard-curve-interpolation", doseLog, {
     model: "sigmoidal-4pl-logx",

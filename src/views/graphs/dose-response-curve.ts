@@ -4,6 +4,7 @@
 // returned coefficients.
 import type { GraphOptions } from "../../store/types";
 import type { AnalysisResult, RegressionCoefficient, StatRow } from "../../stats/types";
+import { EXPONENTIAL_MODELS } from "../../stats/xy/nonlinear-fit";
 import { pairUp, type Column } from "../../lib/dataset";
 import type { GraphFigure } from ".";
 import { num } from "../../lib/format";
@@ -15,17 +16,46 @@ function coef(coefficients: RegressionCoefficient[], term: string): number {
   return coefficients.find((c) => c.term === term)?.estimate ?? NaN;
 }
 
-function evaluate(model: DoseModel, coefficients: RegressionCoefficient[], x: number): number {
-  const bottom = coef(coefficients, "Bottom");
-  const top = coef(coefficients, "Top");
-  const hill = coef(coefficients, "HillSlope");
-  return model === "sigmoidal-4pl-logx"
-    ? bottom + (top - bottom) / (1 + 10 ** ((coef(coefficients, "LogEC50") - x) * hill))
-    : bottom + (top - bottom) / (1 + (coef(coefficients, "EC50") / x) ** hill);
+/** The fitted curve's value at X, from the fit's coefficients — the same
+ *  closed form R fitted (see modelSpec in stats/xy/nonlinear-fit.ts), so the
+ *  overlay and the analysis can never disagree. Exported for the reference
+ *  tests, which check it against an independent R evaluation. */
+export function evaluateFittedCurve(model: DoseModel, coefficients: RegressionCoefficient[], x: number): number {
+  switch (model) {
+    case "sigmoidal-4pl-logx": {
+      const bottom = coef(coefficients, "Bottom");
+      const top = coef(coefficients, "Top");
+      const hill = coef(coefficients, "HillSlope");
+      return bottom + (top - bottom) / (1 + 10 ** ((coef(coefficients, "LogEC50") - x) * hill));
+    }
+    case "sigmoidal-4pl-x": {
+      const bottom = coef(coefficients, "Bottom");
+      const top = coef(coefficients, "Top");
+      const hill = coef(coefficients, "HillSlope");
+      return bottom + (top - bottom) / (1 + (coef(coefficients, "EC50") / x) ** hill);
+    }
+    case "one-phase-decay":
+      return (
+        (coef(coefficients, "Y0") - coef(coefficients, "Plateau")) * Math.exp(-coef(coefficients, "K") * x) +
+        coef(coefficients, "Plateau")
+      );
+    case "two-phase-decay":
+      return (
+        coef(coefficients, "Plateau") +
+        coef(coefficients, "Span1") * Math.exp(-coef(coefficients, "K1") * x) +
+        coef(coefficients, "Span2") * Math.exp(-coef(coefficients, "K2") * x)
+      );
+    case "plateau-decay":
+      return x < coef(coefficients, "X0")
+        ? coef(coefficients, "Y0")
+        : coef(coefficients, "Plateau") +
+            (coef(coefficients, "Y0") - coef(coefficients, "Plateau")) *
+              Math.exp(-coef(coefficients, "K") * (x - coef(coefficients, "X0")));
+  }
 }
 
-/** Evenly-spaced points across [xMin, xMax] tracing the fitted 4PL curve. */
-function doseResponseCurve(
+/** Evenly-spaced points across [xMin, xMax] tracing the fitted curve. */
+function fittedCurve(
   model: DoseModel,
   coefficients: RegressionCoefficient[],
   xMin: number,
@@ -37,22 +67,34 @@ function doseResponseCurve(
   for (let i = 0; i <= steps; i++) {
     const x0 = xMin + ((xMax - xMin) * i) / steps;
     x.push(x0);
-    y.push(evaluate(model, coefficients, x0));
+    y.push(evaluateFittedCurve(model, coefficients, x0));
   }
   return { x, y };
 }
 
-/** "EC50 = 12.3<br>Hill slope = 1.05<br>R² = 0.9821" annotation text (Plotly-ready). */
+function stat(stats: StatRow[], label: string): number | null | undefined {
+  return stats.find((s) => s.label === label)?.value;
+}
+
+/** "EC50 = 12.3<br>Hill slope = 1.05<br>R² = 0.9821" annotation text (Plotly-ready)
+ *  — for the exponential models, the half-life / doubling time instead. */
 function doseResponseLabel(model: DoseModel, coefficients: RegressionCoefficient[], stats: StatRow[]): string {
-  const ec50 = model === "sigmoidal-4pl-logx" ? 10 ** coef(coefficients, "LogEC50") : coef(coefficients, "EC50");
-  const hill = coef(coefficients, "HillSlope");
-  const r2 = stats.find((s) => s.label === "R squared")?.value;
-  const lines = [`EC50 = ${num(ec50)}`, `Hill slope = ${num(hill)}`];
+  const r2 = stat(stats, "R squared");
+  const lines: string[] = [];
+  if (model === "sigmoidal-4pl-logx" || model === "sigmoidal-4pl-x") {
+    const ec50 = model === "sigmoidal-4pl-logx" ? 10 ** coef(coefficients, "LogEC50") : coef(coefficients, "EC50");
+    lines.push(`EC50 = ${num(ec50)}`, `Hill slope = ${num(coef(coefficients, "HillSlope"))}`);
+  } else if (model === "two-phase-decay") {
+    lines.push(`Half-life (fast) = ${num(stat(stats, "Half-life (fast)"))}`);
+    lines.push(`Half-life (slow) = ${num(stat(stats, "Half-life (slow)"))}`);
+  } else if ((EXPONENTIAL_MODELS as readonly string[]).includes(model)) {
+    lines.push(`Half-life = ${num(stat(stats, "Half-life"))}`);
+  }
   if (r2 != null) lines.push(`R² = ${num(r2)}`);
   return lines.join("<br>");
 }
 
-/** Draws the fitted curve (and its EC50/Hill slope note) of the chosen Y series
+/** Draws the fitted curve (and its fit-summary note) of the chosen Y series
  *  (`columns` = X, then the Y series), under the points. When `interp` is a
  *  standard-curve-interpolation result for the same model and Y series, each
  *  interpolated unknown also gets its drop-lines: a horizontal dashed line at
@@ -73,7 +115,7 @@ export function addDoseCurve(
   const pairs = pairUp(x, y);
   const xs = pairs.x;
   if (!xs.length) return;
-  const curve = doseResponseCurve(options.doseModel, coefficients, ...extent(xs));
+  const curve = fittedCurve(options.doseModel, coefficients, ...extent(xs));
   fig.data = [
     {
       type: "scatter",

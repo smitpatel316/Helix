@@ -5,6 +5,7 @@ import * as React from "react";
 import { Button, Checkbox, Input, Select, cn } from "../../ui/controls";
 import { Row, Stepper } from "../../components/common/inspector";
 import type { AnalysisPickerValue, AnalysisType } from "../../stats/types";
+import { EXPONENTIAL_MODELS, MODEL_LABEL } from "../../stats/xy/nonlinear-fit";
 import { analysisLabel } from "../analyses";
 import {
   GRAPH_LIMITS,
@@ -113,6 +114,7 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
     return <RegressionControls analyses={sources} options={options} set={set} />;
   }
   if (graphType === "dose-response") {
+    const exponential = (EXPONENTIAL_MODELS as readonly string[]).includes(options.doseModel);
     return (
       <>
         <Choice
@@ -122,6 +124,10 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
           items={[
             { value: "sigmoidal-4pl-logx", label: "Log X" },
             { value: "sigmoidal-4pl-x", label: "Linear X" },
+            // Prism's "Exponential" family (plan 08, 1/2: decay first).
+            { value: "one-phase-decay", label: MODEL_LABEL["one-phase-decay"] },
+            { value: "two-phase-decay", label: MODEL_LABEL["two-phase-decay"] },
+            { value: "plateau-decay", label: MODEL_LABEL["plateau-decay"] },
           ]}
         />
         <Toggle
@@ -130,7 +136,7 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
           onChange={(doseShowCurve) => set({ doseShowCurve })}
         />
         <Toggle
-          label="EC50 & Hill slope"
+          label={exponential ? "Half-life" : "EC50 & Hill slope"}
           checked={options.doseShowEquation}
           onChange={(doseShowEquation) => set({ doseShowEquation })}
         />
