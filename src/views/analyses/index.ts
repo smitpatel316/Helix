@@ -25,6 +25,7 @@ const optionsFor = (order: AnalysisPickerValue[]): SelectorOption<AnalysisPicker
 export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<AnalysisPickerValue>[]> = {
   column: optionsFor([
     "descriptive-statistics",
+    "frequency-distribution",
     "compare-two-groups",
     "compare-many-groups",
     "one-sample-t",

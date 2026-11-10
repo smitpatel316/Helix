@@ -32,6 +32,7 @@ import { heatmap } from "./heatmap";
 import { survival } from "./survival";
 import { volcano, VOLCANO_SERIES } from "./volcano";
 import { blandAltmanGraph } from "./bland-altman";
+import { histogram } from "./histogram";
 
 /** A Plotly figure (untyped traces/layout — built as plain objects per module). */
 export interface GraphFigure {
@@ -85,6 +86,7 @@ export const GRAPHS: Record<GraphType, GraphModule> = {
   survival,
   volcano,
   "bland-altman": blandAltmanGraph,
+  histogram,
 };
 
 /** The columns a graph plots: every column for the volcano (it maps text labels
@@ -122,7 +124,7 @@ const optionsFor = (types: GraphType[]): SelectorOption<GraphType>[] =>
  *  Multiple Variables (rows = subjects, columns = variables) plots as a heatmap.
  *  Mirrors `ANALYSIS_OPTIONS_BY_TABLE`. */
 export const GRAPH_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<GraphType>[]> = {
-  column: optionsFor(["individual", "box-violin", "mean-error", "pie", "donut", "bland-altman"]),
+  column: optionsFor(["individual", "box-violin", "mean-error", "histogram", "pie", "donut", "bland-altman"]),
   xy: optionsFor(["xy-scatter", "xy-bar", "xy-area", "dose-response", "logistic-curve", "survival", "bland-altman"]),
   grouped: optionsFor([
     "grouped-scatter",

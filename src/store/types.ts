@@ -27,7 +27,8 @@ export type GraphType =
   | "heatmap"
   | "survival"
   | "volcano"
-  | "bland-altman";
+  | "bland-altman"
+  | "histogram";
 
 /** The choices of a graph's options, one list each: the types come from them, and a
  *  file's value outside them is read as the option's default. */

@@ -30,6 +30,7 @@ import {
 } from "../store/types";
 import {
   type AnalysisParams,
+  BIN_MODES,
   CORRECTIONS,
   CORRELATION_METHODS,
   CORRELATION_MODES,
@@ -150,6 +151,7 @@ const PARAMS = {
   tails: TAILS, posthoc: [...POSTHOCS, ...RANK_POSTHOCS], model: NONLINEAR_MODELS, method: CORRELATION_METHODS,
   mode: CORRELATION_MODES, design: TWO_WAY_DESIGNS, posthocTarget: POSTHOC_TARGETS, correction: CORRECTIONS,
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q,
+  binMode: BIN_MODES, binWidth: "number", binCount: { min: 2, max: 100 }, startAt: "number",
   y: "name", dependent: "name", datasets: "names", predictors: "names", sets: "names",
 } satisfies Record<ParamKey, ParamKind>;
 

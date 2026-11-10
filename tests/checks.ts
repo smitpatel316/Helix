@@ -63,6 +63,12 @@ import { headline } from "../src/views/analyses/analysis-results-view";
 import { fitWidths } from "../src/store/use-layout";
 import { computeGroupedDEG } from "../src/lib/deg";
 import { runAnalysis } from "../src/stats";
+import {
+  computeFrequencyBins,
+  niceWidthUp,
+  prettyBreaks,
+  sturgesCount,
+} from "../src/stats/column/frequency-distribution";
 import { makeInitialState, reducer } from "../src/store/use-project-store";
 import { isNewer, latestVersion } from "../src/lib/version";
 import { titleCase } from "../src/lib/format";
@@ -1957,6 +1963,75 @@ check("the chi-square tail matches scipy's", () => {
   close(chiSquareSF(3.841458820694124, 1), 0.05, 1e-6, "chi2(1) 95% point");
   close(chiSquareSF(5.991464547107979, 2), 0.05, 1e-6, "chi2(2) 95% point");
   close(chiSquareSF(0.528, 1), 0.4674, 1e-3, "log-rank p");
+});
+
+check("frequency bins are left-closed with the last bin closed, and empty bins stay", () => {
+  // On-edge values go into the bin above them; the maximum stays in the last bin.
+  deepStrictEqual(
+    computeFrequencyBins([2, 4, 6, 8], { binMode: "width", binWidth: 2, startAt: 2 }).bins.map((b) => b.count),
+    [1, 1, 2],
+  );
+  // A gap leaves zero-count bins in place.
+  deepStrictEqual(
+    computeFrequencyBins([1, 2, 9, 10], { binMode: "width", binWidth: 2, startAt: 0 }).bins.map((b) => b.count),
+    [1, 1, 0, 0, 2],
+  );
+  // Relative and cumulative frequencies sum to 1.
+  const { bins } = computeFrequencyBins([2.1, 3.5, 3.9, 4.2, 5, 5.8, 6.1, 7.4, 8, 9.3], {
+    binMode: "width",
+    binWidth: 2,
+    startAt: 2,
+  });
+  deepStrictEqual(
+    bins.map((b) => [b.count, b.relativeFrequency, b.cumulativeCount, b.cumulativeFrequency]),
+    [
+      [3, 0.3, 3, 0.3],
+      [3, 0.3, 6, 0.6],
+      [2, 0.2, 8, 0.8],
+      [2, 0.2, 10, 1],
+    ],
+  );
+});
+
+check("a constant column bins into one bin, and bad binning is an error, not a crash", async () => {
+  const table = (values: (number | string)[]): TableData => ({
+    columns: ["Title", "V"],
+    rows: values.map((v) => [null, String(v)]),
+  });
+  const one = await runAnalysis("frequency-distribution", table([5, 5, 5]), { binMode: "auto" });
+  if ("error" in one) throw new Error(one.error);
+  deepStrictEqual(
+    one.frequencyBins?.[0].bins.map((b) => [b.lower, b.upper, b.count]),
+    [[5, 5, 3]],
+  );
+  for (const [params, message] of [
+    [{ binMode: "width", binWidth: 0, startAt: 2 }, "greater than 0"],
+    [{ binMode: "width", binWidth: -1, startAt: 2 }, "greater than 0"],
+    [{ binMode: "count", binCount: 1, startAt: 2 }, "at least 2"],
+    [{ binMode: "count", binCount: 2.5, startAt: 2 }, "at least 2"],
+  ] as const) {
+    const out = await runAnalysis("frequency-distribution", table([1, 2, 3]), params);
+    if (!("error" in out) || !out.error.includes(message))
+      throw new Error(`expected an error mentioning "${message}", got ${JSON.stringify(out)}`);
+  }
+  const few = await runAnalysis("frequency-distribution", table([5]), { binMode: "auto" });
+  if (!("error" in few) || !few.error.includes("at least 2 values"))
+    throw new Error(`expected the too-few-values error, got ${JSON.stringify(few)}`);
+});
+
+check("Sturges, pretty breaks and nice widths match R's rules", () => {
+  strictEqual(sturgesCount(10), 5);
+  strictEqual(sturgesCount(2), 2);
+  // pretty() may return fewer intervals than asked for: 4, not 5, on 2.1–9.3.
+  deepStrictEqual(prettyBreaks(2.1, 9.3, 5), [2, 4, 6, 8, 10]);
+  deepStrictEqual(prettyBreaks(0, 10, 5), [0, 2, 4, 6, 8, 10]);
+  deepStrictEqual(prettyBreaks(123, 456, 5), [100, 150, 200, 250, 300, 350, 400, 450, 500]);
+  // A ratio a hair from a whole number counts as that number (0.3 / 0.1).
+  deepStrictEqual(prettyBreaks(0.3, 0.9, 5), [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]);
+  strictEqual(niceWidthUp(1.44), 2);
+  strictEqual(niceWidthUp(2), 2);
+  strictEqual(niceWidthUp(2.01), 5);
+  strictEqual(niceWidthUp(0.06), 0.1);
 });
 
 // ── Run ──────────────────────────────────────────────────────────────────
