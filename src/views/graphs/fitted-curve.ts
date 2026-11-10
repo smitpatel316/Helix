@@ -45,6 +45,12 @@ export function evaluate(model: NonlinearModel, coefficients: RegressionCoeffici
       return c("Y0") * Math.exp(c("K") * x);
     case "one-phase-decay":
       return (c("Y0") - c("Plateau")) * Math.exp(-c("K") * x) + c("Plateau");
+    case "two-phase-decay":
+      return c("Plateau") + c("Span1") * Math.exp(-c("K1") * x) + c("Span2") * Math.exp(-c("K2") * x);
+    case "plateau-decay":
+      return x < c("X0")
+        ? c("Y0")
+        : c("Plateau") + (c("Y0") - c("Plateau")) * Math.exp(-c("K") * (x - c("X0")));
     case "michaelis-menten":
       return (c("Vmax") * x) / (c("Km") + x);
   }

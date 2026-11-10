@@ -23,7 +23,14 @@ export const MODEL_LABEL: Record<NonlinearModel, string> = {
   "exponential-growth": "Exponential growth",
   "one-phase-decay": "One-phase decay",
   "michaelis-menten": "Michaelis-Menten",
+  // Prism's "Exponential" family (plan 08).
+  "two-phase-decay": "Two-phase decay",
+  "plateau-decay": "Plateau followed by one-phase decay",
 };
+
+/** The exponential-curve models (plan 08): fitted with nls() algorithm
+ *  "port" (see modelSpec) and carrying half-life / span derived rows. */
+export const EXPONENTIAL_MODELS: NonlinearModel[] = ["one-phase-decay", "two-phase-decay", "plateau-decay"];
 
 export interface ModelSpec {
   /** Which R fitter to use — lm() (linear in params) or nls() (nonlinear). */
@@ -95,10 +102,59 @@ export function modelSpec(model: NonlinearModel): ModelSpec {
         positiveX: true,
         curveFn: 'g<-function(xv,p) p[["Bmax"]]*xv/(p[["Kd"]]+xv)',
       };
+    // ── Exponential family (plan 08) ──────────────────────────────────
+    // All five fit with nls() algorithm "port" (nl2sol), not the default
+    // Gauss-Newton: in WebR's R 4.6.0 the default fails to converge on
+    // (near-)noiseless exponential fits even from exact starts ("number of
+    // iterations exceeded maximum of 50", or "step factor reduced below
+    // 'minFactor'"), while "port" recovers the generating parameters to
+    // ~1e-13. The older models keep the default, so their pinned numbers
+    // do not move. Half-life is null (NA) when the fitted K ≤ 0 — a
+    // negative half-life is meaningless — and the runner notes it.
+    case "one-phase-decay":
+      // Y = (Y0 − Plateau)·exp(−K·X) + Plateau.
+      return {
+        kind: "nls",
+        fit: "m<-nls(y~(Y0-Plateau)*exp(-K*x)+Plateau,start=list(Y0=y[which.min(x)],Plateau=min(y),K=0.5),algorithm=\"port\")",
+        terms: ["Y0", "Plateau", "K"],
+        derived: [
+          { label: "Half-life", expr: 'ifelse(cf[["K"]]>0,log(2)/cf[["K"]],NA_real_)' },
+          { label: "Span", expr: 'cf[["Y0"]]-cf[["Plateau"]]' },
+        ],
+        curveFn:
+          'g<-function(xv,p) (p[["Y0"]]-p[["Plateau"]])*exp(-p[["K"]]*xv)+p[["Plateau"]]',
+      };
+    case "two-phase-decay":
+      // Y = Plateau + Span1·exp(−K1·X) + Span2·exp(−K2·X).
+      return {
+        kind: "nls",
+        fit: "m<-nls(y~Plateau+Span1*exp(-K1*x)+Span2*exp(-K2*x),start=list(Plateau=min(y),Span1=0.6*(max(y)-min(y)),K1=1,Span2=0.4*(max(y)-min(y)),K2=0.1),algorithm=\"port\")",
+        terms: ["Plateau", "Span1", "K1", "Span2", "K2"],
+        derived: [
+          { label: "Half-life (fast)", expr: 'ifelse(cf[["K1"]]>0,log(2)/cf[["K1"]],NA_real_)' },
+          { label: "Half-life (slow)", expr: 'ifelse(cf[["K2"]]>0,log(2)/cf[["K2"]],NA_real_)' },
+          { label: "Span", expr: 'cf[["Span1"]]+cf[["Span2"]]' },
+        ],
+        curveFn:
+          'g<-function(xv,p) p[["Plateau"]]+p[["Span1"]]*exp(-p[["K1"]]*xv)+p[["Span2"]]*exp(-p[["K2"]]*xv)',
+      };
+    case "plateau-decay":
+      // Y = Y0 for X < X0; Y = Plateau + (Y0 − Plateau)·exp(−K·(X − X0)) after.
+      return {
+        kind: "nls",
+        fit: "m<-nls(y~ifelse(x<X0,Y0,Plateau+(Y0-Plateau)*exp(-K*(x-X0))),start=list(X0=median(x),Y0=mean(y[x<median(x)]),Plateau=min(y),K=0.5),algorithm=\"port\")",
+        terms: ["X0", "Y0", "Plateau", "K"],
+        derived: [
+          { label: "Half-life", expr: 'ifelse(cf[["K"]]>0,log(2)/cf[["K"]],NA_real_)' },
+          { label: "Span", expr: 'cf[["Y0"]]-cf[["Plateau"]]' },
+        ],
+        curveFn:
+          'g<-function(xv,p) ifelse(xv<p[["X0"]],p[["Y0"]],p[["Plateau"]]+(p[["Y0"]]-p[["Plateau"]])*exp(-p[["K"]]*(xv-p[["X0"]])))',
+      };
     default:
-      // Upstream 1.0.7 models (3PL/5PL, exponential, Michaelis-Menten) are not
-      // ported into the shared-fit layer yet — the dedup commit merges them
-      // (Plan 31). Their labels exist above so the type stays complete.
+      // Upstream 1.0.7 models not yet ported into the shared-fit layer
+      // (3PL/5PL, exponential-growth, Michaelis-Menten) — the dedup commit
+      // merges them (Plan 31). Their labels exist above so the type stays complete.
       throw new Error(`Model "${model}" is not implemented in the shared fit yet.`);
   }
 }
@@ -138,6 +194,19 @@ export function prepareFit(
     return {
       error: `Not enough complete points${scope} (${xs.length}) to fit this curve; need at least ${nParams + 1}.`,
     };
+  }
+  if (model === "plateau-decay") {
+    // X0 (the breakpoint) is unidentifiable without data on both sides of
+    // it — validate before calling nls(), not after it fails. R's median of
+    // an even count is the mean of the two middle values.
+    const sorted = [...xs].sort((a, b) => a - b);
+    const mid =
+      sorted.length % 2 === 1
+        ? sorted[(sorted.length - 1) / 2]
+        : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+    if (!xs.some((x) => x < mid) || !xs.some((x) => x > mid)) {
+      return { error: "Plateau-followed-by-decay needs data on both sides of the breakpoint." };
+    }
   }
   return { xCol, yCol, xs, ys };
 }
@@ -210,9 +279,11 @@ export async function fitNonlinearModel(xs: number[], ys: number[], model: Nonli
   return { coefficients, derived, stats, rCode };
 }
 
-/** The nls non-convergence message, shared by both runners. */
-export function fitError(err: unknown): AnalysisOutcome {
+/** The nls non-convergence message, shared by both runners — it names the
+ *  model, so a failure on an exponential curve says which one. */
+export function fitError(err: unknown, model?: NonlinearModel): AnalysisOutcome {
+  const which = model ? ` ("${MODEL_LABEL[model]}")` : "";
   return {
-    error: `This curve could not be fitted to these data (${err instanceof Error ? err.message : String(err)}). Try another model or Y data set.`,
+    error: `This curve${which} could not be fitted to these data (${err instanceof Error ? err.message : String(err)}). Try another model or Y data set.`,
   };
 }

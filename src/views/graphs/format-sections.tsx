@@ -5,6 +5,7 @@ import * as React from "react";
 import { Button, Checkbox, Input, Select, cn } from "../../ui/controls";
 import { Row, Stepper } from "../../components/inspector";
 import type { AnalysisPickerValue, AnalysisType, NonlinearRegressionParams } from "../../stats/types";
+import { EXPONENTIAL_MODELS, MODEL_LABEL } from "../../stats/xy/nonlinear-fit";
 import { analysisLabel } from "../analyses";
 import {
   GRAPH_LIMITS,
@@ -50,6 +51,8 @@ export interface SectionContext {
   allNames: string[];
   /** The chosen regression's failure, when it couldn't be fitted. */
   fitError: string | null;
+  /** The dose-response graph's own fit failure, when it couldn't be fitted. */
+  doseError: string | null;
   /** Starts `test` (its wizard), or with none opens the New Analysis picker. */
   onNewAnalysis: (test?: AnalysisPickerValue) => void;
   /** Volcano: selects the genes named (comma-separated); returns the names no gene has. */
@@ -121,6 +124,37 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
       <>
         <RegressionControls analyses={sources} options={options} set={set} />
         {c.fitError && <p className="text-small text-secondary">{c.fitError}</p>}
+      </>
+    );
+  }
+  if (graphType === "dose-response") {
+    const exponential = (EXPONENTIAL_MODELS as readonly string[]).includes(options.doseModel);
+    return (
+      <>
+        <Choice
+          label="Model"
+          value={options.doseModel}
+          onChange={(doseModel) => set({ doseModel })}
+          items={[
+            { value: "sigmoidal-4pl-logx", label: "Log X" },
+            { value: "sigmoidal-4pl-x", label: "Linear X" },
+            // Prism's "Exponential" family (plan 08, 1/2: decay first).
+            { value: "one-phase-decay", label: MODEL_LABEL["one-phase-decay"] },
+            { value: "two-phase-decay", label: MODEL_LABEL["two-phase-decay"] },
+            { value: "plateau-decay", label: MODEL_LABEL["plateau-decay"] },
+          ]}
+        />
+        <Toggle
+          label="Fitted curve"
+          checked={options.doseShowCurve}
+          onChange={(doseShowCurve) => set({ doseShowCurve })}
+        />
+        <Toggle
+          label={exponential ? "Half-life" : "EC50 & Hill slope"}
+          checked={options.doseShowEquation}
+          onChange={(doseShowEquation) => set({ doseShowEquation })}
+        />
+        {c.doseError && <p className="text-small text-secondary">{c.doseError}</p>}
       </>
     );
   }

@@ -493,6 +493,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
           numericNames={dataset?.numeric.map((c) => c.name) ?? []}
           allNames={dataset?.columns.map((c) => c.name) ?? []}
           fitError={curveOutcome && "error" in curveOutcome ? curveOutcome.error : null}
+          doseError={doseOutcome && "error" in doseOutcome ? doseOutcome.error : null}
           onNewAnalysis={(test) => {
             if (!node.parentId) return;
             if (test) startAnalysis(node.parentId, test);

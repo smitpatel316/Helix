@@ -167,6 +167,6 @@ export async function runStandardCurveInterpolation(
       interpolations,
     };
   } catch (err) {
-    return fitError(err);
+    return fitError(err, model);
   }
 }

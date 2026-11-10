@@ -21013,5 +21013,267 @@
     }
    ]
   }
+ },
+ "nonlinear-regression expX {\"y\":\"A\",\"model\":\"one-phase-decay\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "One-phase decay",
+  "equation": "Y = (100 − 10)·exp(−0.5·X) + 10",
+  "stats": [
+   {
+    "label": "Half-life",
+    "value": 1.386294361
+   },
+   {
+    "label": "Span",
+    "value": 90
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.48504891e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 4.322827659e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 7
+   },
+   {
+    "label": "N",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 4.65,
+    "sd": 4.190266499,
+    "sem": 1.325078614,
+    "median": 3.5,
+    "n": 10
+   },
+   {
+    "name": "A",
+    "mean": 38.7009616,
+    "sd": 32.36309664,
+    "sem": 10.23410975,
+    "median": 26.13094495,
+    "n": 10
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"One-phase decay\") of \"A\" on \"X\". Starting values: Y0 = 100, Plateau = 10.22, K = 0.5.",
+  "coefficients": [
+   {
+    "term": "Y0",
+    "estimate": 100,
+    "stdError": 2.103189959e-11,
+    "t": 4754682265000,
+    "p": 4.807559855e-87
+   },
+   {
+    "term": "Plateau",
+    "estimate": 10,
+    "stdError": 1.453528955e-11,
+    "t": 687980790900,
+    "p": 3.620270436e-81
+   },
+   {
+    "term": "K",
+    "estimate": 0.5,
+    "stdError": 3.301689173e-13,
+    "t": 1514376350000,
+    "p": 1.445900706e-83
+   }
+  ]
+ },
+ "nonlinear-regression expX {\"y\":\"B\",\"model\":\"two-phase-decay\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Two-phase decay",
+  "equation": "Y = 10 + 60·exp(−1·X) + 30·exp(−0.1·X)",
+  "stats": [
+   {
+    "label": "Half-life (fast)",
+    "value": 0.6931471806
+   },
+   {
+    "label": "Half-life (slow)",
+    "value": 6.931471806
+   },
+   {
+    "label": "Span",
+    "value": 90
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.350862163e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 2.763276454e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 5
+   },
+   {
+    "label": "N",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 4.65,
+    "sd": 4.190266499,
+    "sem": 1.325078614,
+    "median": 3.5,
+    "n": 10
+   },
+   {
+    "name": "B",
+    "mean": 43.34373345,
+    "sd": 26.74032345,
+    "sem": 8.456032746,
+    "median": 33.21015522,
+    "n": 10
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"Two-phase decay\") of \"B\" on \"X\". Starting values: Plateau = 19.04, Span1 = 48.58, K1 = 1, Span2 = 32.39, K2 = 0.1.",
+  "coefficients": [
+   {
+    "term": "Plateau",
+    "estimate": 10,
+    "stdError": 3.164189626e-10,
+    "t": 31603668500,
+    "p": 6.020275603e-52
+   },
+   {
+    "term": "Span1",
+    "estimate": 60,
+    "stdError": 1.468068798e-10,
+    "t": 408700192300,
+    "p": 1.664484102e-57
+   },
+   {
+    "term": "K1",
+    "estimate": 1,
+    "stdError": 2.637560446e-12,
+    "t": 379138230400,
+    "p": 2.422791092e-57
+   },
+   {
+    "term": "Span2",
+    "estimate": 30,
+    "stdError": 1.884389028e-10,
+    "t": 159202794900,
+    "p": 1.85588227e-55
+   },
+   {
+    "term": "K2",
+    "estimate": 0.1,
+    "stdError": 2.301626451e-12,
+    "t": 43447536820,
+    "p": 1.225964972e-52
+   }
+  ]
+ },
+ "nonlinear-regression expX {\"y\":\"E\",\"model\":\"plateau-decay\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Plateau followed by one-phase decay",
+  "equation": "Y = 100 for X < 2; Y = 10 + (100 − 10)·exp(−0.5·(X − 2)) for X ≥ 2",
+  "stats": [
+   {
+    "label": "Half-life",
+    "value": 1.386294361
+   },
+   {
+    "label": "Span",
+    "value": 90
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 3.595673334e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 7.757320033e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 6
+   },
+   {
+    "label": "N",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 4.65,
+    "sd": 4.190266499,
+    "sem": 1.325078614,
+    "median": 3.5,
+    "n": 10
+   },
+   {
+    "name": "E",
+    "mean": 56.66127435,
+    "sd": 40.65411498,
+    "sem": 12.85595996,
+    "median": 53.84845454,
+    "n": 10
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"Plateau followed by one-phase decay\") of \"E\" on \"X\". Starting values: X0 = 3.5, Y0 = 92.92, Plateau = 10.61, K = 0.5.",
+  "coefficients": [
+   {
+    "term": "X0",
+    "estimate": 2,
+    "stdError": 2.748344589e-12,
+    "t": 727710785500,
+    "p": 4.545178071e-70
+   },
+   {
+    "term": "Y0",
+    "estimate": 100,
+    "stdError": 1.797864781e-11,
+    "t": 5562153564000,
+    "p": 2.279533204e-75
+   },
+   {
+    "term": "Plateau",
+    "estimate": 10,
+    "stdError": 2.963645008e-11,
+    "t": 337422328700,
+    "p": 4.573628259e-68
+   },
+   {
+    "term": "K",
+    "estimate": 0.5,
+    "stdError": 1.092877769e-12,
+    "t": 457507705100,
+    "p": 7.360601351e-69
+   }
+  ]
+ },
+ "nonlinear-regression plateauOneSided {\"model\":\"plateau-decay\"}": {
+  "error": "Plateau-followed-by-decay needs data on both sides of the breakpoint."
+ },
+ "nonlinear-regression expTooFew {\"model\":\"two-phase-decay\"}": {
+  "error": "Not enough complete points (5) to fit this curve; need at least 6."
  }
 }
