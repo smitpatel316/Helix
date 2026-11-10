@@ -202,6 +202,11 @@ export const GRAPH_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<GraphType>
     "heatmap",
     "volcano",
   ]),
+  // A nested table's groups plot one series per group across the rows, as a
+  // grouped table's do — the grouped builders read the groups through
+  // `groupsOf`, which takes a nested column's group prefix ("A" for
+  // "A:S1:R1"), so bars, scatter and lines all draw from nested columns.
+  nested: optionsFor(["grouped-bars", "grouped-scatter", "grouped-lines"]),
   multiple: optionsFor(["xy-scatter", "heatmap", "volcano", "forest-plot", "observed-fitted", "survival"]),
   // Outcomes as series across the row categories, as Prism graphs contingency tables.
   contingency: optionsFor(["grouped-bars", "grouped-stacked", "grouped-hbars", "heatmap"]),

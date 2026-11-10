@@ -51,9 +51,9 @@ import { NAMED_COLORS, paletteNamed, savedPalette } from "./palettes";
 import { TABLES } from "../views/tables";
 import { GRAPHS, GRAPH_OPTIONS_BY_TABLE } from "../views/graphs";
 import { ANALYSES } from "../stats";
-import { isGrouped } from "./dataset";
+import { isGrouped, isNested } from "./dataset";
 import { seriesKeyOf } from "./columns";
-import { regroupTable } from "../views/tables/table-data";
+import { regroupTable, renestTable } from "../views/tables/table-data";
 
 export const PROJECT_FILE_EXTENSION = "hlx";
 
@@ -118,7 +118,7 @@ const NODE_KEYS = Object.keys({
 } satisfies Record<keyof ProjectNode, 1>);
 // prettier-ignore
 const DATA_KEYS = Object.keys({
-  columns: 1, rows: 1, groups: 1, replicates: 1, rowGroups: 1, excluded: 1,
+  columns: 1, rows: 1, groups: 1, replicates: 1, subgroups: 1, rowGroups: 1, excluded: 1,
   widths: 1, freezeTitle: 1,
 } satisfies Record<keyof TableData, 1>);
 
@@ -317,6 +317,8 @@ function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: num
     rows,
     groups: isCount(d.groups) && isCount(d.replicates) ? d.groups : undefined,
     replicates: isCount(d.groups) && isCount(d.replicates) ? d.replicates : undefined,
+    subgroups:
+      isCount(d.groups) && isCount(d.replicates) && isCount(d.subgroups) ? d.subgroups : undefined,
     rowGroups: readRowGroups(d.rowGroups),
     excluded: excluded.length ? excluded : undefined,
     widths: Object.keys(widths).length ? (widths as Record<string, number>) : undefined,
@@ -327,6 +329,29 @@ function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: num
     const replicates = Math.max(...groups.map((g) => columns.filter((c) => seriesKeyOf(c) === g).length));
     if (groups.length !== data.groups || replicates !== data.replicates)
       data = defined(regroupTable(data, groups.length, replicates));
+  }
+  if (isNested(data) && columns.length > 1) {
+    // A nested table's groups, subgroups and replicates are those of its
+    // columns ("A:S1:R1"…), as a grouped table's are of its "A:Y1" columns.
+    const parts = columns
+      .slice(1)
+      .map((c) => c.split(":"))
+      .filter((p) => p.length === 3);
+    const groups = [...new Set(parts.map((p) => p[0]))];
+    const subgroups = Math.max(
+      0,
+      ...groups.map((g) => new Set(parts.filter((p) => p[0] === g).map((p) => p[1])).size),
+    );
+    const replicates = Math.max(
+      0,
+      ...groups.flatMap((g) =>
+        [...new Set(parts.filter((p) => p[0] === g).map((p) => p[1]))].map(
+          (s) => parts.filter((p) => p[0] === g && p[1] === s).length,
+        ),
+      ),
+    );
+    if (groups.length !== data.groups || subgroups !== data.subgroups || replicates !== data.replicates)
+      data = defined(renestTable(data, groups.length, subgroups, replicates));
   }
   return { data, colors: { series: colors(seriesColors), cells: colors(pointColors) }, beyond };
 }

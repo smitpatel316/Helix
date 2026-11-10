@@ -11,7 +11,7 @@
 // store/references.ts.)
 import type { RowGroup, TableData, TableType } from "../../store/types";
 import { seriesKeyOf } from "../../lib/columns";
-import { isGrouped } from "../../lib/dataset";
+import { isGrouped, isNested } from "../../lib/dataset";
 
 type Cell = string | null;
 
@@ -70,6 +70,21 @@ export function newGroupedTable(groups: number, replicates: number): TableData {
   return { columns: ["Title", ...subColumns(keys, replicates)], rows: [], groups, replicates };
 }
 
+/** A nested table's sub-column names: "A:S1:R1", "A:S1:R2"… for each group and
+ *  subgroup. Subgroups are "S1", "S2"… (renamable in the grid, as groups are). */
+const nestedSubColumns = (keys: string[], subgroups: string[], replicates: number) =>
+  keys.flatMap((key) =>
+    subgroups.flatMap((sub) => Array.from({ length: replicates }, (_, r) => `${key}:${sub}:R${r + 1}`)),
+  );
+
+/** A nested table: `groups` groups × `subgroups` subgroups per group ×
+ *  `replicates` replicate sub-columns per subgroup. */
+export function newNestedTable(groups: number, subgroups: number, replicates: number): TableData {
+  const keys = Array.from({ length: groups }, (_, g) => columnLetter(g));
+  const subs = Array.from({ length: subgroups }, (_, s) => `S${s + 1}`);
+  return { columns: ["Title", ...nestedSubColumns(keys, subs, replicates)], rows: [], groups, subgroups, replicates };
+}
+
 // ── Annotation remapping ───────────────────────────────────────────────
 
 /** Moves excluded cells through `fn` (null drops a cell). */
@@ -92,7 +107,7 @@ function remapExcluded(data: TableData, fn: (r: number, c: number) => [number, n
  */
 export function writeBlock(data: TableData, r: number, c: number, block: Cell[][], type: TableType): TableData {
   const blockWidth = block.reduce((w, row) => Math.max(w, row.length), 0);
-  const needCols = isGrouped(data) ? 0 : c + blockWidth - data.columns.length;
+  const needCols = isGrouped(data) || isNested(data) ? 0 : c + blockWidth - data.columns.length;
   const columns = needCols > 0 ? [...data.columns, ...freshColumnNames(data.columns, type, needCols)] : data.columns;
   const width = columns.length;
   const height = Math.max(data.rows.length, r + block.length);
@@ -253,6 +268,29 @@ export function renameGroup(data: TableData, oldKey: string, newKey: string): Ta
   };
 }
 
+/** Renames one subgroup of one group of a nested table ("A:S1:R1" → "A:Mouse 1:R1"):
+ *  the subgroup's name within its group only — every group has its own "S1". */
+export function renameSubgroup(data: TableData, groupKey: string, oldSub: string, newSub: string): TableData {
+  const parts = (n: string) => n.split(":");
+  const isSub = (n: string) => parts(n).length === 3 && parts(n)[0] === groupKey;
+  if (
+    !newSub ||
+    newSub === oldSub ||
+    newSub.includes(":") ||
+    data.columns.some((n) => isSub(n) && parts(n)[1] === newSub)
+  ) {
+    return data;
+  }
+  const rename = (n: string) =>
+    isSub(n) && parts(n)[1] === oldSub ? `${groupKey}:${newSub}:${parts(n)[2]}` : n;
+  const widths = data.widths && Object.fromEntries(Object.entries(data.widths).map(([n, w]) => [rename(n), w]));
+  return {
+    ...data,
+    columns: data.columns.map(rename),
+    widths,
+  };
+}
+
 /** Changes how many groups and sub-columns a grouped table has. Every value stays
  *  in its group and sub-column (with its exclusion); groups keep their
  *  names; only groups or sub-columns beyond the new counts are dropped. */
@@ -277,6 +315,40 @@ export function regroupTable(data: TableData, groups: number, replicates: number
 /** Whether regrouping to these counts deletes a value (a group or sub-column beyond them holding one). */
 export function regroupLoses(data: TableData, groups: number, replicates: number): boolean {
   const kept = new Set(regroupTable(data, groups, replicates).columns);
+  return data.columns.some((name, c) => !kept.has(name) && data.rows.some((row) => row[c]));
+}
+
+/** Changes how many groups, subgroups and replicates a nested table has. Every
+ *  value stays in its group and subgroup (with its exclusion); groups and
+ *  subgroups keep their names; only groups, subgroups or replicates beyond the
+ *  new counts are dropped. Mirrors `regroupTable`, one level deeper. */
+export function renestTable(data: TableData, groups: number, subgroups: number, replicates: number): TableData {
+  const keys = [...new Set(data.columns.slice(1).map(seriesKeyOf))].slice(0, groups);
+  // A new group takes the letter of its place (C for the third), or the next free one.
+  for (let i = keys.length; keys.length < groups; i++) if (!keys.includes(columnLetter(i))) keys.push(columnLetter(i));
+  // Subgroups keep their names (per group they are the same "S1"… by default);
+  // a new subgroup takes the next free "S<n>".
+  const subs = [...new Set(data.columns.slice(1).map((n) => n.split(":")[1] ?? ""))].filter(Boolean).slice(0, subgroups);
+  for (let i = subs.length; subs.length < subgroups; i++) if (!subs.includes(`S${i + 1}`)) subs.push(`S${i + 1}`);
+  const columns = ["Title", ...nestedSubColumns(keys, subs, replicates)];
+  const from = columns.map((name, c) => (c === 0 ? 0 : data.columns.indexOf(name)));
+  const to = (c: number) => (c === 0 ? 0 : columns.indexOf(data.columns[c]));
+  return {
+    ...data,
+    columns,
+    rows: data.rows.map((row) => from.map((c) => (c < 0 ? null : (row[c] ?? null)))),
+    groups,
+    subgroups,
+    replicates,
+    excluded: remapExcluded(data, (r, c) => (to(c) < 0 ? null : [r, to(c)])),
+    widths: widthsOf(data.widths, columns),
+  };
+}
+
+/** Whether renesting to these counts deletes a value (a group, subgroup or
+ *  replicate beyond them holding one). */
+export function renestLoses(data: TableData, groups: number, subgroups: number, replicates: number): boolean {
+  const kept = new Set(renestTable(data, groups, subgroups, replicates).columns);
   return data.columns.some((name, c) => !kept.has(name) && data.rows.some((row) => row[c]));
 }
 

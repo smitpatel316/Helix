@@ -66,7 +66,7 @@ Every item has `id`, `type` (`"table"`, `"analysis"` or `"graph"`), `name`, and
 }
 ```
 
-- `tableType`: `"column"`, `"xy"`, `"grouped"`, `"multiple"` (Multiple Variables),
+- `tableType`: `"column"`, `"xy"`, `"grouped"`, `"nested"`, `"multiple"` (Multiple Variables),
   `"contingency"` or `"survival"` (Helix 1.0.7 and later).
 - `columns`: the column names. The first is always the row-title column (`Title`);
   in an XY table the second is X, in a Survival table the time (each subject's row then
@@ -81,12 +81,18 @@ Every item has `id`, `type` (`"table"`, `"analysis"` or `"graph"`), `name`, and
   — the bands must tile the table's rows exactly (their counts add up to the row
   count), with non-empty, distinct names. A table without `rowGroups` has no third
   factor; a three-way ANOVA needs at least 2 bands.
+- A nested table names its sub-columns `<group>:<subgroup>:<replicate>` (`"A:S1:R1"`)
+  and gives `groups`, `subgroups` (subgroups per group — each subgroup is one
+  animal/subject) and `replicates` (replicate sub-columns per subgroup). Each
+  subgroup's replicate values sit across its replicate columns in a row; the
+  nested tests run on one mean per subgroup. A nested table has no `rowGroups`.
 
 Optional fields:
 
 | Field | Meaning |
 | --- | --- |
 | `rowGroups` | A grouped table's third-factor bands, as `{ "name", "count" }` per band |
+| `subgroups` | A nested table's subgroups per group |
 | `excluded` | Cells excluded from analyses and graphs, as `"row,column"` (0-based, column 0 is Title): `["2,1"]` |
 | `widths` | Column widths set by the user, in pixels, by column name |
 | `freezeTitle` | `true` keeps the Title column visible while scrolling |
@@ -110,7 +116,7 @@ An analysis stores what to compute, never its results: Helix computes them again
 from the table when the file opens, so results always match the data.
 `analysisParams` holds the choices made in the analysis's wizard (see
 `src/stats/types.ts`). `sets` (Helix 1.0.5 and later) names the data sets it runs on, in
-order: columns, or a grouped table's groups. Without it, an analysis runs on all of
+order: columns, or a grouped table's groups, or a nested table's groups. Without it, an analysis runs on all of
 them (a two-group test: the first two holding data).
 
 ### Graph

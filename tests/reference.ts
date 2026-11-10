@@ -872,6 +872,69 @@ const grouped3wayN1 = table(
   { groups: 2, replicates: 1, rowGroups: [{ name: "WT", count: 2 }, { name: "KO", count: 2 }] },
 );
 
+/** Nested t test / nested one-way ANOVA (plan 14): 3 groups × 3 subgroups × 3
+ *  replicates, one row — each subgroup's three replicate values sit in that
+ *  row across its replicate columns, so the subcolumn means are exactly
+ *  Control [11, 13, 11], Treated [16, 17, 16], High [20, 22, 20]. */
+const nested3 = table(
+  [
+    "Title",
+    "Control:S1:R1", "Control:S1:R2", "Control:S1:R3",
+    "Control:S2:R1", "Control:S2:R2", "Control:S2:R3",
+    "Control:S3:R1", "Control:S3:R2", "Control:S3:R3",
+    "Treated:S1:R1", "Treated:S1:R2", "Treated:S1:R3",
+    "Treated:S2:R1", "Treated:S2:R2", "Treated:S2:R3",
+    "Treated:S3:R1", "Treated:S3:R2", "Treated:S3:R3",
+    "High:S1:R1", "High:S1:R2", "High:S1:R3",
+    "High:S2:R1", "High:S2:R2", "High:S2:R3",
+    "High:S3:R1", "High:S3:R2", "High:S3:R3",
+  ],
+  [
+    ["", "10", "11", "12", "13", "12", "14", "11", "10", "12",
+     "16", "15", "17", "18", "17", "16", "15", "16", "17",
+     "20", "21", "19", "22", "21", "23", "19", "20", "21"],
+  ],
+  { groups: 3, subgroups: 3, replicates: 3 },
+);
+
+/** The first two groups of `nested3` — a two-group nested table. */
+const nested2 = table(
+  [
+    "Title",
+    "Control:S1:R1", "Control:S1:R2", "Control:S1:R3",
+    "Control:S2:R1", "Control:S2:R2", "Control:S2:R3",
+    "Control:S3:R1", "Control:S3:R2", "Control:S3:R3",
+    "Treated:S1:R1", "Treated:S1:R2", "Treated:S1:R3",
+    "Treated:S2:R1", "Treated:S2:R2", "Treated:S2:R3",
+    "Treated:S3:R1", "Treated:S3:R2", "Treated:S3:R3",
+  ],
+  [
+    ["", "10", "11", "12", "13", "12", "14", "11", "10", "12",
+     "16", "15", "17", "18", "17", "16", "15", "16", "17"],
+  ],
+  { groups: 2, subgroups: 3, replicates: 3 },
+);
+
+/** `nested2` with Control's S2 subgroup emptied: the t test runs on
+ *  Control means [11, 11] and Treated [16, 17, 16], and the notes name the
+ *  dropped subgroup. */
+const nestedDrop = table(
+  [
+    "Title",
+    "Control:S1:R1", "Control:S1:R2", "Control:S1:R3",
+    "Control:S2:R1", "Control:S2:R2", "Control:S2:R3",
+    "Control:S3:R1", "Control:S3:R2", "Control:S3:R3",
+    "Treated:S1:R1", "Treated:S1:R2", "Treated:S1:R3",
+    "Treated:S2:R1", "Treated:S2:R2", "Treated:S2:R3",
+    "Treated:S3:R1", "Treated:S3:R2", "Treated:S3:R3",
+  ],
+  [
+    ["", "10", "11", "12", "", "", "", "11", "10", "12",
+     "16", "15", "17", "18", "17", "16", "15", "16", "17"],
+  ],
+  { groups: 2, subgroups: 3, replicates: 3 },
+);
+
 const multiple = table(
   ["Title", "Weight", "Height", "Age", "Dose"],
   [
@@ -1331,6 +1394,20 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["grouped3wayBadBands", grouped3wayBadBands, "three-way-anova", { posthoc: "none" }],
   ["grouped3wayN1", grouped3wayN1, "three-way-anova", { posthoc: "none" }],
   ["grouped", grouped, "three-way-anova", { posthoc: "none" }],
+  // Nested t test and nested one-way ANOVA (plan 14): the tests run on
+  // subcolumn MEANS, one value per animal/subject — the naive test on all 18
+  // raw values would give a far smaller P, so these entries assert the
+  // means-based values (t = 6.2610, F = 60.7778) and must not be "corrected"
+  // to the raw-values version. The t test runs on Control+Treated only, via
+  // `sets`; the last three are the error paths (wrong group count) and the
+  // empty-subgroup drop.
+  ["nested3", nested3, "nested-t-test", { sets: ["Control", "Treated"] }],
+  ["nested3", nested3, "nested-anova", { posthoc: "none" }],
+  ["nested3", nested3, "nested-anova", { posthoc: "tukey" }],
+  ["nested3", nested3, "nested-anova", { posthoc: "bonferroni" }],
+  ["nested3", nested3, "nested-t-test", {}],
+  ["nested2", nested2, "nested-anova", { posthoc: "none" }],
+  ["nestedDrop", nestedDrop, "nested-t-test", {}],
   ["multiple", multiple, "correlation-matrix", { method: "pearson" }],
   ["multiple", multiple, "correlation-matrix", { method: "spearman" }],
   ["multiple", multiple, "multiple-regression", { dependent: "Weight" }],
@@ -1469,6 +1546,10 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["grouped", grouped, "heatmap", { center: "median", heatmapShowValues: true }],
   ["grouped", grouped, "grouped-box", { showPoints: true }],
   ["groupedViolin", grouped, "grouped-box", { kind: "violin", groupLayout: "separated" }],
+  // A nested table's grouped-family graphs: one series per group across the rows.
+  ["nested3", nested3, "grouped-bars"],
+  ["nested3", nested3, "grouped-scatter"],
+  ["nested3", nested3, "grouped-lines"],
   ["multiple", multiple, "heatmap"],
   ["multiple", multiple, "xy-scatter", { xVariable: "Height", yVariable: "Weight" }],
   ["poissonCounts", poissonCounts, "observed-fitted"],
@@ -1510,7 +1591,7 @@ async function run() {
     const paint = paintOf(opts, GRAPHS[type].family === "volcano" ? 2 : columns.length);
     out[`graph ${type} ${name}`] = GRAPHS[type].build(columns, opts, paint, readTable(data).titles);
   }
-  for (const [name, data] of Object.entries({ column, xy, grouped, twoGroups, multiple })) {
+  for (const [name, data] of Object.entries({ column, xy, grouped, twoGroups, multiple, nested3 })) {
     out[`counts ${name}`] = { columns: countDataColumns(data), groups: countDataGroups(data) };
   }
   return rounded(out) as Record<string, unknown>;

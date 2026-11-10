@@ -21,6 +21,8 @@ export type AnalysisType =
   | "two-way-anova"
   | "three-way-anova"
   | "multiple-t-tests"
+  | "nested-t-test"
+  | "nested-anova"
   | "correlation-matrix"
   | "multiple-regression"
   | "multiple-logistic-regression"
@@ -280,6 +282,12 @@ export interface ThreeWayAnovaParams {
   posthocTerm?: (typeof THREE_WAY_TERMS)[number];
 }
 
+/** Params for "nested-anova" on a Nested table: optional post-hoc pairwise
+ *  comparisons between groups, on the subcolumn means (same choices as ANOVA). */
+export interface NestedAnovaParams {
+  posthoc: (typeof POSTHOCS)[number];
+}
+
 /** Params for "multiple-t-tests": a per-row t test (or Wilcoxon/Mann-Whitney)
  *  between a Grouped table's exactly-2 column-groups, with a multiplicity
  *  correction across rows. `paired` runs a paired test, matching replicate columns
@@ -376,6 +384,7 @@ export type AnalysisParams = DataSetsParam &
     | TwoWayAnovaParams
     | ThreeWayAnovaParams
     | MultipleTTestsParams
+    | NestedAnovaParams
     | MultipleRegressionParams
     | MultipleLogisticRegressionParams
     | PoissonRegressionParams

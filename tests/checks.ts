@@ -23,10 +23,14 @@ import {
   freshColumnNames,
   insertRows,
   newGroupedTable,
+  newNestedTable,
   regroupLoses,
   regroupTable,
   removeRowGroup,
   renameGroup,
+  renameSubgroup,
+  renestLoses,
+  renestTable,
   rowsDeleted,
   rowsInserted,
   setRowGroupCount,
@@ -50,7 +54,7 @@ import {
 } from "../src/lib/palettes";
 import { deletePalette, keepPalette, loadMyPalettes } from "../src/store/my-palettes";
 import { GRAPHS, GRAPH_OPTIONS_BY_TABLE, newGraphOptions, type GraphFigure } from "../src/views/graphs";
-import { readTable, setColumns } from "../src/lib/dataset";
+import { isGrouped, isNested, readTable, setColumns } from "../src/lib/dataset";
 import { incompleteRows, missingColumn } from "../src/stats/column/base";
 import { toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
 import { addNote, movedText, paintOf, vectorTraces, visibleOutline, withCaps } from "../src/views/graphs/plot-helpers";
@@ -454,7 +458,7 @@ check("a broken item is left out alone, and said so", () => {
     type: "table",
     name: "Future",
     parentId: null,
-    tableType: "nested",
+    tableType: "future",
     data: { columns: ["Title", "A"], rows: [] },
   };
   const { project, issues } = read(JSON.stringify(file));
@@ -574,6 +578,164 @@ check("fewer groups or sub-columns ask first only when they hold values", () => 
   ok(regroupLoses(t, 1, 4)); // Treated
   ok(regroupLoses(t, 3, 2)); // A:Y3, Treated:Y3
   ok(!regroupLoses(t, 3, 5));
+});
+
+// ── Nested tables (plan 14) ──────────────────────────────────────────────
+
+const nested = (): TableData => {
+  let t = newNestedTable(2, 2, 2); // A:S1:R1 A:S1:R2 A:S2:R1 A:S2:R2 B:S1:R1 …
+  t = writeBlock(
+    t,
+    0,
+    0,
+    [["r1", "a11", "a12", "a21", "a22", "b11", "b12", "b21", "b22"]],
+    "nested",
+  );
+  return t;
+};
+
+check("a nested table names its columns group:subgroup:replicate", () => {
+  const t = newNestedTable(2, 3, 3);
+  deepStrictEqual(t.columns.slice(0, 4), ["Title", "A:S1:R1", "A:S1:R2", "A:S1:R3"]);
+  deepStrictEqual(t.columns.slice(-3), ["B:S3:R1", "B:S3:R2", "B:S3:R3"]);
+  deepStrictEqual([t.groups, t.subgroups, t.replicates], [2, 3, 3]);
+  strictEqual(isNested(t), true);
+  strictEqual(isGrouped(t), false);
+  strictEqual(isGrouped(newGroupedTable(2, 3)), true);
+  strictEqual(isNested(newGroupedTable(2, 3)), false);
+});
+
+check("nestedGroupsOf splits columns into groups and subgroups, and sets scope by group", () => {
+  const { nested: groups, sets } = readTable(nested());
+  deepStrictEqual(
+    groups.map((g) => [g.name, g.subgroups.map((s) => s.name)]),
+    [
+      ["A", ["S1", "S2"]],
+      ["B", ["S1", "S2"]],
+    ],
+  );
+  deepStrictEqual(sets.map((s) => s.name), ["A", "B"]);
+  deepStrictEqual(setColumns(readTable(nested()), ["B"]).map((c) => c.name), [
+    "B:S1:R1",
+    "B:S1:R2",
+    "B:S2:R1",
+    "B:S2:R2",
+  ]);
+});
+
+check("fewer subgroups keep each value in its group and subgroup", () => {
+  const t = renestTable(nested(), 2, 1, 2);
+  deepStrictEqual(t.columns, ["Title", "A:S1:R1", "A:S1:R2", "B:S1:R1", "B:S1:R2"]);
+  deepStrictEqual(t.rows[0], ["r1", "a11", "a12", "b11", "b12"]);
+  deepStrictEqual([t.groups, t.subgroups, t.replicates], [2, 1, 2]);
+});
+
+check("more groups, subgroups and replicates add empty ones after the data", () => {
+  const t = renestTable(nested(), 3, 3, 3);
+  deepStrictEqual(t.columns.slice(1, 4), ["A:S1:R1", "A:S1:R2", "A:S1:R3"]);
+  deepStrictEqual(t.columns.slice(-3), ["C:S3:R1", "C:S3:R2", "C:S3:R3"]);
+  deepStrictEqual(t.rows[0].slice(1, 5), ["a11", "a12", null, "a21"]);
+});
+
+check("fewer groups, subgroups or replicates ask first only when they hold values", () => {
+  const t = renestTable(nested(), 3, 3, 3); // C, every S3 and every R3 are empty
+  ok(!renestLoses(t, 2, 3, 3));
+  ok(!renestLoses(t, 3, 2, 3));
+  ok(!renestLoses(t, 3, 3, 2));
+  ok(renestLoses(t, 1, 3, 3)); // B
+  ok(renestLoses(t, 3, 1, 3)); // A:S2, B:S2
+  ok(renestLoses(t, 3, 3, 1)); // every R2
+});
+
+check("renaming a subgroup renames it within its group only", () => {
+  const t = renameSubgroup(nested(), "A", "S1", "Mouse 1");
+  deepStrictEqual(t.columns.slice(1, 5), ["A:Mouse 1:R1", "A:Mouse 1:R2", "A:S2:R1", "A:S2:R2"]);
+  deepStrictEqual(t.columns.slice(5, 7), ["B:S1:R1", "B:S1:R2"]);
+  strictEqual(renameSubgroup(t, "A", "S2", "Mouse 1"), t); // taken, within the group
+});
+
+check("a nested table survives a save and reload", () => {
+  const data = nested();
+  const file: ProjectFilePayload = {
+    nodes: {
+      t1: { id: "t1", type: "table", name: "Nested", parentId: null, tableType: "nested", data },
+    },
+    rootOrder: ["t1"],
+    childOrder: { t1: [] },
+    activeNodeId: "t1",
+  };
+  const { project, updated } = read(serializeProjectFile(file));
+  strictEqual(updated, false);
+  const back = project.nodes.t1.data!;
+  deepStrictEqual([back.groups, back.subgroups, back.replicates], [2, 2, 2]);
+  deepStrictEqual(back.columns, data.columns);
+  deepStrictEqual(back.rows, data.rows);
+  strictEqual(project.nodes.t1.tableType, "nested");
+});
+
+check("a nested table whose counts disagree with its columns is put straight", () => {
+  const file: ProjectFilePayload = {
+    nodes: {
+      t1: {
+        id: "t1",
+        type: "table",
+        name: "Nested",
+        parentId: null,
+        tableType: "nested",
+        data: { ...nested(), groups: 5, subgroups: 1, replicates: 1 },
+      },
+    },
+    rootOrder: ["t1"],
+    childOrder: { t1: [] },
+    activeNodeId: "t1",
+  };
+  const { project } = read(serializeProjectFile(file));
+  deepStrictEqual(
+    [project.nodes.t1.data!.groups, project.nodes.t1.data!.subgroups, project.nodes.t1.data!.replicates],
+    [2, 2, 2],
+  );
+});
+
+check("nested tests are offered only for their group count", () => {
+  const two: TableData = {
+    columns: ["Title", "A:S1:R1", "B:S1:R1"],
+    rows: [[null, "1", "2"]],
+    groups: 2,
+    subgroups: 1,
+    replicates: 1,
+  };
+  const three: TableData = {
+    columns: ["Title", "A:S1:R1", "B:S1:R1", "C:S1:R1"],
+    rows: [[null, "1", "2", "3"]],
+    groups: 3,
+    subgroups: 1,
+    replicates: 1,
+  };
+  deepStrictEqual(
+    analysisOptionsForTable("nested", two).map((o) => o.value),
+    ["nested-t-test"],
+  );
+  deepStrictEqual(
+    analysisOptionsForTable("nested", three).map((o) => o.value),
+    ["nested-anova"],
+  );
+});
+
+check("the nested ANOVA wizard asks only for a post-hoc choice", () => {
+  const table = readTable({
+    columns: ["Title", "A:S1:R1", "A:S2:R1", "B:S1:R1", "B:S2:R1", "C:S1:R1", "C:S2:R1"],
+    rows: [[null, "1", "2", "3", "4", "5", "6"]],
+    groups: 3,
+    subgroups: 2,
+    replicates: 1,
+  });
+  const wizard = WIZARDS["nested-anova"]!;
+  const questions = wizard.questions({}, table).filter(Boolean) as Question[];
+  deepStrictEqual(questions.map((q) => q.id), ["posthoc"]);
+  deepStrictEqual(wizard.finish({ posthoc: "tukey" }, table), {
+    type: "nested-anova",
+    params: { posthoc: "tukey" },
+  });
 });
 
 // ── Row groups (a grouped table's third factor, plan 03) ─────────────────

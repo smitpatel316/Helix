@@ -6,7 +6,7 @@ import type { AnalysisParams, AnalysisType } from "../stats/types";
 export type NodeType = "table" | "analysis" | "graph";
 /** What an item is, as menus name it ("Delete Graph…"). */
 export const NODE_NAMES: Record<NodeType, string> = { table: "Table", analysis: "Analysis", graph: "Graph" };
-export type TableType = "column" | "xy" | "grouped" | "multiple" | "contingency" | "survival";
+export type TableType = "column" | "xy" | "grouped" | "nested" | "multiple" | "contingency" | "survival";
 /** Tables whose first data column is X (a Survival table's is the time). */
 export const hasXColumn = (type: TableType) => type === "xy" || type === "survival";
 // Every graph type; views/graphs/index.ts says what each draws and for which tables.
@@ -384,8 +384,19 @@ export const SAME_AS_FILL = "fill";
 /** Helix 1.0's named colors (see `NAMED_COLORS`), as its files may hold them. */
 export type PaletteColor = "blue" | "red" | "green" | "purple" | "orange" | "black";
 
-/** How many groups and sub-columns a grouped table has: its Groups panel and a file alike. */
-export const GROUPED_LIMITS = { groups: { min: 1, max: 200 }, replicates: { min: 1, max: 20 } };
+/** How many groups, subgroups and sub-columns a grouped or nested table has:
+ *  its Groups panel and a file alike. A 200×50×20 nested table is 200,000 cells
+ *  and the grid must not be asked to render it all — it only renders the
+ *  visible columns, and the default new nested table is 2×3×3. */
+export const GROUPED_LIMITS = {
+  groups: { min: 1, max: 200 },
+  replicates: { min: 1, max: 20 },
+  nested: {
+    groups: { min: 1, max: 200 },
+    subgroups: { min: 1, max: 50 },
+    replicates: { min: 1, max: 20 },
+  },
+};
 
 /** One band of a grouped table's rows, carrying one level of a third factor
  *  (see `TableData.rowGroups`). */
@@ -401,6 +412,9 @@ export interface TableData {
   groups?: number;
   /** Grouped tables only: replicate sub-columns per group. */
   replicates?: number;
+  /** Nested tables only: subgroups per group (each subgroup is one animal /
+   *  subject, whose replicate measurements sit in its sub-columns). */
+  subgroups?: number;
   /** Grouped tables only: factor-C bands — consecutive rows sharing one level of a
    *  third factor, e.g. [{ name: "WT", count: 2 }, { name: "KO", count: 2 }].
    *  Omitted (or empty) = no third factor; existing files read as before. Bands

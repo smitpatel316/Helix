@@ -77,6 +77,17 @@ function groupedData(groups: string[], titles: string[], values: (string | null)
   const body = titles.map((title, r) => [title, ...groups.flatMap((_, g) => values[g][r])]);
   return { columns, rows: body, groups: groups.length, replicates };
 }
+/** A nested table: `values[g][s]` is the replicate values of subgroup s in
+ *  group g, in one row — each subgroup is one animal, measured `replicates` times. */
+function nestedData(groups: string[], subgroups: string[], values: (string | null)[][][]): TableData {
+  const replicates = values[0][0].length;
+  const columns = [
+    "Title",
+    ...groups.flatMap((g) => subgroups.flatMap((s) => range(replicates).map((k) => `${g}:${s}:R${k + 1}`))),
+  ];
+  const body = [[null, ...groups.flatMap((_, g) => subgroups.flatMap((_, s) => values[g][s]))]];
+  return { columns, rows: body, groups: groups.length, subgroups: subgroups.length, replicates };
+}
 
 // The treatment arms, one color each in every graph, from Paul Tol's palette (made for
 // papers, distinct to color-blind eyes too): gray for the control, blues for HLX-101
@@ -354,6 +365,33 @@ const arms = (...names: string[]) => ({
 }
 
 // ── 3. Omics ─────────────────────────────────────────────────────────────
+
+// ── Nested tables ────────────────────────────────────────────────────────
+
+{
+  // Nested replicates (plan 14): three mice per arm, each tumor measured three
+  // times with calipers — the nested t test runs on one mean per mouse, not
+  // on the 18 raw readings.
+  const mice = ["Mouse 1", "Mouse 2", "Mouse 3"];
+  const values = [
+    [
+      ["1150", "1180", "1210"],
+      ["1200", "1170", "1190"],
+      ["1100", "1130", "1120"],
+    ],
+    [
+      ["450", "470", "460"],
+      ["480", "460", "470"],
+      ["430", "440", "450"],
+    ],
+  ];
+  table("t-nested", "Tumor volume, nested replicates (mm³)", "nested", nestedData([VEHICLE, "HLX-101"], mice, values));
+  analysis("t-nested", "a-nested-t", "Nested t test", "nested-t-test");
+  graph("t-nested", "g-nested-bars", "Interleaved bars", "grouped-bars", {
+    yLabel: "Tumor volume (mm³)",
+    ...palette("tol-muted"),
+  });
+}
 
 // The genes HLX-101 changes most: up (cell-cycle arrest, apoptosis), then down (proliferation).
 const TOP_GENES = ["CDKN1A", "GADD45A", "BAX", "PMAIP1", "TP53I3", "MYC", "CCND1", "E2F1", "MKI67", "TOP2A"];
