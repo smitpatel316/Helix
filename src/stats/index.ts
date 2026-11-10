@@ -17,6 +17,7 @@ import type {
   OutliersParams,
   SurvivalParams,
   CoxParams,
+  PoissonRegressionParams,
   RocParams,
   SimpleLogisticRegressionParams,
   StandardCurveInterpolationParams,
@@ -47,6 +48,7 @@ import { runMultipleTTests } from "./grouped/multiple-t-tests";
 import { runCorrelationMatrix } from "./multiple/correlation-matrix";
 import { runMultipleRegression } from "./multiple/multiple-regression";
 import { runMultipleLogisticRegression } from "./multiple/multiple-logistic-regression";
+import { runPoissonRegression } from "./multiple/poisson-regression";
 import { runChiSquare } from "./contingency/chi-square";
 import { runSurvival } from "./survival/survival-analysis";
 import { runCox } from "./survival/cox-regression";
@@ -158,6 +160,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Multiple logistic regression",
     minColumns: 2,
     run: (c, p) => runMultipleLogisticRegression(c, p as MultipleLogisticRegressionParams),
+  },
+  "poisson-regression": {
+    label: "Poisson regression",
+    minColumns: 2,
+    run: (c, p) => runPoissonRegression(c, p as PoissonRegressionParams),
   },
   "chi-square": { label: "Chi-square or Fisher's exact test", minColumns: 2, run: (c) => runChiSquare(c) },
   survival: { label: "Survival analysis", minColumns: 3, run: (c, p) => runSurvival(c, p as SurvivalParams) },

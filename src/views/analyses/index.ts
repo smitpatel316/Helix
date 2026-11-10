@@ -53,7 +53,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "survival-log-rank",
   ]),
   grouped: optionsFor(["two-way-anova", "three-way-anova", "multiple-t-tests"]),
-  multiple: optionsFor(["descriptive-statistics", "correlation-matrix", "multiple-regression", "outliers", "multiple-logistic-regression", "cox-proportional-hazards"]),
+  multiple: optionsFor(["descriptive-statistics", "correlation-matrix", "multiple-regression", "outliers", "multiple-logistic-regression", "poisson-regression", "cox-proportional-hazards"]),
   survival: optionsFor(["survival", "cox"]),
   contingency: optionsFor(["chi-square"]),
 };

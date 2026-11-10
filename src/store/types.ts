@@ -33,6 +33,7 @@ export type GraphType =
   | "volcano"
   | "bland-altman"
   | "roc-curve"
+  | "observed-fitted"
   | "histogram";
 
 /** The choices of a graph's options, one list each: the types come from them, and a
@@ -145,6 +146,11 @@ export interface GraphOptions {
   // hazard ratios from, or a survival curve stratifies by (see forest-plot.ts
   // and survival.ts) — the graph runs the same cached runAnalysis result.
   coxAnalysisId?: string;
+  // Poisson regression (Multiple Variables only): the sibling
+  // "Poisson regression" analysis an observed-vs-fitted graph draws its
+  // fitted counts from (see observed-fitted.ts) — the graph runs the same
+  // cached runAnalysis result.
+  poissonAnalysisId?: string;
   // Dose-response curve (XY family only): a one-click sigmoidal 4PL fit of the
   // chosen Y series against X, run via WebR (see dose-response-curve.ts) — no
   // sibling analysis node needed, unlike the Linear-regression overlay above.

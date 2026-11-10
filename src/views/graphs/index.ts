@@ -35,6 +35,7 @@ import { forestPlot } from "./forest-plot";
 import { volcano, VOLCANO_SERIES } from "./volcano";
 import { blandAltmanGraph } from "./bland-altman";
 import { rocCurveGraph } from "./roc-curve";
+import { observedFitted, OBSERVED_FITTED_SERIES } from "./observed-fitted";
 import { histogram } from "./histogram";
 
 /** A Plotly figure (untyped traces/layout — built as plain objects per module). */
@@ -43,8 +44,11 @@ export interface GraphFigure {
   layout: Record<string, unknown>;
 }
 
-/** What a graph's columns and axes mean — decides its data and its Format sections. */
-type GraphFamily = "column" | "xy" | "grouped" | "pie" | "heatmap" | "volcano";
+/** What a graph's columns and axes mean — decides its data and its Format sections.
+ *  "multiple" plots a Multiple Variables table's numeric columns (its graphs
+ *  read a sibling analysis, not the columns directly — shared with plan 05's
+ *  ROC work, not a one-off). */
+type GraphFamily = "column" | "xy" | "grouped" | "pie" | "heatmap" | "volcano" | "multiple";
 
 export interface GraphModule {
   label: string;
@@ -92,6 +96,7 @@ export const GRAPHS: Record<GraphType, GraphModule> = {
   volcano,
   "bland-altman": blandAltmanGraph,
   "roc-curve": rocCurveGraph,
+  "observed-fitted": observedFitted,
   histogram,
 };
 
@@ -132,10 +137,12 @@ export function plotColumns(
 }
 
 /** The series a graph colors, in order: a volcano's "down" and "up", none for a
- *  heatmap (its cells follow the palette), a Multiple Variables scatter's Y variable,
- *  else the table's series. */
+ *  heatmap (its cells follow the palette), one "Observed vs fitted" series for
+ *  that graph (its points are one series, not the table's columns), a Multiple
+ *  Variables scatter's Y variable, else the table's series. */
 export function graphSeries(type: GraphType, data: TableData, tableType: TableType, options: GraphOptions): string[] {
   const { family } = GRAPHS[type];
+  if (type === "observed-fitted") return [OBSERVED_FITTED_SERIES];
   if (family === "volcano") return Object.keys(VOLCANO_SERIES);
   if (family === "heatmap") return [];
   if (family === "xy" && tableType === "multiple") {
@@ -195,7 +202,7 @@ export const GRAPH_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<GraphType>
     "heatmap",
     "volcano",
   ]),
-  multiple: optionsFor(["xy-scatter", "heatmap", "volcano", "forest-plot", "survival"]),
+  multiple: optionsFor(["xy-scatter", "heatmap", "volcano", "forest-plot", "observed-fitted", "survival"]),
   // Outcomes as series across the row categories, as Prism graphs contingency tables.
   contingency: optionsFor(["grouped-bars", "grouped-stacked", "grouped-hbars", "heatmap"]),
   survival: optionsFor(["survival"]),

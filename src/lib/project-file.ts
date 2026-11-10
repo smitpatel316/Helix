@@ -129,7 +129,7 @@ type OptionalOption = {
 // prettier-ignore
 const OPTIONAL_OPTIONS = {
   yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number",
-  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", coxAnalysisId: "text", doseY: "text", xVariable: "text", yVariable: "text",
+  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", doseY: "text", xVariable: "text", yVariable: "text",
   volcanoX: "text", volcanoY: "text", volcanoLabel: "text", volcanoGroupA: "text", volcanoGroupB: "text",
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",
@@ -152,7 +152,7 @@ type ParamKey = AnalysisParams extends infer P ? (P extends unknown ? keyof P : 
 type ParamKind = "yes/no" | "number" | "numbers" | "name" | "names" | "name-or-number" | readonly string[] | Limits;
 // prettier-ignore
 const PARAMS = {
-  paired: "yes/no", gaussian: "yes/no", equalVariance: "yes/no", ratio: "yes/no", forceOrigin: "yes/no", pooledSd: "yes/no",
+  paired: "yes/no", gaussian: "yes/no", equalVariance: "yes/no", ratio: "yes/no", forceOrigin: "yes/no", pooledSd: "yes/no", quasi: "yes/no",
   equalSd: "yes/no", sphericity: "yes/no", interpolate: "yes/no", tails: TAILS, posthoc: [...ANOVA_POSTHOCS, ...RANK_POSTHOCS], model: NONLINEAR_MODELS, method: CORRELATION_METHODS,
   mode: CORRELATION_MODES, design: TWO_WAY_DESIGNS, posthocTarget: POSTHOC_TARGETS, correction: CORRECTIONS, curveTest: CURVE_TESTS, compare: CURVE_COMPARISONS,
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q,
@@ -517,7 +517,8 @@ export function parseProjectFile(
     if (
       (o.sigAnalysisId && !nodeOf(o.sigAnalysisId)) ||
       (o.regAnalysisId && !nodeOf(o.regAnalysisId)) ||
-      (o.coxAnalysisId && !nodeOf(o.coxAnalysisId))
+      (o.coxAnalysisId && !nodeOf(o.coxAnalysisId)) ||
+      (o.poissonAnalysisId && !nodeOf(o.poissonAnalysisId))
     ) {
       issues.push({
         severity: "warning",

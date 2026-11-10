@@ -801,6 +801,34 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
     }),
   },
 
+  "poisson-regression": {
+    questions: (a, table) => [
+      choice("dependent", "Choose the dependent variable (Y) — the counts.", names(dataNames(table))),
+      {
+        id: "predictors",
+        ask: "Choose which variables to include as predictors.",
+        kind: "names",
+        options: dataNames(table).filter((n) => n !== a.dependent),
+      },
+      choice(
+        "quasi",
+        "Adjust for overdispersion (quasi-Poisson)? Run standard Poisson first; if the result warns about overdispersion, re-run with this on.",
+        [
+          ["no", "No — standard Poisson (recommended unless the dispersion warning appears)"],
+          ["yes", "Yes — scale standard errors for overdispersion"],
+        ],
+      ),
+    ],
+    finish: (a) => ({
+      type: "poisson-regression",
+      params: {
+        dependent: a.dependent as string,
+        predictors: a.predictors as string[],
+        quasi: a.quasi === "yes",
+      },
+    }),
+  },
+
   "cox-proportional-hazards": {
     questions: (a, table) => {
       const all = dataNames(table);
