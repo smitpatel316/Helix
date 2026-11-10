@@ -10,6 +10,7 @@ export type AnalysisType =
   | "rm-anova"
   | "friedman"
   | "shapiro-wilk"
+  | "kolmogorov-smirnov"
   | "correlation"
   | "linear-regression"
   | "simple-logistic-regression"

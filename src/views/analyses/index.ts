@@ -35,6 +35,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "compare-two-groups",
     "compare-many-groups",
     "one-sample-t",
+    "kolmogorov-smirnov",
     "outliers",
     "bland-altman",
   ]),
