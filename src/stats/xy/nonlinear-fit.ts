@@ -26,11 +26,18 @@ export const MODEL_LABEL: Record<NonlinearModel, string> = {
   // Prism's "Exponential" family (plan 08).
   "two-phase-decay": "Two-phase decay",
   "plateau-decay": "Plateau followed by one-phase decay",
+  "one-phase-association": "One-phase association",
 };
 
 /** The exponential-curve models (plan 08): fitted with nls() algorithm
  *  "port" (see modelSpec) and carrying half-life / span derived rows. */
-export const EXPONENTIAL_MODELS: NonlinearModel[] = ["one-phase-decay", "two-phase-decay", "plateau-decay"];
+export const EXPONENTIAL_MODELS: NonlinearModel[] = [
+  "one-phase-decay",
+  "two-phase-decay",
+  "plateau-decay",
+  "one-phase-association",
+  "exponential-growth",
+];
 
 export interface ModelSpec {
   /** Which R fitter to use — lm() (linear in params) or nls() (nonlinear). */
@@ -151,10 +158,43 @@ export function modelSpec(model: NonlinearModel): ModelSpec {
         curveFn:
           'g<-function(xv,p) ifelse(xv<p[["X0"]],p[["Y0"]],p[["Plateau"]]+(p[["Y0"]]-p[["Plateau"]])*exp(-p[["K"]]*(xv-p[["X0"]])))',
       };
+    case "one-phase-association":
+      // Y = Y0 + (Plateau − Y0)·(1 − exp(−K·X)). Span is the rise
+      // (Plateau − Y0), positive like the decay span — the plan's literal
+      // "Y0 − Plateau" would report a negative span for a rising curve.
+      return {
+        kind: "nls",
+        fit: "m<-nls(y~Y0+(Plateau-Y0)*(1-exp(-K*x)),start=list(Y0=y[which.min(x)],Plateau=max(y),K=0.5),algorithm=\"port\")",
+        terms: ["Y0", "Plateau", "K"],
+        derived: [
+          { label: "Half-life", expr: 'ifelse(cf[["K"]]>0,log(2)/cf[["K"]],NA_real_)' },
+          { label: "Span", expr: 'cf[["Plateau"]]-cf[["Y0"]]' },
+        ],
+        curveFn:
+          'g<-function(xv,p) p[["Y0"]]+(p[["Plateau"]]-p[["Y0"]])*(1-exp(-p[["K"]]*xv))',
+      };
+    case "exponential-growth":
+      // Prism's "Exponential growth": Y = Y0·exp(K·X).
+      // DEVIATION from the plan's Case D: the plan fits the growth model
+      // with SSasymp (Asym/R0/lrc) on saturating data (Y → 200). That
+      // parameterisation cannot be the growth model: SSasymp on pure
+      // exponential data fails in WebR ("singular gradient"), and explicit
+      // growth on the saturating fixture fits badly (R² = 0.798, verified
+      // in WebR before implementing). The saturating fixture is the
+      // association shape — Y0=10, Plateau=200, K=0.2 — and is covered as
+      // an association case (D) instead; growth is the Prism-explicit form,
+      // with the pure-growth fixture as Case D2.
+      return {
+        kind: "nls",
+        fit: "m<-nls(y~Y0*exp(K*x),start=list(Y0=y[which.min(x)],K=0.1),algorithm=\"port\")",
+        terms: ["Y0", "K"],
+        derived: [{ label: "Doubling time", expr: 'ifelse(cf[["K"]]>0,log(2)/cf[["K"]],NA_real_)' }],
+        curveFn: 'g<-function(xv,p) p[["Y0"]]*exp(p[["K"]]*xv)',
+      };
     default:
       // Upstream 1.0.7 models not yet ported into the shared-fit layer
-      // (3PL/5PL, exponential-growth, Michaelis-Menten) — the dedup commit
-      // merges them (Plan 31). Their labels exist above so the type stays complete.
+      // (3PL/5PL, Michaelis-Menten) — the dedup commit merges them
+      // (Plan 31). Their labels exist above so the type stays complete.
       throw new Error(`Model "${model}" is not implemented in the shared fit yet.`);
   }
 }

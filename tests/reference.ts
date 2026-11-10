@@ -185,24 +185,28 @@ const doseRaw = table(
   ],
 );
 
-/** Exponential curves (plan 08, 1/2: decay): noiseless by construction on the
- *  shared X grid 0–12, so each fit must recover its generating parameters.
+/** Exponential curves (plan 08): noiseless by construction on the shared X
+ *  grid 0–12, so each fit must recover its generating parameters.
  *  A: one-phase decay Y0=100, Plateau=10, K=0.5. B: two-phase decay
- *  Plateau=10, Span1=60, K1=1, Span2=30, K2=0.1. E: plateau-then-decay
- *  X0=2, Y0=100, Plateau=10, K=0.5. (C/D/D2 land in 2/2.) */
+ *  Plateau=10, Span1=60, K1=1, Span2=30, K2=0.1. C: one-phase association
+ *  Y0=0, Plateau=100, K=0.3. D: the plan's saturating "growth" fixture —
+ *  covered as association (Y0=10, Plateau=200, K=0.2), since the growth
+ *  model is Prism's explicit Y0·exp(K·X) (see nonlinear-fit.ts). D2: pure
+ *  exponential growth Y0=10, K=0.2. E: plateau-then-decay X0=2, Y0=100,
+ *  Plateau=10, K=0.5. */
 const expX = table(
-  ["Title", "X", "A", "B", "E"],
+  ["Title", "X", "A", "B", "C", "D", "D2", "E"],
   [
-    ["", "0", "100", "100", "100"],
-    ["", "0.5", "80.0920704764", "74.9287223178", "100"],
-    ["", "1", "64.5877593741", "59.2178890114", "100"],
-    ["", "2", "43.1091497054", "42.6820395865", "100"],
-    ["", "3", "30.0817144134", "35.2117707225", "64.5877593741"],
-    ["", "4", "22.1801754913", "31.2085397144", "43.1091497054"],
-    ["", "6", "14.4808361531", "26.6130742134", "22.1801754913"],
-    ["", "8", "11.6484075", "23.4999966812", "14.4808361531"],
-    ["", "10", "10.6064152299", "21.0391072309", "11.6484075"],
-    ["", "12", "10.2230876959", "19.0361950101", "10.6064152299"],
+    ["", "0", "100", "100", "0", "10", "10", "100"],
+    ["", "0.5", "80.0920704764", "74.9287223178", "13.9292023575", "28.0808905732", "11.0517091808", "100"],
+    ["", "1", "64.5877593741", "59.2178890114", "25.9181779318", "44.4411569152", "12.2140275816", "100"],
+    ["", "2", "43.1091497054", "42.6820395865", "45.1188363906", "72.6391912532", "14.9182469764", "100"],
+    ["", "3", "30.0817144134", "35.2117707225", "59.3430340259", "95.7257891421", "18.2211880039", "64.5877593741"],
+    ["", "4", "22.1801754913", "31.2085397144", "69.8805788088", "114.6274968177", "22.2554092849", "43.1091497054"],
+    ["", "6", "14.4808361531", "26.6130742134", "83.4701111778", "142.7730997367", "33.2011692274", "22.1801754913"],
+    ["", "8", "11.6484075", "23.4999966812", "90.9282046711", "161.639661581", "49.530324244", "14.4808361531"],
+    ["", "10", "10.6064152299", "21.0391072309", "95.0212931632", "174.286296185", "73.8905609893", "11.6484075"],
+    ["", "12", "10.2230876959", "19.0361950101", "97.2676277553", "182.763588875", "110.2317638064", "10.6064152299"],
   ],
 );
 
@@ -879,9 +883,15 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   // prettier-ignore
   ["doseTwo", doseTwo, "nonlinear-regression", { y: "Control", model: "sigmoidal-4pl-logx", compareWith: "Treated", compare: "all" }],
   // Exponential curves (plan 08, 1/2: decay) — noiseless fixtures A/B/E, the
+  // Exponential curves (plan 08) — noiseless fixtures A–E + D2, the
   // one-sided-breakpoint error, and the too-few-points error for two-phase.
+  // D is the plan's saturating "growth" fixture, fitted as association
+  // (see nonlinear-fit.ts — the growth model is Prism's explicit form).
   ["expX", expX, "nonlinear-regression", { y: "A", model: "one-phase-decay" }],
   ["expX", expX, "nonlinear-regression", { y: "B", model: "two-phase-decay" }],
+  ["expX", expX, "nonlinear-regression", { y: "C", model: "one-phase-association" }],
+  ["expX", expX, "nonlinear-regression", { y: "D", model: "one-phase-association" }],
+  ["expX", expX, "nonlinear-regression", { y: "D2", model: "exponential-growth" }],
   ["expX", expX, "nonlinear-regression", { y: "E", model: "plateau-decay" }],
   ["plateauOneSided", plateauOneSided, "nonlinear-regression", { model: "plateau-decay" }],
   ["expTooFew", expTooFew, "nonlinear-regression", { model: "two-phase-decay" }],
@@ -1434,17 +1444,16 @@ async function disagreements(): Promise<string[]> {
         out.push(`Dose-response drop-line Y=${y0}: vertical to ${vert?.y?.[1]}, expected ${y0}`);
     }
   }
-  // Exponential curves (plan 08, 1/2: decay): the plan's values, by
-  // construction (noiseless fixtures) and re-verified against WebR nls()
-  // before locking. Tolerances from the plan: parameters 1e-3 relative,
-  // R² 1e-6 absolute, half-life 1e-3 relative. The growth/association
-  // cases (C/D/D2) land in 2/2.
+  // Exponential curves (plan 08): the plan's values, by construction
+  // (noiseless fixtures) and re-verified against WebR nls() before locking.
+  // Tolerances from the plan: parameters 1e-3 relative, R² 1e-6 absolute,
+  // half-life 1e-3 relative.
   const relClose = (got: number | null | undefined, want: number, tol: number) =>
     got != null && Math.abs(got - want) <= tol * Math.max(1, Math.abs(want));
   const checkExp = async (
     label: string,
     y: string,
-    model: "one-phase-decay" | "two-phase-decay" | "plateau-decay",
+    model: "one-phase-decay" | "two-phase-decay" | "plateau-decay" | "one-phase-association" | "exponential-growth",
     coefs: [string, number][],
     stats: [string, number][],
   ) => {
@@ -1565,6 +1574,116 @@ async function disagreements(): Promise<string[]> {
       out.push(`Exponential plateau-decay equation: ${fitE.equation}`);
     if (!fitE.notes.includes("Starting values: X0 = 3.5, Y0 = 92.92, Plateau = 10.61, K = 0.5."))
       out.push(`Exponential plateau-decay notes missing starts: ${fitE.notes}`);
+  }
+  // Association + growth (plan 08, 2/2). Case D is the plan's saturating
+  // "growth" fixture, fitted as association: the fitted half-life 3.4657 is
+  // the plan's doubling-time number (ln 2 / 0.2), and Span is the rise
+  // (Plateau − Y0 = 190), positive like the decay span.
+  const fitC = await checkExp(
+    "one-phase association",
+    "C",
+    "one-phase-association",
+    [
+      ["Y0", 0],
+      ["Plateau", 100],
+      ["K", 0.3],
+    ],
+    [
+      ["Half-life", 2.3105],
+      ["Span", 100],
+      ["R squared", 1],
+    ],
+  );
+  if (fitC) {
+    // The fitted Y0 is −1.2e-7, not exactly 0, so the equation carries that
+    // tiny value — assert the shape, not the literal string.
+    if (
+      fitC.equation == null ||
+      !fitC.equation.startsWith("Y = ") ||
+      !fitC.equation.includes("(1 − exp(−0.3·X))")
+    )
+      out.push(`Exponential one-phase association equation: ${fitC.equation}`);
+    if (!fitC.notes.includes("Starting values: Y0 = 0, Plateau = 97.27, K = 0.5."))
+      out.push(`Exponential one-phase association notes missing starts: ${fitC.notes}`);
+  }
+  const fitD = await checkExp(
+    "association (saturating fixture)",
+    "D",
+    "one-phase-association",
+    [
+      ["Y0", 10],
+      ["Plateau", 200],
+      ["K", 0.2],
+    ],
+    [
+      ["Half-life", 3.4657],
+      ["Span", 190],
+      ["R squared", 1],
+    ],
+  );
+  if (fitD) {
+    if (fitD.equation !== "Y = 10 + (200 − 10)·(1 − exp(−0.2·X))")
+      out.push(`Exponential association (saturating) equation: ${fitD.equation}`);
+    if (!fitD.notes.includes("Starting values: Y0 = 10, Plateau = 182.8, K = 0.5."))
+      out.push(`Exponential association (saturating) notes missing starts: ${fitD.notes}`);
+  }
+  const fitD2 = await checkExp(
+    "exponential growth",
+    "D2",
+    "exponential-growth",
+    [
+      ["Y0", 10],
+      ["K", 0.2],
+    ],
+    [
+      ["Doubling time", 3.4657],
+      ["R squared", 1],
+    ],
+  );
+  if (fitD2) {
+    if (fitD2.equation !== "Y = 10·exp(0.2·X)") out.push(`Exponential growth equation: ${fitD2.equation}`);
+    if (!fitD2.notes.includes("Starting values: Y0 = 10, K = 0.1."))
+      out.push(`Exponential growth notes missing starts: ${fitD2.notes}`);
+    // The growth overlay: passes through (0, 10) and (12, ~110.2), monotone
+    // increasing, and the TypeScript evaluator matches an independent R
+    // evaluation of the fitted formula at the data X to 1e-6.
+    const { addDoseCurve, evaluateFittedCurve } = await import("../src/views/graphs/dose-response-curve");
+    const growthOpts = { ...newGraphOptions("dose-response"), doseModel: "exponential-growth" as const, doseY: "D2" };
+    const growthColumns = plotColumns(readTable(expX), "dose-response", growthOpts, "xy");
+    const growthFig = GRAPHS["dose-response"].build(
+      growthColumns,
+      growthOpts,
+      paintOf(growthOpts, 1),
+      readTable(expX).titles,
+    );
+    addDoseCurve(growthFig, growthColumns, growthOpts, fitD2, paintOf(growthOpts, 1));
+    const gTraces = growthFig.data as { mode?: string; x?: number[]; y?: number[] }[];
+    const gCurve = gTraces.find((t) => t.mode === "lines" && t.x?.length === 101);
+    if (!gCurve || gCurve.x?.[0] !== 0 || gCurve.y?.[0] == null || Math.abs(gCurve.y[0] - 10) > 1e-9)
+      out.push(`Exponential growth overlay start: ${JSON.stringify(gCurve?.y?.slice(0, 1))}, expected 10 at X=0`);
+    const gLastY = gCurve?.y?.at(-1);
+    if (!gCurve || gCurve.x?.at(-1) !== 12 || gLastY == null || Math.abs(gLastY - 110.2317638064) > 1e-6)
+      out.push(`Exponential growth overlay end: ${gLastY}, expected ~110.23 at X=12`);
+    if (gCurve?.y?.some((v, i, a) => i > 0 && v <= a[i - 1]!))
+      out.push(`Exponential growth overlay is not monotone increasing`);
+    const gAnns = (growthFig.layout.annotations as { text?: string }[] | undefined) ?? [];
+    if (!gAnns.some((a) => a.text?.includes("Doubling time = 3.466")))
+      out.push(`Exponential growth overlay note missing doubling time: ${JSON.stringify(gAnns.map((a) => a.text))}`);
+    const gy0 = fitD2.coefficients?.find((c) => c.term === "Y0")?.estimate;
+    const gk = fitD2.coefficients?.find((c) => c.term === "K")?.estimate;
+    if (gy0 != null && gk != null) {
+      const xs = [0, 0.5, 1, 2, 3, 4, 6, 8, 10, 12];
+      const rY = await evalNamedVector(
+        `x<-c(${xs.join(",")});yv<-${gy0.toPrecision(15)}*exp(${gk.toPrecision(15)}*x);` +
+          `c(${xs.map((_, i) => `y${i}=yv[${i + 1}]`).join(",")})`,
+      );
+      xs.forEach((x, i) => {
+        const ts = evaluateFittedCurve("exponential-growth", fitD2.coefficients ?? [], x);
+        const rv = rY[`y${i}`];
+        if (rv == null || Math.abs(ts - rv) > 1e-6)
+          out.push(`Exponential growth overlay at X=${x}: TS ${ts}, R ${rv}`);
+      });
+    }
   }
   // The edge cases are errors, not fits — and the plateau error must come
   // from the runner before R is called.

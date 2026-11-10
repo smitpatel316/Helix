@@ -21275,5 +21275,225 @@
  },
  "nonlinear-regression expTooFew {\"model\":\"two-phase-decay\"}": {
   "error": "Not enough complete points (5) to fit this curve; need at least 6."
+ },
+ "nonlinear-regression expX {\"y\":\"C\",\"model\":\"one-phase-association\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "One-phase association",
+  "equation": "Y = -1.236e-7 + (100 − -1.236e-7)·(1 − exp(−0.3·X))",
+  "stats": [
+   {
+    "label": "Half-life",
+    "value": 2.310490563
+   },
+   {
+    "label": "Span",
+    "value": 100.0000001
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 4.336082385e-7
+   },
+   {
+    "label": "Sum of squares",
+    "value": 1.316112732e-12
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 7
+   },
+   {
+    "label": "N",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 4.65,
+    "sd": 4.190266499,
+    "sem": 1.325078614,
+    "median": 3.5,
+    "n": 10
+   },
+   {
+    "name": "C",
+    "mean": 58.08770663,
+    "sd": 35.41781382,
+    "sem": 11.20009614,
+    "median": 64.61180642,
+    "n": 10
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"One-phase association\") of \"C\" on \"X\". Starting values: Y0 = 0, Plateau = 97.27, K = 0.5.",
+  "coefficients": [
+   {
+    "term": "Y0",
+    "estimate": -1.236123968e-7,
+    "stdError": 1.965848007e-7,
+    "t": -0.62879936,
+    "p": 0.5494407554
+   },
+   {
+    "term": "Plateau",
+    "estimate": 99.99999997,
+    "stdError": 3.802480097e-7,
+    "t": 262986254.8,
+    "p": 3.03559514e-57
+   },
+   {
+    "term": "K",
+    "estimate": 0.3000000051,
+    "stdError": 3.230065798e-9,
+    "t": 92877366.55,
+    "p": 4.430022694e-54
+   }
+  ]
+ },
+ "nonlinear-regression expX {\"y\":\"D\",\"model\":\"one-phase-association\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "One-phase association",
+  "equation": "Y = 10 + (200 − 10)·(1 − exp(−0.2·X))",
+  "stats": [
+   {
+    "label": "Half-life",
+    "value": 3.465735903
+   },
+   {
+    "label": "Span",
+    "value": 190
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.462250155e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 4.243873079e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 7
+   },
+   {
+    "label": "N",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 4.65,
+    "sd": 4.190266499,
+    "sem": 1.325078614,
+    "median": 3.5,
+    "n": 10
+   },
+   {
+    "name": "D",
+    "mean": 102.6977171,
+    "sd": 62.59611663,
+    "sem": 19.79463012,
+    "median": 105.176643,
+    "n": 10
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"One-phase association\") of \"D\" on \"X\". Starting values: Y0 = 10, Plateau = 182.8, K = 0.5.",
+  "coefficients": [
+   {
+    "term": "Y0",
+    "estimate": 10,
+    "stdError": 1.79763618e-11,
+    "t": 556286089100,
+    "p": 1.602093295e-80
+   },
+   {
+    "term": "Plateau",
+    "estimate": 200,
+    "stdError": 3.840673005e-11,
+    "t": 5207420672000,
+    "p": 2.543411099e-87
+   },
+   {
+    "term": "K",
+    "estimate": 0.2,
+    "stdError": 1.00441853e-13,
+    "t": 1991201815000,
+    "p": 2.127983442e-84
+   }
+  ]
+ },
+ "nonlinear-regression expX {\"y\":\"D2\",\"model\":\"exponential-growth\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Exponential growth",
+  "equation": "Y = 10·exp(0.2·X)",
+  "stats": [
+   {
+    "label": "Doubling time",
+    "value": 3.465735903
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.64606235e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 5.601316769e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 8
+   },
+   {
+    "label": "N",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 4.65,
+    "sd": 4.190266499,
+    "sem": 1.325078614,
+    "median": 3.5,
+    "n": 10
+   },
+   {
+    "name": "D2",
+    "mean": 35.55143993,
+    "sd": 33.2475068,
+    "sem": 10.5137848,
+    "median": 20.23829864,
+    "n": 10
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"Exponential growth\") of \"D2\" on \"X\". Starting values: Y0 = 10, K = 0.1.",
+  "coefficients": [
+   {
+    "term": "Y0",
+    "estimate": 10,
+    "stdError": 7.039793085e-12,
+    "t": 1420496296000,
+    "p": 6.756117256e-95
+   },
+   {
+    "term": "K",
+    "estimate": 0.2,
+    "stdError": 6.685636316e-14,
+    "t": 2991487878000,
+    "p": 1.746304782e-97
+   }
+  ]
  }
 }

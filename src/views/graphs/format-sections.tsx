@@ -129,6 +129,12 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
   }
   if (graphType === "dose-response") {
     const exponential = (EXPONENTIAL_MODELS as readonly string[]).includes(options.doseModel);
+    const summaryLabel =
+      options.doseModel === "exponential-growth"
+        ? "Doubling time"
+        : exponential
+          ? "Half-life"
+          : "EC50 & Hill slope";
     return (
       <>
         <Choice
@@ -142,6 +148,9 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
             { value: "one-phase-decay", label: MODEL_LABEL["one-phase-decay"] },
             { value: "two-phase-decay", label: MODEL_LABEL["two-phase-decay"] },
             { value: "plateau-decay", label: MODEL_LABEL["plateau-decay"] },
+            // Plan 08, 2/2: association + growth.
+            { value: "one-phase-association", label: MODEL_LABEL["one-phase-association"] },
+            { value: "exponential-growth", label: MODEL_LABEL["exponential-growth"] },
           ]}
         />
         <Toggle
@@ -150,7 +159,7 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
           onChange={(doseShowCurve) => set({ doseShowCurve })}
         />
         <Toggle
-          label={exponential ? "Half-life" : "EC50 & Hill slope"}
+          label={summaryLabel}
           checked={options.doseShowEquation}
           onChange={(doseShowEquation) => set({ doseShowEquation })}
         />

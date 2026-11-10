@@ -2,7 +2,7 @@
 // step, each answer choosing the next question. A wizard only declares its questions
 // and how the answers make the test's params; analysis-wizard.tsx asks them.
 // A test without an entry here runs as soon as it is picked.
-import { DOSE_MODELS, KINETIC_MODELS, NONLINEAR_MODELS, ROUT_Q } from "../../stats/types";
+import { DOSE_MODELS, NONLINEAR_MODELS, ROUT_Q } from "../../stats/types";
 import { MODEL_LABEL } from "../../stats/xy/nonlinear-regression";
 import { distinctTruthValues } from "../../stats/column/roc-curve";
 
@@ -527,14 +527,29 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
   // concentrations), those of log X after.
   interpolate: {
     questions: (_, table) => [
-      choice("y", "Which Y data set holds the standards and the unknowns?", names(yNames(table))),
-      choice(
-        "model",
-        "Which standard curve should be fitted?",
-        NONLINEAR_MODELS.filter((m) => !m.includes("3pl") && !(KINETIC_MODELS as readonly string[]).includes(m))
-          .sort((m, n) => Number(m.endsWith("-logx")) - Number(n.endsWith("-logx")))
-          .map((m): [string, string] => [m, MODEL_LABEL[m]]),
-      ),
+      choice("y", "Which Y data set should be fitted?", names(yNames(table))),
+      // Prism's "Standard curves to interpolate": the ones that fit reliably in WebR.
+      // (PATCH's list from Plan 08, plus the 5PLs from HEAD's dynamic filter —
+      // HEAD's filter excludes the kinetic models, so one-phase-decay and
+      // exponential-growth come from PATCH's list.)
+      choice("model", "Which standard curve should be fitted to X and Y?", [
+        ["sigmoidal-4pl-logx", "Sigmoidal, 4PL, X is log(concentration)"],
+        ["sigmoidal-4pl-x", "Sigmoidal, 4PL, X is concentration"],
+        ["asymmetric-5pl-logx", "Asymmetric sigmoidal, 5PL, X is log(concentration)"],
+        ["asymmetric-5pl-x", "Asymmetric sigmoidal, 5PL, X is concentration"],
+        ["line", "Line"],
+        ["semilog-line", "Semilog line"],
+        ["hyperbola", "Hyperbola (X is concentration)"],
+        ["quadratic", "Second order polynomial (quadratic)"],
+        ["cubic", "Third order polynomial (cubic)"],
+        // Prism's "Exponential" family (plan 08, 1/2: decay first).
+        ["one-phase-decay", "One-phase decay"],
+        ["two-phase-decay", "Two-phase decay"],
+        ["plateau-decay", "Plateau followed by one-phase decay"],
+        // Prism's "Exponential" family (plan 08, 2/2: association + growth).
+        ["one-phase-association", "One-phase association"],
+        ["exponential-growth", "Exponential growth"],
+      ]),
     ],
     finish: (a) => ({
       type: "nonlinear-regression",

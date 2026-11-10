@@ -51,6 +51,8 @@ export function evaluate(model: NonlinearModel, coefficients: RegressionCoeffici
       return x < c("X0")
         ? c("Y0")
         : c("Plateau") + (c("Y0") - c("Plateau")) * Math.exp(-c("K") * (x - c("X0")));
+    case "one-phase-association":
+      return c("Y0") + (c("Plateau") - c("Y0")) * (1 - Math.exp(-c("K") * x));
     case "michaelis-menten":
       return (c("Vmax") * x) / (c("Km") + x);
   }

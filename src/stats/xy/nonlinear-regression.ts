@@ -53,6 +53,12 @@ function equation(model: NonlinearModel, coefficients: RegressionCoefficient[]):
       if (x0 == null || y0 == null || plateau == null || k == null) return undefined;
       return `Y = ${num(y0)} for X < ${num(x0)}; Y = ${num(plateau)} + (${num(y0)} − ${num(plateau)})·exp(−${num(k)}·(X − ${num(x0)})) for X ≥ ${num(x0)}`;
     }
+    case "one-phase-association":
+      if (y0 == null || plateau == null || k == null) return undefined;
+      return `Y = ${num(y0)} + (${num(plateau)} − ${num(y0)})·(1 − exp(−${num(k)}·X))`;
+    case "exponential-growth":
+      if (y0 == null || k == null) return undefined;
+      return `Y = ${num(y0)}·exp(${num(k)}·X)`;
     default:
       return undefined;
   }
@@ -80,6 +86,10 @@ function startingValues(model: NonlinearModel, xs: number[], ys: number[]): stri
       const y0 = below.reduce((s, v) => s + v, 0) / below.length;
       return `Starting values: X0 = ${num(x0)}, Y0 = ${num(y0)}, Plateau = ${num(minY)}, K = 0.5.`;
     }
+    case "one-phase-association":
+      return `Starting values: Y0 = ${num(yAtMinX)}, Plateau = ${num(maxY)}, K = 0.5.`;
+    case "exponential-growth":
+      return `Starting values: Y0 = ${num(yAtMinX)}, K = 0.1.`;
     default:
       return "";
   }
@@ -91,9 +101,10 @@ function startingValues(model: NonlinearModel, xs: number[], ys: number[]): stri
 function fitWarnings(model: NonlinearModel, coefficients: RegressionCoefficient[]): string[] {
   const out: string[] = [];
   const k = coefOf(coefficients, "K");
-  if (model === "one-phase-decay" || model === "plateau-decay") {
+  if (model === "one-phase-decay" || model === "plateau-decay" || model === "one-phase-association") {
     if (k != null && k <= 0) out.push("Fitted K ≤ 0 — half-life not defined.");
   }
+  if (model === "exponential-growth" && k != null && k <= 0) out.push("Fitted K ≤ 0 — doubling time not defined.");
   if (model === "two-phase-decay") {
     const k1 = coefOf(coefficients, "K1");
     const k2 = coefOf(coefficients, "K2");

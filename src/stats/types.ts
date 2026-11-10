@@ -67,6 +67,8 @@ export const NONLINEAR_MODELS = [
   // Exponential family (plan 08, 1/2: decay first; one-phase-decay is already in KINETIC_MODELS).
   "two-phase-decay",
   "plateau-decay",
+  // Plan 08, 2/2: association (growth is already in KINETIC_MODELS).
+  "one-phase-association",
 ] as const;
 /** What comparing two curves asks: is the EC50 different, or does one curve fit both. */
 export const CURVE_COMPARISONS = ["ec50", "all"] as const;
