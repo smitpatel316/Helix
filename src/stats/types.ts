@@ -16,6 +16,7 @@ export type AnalysisType =
   | "simple-logistic-regression"
   | "area-under-curve"
   | "nonlinear-regression"
+  | "standard-curve-interpolation"
   | "two-way-anova"
   | "multiple-t-tests"
   | "correlation-matrix"
@@ -162,6 +163,26 @@ export interface NonlinearRegressionParams {
   interpolate?: boolean;
 }
 
+/** Params for "standard-curve-interpolation" (XY table): fit a standard curve
+ *  to the standards, then read unknown concentrations off it from their Y
+ *  (response) values. */
+export interface StandardCurveInterpolationParams {
+  /** Omitted defaults to the first Y data column. */
+  y?: string;
+  model: NonlinearModel;
+  /** The unknown Y values to interpolate, in the order entered. */
+  unknowns: number[];
+}
+
+/** One interpolated unknown: `x: null` means the Y value falls outside the
+ *  fitted curve's range and cannot be interpolated (see the result's notes). */
+export interface InterpolationRow {
+  unknownY: number;
+  x: number | null;
+  ciLow: number | null;
+  ciHigh: number | null;
+}
+
 /** Params for "correlation-matrix": Pearson (parametric) vs. Spearman
  *  (rank-based, non-parametric). */
 export interface CorrelationParams {
@@ -255,6 +276,7 @@ export type AnalysisParams = DataSetsParam &
     | SimpleLogisticRegressionParams
     | AreaUnderCurveParams
     | NonlinearRegressionParams
+    | StandardCurveInterpolationParams
     | TwoWayAnovaParams
     | MultipleTTestsParams
     | MultipleRegressionParams
@@ -448,6 +470,8 @@ export interface AnalysisResult {
   correlations?: CorrelationRow[];
   /** Optional per-Y area-under-curve table ("area-under-curve"). */
   areas?: AreaUnderCurveRow[];
+  /** Optional interpolated unknowns ("standard-curve-interpolation"). */
+  interpolations?: InterpolationRow[];
   /** Optional per-column outlier summary ("outliers"). */
   outlierGroups?: OutlierGroupRow[];
   /** Optional per-group survival summary ("survival"). */

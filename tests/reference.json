@@ -3188,6 +3188,374 @@
    }
   ]
  },
+ "standard-curve-interpolation doseLog {\"model\":\"sigmoidal-4pl-logx\",\"unknowns\":[20,50,80]}": {
+  "testType": "standard-curve-interpolation",
+  "subtitle": "Sigmoidal, 4PL, X is log(concentration)",
+  "stats": [
+   {
+    "label": "EC50",
+    "value": 0.1438862706
+   },
+   {
+    "label": "Span",
+    "value": 97.96387721
+   },
+   {
+    "label": "R squared",
+    "value": 0.9999224337
+   },
+   {
+    "label": "Sy.x",
+    "value": 0.4474730704
+   },
+   {
+    "label": "Sum of squares",
+    "value": 1.201392892
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 6
+   },
+   {
+    "label": "N",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": -0.75,
+    "sd": 1.513825177,
+    "sem": 0.4787135539,
+    "median": -0.75,
+    "n": 10
+   },
+   {
+    "name": "Response",
+    "mean": 52.05,
+    "sd": 41.48438126,
+    "sem": 13.11851321,
+    "median": 55.05,
+    "n": 10
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"Sigmoidal, 4PL, X is log(concentration)\") of \"Response\" on \"X\". 95% CI from inverting the curve's 95% confidence band. Interpolated X values are log(concentrations).",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": 1.278310063,
+    "stdError": 0.3572701809,
+    "t": 3.577992598,
+    "p": 0.01167127022
+   },
+   {
+    "term": "Top",
+    "estimate": 99.24218728,
+    "stdError": 0.3272161451,
+    "t": 303.2924529,
+    "p": 8.670812482e-14
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -0.8419806437,
+    "stdError": 0.007679010652,
+    "t": -109.6470212,
+    "p": 3.879305116e-11
+   },
+   {
+    "term": "HillSlope",
+    "estimate": 0.9769513568,
+    "stdError": 0.01584450365,
+    "t": 61.65869113,
+    "p": 1.223320237e-9
+   }
+  ],
+  "interpolations": [
+   {
+    "unknownY": 20,
+    "x": -1.483397734,
+    "ciLow": -1.505610074,
+    "ciHigh": -1.461366261
+   },
+   {
+    "unknownY": 50,
+    "x": -0.8467045768,
+    "ciLow": -0.8603890589,
+    "ciHigh": -0.8330399439
+   },
+   {
+    "unknownY": 80,
+    "x": -0.2157276289,
+    "ciLow": -0.2374827062,
+    "ciHigh": -0.1937381494
+   }
+  ]
+ },
+ "standard-curve-interpolation doseLog {\"model\":\"sigmoidal-4pl-logx\",\"unknowns\":[20,150]}": {
+  "testType": "standard-curve-interpolation",
+  "subtitle": "Sigmoidal, 4PL, X is log(concentration)",
+  "stats": [
+   {
+    "label": "EC50",
+    "value": 0.1438862706
+   },
+   {
+    "label": "Span",
+    "value": 97.96387721
+   },
+   {
+    "label": "R squared",
+    "value": 0.9999224337
+   },
+   {
+    "label": "Sy.x",
+    "value": 0.4474730704
+   },
+   {
+    "label": "Sum of squares",
+    "value": 1.201392892
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 6
+   },
+   {
+    "label": "N",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": -0.75,
+    "sd": 1.513825177,
+    "sem": 0.4787135539,
+    "median": -0.75,
+    "n": 10
+   },
+   {
+    "name": "Response",
+    "mean": 52.05,
+    "sd": 41.48438126,
+    "sem": 13.11851321,
+    "median": 55.05,
+    "n": 10
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"Sigmoidal, 4PL, X is log(concentration)\") of \"Response\" on \"X\". 95% CI from inverting the curve's 95% confidence band. Interpolated X values are log(concentrations). Y = 150 is above the fitted curve's maximum (Top ≈ 99.24) and cannot be interpolated.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": 1.278310063,
+    "stdError": 0.3572701809,
+    "t": 3.577992598,
+    "p": 0.01167127022
+   },
+   {
+    "term": "Top",
+    "estimate": 99.24218728,
+    "stdError": 0.3272161451,
+    "t": 303.2924529,
+    "p": 8.670812482e-14
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -0.8419806437,
+    "stdError": 0.007679010652,
+    "t": -109.6470212,
+    "p": 3.879305116e-11
+   },
+   {
+    "term": "HillSlope",
+    "estimate": 0.9769513568,
+    "stdError": 0.01584450365,
+    "t": 61.65869113,
+    "p": 1.223320237e-9
+   }
+  ],
+  "interpolations": [
+   {
+    "unknownY": 20,
+    "x": -1.483397734,
+    "ciLow": -1.505610074,
+    "ciHigh": -1.461366261
+   },
+   {
+    "unknownY": 150,
+    "x": null,
+    "ciLow": null,
+    "ciHigh": null
+   }
+  ]
+ },
+ "standard-curve-interpolation xy {\"model\":\"line\",\"unknowns\":[5,10]}": {
+  "testType": "standard-curve-interpolation",
+  "subtitle": "Line",
+  "stats": [
+   {
+    "label": "R squared",
+    "value": 0.9984613141
+   },
+   {
+    "label": "Sy.x",
+    "value": 0.2277528156
+   },
+   {
+    "label": "Sum of squares",
+    "value": 0.3112280702
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 6
+   },
+   {
+    "label": "N",
+    "value": 8
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 3.625,
+    "sd": 2.669269563,
+    "sem": 0.9437293044,
+    "median": 3.5,
+    "n": 8
+   },
+   {
+    "name": "Y1",
+    "mean": 9.033333333,
+    "sd": 5.503635162,
+    "sem": 1.834545054,
+    "median": 9.1,
+    "n": 9
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"Line\") of \"Y1\" on \"X\". 95% CI from inverting the curve's 95% confidence band. Interpolated X values are in the table's X units.",
+  "coefficients": [
+   {
+    "term": "Intercept",
+    "estimate": 0.9929824561,
+    "stdError": 0.1419525361,
+    "t": 6.995172354,
+    "p": 0.0004250712706
+   },
+   {
+    "term": "Slope",
+    "estimate": 2.012280702,
+    "stdError": 0.03224944911,
+    "t": 62.39736669,
+    "p": 1.139070697e-9
+   }
+  ],
+  "interpolations": [
+   {
+    "unknownY": 5,
+    "x": 1.991281604,
+    "ciLow": 1.871634554,
+    "ciHigh": 2.105896285
+   },
+   {
+    "unknownY": 10,
+    "x": 4.476024412,
+    "ciLow": 4.373799472,
+    "ciHigh": 4.580869546
+   }
+  ]
+ },
+ "standard-curve-interpolation doseRaw {\"model\":\"sigmoidal-4pl-x\",\"unknowns\":[30,60]}": {
+  "testType": "standard-curve-interpolation",
+  "subtitle": "Sigmoidal, 4PL, X is concentration",
+  "stats": [
+   {
+    "label": "Span",
+    "value": 98.41239654
+   },
+   {
+    "label": "R squared",
+    "value": 0.9999599898
+   },
+   {
+    "label": "Sy.x",
+    "value": 0.3205544508
+   },
+   {
+    "label": "Sum of squares",
+    "value": 0.3082654679
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 3
+   },
+   {
+    "label": "N",
+    "value": 7
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 18.05,
+    "sd": 34.64860335,
+    "sem": 12.25013119,
+    "median": 2,
+    "n": 8
+   },
+   {
+    "name": "Response",
+    "mean": 54.2375,
+    "sd": 39.53985105,
+    "sem": 13.9794484,
+    "median": 59.5,
+    "n": 8
+   }
+  ],
+  "notes": "Nonlinear least-squares fit (\"Sigmoidal, 4PL, X is concentration\") of \"Response\" on \"X\". 95% CI from inverting the curve's 95% confidence band. Interpolated X values are in the table's X units.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": 0.9712190483,
+    "stdError": 0.760423366,
+    "t": 1.277208318,
+    "p": 0.2914099531
+   },
+   {
+    "term": "Top",
+    "estimate": 99.38361559,
+    "stdError": 0.3347186826,
+    "t": 296.9168461,
+    "p": 8.424584591e-8
+   },
+   {
+    "term": "EC50",
+    "estimate": 1.13316317,
+    "stdError": 0.02392382471,
+    "t": 47.36546868,
+    "p": 0.00002071995365
+   },
+   {
+    "term": "HillSlope",
+    "estimate": 0.9565525395,
+    "stdError": 0.01825043187,
+    "t": 52.41259748,
+    "p": 0.00001529659803
+   }
+  ],
+  "interpolations": [
+   {
+    "unknownY": 30,
+    "x": 0.4557146658,
+    "ciLow": 0.4366407055,
+    "ciHigh": 0.4755637667
+   },
+   {
+    "unknownY": 60,
+    "x": 1.729909091,
+    "ciLow": 1.674914588,
+    "ciHigh": 1.787103181
+   }
+  ]
+ },
  "nonlinear-regression doseRaw {\"model\":\"sigmoidal-4pl-x\"}": {
   "testType": "nonlinear-regression",
   "subtitle": "Sigmoidal, 4PL, X is concentration",

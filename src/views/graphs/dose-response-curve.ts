@@ -53,19 +53,25 @@ function doseResponseLabel(model: DoseModel, coefficients: RegressionCoefficient
 }
 
 /** Draws the fitted curve (and its EC50/Hill slope note) of the chosen Y series
- *  (`columns` = X, then the Y series), under the points. */
+ *  (`columns` = X, then the Y series), under the points. When `interp` is a
+ *  standard-curve-interpolation result for the same model and Y series, each
+ *  interpolated unknown also gets its drop-lines: a horizontal dashed line at
+ *  Y = unknown from the Y axis to the curve, a vertical dashed line down to
+ *  the interpolated X, and a marker at the curve point. */
 export function addDoseCurve(
   fig: GraphFigure,
   columns: Column[],
   options: GraphOptions,
   fit: AnalysisResult,
   paint: Paint,
+  interp?: AnalysisResult | null,
 ) {
   const [x, ...ys] = columns;
   const y = ys.find((c) => c.name === options.doseY) ?? ys[0];
   const coefficients = fit.coefficients ?? [];
   if (!x || !y || !coefficients.length || !options.doseShowCurve) return;
-  const xs = pairUp(x, y).x;
+  const pairs = pairUp(x, y);
+  const xs = pairs.x;
   if (!xs.length) return;
   const curve = doseResponseCurve(options.doseModel, coefficients, ...extent(xs));
   fig.data = [
@@ -81,4 +87,51 @@ export function addDoseCurve(
     ...fig.data,
   ];
   if (options.doseShowEquation) addNote(fig, doseResponseLabel(options.doseModel, coefficients, fit.stats), options);
+  // Drop-lines only make sense on the curve they were interpolated from.
+  if (
+    interp?.interpolations?.length &&
+    interp.subtitle === fit.subtitle &&
+    interp.groups[1]?.name === fit.groups[1]?.name
+  ) {
+    const [xMin] = extent(xs);
+    const yMin = Math.min(...pairs.y, ...curve.y);
+    const color = paint.color(y.name, ys.indexOf(y));
+    const rows = interp.interpolations.filter((r) => r.x != null);
+    for (const r of rows) {
+      fig.data = [
+        ...fig.data,
+        {
+          type: "scatter",
+          mode: "lines",
+          x: [xMin, r.x],
+          y: [r.unknownY, r.unknownY],
+          line: { color, width: 1, dash: "dash" },
+          hoverinfo: "skip",
+          showlegend: false,
+        },
+        {
+          type: "scatter",
+          mode: "lines",
+          x: [r.x, r.x],
+          y: [yMin, r.unknownY],
+          line: { color, width: 1, dash: "dash" },
+          hoverinfo: "skip",
+          showlegend: false,
+        },
+      ];
+    }
+    if (rows.length)
+      fig.data = [
+        ...fig.data,
+        {
+          type: "scatter",
+          mode: "markers",
+          x: rows.map((r) => r.x),
+          y: rows.map((r) => r.unknownY),
+          marker: { color, size: 7, symbol: "circle-open" },
+          hoverinfo: "skip",
+          showlegend: false,
+        },
+      ];
+  }
 }

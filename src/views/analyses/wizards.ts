@@ -23,6 +23,7 @@ import type {
   OneSampleTParams,
   SurvivalParams,
   CoxParams,
+  StandardCurveInterpolationParams,
   TwoWayAnovaParams,
   XYCorrelationParams,
 } from "../../stats/types";
@@ -41,7 +42,24 @@ export type Question = { id: string; ask: string } & (
   | { kind: "number"; label: string; initial: number; min?: number; max?: number; step?: number }
   /** Several of `options`, all ticked at first: at least `min` (1 by default). */
   | { kind: "names"; options: string[]; min?: number }
+  /** Free text, a single line — the answer is the raw string. */
+  | { kind: "text"; label: string; initial: string; placeholder?: string }
 );
+
+/** Parse a comma-separated list of numbers (the standard-curve unknowns).
+ *  Empty entries are ignored; a non-numeric entry, or an empty list, is an
+ *  error naming the problem. */
+export function parseUnknowns(text: string): { values: number[]; error?: string } {
+  const entries = text
+    .split(",")
+    .map((e) => e.trim())
+    .filter((e) => e !== "");
+  if (!entries.length) return { values: [], error: "Enter at least one unknown Y value." };
+  const bad = entries.find((e) => !Number.isFinite(Number(e)));
+  if (bad !== undefined)
+    return { values: [], error: `“${bad}” is not a number — enter unknown Y values separated by commas.` };
+  return { values: entries.map(Number) };
+}
 
 export interface Wizard {
   /** Every question, given the answers so far (false: not asked with these answers). */
@@ -474,6 +492,38 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
     finish: (a) => ({
       type: "nonlinear-regression",
       params: { y: a.y as string, model: a.model as NonlinearRegressionParams["model"], interpolate: true },
+    }),
+  },
+
+  "standard-curve-interpolation": {
+    questions: (_, table) => [
+      choice("y", "Which Y data set holds the standards?", names(yNames(table))),
+      // Same 7 options, same order and labels as the nonlinear-regression wizard.
+      choice("model", "Which standard curve should be fitted to X and Y?", [
+        ["sigmoidal-4pl-logx", "Sigmoidal, 4PL, X is log(concentration)"],
+        ["sigmoidal-4pl-x", "Sigmoidal, 4PL, X is concentration"],
+        ["line", "Line"],
+        ["semilog-line", "Semilog line"],
+        ["hyperbola", "Hyperbola (X is concentration)"],
+        ["quadratic", "Second order polynomial (quadratic)"],
+        ["cubic", "Third order polynomial (cubic)"],
+      ]),
+      {
+        id: "unknowns",
+        ask: "Enter the unknown Y values to interpolate, separated by commas (e.g. 20, 50, 80). Single Y values only — unknowns as replicate means, weighting of the fit and comparing two standard curves are not supported in this version.",
+        kind: "text",
+        label: "Unknown Y values",
+        initial: "",
+        placeholder: "20, 50, 80",
+      },
+    ],
+    finish: (a) => ({
+      type: "standard-curve-interpolation",
+      params: {
+        y: a.y as string,
+        model: a.model as StandardCurveInterpolationParams["model"],
+        unknowns: parseUnknowns(String(a.unknowns ?? "")).values,
+      },
     }),
   },
 
