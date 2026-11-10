@@ -181,8 +181,15 @@ export function useDocument() {
    *  (no native shell) the pick is a file input instead. */
   const importPrism = async () => {
     if (native.isNative) {
-      const path = await native.choosePrismFile();
-      if (path) await importPrismFile(path);
+      // Listen first, then open the panel: the shell emits
+      // "prism-file-picked" (path, or null on Cancel) when the user picks.
+      // The old sync invoke blocked the main thread and deadlocked the
+      // picker (Nov 9, macOS + Linux).
+      const off = await native.onPrismFilePicked((path) => {
+        off();
+        if (path) void importPrismFile(path);
+      });
+      await native.choosePrismFile();
       return;
     }
     const text = await new Promise<string | null>((resolve) => {
