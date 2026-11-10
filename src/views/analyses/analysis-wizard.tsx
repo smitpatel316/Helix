@@ -115,17 +115,20 @@ function Steps({
     }
   };
 
-  // A free-text answer only counts once it parses (comma-separated numbers);
-  // its error, when the user has typed something, replaces the question text.
-  const textError =
-    q.kind === "text" && String(value ?? "").trim() !== "" ? (parseUnknowns(String(value ?? "")).error ?? null) : null;
+  // A free-text answer only counts once it parses: a question with its own
+  // `parse` (the spline's spar: blank = automatic) uses that, otherwise the
+  // text must be comma-separated numbers (the standard-curve unknowns); its
+  // error, when the user has typed something, replaces the question text.
+  const parseText = (value: string): string | null =>
+    q.kind === "text" ? ((q.parse?.(value) ?? parseUnknowns(value)).error ?? null) : null;
+  const textError = q.kind === "text" && String(value ?? "").trim() !== "" ? parseText(String(value ?? "")) : null;
   // A number answer only counts once it passes its question's validation;
   // its error, like the free-text one, replaces the question text.
   const numberError = q.kind === "number" && typeof value === "number" ? (q.validate?.(value) ?? null) : null;
   const ready =
     value !== null &&
     !(Array.isArray(value) && value.length < (q.kind === "names" ? (q.min ?? 1) : 1)) &&
-    !(q.kind === "text" && parseUnknowns(String(value ?? "")).error) &&
+    !(q.kind === "text" && parseText(String(value ?? ""))) &&
     !numberError;
 
   return (

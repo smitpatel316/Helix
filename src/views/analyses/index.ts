@@ -41,6 +41,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "simple-logistic-regression",
     "area-under-curve",
     "nonlinear-regression",
+    "spline-lowess",
     "standard-curve-interpolation",
     "bland-altman",
     "roc-curve",

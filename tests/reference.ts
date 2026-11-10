@@ -14,6 +14,7 @@ import { GRAPHS, graphSeries, newGraphOptions, plotColumns } from "../src/views/
 import { paintOf } from "../src/views/graphs/plot-helpers";
 import { pairUp, readTable, splitXY } from "../src/lib/dataset";
 import { countDataColumns, countDataGroups } from "../src/views/analyses";
+import { WIZARDS } from "../src/views/analyses/wizards";
 import { fitLinear } from "../src/views/graphs/regression-overlay";
 import { addDeming, fitDeming } from "../src/views/graphs/deming-overlay";
 import { computeGroupedDEG } from "../src/lib/deg";
@@ -104,6 +105,16 @@ const doseLog = table(
     ["", "0.5", "94.2"],
     ["", "1", "97.8"],
     ["", "1.5", "99.1"],
+  ],
+);
+
+/** Three complete pairs — too few to smooth (needs ≥ 4). */
+const smoothTooFew = table(
+  ["Title", "X", "Response"],
+  [
+    ["", "-1", "2"],
+    ["", "0", "5"],
+    ["", "1", "9"],
   ],
 );
 
@@ -1000,6 +1011,17 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["xy", xy, "nonlinear-regression", { y: "Y3", model: "quadratic" }],
   ["xy", xy, "nonlinear-regression", { y: "Y1", model: "cubic" }],
   ["doseLog", doseLog, "nonlinear-regression", { model: "sigmoidal-4pl-logx" }],
+  // Spline and Lowess (plan 15): the Lowess and fixed-spar spline reference
+  // runs, the GCV auto-spar run (asserted as the overfit in disagreements()
+  // below), and the validation errors.
+  ["doseLog", doseLog, "spline-lowess", { y: "Response", method: "lowess", f: 2 / 3 }],
+  ["doseLog", doseLog, "spline-lowess", { y: "Response", method: "spline", f: 2 / 3, spar: 0.5 }],
+  ["doseLog", doseLog, "spline-lowess", { y: "Response", method: "spline", f: 2 / 3 }],
+  ["doseLog", doseLog, "spline-lowess", { y: "Response", method: "lowess", f: 0 }],
+  ["doseLog", doseLog, "spline-lowess", { y: "Response", method: "lowess", f: 1.5 }],
+  ["doseLog", doseLog, "spline-lowess", { y: "Response", method: "spline", f: 2 / 3, spar: 2 }],
+  ["doseLog", doseLog, "spline-lowess", { y: "Response", method: "spline", f: 2 / 3, spar: 0.5, df: 4 }],
+  ["smoothTooFew", smoothTooFew, "spline-lowess", { y: "Response", method: "lowess", f: 2 / 3 }],
   // Standard-curve interpolation (plan 02): the reference 4PL fit, the
   // out-of-range case, the lm band path (line), and the 4PL-X band path.
   ["doseLog", doseLog, "standard-curve-interpolation", { model: "sigmoidal-4pl-logx", unknowns: [20, 50, 80] }],
@@ -1221,6 +1243,7 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["xy", xy, "xy-bar"],
   ["xy", xy, "xy-area"],
   ["doseLog", doseLog, "dose-response"],
+  ["doseLog", doseLog, "smooth-curve"],
   ["logistic", logistic, "logistic-curve"],
   ["blandAltman", blandAltman, "bland-altman"],
   ["rocTable", rocTable, "roc-curve"],
@@ -2730,6 +2753,140 @@ async function disagreements(): Promise<string[]> {
         out.push(`Poisson Case B quasi notes missing the SE scaling: ${poisBQ.notes}`);
     }
   }
+  // Spline and Lowess (plan 15): the plan's values on doseLog (tolerances:
+  // fitted ±0.01, spar/df ±0.01, RSS ±0.5), the boundary overshoot, the RSS
+  // ordering, and the GCV overfit asserted as the overfit it is.
+  const lowess = await runAnalysis("spline-lowess", doseLog, { y: "Response", method: "lowess", f: 2 / 3 });
+  const spline = await runAnalysis("spline-lowess", doseLog, { y: "Response", method: "spline", f: 2 / 3, spar: 0.5 });
+  const gcv = await runAnalysis("spline-lowess", doseLog, { y: "Response", method: "spline", f: 2 / 3 });
+  const observed = [2.1, 3.4, 8.2, 19.5, 41.2, 68.9, 86.1, 94.2, 97.8, 99.1];
+  const sStat = (r: AnalysisResult | { error: string }, label: string) =>
+    "error" in r ? null : r.stats.find((s) => s.label === label)?.value;
+  const close = (got: number | null | undefined, want: number, tol: number) =>
+    got != null && Math.abs(got - want) <= tol;
+  if ("error" in lowess) {
+    out.push(`Lowess: ${lowess.error}`);
+  } else {
+    const fit = lowess.fitted ?? [];
+    const want: [number, number][] = [
+      [0, -1.0097],
+      [4, 43.9129],
+      [5, 63.6076],
+      [6, 80.069],
+      [7, 91.0026],
+      [8, 96.4214],
+      [9, 101.2181],
+    ];
+    for (const [i, w] of want)
+      if (!close(fit[i]?.y, w, 0.01)) out.push(`Lowess fitted[${i}]: ${fit[i]?.y}, plan says ${w}`);
+    if (!close(sStat(lowess, "Residual sum of squares"), 161.7778, 0.5))
+      out.push(`Lowess RSS: ${sStat(lowess, "Residual sum of squares")}, plan says 161.7778`);
+    // The boundary overshoot is correct Lowess behaviour, not a bug: the last
+    // fitted value leaves the observed range.
+    if (!(fit[9] != null && fit[9].y > 99.1))
+      out.push(`Lowess boundary overshoot missing: fitted at X=1.5 is ${fit[9]?.y}, expected > 99.1`);
+    if (fit.length !== 10 || lowess.curve?.length !== 100)
+      out.push(`Lowess fitted/curve lengths: ${fit.length}/${lowess.curve?.length}, expected 10/100`);
+    if (lowess.curve?.[0]?.x !== -3 || lowess.curve?.at(-1)?.x !== 1.5)
+      out.push(`Lowess curve grid: [${lowess.curve?.[0]?.x}, ${lowess.curve?.at(-1)?.x}], expected [-3, 1.5]`);
+    if (lowess.fitted?.some((p, i) => p.observed !== observed[i]))
+      out.push(`Lowess fitted observed values do not match the table`);
+    if (lowess.equation !== undefined) out.push(`Lowess carries an equation — a smoother has none`);
+    if (!lowess.notes.includes("descriptive"))
+      out.push(`Lowess notes missing the descriptive reading aid: ${lowess.notes}`);
+    if (lowess.stats.some((s) => s.label === "Effective degrees of freedom"))
+      out.push(`Lowess reports an effective df — it has no closed-form df`);
+  }
+  if ("error" in spline) {
+    out.push(`Spline spar=0.5: ${spline.error}`);
+  } else {
+    const fit = spline.fitted ?? [];
+    const want = [-3.7016, 3.8447, 13.5642, 27.1787, 44.5394, 63.0041, 78.9725, 90.5762, 98.3521, 104.1698];
+    want.forEach((w, i) => {
+      if (!close(fit[i]?.y, w, 0.01)) out.push(`Spline fitted[${i}]: ${fit[i]?.y}, plan says ${w}`);
+    });
+    if (!close(sStat(spline, "Effective degrees of freedom"), 3.7193, 0.01))
+      out.push(`Spline df: ${sStat(spline, "Effective degrees of freedom")}, plan says 3.7193`);
+    if (!close(sStat(spline, "Smoothing parameter (spar)"), 0.5, 0.01))
+      out.push(`Spline spar: ${sStat(spline, "Smoothing parameter (spar)")}, plan says 0.5`);
+    if (!close(sStat(spline, "Residual sum of squares"), 257.449, 0.5))
+      out.push(`Spline RSS: ${sStat(spline, "Residual sum of squares")}, plan says 257.449`);
+    if (spline.curve?.length !== 100) out.push(`Spline curve length: ${spline.curve?.length}, expected 100`);
+    if (!spline.notes.includes("spar = 0.5"))
+      out.push(`Spline notes do not name the spar used: ${spline.notes}`);
+    // The smoother spline (df 3.72) has the larger RSS here.
+    const rssL = sStat(lowess, "Residual sum of squares");
+    const rssS = sStat(spline, "Residual sum of squares");
+    if (rssL == null || rssS == null || !(rssS > rssL))
+      out.push(`RSS ordering: spline ${rssS} should exceed Lowess ${rssL}`);
+  }
+  if ("error" in gcv) {
+    out.push(`Spline GCV: ${gcv.error}`);
+  } else {
+    const df = sStat(gcv, "Effective degrees of freedom");
+    const spar = sStat(gcv, "Smoothing parameter (spar)");
+    const maxDiff = Math.max(...(gcv.fitted ?? []).map((p, i) => Math.abs(p.y - observed[i])));
+    if (df == null || !(df > 9)) out.push(`Spline GCV df: ${df}, expected > 9 (the overfit)`);
+    if (!close(spar, -1.226, 0.01)) out.push(`Spline GCV spar: ${spar}, plan says ≈ -1.226`);
+    if (!(maxDiff < 1e-6)) out.push(`Spline GCV fitted ≠ observed: max |diff| ${maxDiff}, expected < 1e-6`);
+    if (!gcv.notes.includes("generalized cross-validation"))
+      out.push(`Spline GCV notes do not name the GCV choice: ${gcv.notes}`);
+  }
+  // The validation errors.
+  const errCases: [string, object, string][] = [
+    ["f = 0", { y: "Response", method: "lowess", f: 0 }, "between 0 and 1"],
+    ["f = 1.5", { y: "Response", method: "lowess", f: 1.5 }, "between 0 and 1"],
+    ["spar = 2", { y: "Response", method: "spline", f: 2 / 3, spar: 2 }, "between 0 and 1.5"],
+    ["spar + df", { y: "Response", method: "spline", f: 2 / 3, spar: 0.5, df: 4 }, "not both"],
+  ];
+  for (const [label, params, want] of errCases) {
+    const r = await runAnalysis("spline-lowess", doseLog, params as AnalysisParams);
+    if (!("error" in r) || !r.error.toLowerCase().includes(want))
+      out.push(`Spline/Lowess ${label}: ${"error" in r ? r.error : "ran"}, expected an error naming “${want}”`);
+  }
+  const smoothTooFewRun = await runAnalysis("spline-lowess", smoothTooFew, { y: "Response", method: "lowess", f: 2 / 3 });
+  if (!("error" in smoothTooFewRun) || !smoothTooFewRun.error.toLowerCase().includes("at least 4"))
+    out.push(`Spline/Lowess n < 4: ${"error" in smoothTooFewRun ? smoothTooFewRun.error : "ran"}, expected “at least 4 points”`);
+  // The smooth-curve graph draws the linked analysis's curve over the points:
+  // 100 grid points, spanning exactly the data range, plus the 10 points.
+  if (!("error" in lowess)) {
+    const { addSmoothCurve } = await import("../src/views/graphs/smooth-curve");
+    const opts = { ...newGraphOptions("smooth-curve"), smoothShowCurve: true };
+    const cols = plotColumns(readTable(doseLog), "smooth-curve");
+    const fig = GRAPHS["smooth-curve"].build(cols, opts, paintOf(opts, 1), readTable(doseLog).titles);
+    addSmoothCurve(fig, cols, opts, lowess, paintOf(opts, 1));
+    const traces = fig.data as { mode?: string; x?: number[]; y?: number[] }[];
+    const curve = traces.find((t) => t.mode === "lines" && t.x?.length === 100);
+    const points = traces.find((t) => t.mode === "markers" && t.x?.length === 10);
+    if (!curve) out.push(`Smooth curve graph draws no 100-point line`);
+    if (curve && (curve.x?.[0] !== -3 || curve.x?.at(-1) !== 1.5))
+      out.push(`Smooth curve line spans [${curve.x?.[0]}, ${curve.x?.at(-1)}], expected [-3, 1.5]`);
+    if (!points) out.push(`Smooth curve graph draws no 10-point scatter`);
+    // No linked analysis: points only, no line.
+    const fig2 = GRAPHS["smooth-curve"].build(cols, opts, paintOf(opts, 1), readTable(doseLog).titles);
+    addSmoothCurve(fig2, cols, opts, null, paintOf(opts, 1));
+    if ((fig2.data as { mode?: string }[]).some((t) => t.mode === "lines"))
+      out.push(`Smooth curve graph draws a line with no analysis linked`);
+    // Falling back to fitted points when an old result has no curve.
+    const old = { ...lowess, curve: undefined };
+    const fig3 = GRAPHS["smooth-curve"].build(cols, opts, paintOf(opts, 1), readTable(doseLog).titles);
+    addSmoothCurve(fig3, cols, opts, old, paintOf(opts, 1));
+    const fallback = (fig3.data as { mode?: string; x?: number[] }[]).find(
+      (t) => t.mode === "lines" && t.x?.length === 10,
+    );
+    if (!fallback) out.push(`Smooth curve graph does not fall back to joining fitted points`);
+  }
+  // The wizard asks method, then the Y series, then span (Lowess) or spar (spline).
+  const asked = (a: Record<string, string>) =>
+    WIZARDS["spline-lowess"]!.questions(a, readTable(doseLog)).flatMap((q) => (q ? [q.id] : []));
+  if (JSON.stringify(asked({})) !== JSON.stringify(["method", "y"]))
+    out.push(`Spline/Lowess wizard first steps: ${JSON.stringify(asked({}))}, expected ["method", "y"]`);
+  if (JSON.stringify(asked({ method: "lowess" })) !== JSON.stringify(["method", "y", "f"]))
+    out.push(`Spline/Lowess wizard (Lowess): ${JSON.stringify(asked({ method: "lowess" }))}, expected ["method", "y", "f"]`);
+  if (JSON.stringify(asked({ method: "spline" })) !== JSON.stringify(["method", "y", "spar"]))
+    out.push(
+      `Spline/Lowess wizard (spline): ${JSON.stringify(asked({ method: "spline" }))}, expected ["method", "y", "spar"]`,
+    );
   return out;
 }
 

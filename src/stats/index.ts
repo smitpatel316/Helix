@@ -19,6 +19,7 @@ import type {
   PoissonRegressionParams,
   RocParams,
   SimpleLogisticRegressionParams,
+  SplineLowessParams,
   StandardCurveInterpolationParams,
   ThreeWayAnovaParams,
   TwoWayAnovaParams,
@@ -41,6 +42,7 @@ import { demingRegressionSpec } from "./xy/deming-regression";
 import { runSimpleLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
+import { runSplineLowess } from "./xy/spline-lowess";
 import { runStandardCurveInterpolation } from "./xy/standard-curve-interpolation";
 import { runTwoWayAnova } from "./grouped/two-way-anova";
 import { runThreeWayAnova } from "./grouped/three-way-anova";
@@ -122,6 +124,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Nonlinear regression",
     minColumns: 2,
     run: (c, p) => runNonlinearRegression(c, p as NonlinearRegressionParams),
+  },
+  "spline-lowess": {
+    label: "Spline and Lowess",
+    minColumns: 2,
+    run: (c, p) => runSplineLowess(c, p as SplineLowessParams),
   },
   "standard-curve-interpolation": {
     label: "Interpolate from a standard curve",

@@ -29,6 +29,7 @@ import { computeGroupedDEG } from "../../lib/deg";
 import { useAnalysis } from "../analyses/use-analysis";
 import { GRAPHS, graphSeries, plotColumns } from ".";
 import { addDoseCurve } from "./dose-response-curve";
+import { addSmoothCurve } from "./smooth-curve";
 import { addLogisticCurve } from "./logistic-curve";
 import { addForestPlot } from "./forest-plot";
 import { coxSurvivalColumns } from "./survival";
@@ -314,6 +315,16 @@ export function GraphView({ node }: { node: ProjectNode }) {
   );
   const poissonResult = poissonOutcome && !("error" in poissonOutcome) ? poissonOutcome : null;
   const poissonParams = (poissonAnalysis?.analysisParams ?? undefined) as PoissonRegressionParams | undefined;
+  // A smooth-curve graph draws a sibling Spline and Lowess analysis's fitted
+  // curve — the same cached runAnalysis result (no extra R call). Without one
+  // it draws only the points, and the Format panel prompts for one.
+  const smoothAnalysis = options.smoothAnalysisId ? nodes[options.smoothAnalysisId] : undefined;
+  const smoothOutcome = useAnalysis(
+    type === "smooth-curve" && smoothAnalysis?.analysisType === "spline-lowess" ? "spline-lowess" : undefined,
+    data,
+    smoothAnalysis?.analysisParams,
+  );
+  const smoothResult = smoothOutcome && !("error" in smoothOutcome) ? smoothOutcome : null;
   // A survival curve on a Multiple Variables table plots the Cox analysis's
   // time/status columns, stratified by its binary covariate (or one curve for
   // all subjects); without a Cox analysis it draws nothing — the Format panel
@@ -400,6 +411,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
       if (type === "xy-scatter" && options.regAnalysisId) addRegression(fig, columns, options, regParams, paint);
       if (type === "xy-scatter" && options.demingAnalysisId) addDeming(fig, columns, options, demingParams, paint);
       if (doseFit) addDoseCurve(fig, columns, options, doseFit, paint, interpFit);
+      if (type === "smooth-curve" && smoothResult) addSmoothCurve(fig, columns, options, smoothResult, paint);
       if (logisticFit) addLogisticCurve(fig, columns, logisticFit, paint);
       if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint);
       if (type === "observed-fitted" && poissonResult)
@@ -443,6 +455,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
     regParams,
     doseFit,
     interpFit,
+    smoothResult,
     logisticFit,
     coxResult,
     poissonResult,

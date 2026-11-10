@@ -31,6 +31,7 @@ export type GraphType =
   | "bland-altman"
   | "roc-curve"
   | "observed-fitted"
+  | "smooth-curve"
   | "histogram";
 
 /** The choices of a graph's options, one list each: the types come from them, and a
@@ -166,6 +167,12 @@ export interface GraphOptions {
   doseModel: Choice<"doseModel">;
   doseShowCurve: boolean;
   doseShowEquation: boolean;
+  // Smooth curve (XY family only): the fitted curve of a sibling "Spline and
+  // Lowess" analysis, drawn over the scatter (see smooth-curve.ts) — the graph
+  // runs the same cached runAnalysis result, no extra R call. Without a linked
+  // analysis it draws the points only.
+  smoothAnalysisId?: string;
+  smoothShowCurve: boolean;
   // Heatmap (Multiple Variables only): each column is a variable, each row a
   // subject; cell color encodes magnitude along the graph's gradient palette.
   heatmapShowValues: boolean;
@@ -273,6 +280,7 @@ export const DEFAULT_GRAPH_OPTIONS: GraphOptions = {
   doseModel: "sigmoidal-4pl-x",
   doseShowCurve: true,
   doseShowEquation: true,
+  smoothShowCurve: true,
   heatmapShowValues: false,
   heatmapShowScale: true,
   survivalMode: "codes",

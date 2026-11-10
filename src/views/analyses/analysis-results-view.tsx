@@ -234,6 +234,24 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
+      {result.fitted && result.fitted.length > 0 && (
+        <Table
+          title="Fitted values and residuals"
+          columns={[
+            { label: "X", numeric: true },
+            { label: "Observed Y", numeric: true },
+            { label: "Fitted Y", numeric: true },
+            { label: "Residual", numeric: true },
+          ]}
+          rows={result.fitted.map((p) => [
+            num(p.x),
+            num(p.observed),
+            num(p.y),
+            p.observed == null ? "—" : num(p.observed - p.y),
+          ])}
+        />
+      )}
+
       {result.interpolations && result.interpolations.length > 0 && (
         <Table
           title="Interpolated unknowns"

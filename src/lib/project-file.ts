@@ -126,7 +126,7 @@ type OptionalOption = {
 // prettier-ignore
 const OPTIONAL_OPTIONS = {
   yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number",
-  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", doseY: "text",
+  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", doseY: "text",
   volcanoX: "text", volcanoY: "text", volcanoLabel: "text", volcanoGroupA: "text", volcanoGroupB: "text",
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",
@@ -150,9 +150,13 @@ type ParamKind = "yes/no" | "number" | "numbers" | "name" | "names" | "name-or-n
 // prettier-ignore
 const PARAMS = {
   paired: "yes/no", gaussian: "yes/no", equalVariance: "yes/no", ratio: "yes/no", forceOrigin: "yes/no", pooledSd: "yes/no", quasi: "yes/no",
-  tails: TAILS, posthoc: [...POSTHOCS, ...RANK_POSTHOCS], model: NONLINEAR_MODELS, method: CORRELATION_METHODS,
+  tails: TAILS, posthoc: [...POSTHOCS, ...RANK_POSTHOCS], model: NONLINEAR_MODELS,
+  // `method` is shared by correlation ("pearson"/"spearman") and Spline/Lowess
+  // ("spline"/"lowess"): the reader only sanitizes, each runner validates its own.
+  method: [...CORRELATION_METHODS, "spline", "lowess"],
   mode: CORRELATION_MODES, design: TWO_WAY_DESIGNS, posthocTarget: POSTHOC_TARGETS, correction: CORRECTIONS,
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q, lambda: "number",
+  f: "number", spar: "number", df: "number",
   binMode: BIN_MODES, binWidth: "number", binCount: { min: 2, max: 100 }, startAt: "number",
   posthocTerm: THREE_WAY_TERMS,
   y: "name", dependent: "name", datasets: "names", predictors: "names", sets: "names", unknowns: "numbers",
@@ -535,7 +539,8 @@ export function parseProjectFile(
       (o.regAnalysisId && !nodes[o.regAnalysisId]) ||
       (o.demingAnalysisId && !nodes[o.demingAnalysisId]) ||
       (o.coxAnalysisId && !nodes[o.coxAnalysisId]) ||
-      (o.poissonAnalysisId && !nodes[o.poissonAnalysisId])
+      (o.poissonAnalysisId && !nodes[o.poissonAnalysisId]) ||
+      (o.smoothAnalysisId && !nodes[o.smoothAnalysisId])
     ) {
       issues.push({
         severity: "warning",

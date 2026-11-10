@@ -17,6 +17,7 @@ import type {
   NestedAnovaParams,
   NonlinearRegressionParams,
   OneSampleTParams,
+  SplineLowessParams,
   StandardCurveInterpolationParams,
   ThreeWayAnovaParams,
   TwoWayAnovaParams,
@@ -37,8 +38,10 @@ export type Question = { id: string; ask: string } & (
   | { kind: "number"; label: string; initial: number; min?: number; max?: number; step?: number; validate?: (value: number) => string | undefined }
   /** Several of `options`, all ticked at first: at least `min` (1 by default). */
   | { kind: "names"; options: string[]; min?: number }
-  /** Free text, a single line — the answer is the raw string. */
-  | { kind: "text"; label: string; initial: string; placeholder?: string }
+  /** Free text, a single line — the answer is the raw string. `parse` checks
+   *  it before Next is allowed (blank counts as valid when `parse` says so);
+   *  without it, the text must parse as comma-separated numbers. */
+  | { kind: "text"; label: string; initial: string; placeholder?: string; parse?: (text: string) => { error?: string } }
 );
 
 /** Parse a comma-separated list of numbers (the standard-curve unknowns).
@@ -54,6 +57,23 @@ export function parseUnknowns(text: string): { values: number[]; error?: string 
   if (bad !== undefined)
     return { values: [], error: `“${bad}” is not a number — enter unknown Y values separated by commas.` };
   return { values: entries.map(Number) };
+}
+
+/** Parse the spline's spar field: blank = automatic (GCV), otherwise a number
+ *  in 0–1.5. `value` is null when blank; `error` is set (and `value` null) when
+ *  the text is neither — the runner re-checks, so a bad value passed straight
+ *  to `runAnalysis` still fails clearly. */
+export function parseSpar(text: string): { value: number | null; error?: string } {
+  const t = text.trim();
+  if (t === "") return { value: null };
+  const v = Number(t);
+  if (!Number.isFinite(v))
+    return {
+      value: null,
+      error: `“${t}” is not a number — enter a smoothing parameter between 0 and 1.5, or leave it blank.`,
+    };
+  if (v < 0 || v > 1.5) return { value: null, error: "The smoothing parameter (spar) must be between 0 and 1.5." };
+  return { value: v };
 }
 
 export interface Wizard {
@@ -481,6 +501,48 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       type: "nonlinear-regression",
       params: { y: a.y as string, model: a.model as NonlinearRegressionParams["model"] },
     }),
+  },
+
+  "spline-lowess": {
+    questions: (a, table) => [
+      choice("method", "Which smoother should be fitted?", [
+        ["lowess", "Lowess (locally weighted smoothing)"],
+        ["spline", "Spline (smoothing spline)"],
+      ]),
+      choice("y", "Which Y data set should be smoothed?", names(yNames(table))),
+      a.method === "lowess" && {
+        id: "f",
+        ask: "Larger = smoother. 2/3 is the usual default; try 0.3–0.5 for wiggly data you want to follow closely.",
+        kind: "number",
+        label: "Span (fraction of points in each local fit)",
+        initial: 2 / 3,
+        step: 0.05,
+        validate: (v) => (v > 0 && v <= 1 ? undefined : "The span must be between 0 and 1."),
+      },
+      a.method === "spline" && {
+        id: "spar",
+        ask: "Larger = smoother. Leave blank to let the fit choose; if the curve follows every point, set spar to 0.5–1.0.",
+        kind: "text",
+        label: "Smoothing parameter (spar). Blank = choose automatically.",
+        initial: "",
+        placeholder: "Blank = automatic (GCV)",
+        parse: (text) => parseSpar(text),
+      },
+    ],
+    finish: (a) => {
+      const method = (a.method as SplineLowessParams["method"] | undefined) ?? "lowess";
+      const spar = parseSpar(String(a.spar ?? ""));
+      return {
+        type: "spline-lowess",
+        params: {
+          y: a.y as string,
+          method,
+          ...(method === "lowess"
+            ? { f: (a.f as number | undefined) ?? 2 / 3 }
+            : { spar: spar.error ? NaN : spar.value }),
+        },
+      };
+    },
   },
 
   "standard-curve-interpolation": {

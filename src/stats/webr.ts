@@ -38,6 +38,36 @@ export function connectR(evaluate: (code: string) => Promise<RVector>) {
 }
 
 /**
+ * Evaluate R code that returns an unnamed numeric vector, marshalled to a JS
+ * array in order. The vector twin of `evalNamedVector` — what lets an
+ * analysis return per-point results (fitted values, a dense curve).
+ * Non-finite entries come back as NaN, so positions (and lengths) are
+ * preserved. In a project window the code runs in the engine window, which
+ * only serves named vectors: the entries are named v1..vn in R and read
+ * back in that order.
+ */
+export async function evalNumericVector(code: string): Promise<number[]> {
+  if (remote) {
+    const named = await remote(`v<-local({${code}});names(v)<-paste0("v",seq_along(v));v`);
+    return Object.keys(named)
+      .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
+      .map((k) => named[k] ?? NaN);
+  }
+  const webR = await startR();
+  const shelter = await new webR.Shelter();
+  try {
+    const result = await shelter.evalR(`local({${code}})`).catch((err: unknown) => {
+      // R says "Error in `call`: reason". The call is our generated code: keep the reason.
+      throw new Error(String(err instanceof Error ? err.message : err).replace(/^Error in `[^`]*`\s*:\s*/, ""));
+    });
+    const { values } = (await result.toJs()) as { values: number[] };
+    return values.map((v) => (Number.isFinite(v) ? v : NaN));
+  } finally {
+    shelter.purge();
+  }
+}
+
+/**
  * Evaluate R code that returns a named numeric vector, marshalled to a plain
  * `{ name: value }` map. The single primitive every analysis builds on. `local()`
  * gives each run a fresh environment, so analyses can never read each other's variables.
