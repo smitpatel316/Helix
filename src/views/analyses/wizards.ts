@@ -21,6 +21,7 @@ import type {
   CompareTwoGroupsParams,
   CorrelationParams,
   CoxPHParams,
+  EnzymeInhibitionParams,
   FrequencyDistributionParams,
   MultipleTTestsParams,
   NestedAnovaParams,
@@ -34,6 +35,7 @@ import type {
   TwoWayAnovaParams,
   XYCorrelationParams,
 } from "../../stats/types";
+import { parseInhibitorConcentration } from "../../stats/xy/enzyme-inhibition";
 import { splitXY, type Dataset } from "../../lib/dataset";
 
 export type Answer = string | number | string[];
@@ -108,6 +110,18 @@ export function parseRequiredPositive(text: string, label: string): { value?: nu
   if (t === "") return { error: `Enter a ${label} — it is required for this model.` };
   const parsed = parseOptionalPositive(t, label);
   return parsed.error ? parsed : { value: parsed.value };
+}
+
+/** Parse a required non-negative number (an inhibitor concentration — 0 is
+ *  the uninhibited series): blank is an error — the wizard must not
+ *  proceed without it. */
+export function parseRequiredNonNegative(text: string, label: string): { value?: number; error?: string } {
+  const t = text.trim();
+  if (t === "") return { error: `Enter a ${label} — it is required.` };
+  const v = Number(t);
+  if (!Number.isFinite(v)) return { error: `“${t}” is not a number — enter a ${label}.` };
+  if (v < 0) return { error: `The ${label} cannot be negative.` };
+  return { value: v };
 }
 
 export interface Wizard {
@@ -719,6 +733,98 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           ...(time0.value !== undefined ? { time0: time0.value } : {}),
         },
       };
+    },
+  },
+
+  // Enzyme kinetics — Inhibition (plan 17): the model picker defaults to
+  // the Mixed model — it nests the others and its Alpha diagnoses the
+  // mechanism — so it is listed first (a choice question defaults to its
+  // first option). Y is a multi-select (default: all series); each included
+  // series then gets its own inhibitor-concentration field, pre-filled from
+  // the number in the column title and required when the title has none.
+  // Per-series number fields are a new wizard pattern — one "text" question
+  // per series, keyed `I:<series>` — noted here for reuse by later plans
+  // (plan 18's global fits will want the same shape).
+  "enzyme-inhibition": {
+    questions: (a, table) => [
+      choice("model", "Which inhibition model should be fitted?", [
+        ["mixed", "Mixed model"],
+        ["competitive", "Competitive"],
+        ["noncompetitive", "Noncompetitive"],
+        ["uncompetitive", "Uncompetitive"],
+        ["morrison", "Morrison Ki (tight binding)"],
+      ]),
+      {
+        id: "y",
+        ask: "Which Y data sets should be fitted? Each is one inhibitor concentration.",
+        kind: "names",
+        options: yNames(table),
+        min: a.model === "morrison" ? 1 : 2,
+      },
+      // Global models only: one inhibitor-concentration field per included
+      // series, pre-filled from the column title ("10 nM" → 10, "I=5" → 5);
+      // a blank field blocks Next — the fit needs [I] for every series.
+      ...(a.model !== "morrison"
+        ? (Array.isArray(a.y) ? (a.y as string[]) : []).map((name) => ({
+            id: `I:${name}`,
+            ask: `Inhibitor concentration for “${name}” (same units for every series; Ki is reported in these units).`,
+            kind: "text" as const,
+            label: `[I] for “${name}”`,
+            initial: parseInhibitorConcentration(name)?.toString() ?? "",
+            placeholder: "e.g. 5",
+            parse: (text: string) => parseRequiredNonNegative(text, "inhibitor concentration"),
+          }))
+        : []),
+      // Morrison only: Et is required; [S] + Km are an optional pair (both
+      // or neither) that converts Kiapp to Ki.
+      a.model === "morrison" && {
+        id: "enzymeConcentration",
+        ask: "Total enzyme concentration (Et), in the same units as [I].",
+        kind: "text",
+        label: "Total enzyme concentration (Et)",
+        initial: "",
+        placeholder: "e.g. 5",
+        parse: (text: string) => parseRequiredPositive(text, "total enzyme concentration"),
+      },
+      a.model === "morrison" && {
+        id: "substrateConcentration",
+        ask: "Substrate concentration used ([S]) — with Km, converts Kiapp to Ki; leave blank to report Kiapp only.",
+        kind: "text",
+        label: "Substrate concentration [S]",
+        initial: "",
+        placeholder: "Blank = Kiapp only",
+        parse: (text: string) => parseOptionalPositive(text, "substrate concentration"),
+      },
+      a.model === "morrison" && {
+        id: "kmForMorrison",
+        ask: "Michaelis constant (Km) — with [S], converts Kiapp to Ki; leave blank to report Kiapp only.",
+        kind: "text",
+        label: "Michaelis constant (Km)",
+        initial: "",
+        placeholder: "Blank = Kiapp only",
+        parse: (text: string) => parseOptionalPositive(text, "Michaelis constant"),
+      },
+    ],
+    finish: (a, table) => {
+      const model = (a.model as EnzymeInhibitionParams["model"] | undefined) ?? "mixed";
+      const y = (Array.isArray(a.y) ? (a.y as string[]) : undefined) ?? yNames(table);
+      const params: EnzymeInhibitionParams = { model, y };
+      if (model !== "morrison") {
+        const inhibitorConcentrations: Record<string, number> = {};
+        for (const name of y) {
+          const parsed = parseRequiredNonNegative(String(a[`I:${name}`] ?? ""), "inhibitor concentration");
+          if (parsed.value !== undefined) inhibitorConcentrations[name] = parsed.value;
+        }
+        params.inhibitorConcentrations = inhibitorConcentrations;
+      } else {
+        const et = parseRequiredPositive(String(a.enzymeConcentration ?? ""), "total enzyme concentration");
+        const s = parseOptionalPositive(String(a.substrateConcentration ?? ""), "substrate concentration");
+        const km = parseOptionalPositive(String(a.kmForMorrison ?? ""), "Michaelis constant");
+        if (et.value !== undefined) params.enzymeConcentration = et.value;
+        if (s.value !== undefined) params.substrateConcentration = s.value;
+        if (km.value !== undefined) params.kmForMorrison = km.value;
+      }
+      return { type: "enzyme-inhibition", params };
     },
   },
 

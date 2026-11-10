@@ -11,10 +11,13 @@ import type {
   BindingKineticsParams,
   BindingSaturationModel,
   BindingSaturationParams,
+  EnzymeInhibitionModel,
+  EnzymeInhibitionParams,
   RegressionCoefficient,
   StatRow,
 } from "../../stats/types";
 import { evaluateBindingModel, isTwoSeriesSaturation } from "../../stats/xy/binding";
+import { evaluateEnzymeInhibitionModel, parseInhibitorConcentration } from "../../stats/xy/enzyme-inhibition";
 import { pairUp, type Column } from "../../lib/dataset";
 import type { GraphFigure } from ".";
 import { num } from "../../lib/format";
@@ -31,6 +34,25 @@ function stat(stats: StatRow[], label: string): number | null | undefined {
   return stats.find((s) => s.label === label)?.value;
 }
 
+/** Evenly-spaced points across [xMin, xMax] tracing a fitted curve, from any
+ *  per-X evaluator — the binding overlay and the enzyme-inhibition overlay
+ *  share this, so there is exactly one 100-point evaluator in the repo. */
+function curvePoints(
+  evaluate: (x: number) => number,
+  xMin: number,
+  xMax: number,
+  steps = 100,
+): { x: number[]; y: number[] } {
+  const x: number[] = [];
+  const y: number[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const x0 = xMin + ((xMax - xMin) * i) / steps;
+    x.push(x0);
+    y.push(evaluate(x0));
+  }
+  return { x, y };
+}
+
 /** Evenly-spaced points across [xMin, xMax] tracing the fitted curve. */
 function fittedCurve(
   model: BindingModel,
@@ -41,14 +63,7 @@ function fittedCurve(
   atd?: { hotNM: number; time0: number },
   steps = 100,
 ): { x: number[]; y: number[] } {
-  const x: number[] = [];
-  const y: number[] = [];
-  for (let i = 0; i <= steps; i++) {
-    const x0 = xMin + ((xMax - xMin) * i) / steps;
-    x.push(x0);
-    y.push(evaluateBindingModel(model, coefficients, x0, series, atd));
-  }
-  return { x, y };
+  return curvePoints((x0) => evaluateBindingModel(model, coefficients, x0, series, atd), xMin, xMax, steps);
 }
 
 /** "Bmax = 100<br>Kd = 5<br>R² = 1" annotation text (Plotly-ready) — the
@@ -169,4 +184,78 @@ export function addBindingCurve(
   }
   fig.data = [...traces, ...fig.data];
   addNote(fig, bindingLabel(model, coefficients, fit.stats), options);
+}
+
+/** "Vmax = 100<br>Km = 10<br>Ki = 5<br>R² = 1" annotation text
+ *  (Plotly-ready) for an enzyme-inhibition fit — the shared fitted
+ *  constants, Alpha for the mixed model, Et/Kiapp/Ki for Morrison, and R². */
+function enzymeInhibitionLabel(
+  model: EnzymeInhibitionModel,
+  coefficients: RegressionCoefficient[],
+  stats: StatRow[],
+): string {
+  const r2 = stat(stats, "R squared");
+  const lines: string[] = [];
+  if (model === "morrison") {
+    lines.push(`Et = ${num(coef(coefficients, "Et"))}`, `Kiapp = ${num(coef(coefficients, "Kiapp"))}`);
+    const ki = coef(coefficients, "Ki");
+    if (Number.isFinite(ki)) lines.push(`Ki = ${num(ki)}`);
+  } else {
+    lines.push(
+      `Vmax = ${num(coef(coefficients, "Vmax"))}`,
+      `Km = ${num(coef(coefficients, "Km"))}`,
+      `Ki = ${num(coef(coefficients, "Ki"))}`,
+    );
+    if (model === "mixed") lines.push(`Alpha = ${num(coef(coefficients, "Alpha"))}`);
+  }
+  if (r2 != null) lines.push(`R² = ${num(r2)}`);
+  return lines.join("<br>");
+}
+
+/** Draws one fitted curve per inhibitor concentration, each in its series'
+ *  colour, evaluated from the closed-form model + shared fitted parameters
+ *  at 100 X points across the pooled X range (Morrison: one curve, X = [I]).
+ *  No Lineweaver–Burk overlay: Prism offers LB only as a display Transform,
+ *  never as a fit, and Helix has no transform infrastructure — these curves
+ *  are always the closed-form nls fit, never a reciprocal linear regression. */
+export function addEnzymeInhibitionCurve(
+  fig: GraphFigure,
+  columns: Column[],
+  options: GraphOptions,
+  fit: AnalysisResult,
+  params: EnzymeInhibitionParams,
+  paint: Paint,
+) {
+  const [x, ...ys] = columns;
+  const model = params.model;
+  const coefficients = fit.coefficients ?? [];
+  if (!x || !coefficients.length) return;
+  const included = params.y?.length ? ys.filter((c) => params.y!.includes(c.name)) : ys;
+  if (!included.length) return;
+  // The pooled X range, so every curve spans the data the fit saw.
+  const allXs = included.flatMap((c) => pairUp(x, c).x);
+  if (!allXs.length) return;
+  const [xMin, xMax] = extent(allXs);
+  const traces: GraphFigure["data"] = [];
+  for (const col of included) {
+    // Morrison's X is the inhibitor concentration itself, so no [I] is needed.
+    const inhibitor =
+      model === "morrison"
+        ? 0
+        : (params.inhibitorConcentrations?.[col.name] ?? parseInhibitorConcentration(col.name));
+    if (inhibitor === undefined) continue;
+    const curve = curvePoints((x0) => evaluateEnzymeInhibitionModel(model, coefficients, x0, inhibitor), xMin, xMax);
+    traces.push({
+      type: "scatter",
+      mode: "lines",
+      x: curve.x,
+      y: curve.y,
+      line: { color: paint.color(col.name, ys.indexOf(col)), width: 1.5 },
+      hoverinfo: "skip",
+      showlegend: false,
+    });
+  }
+  if (!traces.length) return;
+  fig.data = [...traces, ...fig.data];
+  addNote(fig, enzymeInhibitionLabel(model, coefficients, fit.stats), options);
 }

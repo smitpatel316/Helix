@@ -49,6 +49,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "nonlinear-regression",
     "binding-saturation",
     "binding-kinetics",
+    "enzyme-inhibition",
     "spline-lowess",
     "standard-curve-interpolation",
     "bland-altman",

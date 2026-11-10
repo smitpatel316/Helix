@@ -17,7 +17,7 @@ import {
   type ProjectNode,
   type SeriesStyle,
 } from "../../store/types";
-import type { BindingKineticsParams, BindingSaturationParams, LinearRegressionParams, NonlinearRegressionParams, CoxPHParams, PoissonRegressionParams, DemingRegressionParams } from "../../stats/types";
+import type { BindingKineticsParams, BindingSaturationParams, EnzymeInhibitionParams, LinearRegressionParams, NonlinearRegressionParams, CoxPHParams, PoissonRegressionParams, DemingRegressionParams } from "../../stats/types";
 import { useProjectStore } from "../../store/use-project-store";
 import { groupsOf, readTable, xyProblem } from "../../lib/dataset";
 import { paletteOf } from "../../lib/palettes";
@@ -26,7 +26,7 @@ import { useAnalysis } from "../analyses/use-analysis";
 import { GRAPHS, graphSeries, plotColumns } from ".";
 import { addFittedCurve } from "./fitted-curve";
 import { addDoseCurve } from "./dose-response-curve";
-import { addBindingCurve } from "./binding-curve";
+import { addBindingCurve, addEnzymeInhibitionCurve } from "./binding-curve";
 import { addSmoothCurve } from "./smooth-curve";
 import { addLogisticCurve } from "./logistic-curve";
 import { addForestPlot } from "./forest-plot";
@@ -313,6 +313,20 @@ export function GraphView({ node }: { node: ProjectNode }) {
     | BindingSaturationParams
     | BindingKineticsParams
     | undefined;
+  // A dose-response graph also draws a sibling enzyme-inhibition analysis's
+  // fitted curves — one per inhibitor concentration — from the same cached
+  // run (no extra R call), as the binding overlay above.
+  const inhibitionAnalysis =
+    type === "dose-response" ? analyses.find((n) => n.analysisType === "enzyme-inhibition") : undefined;
+  const inhibitionOutcome = useAnalysis(
+    inhibitionAnalysis?.analysisType,
+    data,
+    inhibitionAnalysis?.analysisParams,
+  );
+  const inhibitionFit = inhibitionOutcome && !("error" in inhibitionOutcome) ? inhibitionOutcome : null;
+  const inhibitionParams = (inhibitionAnalysis?.analysisParams ?? undefined) as
+    | EnzymeInhibitionParams
+    | undefined;
   // A logistic-curve graph fits its own curve (no analysis node needed): the
   // first Y series is the binary outcome, as in the analysis's default.
   const logisticY = columns[1]?.name;
@@ -451,6 +465,8 @@ export function GraphView({ node }: { node: ProjectNode }) {
       if (type === "xy-scatter" && options.demingAnalysisId) addDeming(fig, columns, options, demingParams, paint);
       if (doseFit) addDoseCurve(fig, columns, options, doseFit, paint, interpFit);
       if (bindingFit && bindingParams) addBindingCurve(fig, columns, options, bindingFit, bindingParams, paint);
+      if (inhibitionFit && inhibitionParams)
+        addEnzymeInhibitionCurve(fig, columns, options, inhibitionFit, inhibitionParams, paint);
       if (type === "smooth-curve" && smoothResult) addSmoothCurve(fig, columns, options, smoothResult, paint);
       if (logisticFit) addLogisticCurve(fig, columns, logisticFit, paint);
       if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint);
@@ -499,6 +515,8 @@ export function GraphView({ node }: { node: ProjectNode }) {
     interpFit,
     bindingFit,
     bindingParams,
+    inhibitionFit,
+    inhibitionParams,
     smoothResult,
     logisticFit,
     coxResult,
