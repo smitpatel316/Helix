@@ -21,6 +21,7 @@ import type {
   CompareTwoGroupsParams,
   CorrelationParams,
   CoxPHParams,
+  DoseResponseSpecialParams,
   EnzymeInhibitionParams,
   FrequencyDistributionParams,
   MultipleTTestsParams,
@@ -48,7 +49,15 @@ export type Question = { id: string; ask: string } & (
       /** Adds "Not sure — check for normality first", answered "yes" or "no" by Shapiro-Wilk. */
       normality?: boolean;
     }
-  | { kind: "number"; label: string; initial: number; min?: number; max?: number; step?: number; validate?: (value: number) => string | undefined }
+  | {
+      kind: "number";
+      label: string;
+      initial: number;
+      min?: number;
+      max?: number;
+      step?: number;
+      validate?: (value: number) => string | undefined;
+    }
   /** Several of `options`, all ticked at first: at least `min` (1 by default). */
   | { kind: "names"; options: string[]; min?: number }
   /** Free text, a single line — the answer is the raw string. `parse` checks
@@ -650,11 +659,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       // Background shared — the first option after the total series is the
       // second Y column, so it defaults to the second Y data set.
       (a.model === "one-site-total-and-ns" || a.model === "two-site-total-and-ns") &&
-        choice(
-          "y2",
-          "Which Y data set is the nonspecific binding?",
-          names(yNames(table).filter((n) => n !== a.y)),
-        ),
+        choice("y2", "Which Y data set is the nonspecific binding?", names(yNames(table).filter((n) => n !== a.y))),
     ],
     finish: (a) => ({
       type: "binding-saturation",
@@ -825,6 +830,110 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         if (km.value !== undefined) params.kmForMorrison = km.value;
       }
       return { type: "enzyme-inhibition", params };
+    },
+  },
+
+  // Dose-response — Special (plan 18): the model picker defaults to the
+  // SchildSlope = 1 variant (Prism's guide presents it first), so it is
+  // listed first (a choice question defaults to its first option). Y is a
+  // multi-select (default: all series, in table order); the next question
+  // names the assumed first series — the control (no antagonist) for
+  // Schild/EC50 shift, the full agonist for the operational model — and
+  // the user picks it explicitly, so a wrong first series is fixed by
+  // picking another one instead of re-ticking. Each included series
+  // except the control then gets its own antagonist-concentration field
+  // (the plan-17 per-series-number pattern), pre-filled from the column
+  // title and required when the title has none; B's units are one choice
+  // for all series (pA2 is the negative log of B in these units). Schild
+  // only: a HillSlope = 1.0 constraint choice, default free.
+  "dose-response-special": {
+    questions: (a, table) => {
+      const model = (a.model as DoseResponseSpecialParams["model"] | undefined) ?? "schild-slope-1";
+      const ys = (Array.isArray(a.ys) ? (a.ys as string[]) : undefined) ?? yNames(table);
+      const first = (a.first as string | undefined) ?? ys[0];
+      const isSchild = model === "schild" || model === "schild-slope-1";
+      const needsB = isSchild || model === "ec50-shift";
+      return [
+        choice("model", "Which dose-response — Special model should be fitted?", [
+          ["schild-slope-1", "Gaddum/Schild EC50 shift (SchildSlope = 1)"],
+          ["schild", "Gaddum/Schild EC50 shift (SchildSlope free)"],
+          ["ec50-shift", "EC50 shift"],
+          ["operational-partial", "Operational model — Partial agonist"],
+        ]),
+        {
+          id: "ys",
+          ask:
+            model === "operational-partial"
+              ? "Which Y data sets should be fitted? The first is the full agonist; the rest are partial agonists."
+              : "Which Y data sets should be fitted? Each is one antagonist concentration; the first is the control (no antagonist).",
+          kind: "names",
+          options: yNames(table),
+          min: 2,
+        },
+        // The assumed first series, named — proceeding picks it (or
+        // another series) explicitly, so the fit never silently takes
+        // the wrong series as the control / full agonist.
+        choice(
+          "first",
+          model === "operational-partial"
+            ? "The first series is the full agonist. Which series is it?"
+            : "The first series is the control (no antagonist). Which series is it?",
+          names(ys),
+        ),
+        // Schild / EC50 shift only: one B field per included series
+        // except the control, pre-filled from the column title
+        // ("10 nM" → 10); a blank field blocks Next.
+        ...(needsB
+          ? ys
+              .filter((name) => name !== first)
+              .map((name) => ({
+                id: `B:${name}`,
+                ask: `Antagonist concentration B for “${name}” (same units for every series; pA2 is reported in these units).`,
+                kind: "text" as const,
+                label: `B for “${name}”`,
+                initial: parseInhibitorConcentration(name)?.toString() ?? "",
+                placeholder: "e.g. 1e-8",
+                parse: (text: string) => parseRequiredNonNegative(text, "antagonist concentration"),
+              }))
+          : []),
+        needsB &&
+          choice(
+            "bUnits",
+            "Which units is B entered in? pA2 is the negative log of B in these units — a nanomolar antagonist has pA2 ≈ 8–9 in M, ≈ −1 in nM.",
+            [
+              ["M", "M (molar)"],
+              ["nM", "nM (nanomolar)"],
+              ["µM", "µM (micromolar)"],
+            ],
+          ),
+        isSchild &&
+          choice(
+            "fixHillSlope",
+            "Constrain HillSlope to 1.0? Prism's guide suggests considering it — the fit is unconstrained by default.",
+            [
+              ["no", "No — fit HillSlope freely"],
+              ["yes", "Yes — constrain HillSlope to 1.0"],
+            ],
+          ),
+      ];
+    },
+    finish: (a, table) => {
+      const model = (a.model as DoseResponseSpecialParams["model"] | undefined) ?? "schild-slope-1";
+      const picked = (Array.isArray(a.ys) ? (a.ys as string[]) : undefined) ?? yNames(table);
+      const first = (a.first as string | undefined) ?? picked[0];
+      const ys = [first, ...picked.filter((n) => n !== first)];
+      const params: DoseResponseSpecialParams = { model, ys };
+      if (model === "schild" || model === "schild-slope-1" || model === "ec50-shift") {
+        const antagonistConcentrations: Record<string, number> = { [first]: 0 };
+        for (const name of ys.slice(1)) {
+          const parsed = parseRequiredNonNegative(String(a[`B:${name}`] ?? ""), "antagonist concentration");
+          if (parsed.value !== undefined) antagonistConcentrations[name] = parsed.value;
+        }
+        params.antagonistConcentrations = antagonistConcentrations;
+        params.bUnits = (a.bUnits as string | undefined) ?? "M";
+      }
+      if (model === "schild" || model === "schild-slope-1") params.fixHillSlope = a.fixHillSlope === "yes";
+      return { type: "dose-response-special", params };
     },
   },
 
@@ -1183,10 +1292,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         choice(
           "stratifyBy",
           "Stratify the survival curves by which covariate? Only 0/1 (binary) covariates are offered.",
-          [
-            ...binary.map((n): [string, string] => [n, n]),
-            ["none", "None — one curve for all subjects"],
-          ],
+          [...binary.map((n): [string, string] => [n, n]), ["none", "None — one curve for all subjects"]],
         ),
         choice("ties", "How should tied event times be handled?", [
           ["efron", "Efron (recommended)"],
@@ -1201,9 +1307,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         status: a.status as string,
         covariates: a.covariates as string[],
         ties: (a.ties as CoxPHParams["ties"] | undefined) ?? "efron",
-        ...(a.stratifyBy !== undefined && a.stratifyBy !== "none"
-          ? { stratifyBy: a.stratifyBy as string }
-          : {}),
+        ...(a.stratifyBy !== undefined && a.stratifyBy !== "none" ? { stratifyBy: a.stratifyBy as string } : {}),
       },
     }),
   },

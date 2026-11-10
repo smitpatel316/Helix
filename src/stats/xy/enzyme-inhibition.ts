@@ -2,18 +2,13 @@
 // global fits over substrate–velocity curves at several inhibitor
 // concentrations — one set of shared parameters (Vmax, Km, Ki, and Alpha
 // for mixed) fitted simultaneously to every series — plus the single-curve
-// tight-binding Morrison Ki fit. All fits are base-R nls() algorithm
-// "port" through the shared fitModelSpec helper (see nonlinear-fit.ts) —
-// no second nls plumbing. CIs are the Wald 95% CIs of the shared plan-09
-// plumbing (estimate ± t·SE); profile-likelihood confint() would be a
-// cross-cutting change to every nonlinear fit, not a plan-17 one.
-// NOTE (plan 18 sequencing): plan 18 (dose-response — special) has not
-// landed yet, so its shared global-fit.ts helper does not exist — the
-// stacked-nls construction (one nls() over concatenated x, y and the
-// per-point inhibitor vector I) lives here. Plan 18 must generalise it
-// into the shared helper and re-point this runner at it, with npm test
-// green throughout. There must be exactly one stacked-nls implementation
-// once both have landed.
+// tight-binding Morrison Ki fit. The global fits run through the shared
+// global-fit helper (see xy/global-fit.ts, plan 18) — one stacked nls()
+// over concatenated x, y and the per-point inhibitor vector — so there is
+// exactly one stacked-nls implementation in the repo. CIs are the Wald 95%
+// CIs of the shared plan-09 plumbing (estimate ± t·SE);
+// profile-likelihood confint() would be a cross-cutting change to every
+// nonlinear fit, not a plan-17 one.
 // No Lineweaver–Burk fitting anywhere: Prism offers Lineweaver–Burk only
 // as a display Transform, never to estimate Km/Vmax, and Helix has no
 // transform infrastructure — a display-only LB graph, if ever added, must
@@ -27,9 +22,10 @@ import type {
   StatRow,
 } from "../types";
 import { ENZYME_INHIBITION_MODELS } from "../types";
-import { describe, rVec } from "../column/base";
+import { describe } from "../column/base";
 import { num } from "../../lib/format";
 import { fitModelSpec, type ModelSpec } from "./nonlinear-fit";
+import { runGlobalFit, type GlobalModelDef } from "./global-fit";
 import { pairUp, splitXY, xyProblem } from "../../lib/dataset";
 
 export const ENZYME_INHIBITION_LABEL: Record<EnzymeInhibitionModel, string> = {
@@ -114,57 +110,53 @@ export function evaluateEnzymeInhibitionModel(
   }
 }
 
-/** The R spec for one global model. The stacked vectors `x`, `y` and `I`
- *  (inhibitor concentration per point) are assigned by the runner before
- *  the fit. Start values are computed in TS from the data (see
- *  globalStarts) and inlined — nls "port" needs starts strictly inside
- *  the (0, ∞) bounds, and the plan's start rules are data-driven, not
- *  constants. AICc is a derived row: AIC(m) + 2k(k+1)/(n−k−1). */
-function globalSpec(model: EnzymeInhibitionModel, starts: { vmax: number; km: number; ki: number }): ModelSpec {
+/** The global model as a global-fit definition: the R formula references
+ *  B (the per-point inhibitor concentration, the helper's covariate
+ *  vector) and the shared parameters Vmax/Km/Ki/Alpha. Start values are
+ *  computed in TS from the data (see globalStarts) and inlined — nls
+ *  "port" needs starts strictly inside the (0, ∞) bounds, and the plan's
+ *  start rules are data-driven, not constants. AICc is a derived row:
+ *  AIC(m) + 2k(k+1)/(n−k−1). */
+function globalModelDef(
+  model: EnzymeInhibitionModel,
+  starts: { vmax: number; km: number; ki: number },
+): GlobalModelDef {
   const { vmax, km, ki } = starts;
   const aicc = { label: "AICc", expr: "AIC(m)+2*length(cf)*(length(cf)+1)/(length(y)-length(cf)-1)" };
+  const shared: GlobalModelDef["params"] = [
+    { name: "Vmax", shared: true, start: () => vmax, lower: 0 },
+    { name: "Km", shared: true, start: () => km, lower: 0 },
+    { name: "Ki", shared: true, start: () => ki, lower: 0 },
+  ];
+  const evaluate: GlobalModelDef["evaluate"] = (coefficients, s, _i, x) =>
+    evaluateEnzymeInhibitionModel(model, coefficients, x, s.covariate);
   switch (model) {
     case "competitive":
-      // Y = Vmax·X/(KmApp + X), KmApp = Km·(1 + I/Ki).
-      return {
-        kind: "nls",
-        fit: `m<-nls(y~Vmax*x/(Km*(1+I/Ki)+x),start=list(Vmax=${vmax},Km=${km},Ki=${ki}),algorithm="port",lower=c(0,0,0),upper=c(Inf,Inf,Inf))`,
-        terms: ["Vmax", "Km", "Ki"],
-        derived: [aicc],
-      };
+      // Y = Vmax·X/(KmApp + X), KmApp = Km·(1 + B/Ki).
+      return { formula: "Vmax*x/(Km*(1+B/Ki)+x)", params: shared, derived: [aicc], evaluate };
     case "noncompetitive":
-      // Y = VmaxApp·X/(Km + X), VmaxApp = Vmax/(1 + I/Ki).
-      return {
-        kind: "nls",
-        fit: `m<-nls(y~(Vmax/(1+I/Ki))*x/(Km+x),start=list(Vmax=${vmax},Km=${km},Ki=${ki}),algorithm="port",lower=c(0,0,0),upper=c(Inf,Inf,Inf))`,
-        terms: ["Vmax", "Km", "Ki"],
-        derived: [aicc],
-      };
+      // Y = VmaxApp·X/(Km + X), VmaxApp = Vmax/(1 + B/Ki).
+      return { formula: "(Vmax/(1+B/Ki))*x/(Km+x)", params: shared, derived: [aicc], evaluate };
     case "uncompetitive":
-      // Y = VmaxApp·X/(KmApp + X), VmaxApp = Vmax/(1 + I/Ki), KmApp = Km/(1 + I/Ki).
-      return {
-        kind: "nls",
-        fit: `m<-nls(y~(Vmax/(1+I/Ki))*x/(Km/(1+I/Ki)+x),start=list(Vmax=${vmax},Km=${km},Ki=${ki}),algorithm="port",lower=c(0,0,0),upper=c(Inf,Inf,Inf))`,
-        terms: ["Vmax", "Km", "Ki"],
-        derived: [aicc],
-      };
+      // Y = VmaxApp·X/(KmApp + X), VmaxApp = Vmax/(1 + B/Ki), KmApp = Km/(1 + B/Ki).
+      return { formula: "(Vmax/(1+B/Ki))*x/(Km/(1+B/Ki)+x)", params: shared, derived: [aicc], evaluate };
     case "mixed":
-      // Y = VmaxApp·X/(KmApp + X), VmaxApp = Vmax/(1 + I/(Alpha·Ki)),
-      // KmApp = Km·(1 + I/Ki)/(1 + I/(Alpha·Ki)). Alpha starts at 1 (the
+      // Y = VmaxApp·X/(KmApp + X), VmaxApp = Vmax/(1 + B/(Alpha·Ki)),
+      // KmApp = Km·(1 + B/Ki)/(1 + B/(Alpha·Ki)). Alpha starts at 1 (the
       // noncompetitive case) — the fit moves it toward the mechanism the
       // data support. Alpha is capped at 1e6: the competitive limit is at
       // Alpha → ∞, so on competitive-truth data the port optimizer chases
       // Alpha to infinity and fails ("iteration limit reached" / "false
       // convergence", verified in WebR); at the 1e6 cap the model is
-      // competitive to within I/(1e6·Ki), port converges at the boundary,
+      // competitive to within B/(1e6·Ki), port converges at the boundary,
       // and Vmax/Km/Ki recover within ~1e-5. The cap is inactive for
       // identified Alphas (Alpha = 2 recovers exactly). A fit that lands
       // on the cap reports Alpha = 1e6 and the boundary note fires.
       return {
-        kind: "nls",
-        fit: `m<-nls(y~(Vmax/(1+I/(Alpha*Ki)))*x/(Km*(1+I/Ki)/(1+I/(Alpha*Ki))+x),start=list(Vmax=${vmax},Km=${km},Ki=${ki},Alpha=1),algorithm="port",lower=c(0,0,0,0),upper=c(Inf,Inf,Inf,1e6))`,
-        terms: ["Vmax", "Km", "Ki", "Alpha"],
+        formula: "(Vmax/(1+B/(Alpha*Ki)))*x/(Km*(1+B/Ki)/(1+B/(Alpha*Ki))+x)",
+        params: [...shared, { name: "Alpha", shared: true, start: () => 1, lower: 0, upper: 1e6 }],
         derived: [aicc],
+        evaluate,
       };
     case "morrison":
       // Unreachable — Morrison has its own spec (morrisonSpec), not a stacked fit.
@@ -330,16 +322,12 @@ export async function runEnzymeInhibition(
     zero,
     series.filter((s) => s.I !== 0),
   );
-  const spec = globalSpec(model, starts);
-  // Stack the series (one nls() over concatenated x, y and the per-point
-  // inhibitor vector I) — the stacked-nls construction plan 18 must
-  // generalise into the shared global-fit helper (see the file header).
-  const fitXs = series.flatMap((s) => s.x);
-  const fitYs = series.flatMap((s) => s.y);
-  const fitIs = series.flatMap((s) => s.x.map(() => s.I));
-  const extra = `I<-${rVec(fitIs)};`;
+  const def = globalModelDef(model, starts);
   try {
-    const { coefficients, derived, stats } = await fitModelSpec(fitXs, fitYs, spec, extra);
+    const { coefficients, derived, stats } = await runGlobalFit(
+      series.map((s) => ({ name: s.col.name, x: s.x, y: s.y, covariate: s.I })),
+      def,
+    );
     const vmax = coefOf(coefficients, "Vmax");
     const km = coefOf(coefficients, "Km");
     const ki = coefOf(coefficients, "Ki");
@@ -350,7 +338,7 @@ export async function runEnzymeInhibition(
     if (alpha != null && alpha <= 0)
       return { error: "Fitted Alpha ≤ 0 — the data do not support this inhibition model." };
 
-    const k = spec.terms.length;
+    const k = def.params.length;
     const notes = [
       `Enzyme kinetics — Inhibition fit ("${label}") of ${series.map((s) => `“${s.col.name}”`).join(", ")} on “${xCol.name}” — one global fit: Vmax, Km${model === "mixed" ? ", Ki and Alpha" : " and Ki"} are shared across all ${series.length} series.`,
       `Inhibitor concentrations: ${series.map((s) => `“${s.col.name}” [I] = ${s.I}`).join(", ")} (same units for every series; Ki is reported in these units).`,

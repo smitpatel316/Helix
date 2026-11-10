@@ -27730,5 +27730,889 @@
     "ciHigh": 2
    }
   ]
+ },
+ "dose-response-special schild {\"model\":\"schild-slope-1\",\"antagonistConcentrations\":{\"0 M\":0,\"1e-8 M\":1e-8,\"1e-7 M\":1e-7}}": {
+  "testType": "dose-response-special",
+  "subtitle": "Gaddum/Schild EC50 shift (SchildSlope = 1)",
+  "equation": "Y = -2.372e-8 + (100 − -2.372e-8)/(1 + 10^((-6 + log10(1 + B/1e-8 M) − X)·1))",
+  "stats": [
+   {
+    "label": "R squared (0 M)",
+    "value": 1
+   },
+   {
+    "label": "R squared (1e-8 M)",
+    "value": 1
+   },
+   {
+    "label": "R squared (1e-7 M)",
+    "value": 1
+   },
+   {
+    "label": "EC50 (control)",
+    "value": 9.999999983e-7
+   },
+   {
+    "label": "Kb (M)",
+    "value": 1e-8
+   },
+   {
+    "label": "Dose ratio (1e-8 M)",
+    "value": 2
+   },
+   {
+    "label": "Dose ratio (1e-7 M)",
+    "value": 11
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 1.970959066e-8
+   },
+   {
+    "label": "Sum of squares",
+    "value": 8.546295209e-15
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 22
+   },
+   {
+    "label": "N",
+    "value": 27
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": -6,
+    "sd": 1.369306394,
+    "sem": 0.4564354646,
+    "median": -6,
+    "n": 9
+   },
+   {
+    "name": "0 M",
+    "mean": 50,
+    "sd": 41.6925377,
+    "sem": 13.89751257,
+    "median": 50,
+    "n": 9
+   },
+   {
+    "name": "1e-8 M",
+    "mean": 43.38706623,
+    "sd": 41.13276019,
+    "sem": 13.71092006,
+    "median": 33.33333333,
+    "n": 9
+   },
+   {
+    "name": "1e-7 M",
+    "mean": 27.40404409,
+    "sd": 34.83206227,
+    "sem": 11.61068742,
+    "median": 8.333333333,
+    "n": 9
+   }
+  ],
+  "notes": "Dose-response — Special fit (\"Gaddum/Schild EC50 shift (SchildSlope = 1)\") of “0 M”, “1e-8 M”, “1e-7 M” on “X” — one global fit: Bottom, Top, LogEC50, HillSlope and pA2 are shared across all 3 series. The first series (“0 M”) is the control (no antagonist). Antagonist concentrations: “0 M” B = 0 M, “1e-8 M” B = 1e-8 M, “1e-7 M” B = 1e-7 M. B is entered in M; pA2 is the negative log of B in these units — a negative pA2 is not an error (the same antagonist has pA2 ≈ 8 in M and ≈ −1 in nM). Kb = 10^(−pA2) = 1e-8 M. SchildSlope is fixed at 1, so pA2 = pKb (the negative log of the antagonist dissociation constant). Starting values: Bottom = 0.09083, Top = 99.01, LogEC50 = -6, HillSlope = 1, pA2 = 7.26.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": -2.371892101e-8,
+    "stdError": 6.238600502e-9,
+    "t": -3.801961835,
+    "p": 0.0009764274038,
+    "ciLow": -3.665698657e-8,
+    "ciHigh": -1.078085545e-8
+   },
+   {
+    "term": "Top",
+    "estimate": 100,
+    "stdError": 1.20232661e-8,
+    "t": 8317207585,
+    "p": 5.661595527e-205,
+    "ciLow": 99.99999998,
+    "ciHigh": 100
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -6.000000001,
+    "stdError": 2.607930784e-10,
+    "t": -23006745570,
+    "p": 1.075549907e-214,
+    "ciLow": -6.000000001,
+    "ciHigh": -6
+   },
+   {
+    "term": "HillSlope",
+    "estimate": 0.9999999996,
+    "stdError": 3.634972364e-10,
+    "t": 2751052551,
+    "p": 2.106052722e-194,
+    "ciLow": 0.9999999988,
+    "ciHigh": 1
+   },
+   {
+    "term": "pA2",
+    "estimate": 8,
+    "stdError": 3.502867969e-10,
+    "t": 22838428600,
+    "p": 1.264118902e-214,
+    "ciLow": 7.999999999,
+    "ciHigh": 8.000000001
+   }
+  ]
+ },
+ "dose-response-special schild {\"model\":\"schild\",\"antagonistConcentrations\":{\"0 M\":0,\"1e-8 M\":1e-8,\"1e-7 M\":1e-7}}": {
+  "testType": "dose-response-special",
+  "subtitle": "Gaddum/Schild EC50 shift (SchildSlope free)",
+  "equation": "Y = -2.637e-8 + (100 − -2.637e-8)/(1 + 10^((-6 + log10(1 + (B/1e-8 M)^1) − X)·1))",
+  "stats": [
+   {
+    "label": "R squared (0 M)",
+    "value": 1
+   },
+   {
+    "label": "R squared (1e-8 M)",
+    "value": 1
+   },
+   {
+    "label": "R squared (1e-7 M)",
+    "value": 1
+   },
+   {
+    "label": "EC50 (control)",
+    "value": 9.99999999e-7
+   },
+   {
+    "label": "Kb (M)",
+    "value": 9.999999996e-9
+   },
+   {
+    "label": "Dose ratio (1e-8 M)",
+    "value": 2
+   },
+   {
+    "label": "Dose ratio (1e-7 M)",
+    "value": 11
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 1.630526755e-8
+   },
+   {
+    "label": "Sum of squares",
+    "value": 5.58309675e-15
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 21
+   },
+   {
+    "label": "N",
+    "value": 27
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": -6,
+    "sd": 1.369306394,
+    "sem": 0.4564354646,
+    "median": -6,
+    "n": 9
+   },
+   {
+    "name": "0 M",
+    "mean": 50,
+    "sd": 41.6925377,
+    "sem": 13.89751257,
+    "median": 50,
+    "n": 9
+   },
+   {
+    "name": "1e-8 M",
+    "mean": 43.38706623,
+    "sd": 41.13276019,
+    "sem": 13.71092006,
+    "median": 33.33333333,
+    "n": 9
+   },
+   {
+    "name": "1e-7 M",
+    "mean": 27.40404409,
+    "sd": 34.83206227,
+    "sem": 11.61068742,
+    "median": 8.333333333,
+    "n": 9
+   }
+  ],
+  "notes": "Dose-response — Special fit (\"Gaddum/Schild EC50 shift (SchildSlope free)\") of “0 M”, “1e-8 M”, “1e-7 M” on “X” — one global fit: Bottom, Top, LogEC50, HillSlope and pA2 are shared across all 3 series. The first series (“0 M”) is the control (no antagonist). Antagonist concentrations: “0 M” B = 0 M, “1e-8 M” B = 1e-8 M, “1e-7 M” B = 1e-7 M. B is entered in M; pA2 is the negative log of B in these units — a negative pA2 is not an error (the same antagonist has pA2 ≈ 8 in M and ≈ −1 in nM). Kb = 10^(−pA2) = 1e-8 M. SchildSlope is fitted freely. Starting values: Bottom = 0.09083, Top = 99.01, LogEC50 = -6, HillSlope = 1, pA2 = 7.26, SchildSlope = 1.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": -2.636931262e-8,
+    "stdError": 4.697373639e-9,
+    "t": -5.613628944,
+    "p": 0.00001429626337,
+    "ciLow": -3.613803587e-8,
+    "ciHigh": -1.660058937e-8
+   },
+   {
+    "term": "Top",
+    "estimate": 100,
+    "stdError": 1.000520984e-8,
+    "t": 9994792872,
+    "p": 1.329581668e-197,
+    "ciLow": 99.99999998,
+    "ciHigh": 100
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -6,
+    "stdError": 2.259198705e-10,
+    "t": -26558088880,
+    "p": 1.624918432e-206,
+    "ciLow": -6.000000001,
+    "ciHigh": -6
+   },
+   {
+    "term": "HillSlope",
+    "estimate": 0.9999999997,
+    "stdError": 3.069982801e-10,
+    "t": 3257347238,
+    "p": 2.232644507e-187,
+    "ciLow": 0.999999999,
+    "ciHigh": 1
+   },
+   {
+    "term": "pA2",
+    "estimate": 8,
+    "stdError": 5.268754426e-10,
+    "t": 15183854390,
+    "p": 2.041465999e-201,
+    "ciLow": 7.999999999,
+    "ciHigh": 8.000000001
+   },
+   {
+    "term": "SchildSlope",
+    "estimate": 0.9999999998,
+    "stdError": 4.575725017e-10,
+    "t": 2185446014,
+    "p": 9.741437466e-184,
+    "ciLow": 0.9999999989,
+    "ciHigh": 1.000000001
+   }
+  ]
+ },
+ "dose-response-special schild {\"model\":\"schild-slope-1\",\"antagonistConcentrations\":{\"0 M\":0,\"1e-8 M\":10,\"1e-7 M\":100},\"bUnits\":\"nM\"}": {
+  "testType": "dose-response-special",
+  "subtitle": "Gaddum/Schild EC50 shift (SchildSlope = 1)",
+  "equation": "Y = -3.8e-8 + (100 − -3.8e-8)/(1 + 10^((-6 + log10(1 + B/10 nM) − X)·1))",
+  "stats": [
+   {
+    "label": "R squared (0 M)",
+    "value": 1
+   },
+   {
+    "label": "R squared (1e-8 M)",
+    "value": 1
+   },
+   {
+    "label": "R squared (1e-7 M)",
+    "value": 1
+   },
+   {
+    "label": "EC50 (control)",
+    "value": 9.999999994e-7
+   },
+   {
+    "label": "Kb (nM)",
+    "value": 10
+   },
+   {
+    "label": "Dose ratio (1e-8 M)",
+    "value": 2
+   },
+   {
+    "label": "Dose ratio (1e-7 M)",
+    "value": 11
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.041806041e-8
+   },
+   {
+    "label": "Sum of squares",
+    "value": 9.171738203e-15
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 22
+   },
+   {
+    "label": "N",
+    "value": 27
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": -6,
+    "sd": 1.369306394,
+    "sem": 0.4564354646,
+    "median": -6,
+    "n": 9
+   },
+   {
+    "name": "0 M",
+    "mean": 50,
+    "sd": 41.6925377,
+    "sem": 13.89751257,
+    "median": 50,
+    "n": 9
+   },
+   {
+    "name": "1e-8 M",
+    "mean": 43.38706623,
+    "sd": 41.13276019,
+    "sem": 13.71092006,
+    "median": 33.33333333,
+    "n": 9
+   },
+   {
+    "name": "1e-7 M",
+    "mean": 27.40404409,
+    "sd": 34.83206227,
+    "sem": 11.61068742,
+    "median": 8.333333333,
+    "n": 9
+   }
+  ],
+  "notes": "Dose-response — Special fit (\"Gaddum/Schild EC50 shift (SchildSlope = 1)\") of “0 M”, “1e-8 M”, “1e-7 M” on “X” — one global fit: Bottom, Top, LogEC50, HillSlope and pA2 are shared across all 3 series. The first series (“0 M”) is the control (no antagonist). Antagonist concentrations: “0 M” B = 0 nM, “1e-8 M” B = 10 nM, “1e-7 M” B = 100 nM. B is entered in nM; pA2 is the negative log of B in these units — a negative pA2 is not an error (the same antagonist has pA2 ≈ 8 in M and ≈ −1 in nM). Kb = 10^(−pA2) = 10 nM. SchildSlope is fixed at 1, so pA2 = pKb (the negative log of the antagonist dissociation constant). Starting values: Bottom = 0.09083, Top = 99.01, LogEC50 = -6, HillSlope = 1, pA2 = -1.74.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": -3.7996802e-8,
+    "stdError": 6.027848512e-9,
+    "t": -6.30354295,
+    "p": 0.000002414160756,
+    "ciLow": -5.049779468e-8,
+    "ciHigh": -2.549580931e-8
+   },
+   {
+    "term": "Top",
+    "estimate": 100,
+    "stdError": 1.253729739e-8,
+    "t": 7976200684,
+    "p": 1.422103311e-204,
+    "ciLow": 99.99999999,
+    "ciHigh": 100
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -6,
+    "stdError": 2.703382183e-10,
+    "t": -22194420150,
+    "p": 2.371816408e-214,
+    "ciLow": -6.000000001,
+    "ciHigh": -6
+   },
+   {
+    "term": "HillSlope",
+    "estimate": 0.9999999989,
+    "stdError": 3.851469275e-10,
+    "t": 2596411726,
+    "p": 7.520147874e-194,
+    "ciLow": 0.9999999981,
+    "ciHigh": 0.9999999997
+   },
+   {
+    "term": "pA2",
+    "estimate": -1,
+    "stdError": 3.62880667e-10,
+    "t": -2755726857,
+    "p": 2.028845728e-194,
+    "ciLow": -1.000000001,
+    "ciHigh": -0.9999999993
+   }
+  ]
+ },
+ "dose-response-special schild {\"model\":\"schild-slope-1\"}": {
+  "testType": "dose-response-special",
+  "subtitle": "Gaddum/Schild EC50 shift (SchildSlope = 1)",
+  "equation": "Y = -2.372e-8 + (100 − -2.372e-8)/(1 + 10^((-6 + log10(1 + B/1e-8 M) − X)·1))",
+  "stats": [
+   {
+    "label": "R squared (0 M)",
+    "value": 1
+   },
+   {
+    "label": "R squared (1e-8 M)",
+    "value": 1
+   },
+   {
+    "label": "R squared (1e-7 M)",
+    "value": 1
+   },
+   {
+    "label": "EC50 (control)",
+    "value": 9.999999983e-7
+   },
+   {
+    "label": "Kb (M)",
+    "value": 1e-8
+   },
+   {
+    "label": "Dose ratio (1e-8 M)",
+    "value": 2
+   },
+   {
+    "label": "Dose ratio (1e-7 M)",
+    "value": 11
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 1.970959066e-8
+   },
+   {
+    "label": "Sum of squares",
+    "value": 8.546295209e-15
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 22
+   },
+   {
+    "label": "N",
+    "value": 27
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": -6,
+    "sd": 1.369306394,
+    "sem": 0.4564354646,
+    "median": -6,
+    "n": 9
+   },
+   {
+    "name": "0 M",
+    "mean": 50,
+    "sd": 41.6925377,
+    "sem": 13.89751257,
+    "median": 50,
+    "n": 9
+   },
+   {
+    "name": "1e-8 M",
+    "mean": 43.38706623,
+    "sd": 41.13276019,
+    "sem": 13.71092006,
+    "median": 33.33333333,
+    "n": 9
+   },
+   {
+    "name": "1e-7 M",
+    "mean": 27.40404409,
+    "sd": 34.83206227,
+    "sem": 11.61068742,
+    "median": 8.333333333,
+    "n": 9
+   }
+  ],
+  "notes": "Dose-response — Special fit (\"Gaddum/Schild EC50 shift (SchildSlope = 1)\") of “0 M”, “1e-8 M”, “1e-7 M” on “X” — one global fit: Bottom, Top, LogEC50, HillSlope and pA2 are shared across all 3 series. The first series (“0 M”) is the control (no antagonist). Antagonist concentrations: “0 M” B = 0 M, “1e-8 M” B = 1e-8 M, “1e-7 M” B = 1e-7 M. B is entered in M; pA2 is the negative log of B in these units — a negative pA2 is not an error (the same antagonist has pA2 ≈ 8 in M and ≈ −1 in nM). Kb = 10^(−pA2) = 1e-8 M. SchildSlope is fixed at 1, so pA2 = pKb (the negative log of the antagonist dissociation constant). Starting values: Bottom = 0.09083, Top = 99.01, LogEC50 = -6, HillSlope = 1, pA2 = 7.26.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": -2.371892101e-8,
+    "stdError": 6.238600502e-9,
+    "t": -3.801961835,
+    "p": 0.0009764274038,
+    "ciLow": -3.665698657e-8,
+    "ciHigh": -1.078085545e-8
+   },
+   {
+    "term": "Top",
+    "estimate": 100,
+    "stdError": 1.20232661e-8,
+    "t": 8317207585,
+    "p": 5.661595527e-205,
+    "ciLow": 99.99999998,
+    "ciHigh": 100
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -6.000000001,
+    "stdError": 2.607930784e-10,
+    "t": -23006745570,
+    "p": 1.075549907e-214,
+    "ciLow": -6.000000001,
+    "ciHigh": -6
+   },
+   {
+    "term": "HillSlope",
+    "estimate": 0.9999999996,
+    "stdError": 3.634972364e-10,
+    "t": 2751052551,
+    "p": 2.106052722e-194,
+    "ciLow": 0.9999999988,
+    "ciHigh": 1
+   },
+   {
+    "term": "pA2",
+    "estimate": 8,
+    "stdError": 3.502867969e-10,
+    "t": 22838428600,
+    "p": 1.264118902e-214,
+    "ciLow": 7.999999999,
+    "ciHigh": 8.000000001
+   }
+  ]
+ },
+ "dose-response-special ec50shift {\"model\":\"ec50-shift\",\"antagonistConcentrations\":{\"0 nM\":0,\"10 nM\":10},\"bUnits\":\"nM\"}": {
+  "testType": "dose-response-special",
+  "subtitle": "EC50 shift",
+  "equation": "Y = 3.855e-9 + (100 − 3.855e-9)/(1 + 10^((LogEC50 − X)·1)), LogEC50: “0 nM” = -6, “10 nM” = -5",
+  "stats": [
+   {
+    "label": "R squared (0 nM)",
+    "value": 1
+   },
+   {
+    "label": "R squared (10 nM)",
+    "value": 1
+   },
+   {
+    "label": "Dose ratio (10 nM)",
+    "value": 10
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 1.35993823e-8
+   },
+   {
+    "label": "Sum of squares",
+    "value": 2.404261586e-15
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 13
+   },
+   {
+    "label": "N",
+    "value": 18
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": -6,
+    "sd": 1.369306394,
+    "sem": 0.4564354646,
+    "median": -6,
+    "n": 9
+   },
+   {
+    "name": "0 nM",
+    "mean": 50,
+    "sd": 41.6925377,
+    "sem": 13.89751257,
+    "median": 50,
+    "n": 9
+   },
+   {
+    "name": "10 nM",
+    "mean": 28.27450811,
+    "sd": 35.37642656,
+    "sem": 11.79214219,
+    "median": 9.090909091,
+    "n": 9
+   }
+  ],
+  "notes": "Dose-response — Special fit (\"EC50 shift\") of “0 nM”, “10 nM” on “X” — one global fit: Bottom, Top and HillSlope are shared across all 2 series; each series has its own LogEC50. The first series (“0 nM”) is the control (no antagonist). Antagonist concentrations: “0 nM” B = 0 nM, “10 nM” B = 10 nM. Starting values: Bottom = 0.0999, Top = 99.01, HillSlope = 1, LogEC50 = median(X) per series.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": 3.855298777e-9,
+    "stdError": 4.490545211e-9,
+    "t": 0.8585369027,
+    "p": 0.4061479363,
+    "ciLow": -5.845934348e-9,
+    "ciHigh": 1.35565319e-8
+   },
+   {
+    "term": "Top",
+    "estimate": 99.99999999,
+    "stdError": 1.031105001e-8,
+    "t": 9698333335,
+    "p": 5.625927714e-124,
+    "ciLow": 99.99999997,
+    "ciHigh": 100
+   },
+   {
+    "term": "HillSlope",
+    "estimate": 1.000000001,
+    "stdError": 3.006593556e-10,
+    "t": 3326023228,
+    "p": 6.197662521e-118,
+    "ciLow": 1,
+    "ciHigh": 1.000000001
+   },
+   {
+    "term": "LogEC50[0 nM]",
+    "estimate": -6,
+    "stdError": 2.042645513e-10,
+    "t": -29373672330,
+    "p": 3.117448881e-130,
+    "ciLow": -6,
+    "ciHigh": -5.999999999
+   },
+   {
+    "term": "LogEC50[10 nM]",
+    "estimate": -5,
+    "stdError": 1.989404379e-10,
+    "t": -25133150670,
+    "p": 2.366172407e-129,
+    "ciLow": -5,
+    "ciHigh": -4.999999999
+   },
+   {
+    "term": "EC50[0 nM]",
+    "estimate": 0.000001000000001,
+    "stdError": null,
+    "t": null,
+    "p": null,
+    "ciLow": null,
+    "ciHigh": null
+   },
+   {
+    "term": "EC50[10 nM]",
+    "estimate": 0.00001000000001,
+    "stdError": null,
+    "t": null,
+    "p": null,
+    "ciLow": null,
+    "ciHigh": null
+   }
+  ]
+ },
+ "dose-response-special operational {\"model\":\"operational-partial\"}": {
+  "testType": "dose-response-special",
+  "subtitle": "Operational model — Partial agonist",
+  "equation": "Full agonist: Y = 3.447e-7 + (100 − 3.447e-7)/(1 + 10^((-7 − X)·1)); partial agonists: Y = 3.447e-7 + (100 − 3.447e-7)/(1 + operate), operate = ((10^logKA + 10^X)/(10^(logtau + X)))^1",
+  "stats": [
+   {
+    "label": "R squared (Full agonist)",
+    "value": 1
+   },
+   {
+    "label": "R squared (Partial agonist)",
+    "value": 1
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 1.440383352e-7
+   },
+   {
+    "label": "Sum of squares",
+    "value": 2.489645039e-13
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 12
+   },
+   {
+    "label": "N",
+    "value": 18
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": -6,
+    "sd": 1.369306394,
+    "sem": 0.4564354646,
+    "median": -6,
+    "n": 9
+   },
+   {
+    "name": "Full agonist",
+    "mean": 71.72549189,
+    "sd": 35.37642656,
+    "sem": 11.79214219,
+    "median": 90.90909091,
+    "n": 9
+   },
+   {
+    "name": "Partial agonist",
+    "mean": 48.29216213,
+    "sd": 29.86081941,
+    "sem": 9.95360647,
+    "median": 61.25741133,
+    "n": 9
+   }
+  ],
+  "notes": "Dose-response — Special fit (\"Operational model — Partial agonist\") of “Full agonist”, “Partial agonist” on “X” — one global fit: Basal, Effectmax and n are shared across all 2 series; the first series (“Full agonist”) is fitted as a 4PL (the full agonist) and the rest as partial agonists. Starting values: Basal = 3.036, Effectmax = 99.9, LogEC50 (full agonist) = -6, n = 1, logKA = median(X) per partial agonist, logtau = 0.",
+  "coefficients": [
+   {
+    "term": "Basal",
+    "estimate": 3.446634334e-7,
+    "stdError": 1.010425223e-7,
+    "t": 3.411073137,
+    "p": 0.005163000374,
+    "ciLow": 1.245106895e-7,
+    "ciHigh": 5.648161773e-7
+   },
+   {
+    "term": "Effectmax",
+    "estimate": 100.0000001,
+    "stdError": 7.748792688e-8,
+    "t": 1290523622,
+    "p": 3.156516021e-104,
+    "ciLow": 99.99999991,
+    "ciHigh": 100.0000003
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -6.999999994,
+    "stdError": 2.563234858e-9,
+    "t": -2730924157,
+    "p": 3.914567902e-108,
+    "ciLow": -7,
+    "ciHigh": -6.999999989
+   },
+   {
+    "term": "n",
+    "estimate": 1.000000008,
+    "stdError": 4.074331624e-9,
+    "t": 245439031.6,
+    "p": 1.409535291e-95,
+    "ciLow": 0.9999999994,
+    "ciHigh": 1.000000017
+   },
+   {
+    "term": "logKA[Partial agonist]",
+    "estimate": -5.999999999,
+    "stdError": 5.112822898e-9,
+    "t": -1173520014,
+    "p": 9.874463069e-104,
+    "ciLow": -6.00000001,
+    "ciHigh": -5.999999988
+   },
+   {
+    "term": "logtau[Partial agonist]",
+    "estimate": 0.4999999958,
+    "stdError": 2.816316142e-9,
+    "t": 177536885.3,
+    "p": 6.869677398e-94,
+    "ciLow": 0.4999999897,
+    "ciHigh": 0.500000002
+   },
+   {
+    "term": "KA[Partial agonist]",
+    "estimate": 0.000001000000002,
+    "stdError": null,
+    "t": null,
+    "p": null,
+    "ciLow": null,
+    "ciHigh": null
+   },
+   {
+    "term": "tau[Partial agonist]",
+    "estimate": 3.16227763,
+    "stdError": null,
+    "t": null,
+    "p": null,
+    "ciLow": null,
+    "ciHigh": null
+   }
+  ]
+ },
+ "dose-response-special schild {\"model\":\"schild-slope-1\",\"ys\":[\"0 M\"],\"antagonistConcentrations\":{\"0 M\":0}}": {
+  "error": "Dose-response — Special fits several curves at once — add at least a control and one shifted curve."
+ },
+ "dose-response-special schild {\"model\":\"schild-slope-1\",\"antagonistConcentrations\":{\"0 M\":1e-8,\"1e-8 M\":0,\"1e-7 M\":1e-7}}": {
+  "error": "“0 M” is the first series but has B = 1e-8 M — the first series must be the control (no antagonist)."
+ },
+ "graph schild-plot schild": {
+  "data": [],
+  "layout": {
+   "paper_bgcolor": "#ffffff",
+   "plot_bgcolor": "#ffffff",
+   "dragmode": false,
+   "font": {
+    "color": "#111827",
+    "family": "system-ui, -apple-system, sans-serif",
+    "size": 13
+   },
+   "margin": {
+    "l": 16,
+    "r": 16,
+    "t": 16,
+    "b": 16
+   },
+   "showlegend": false,
+   "legend": {
+    "x": 1.02,
+    "y": 1,
+    "xanchor": "left"
+   },
+   "xaxis": {
+    "type": "linear",
+    "showgrid": false,
+    "zeroline": false,
+    "linecolor": "#111827",
+    "linewidth": 1,
+    "ticks": "outside",
+    "tickwidth": 1,
+    "fixedrange": true,
+    "automargin": true,
+    "title": {
+     "text": "log [B]",
+     "standoff": 12
+    }
+   },
+   "yaxis": {
+    "showgrid": false,
+    "zeroline": false,
+    "linecolor": "#111827",
+    "linewidth": 1,
+    "ticks": "outside",
+    "tickwidth": 1,
+    "fixedrange": true,
+    "automargin": true,
+    "title": {
+     "text": "log (DR − 1)",
+     "standoff": 2
+    }
+   }
+  }
  }
 }

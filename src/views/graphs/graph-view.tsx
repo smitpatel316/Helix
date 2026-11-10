@@ -17,7 +17,7 @@ import {
   type ProjectNode,
   type SeriesStyle,
 } from "../../store/types";
-import type { BindingKineticsParams, BindingSaturationParams, EnzymeInhibitionParams, LinearRegressionParams, NonlinearRegressionParams, CoxPHParams, PoissonRegressionParams, DemingRegressionParams } from "../../stats/types";
+import type { BindingKineticsParams, BindingSaturationParams, DoseResponseSpecialParams, EnzymeInhibitionParams, LinearRegressionParams, NonlinearRegressionParams, CoxPHParams, PoissonRegressionParams, DemingRegressionParams } from "../../stats/types";
 import { useProjectStore } from "../../store/use-project-store";
 import { groupsOf, readTable, xyProblem } from "../../lib/dataset";
 import { paletteOf } from "../../lib/palettes";
@@ -26,14 +26,15 @@ import { useAnalysis } from "../analyses/use-analysis";
 import { GRAPHS, graphSeries, plotColumns } from ".";
 import { addFittedCurve } from "./fitted-curve";
 import { addDoseCurve } from "./dose-response-curve";
-import { addBindingCurve, addEnzymeInhibitionCurve } from "./binding-curve";
+import { addBindingCurve, addDoseResponseSpecialCurve, addEnzymeInhibitionCurve } from "./binding-curve";
+import { addSchildPlot } from "./schild-plot";
 import { addSmoothCurve } from "./smooth-curve";
 import { addLogisticCurve } from "./logistic-curve";
 import { addForestPlot } from "./forest-plot";
 import { coxSurvivalColumns } from "./survival";
 import { FormatPanel } from "./format-panel";
 import { copyGraphImage, saveGraphImage } from "./graph-export";
-import { INK, MOVABLE, marginsFor, movedText, paintOf, withCaps } from "./plot-helpers";
+import { addNote, INK, MOVABLE, marginsFor, movedText, paintOf, withCaps } from "./plot-helpers";
 import { useStartAnalysis } from "../analyses/use-analysis-launcher";
 import { loadPlotly } from "./plotly";
 import { addRegression } from "./regression-overlay";
@@ -303,30 +304,29 @@ export function GraphView({ node }: { node: ProjectNode }) {
     type === "dose-response"
       ? analyses.find((n) => n.analysisType === "binding-saturation" || n.analysisType === "binding-kinetics")
       : undefined;
-  const bindingOutcome = useAnalysis(
-    bindingAnalysis?.analysisType,
-    data,
-    bindingAnalysis?.analysisParams,
-  );
+  const bindingOutcome = useAnalysis(bindingAnalysis?.analysisType, data, bindingAnalysis?.analysisParams);
   const bindingFit = bindingOutcome && !("error" in bindingOutcome) ? bindingOutcome : null;
   const bindingParams = (bindingAnalysis?.analysisParams ?? undefined) as
-    | BindingSaturationParams
-    | BindingKineticsParams
-    | undefined;
+    BindingSaturationParams | BindingKineticsParams | undefined;
   // A dose-response graph also draws a sibling enzyme-inhibition analysis's
   // fitted curves — one per inhibitor concentration — from the same cached
   // run (no extra R call), as the binding overlay above.
   const inhibitionAnalysis =
     type === "dose-response" ? analyses.find((n) => n.analysisType === "enzyme-inhibition") : undefined;
-  const inhibitionOutcome = useAnalysis(
-    inhibitionAnalysis?.analysisType,
-    data,
-    inhibitionAnalysis?.analysisParams,
-  );
+  const inhibitionOutcome = useAnalysis(inhibitionAnalysis?.analysisType, data, inhibitionAnalysis?.analysisParams);
   const inhibitionFit = inhibitionOutcome && !("error" in inhibitionOutcome) ? inhibitionOutcome : null;
-  const inhibitionParams = (inhibitionAnalysis?.analysisParams ?? undefined) as
-    | EnzymeInhibitionParams
-    | undefined;
+  const inhibitionParams = (inhibitionAnalysis?.analysisParams ?? undefined) as EnzymeInhibitionParams | undefined;
+  // A dose-response graph also draws a sibling dose-response — Special
+  // analysis's fitted curves — one per Y series — from the same cached
+  // run (no extra R call), as the binding overlay above. A Schild plot
+  // draws its computed points from a sibling Gaddum/Schild analysis.
+  const specialAnalysis =
+    type === "dose-response" || type === "schild-plot"
+      ? analyses.find((n) => n.analysisType === "dose-response-special")
+      : undefined;
+  const specialOutcome = useAnalysis(specialAnalysis?.analysisType, data, specialAnalysis?.analysisParams);
+  const specialFit = specialOutcome && !("error" in specialOutcome) ? specialOutcome : null;
+  const specialParams = (specialAnalysis?.analysisParams ?? undefined) as DoseResponseSpecialParams | undefined;
   // A logistic-curve graph fits its own curve (no analysis node needed): the
   // first Y series is the binary outcome, as in the analysis's default.
   const logisticY = columns[1]?.name;
@@ -467,6 +467,17 @@ export function GraphView({ node }: { node: ProjectNode }) {
       if (bindingFit && bindingParams) addBindingCurve(fig, columns, options, bindingFit, bindingParams, paint);
       if (inhibitionFit && inhibitionParams)
         addEnzymeInhibitionCurve(fig, columns, options, inhibitionFit, inhibitionParams, paint);
+      if (specialFit && specialParams && type === "dose-response")
+        addDoseResponseSpecialCurve(fig, columns, options, specialFit, specialParams, paint);
+      if (type === "schild-plot") {
+        if (
+          specialFit &&
+          specialParams &&
+          (specialParams.model === "schild" || specialParams.model === "schild-slope-1")
+        )
+          addSchildPlot(fig, specialFit, specialParams, paint, options);
+        else addNote(fig, "Run a Gaddum/Schild analysis on this table to draw the Schild plot.", options);
+      }
       if (type === "smooth-curve" && smoothResult) addSmoothCurve(fig, columns, options, smoothResult, paint);
       if (logisticFit) addLogisticCurve(fig, columns, logisticFit, paint);
       if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint);
@@ -517,6 +528,8 @@ export function GraphView({ node }: { node: ProjectNode }) {
     bindingParams,
     inhibitionFit,
     inhibitionParams,
+    specialFit,
+    specialParams,
     smoothResult,
     logisticFit,
     coxResult,

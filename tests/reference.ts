@@ -559,6 +559,57 @@ const enzMorrison = table(
   ],
 );
 
+/** Dose-response — Special (plan 18): noiseless by construction on the
+ *  log10-agonist grid −8…−4. schild: Bottom=0, Top=100, LogEC50=−6,
+ *  HillSlope=1, pA2=8 (Kb=1e-8 M) at B = 0, 1e-8, 1e-7 M — the Y titles
+ *  carry B ("0 M" → 0), so the title-parsing path is exercised too.
+ *  ec50shift: Bottom=0, Top=100, HillSlope=1, LogEC50 −6 and −5.
+ *  operational: full agonist 4PL (Bottom=0, Top=100, LogEC50=−7, n=1)
+ *  and a partial agonist from the operational equation (logKA=−6,
+ *  logtau=0.5), sharing Basal=0, Effectmax=100, n=1. */
+const schild = table(
+  ["Title", "X", "0 M", "1e-8 M", "1e-7 M"],
+  [
+    ["", "-8", "0.9900990099", "0.4975124378", "0.0908265213"],
+    ["", "-7.5", "3.0653430032", "1.5565279621", "0.2866557101"],
+    ["", "-7", "9.0909090909", "4.7619047619", "0.9009009009"],
+    ["", "-6.5", "24.0253073352", "13.6527059496", "2.7944627181"],
+    ["", "-6", "50", "33.3333333333", "8.3333333333"],
+    ["", "-5.5", "75.9746926648", "61.2574113277", "22.3288777134"],
+    ["", "-5", "90.9090909091", "83.3333333333", "47.619047619"],
+    ["", "-4.5", "96.9346569968", "94.0516512848", "74.1922022049"],
+    ["", "-4", "99.0099009901", "98.0392156863", "90.0900900901"],
+  ],
+);
+const ec50shift = table(
+  ["Title", "X", "0 nM", "10 nM"],
+  [
+    ["", "-8", "0.9900990099", "0.0999000999"],
+    ["", "-7.5", "3.0653430032", "0.3152309183"],
+    ["", "-7", "9.0909090909", "0.9900990099"],
+    ["", "-6.5", "24.0253073352", "3.0653430032"],
+    ["", "-6", "50", "9.0909090909"],
+    ["", "-5.5", "75.9746926648", "24.0253073352"],
+    ["", "-5", "90.9090909091", "50"],
+    ["", "-4.5", "96.9346569968", "75.9746926648"],
+    ["", "-4", "99.0099009901", "90.9090909091"],
+  ],
+);
+const operational = table(
+  ["Title", "X", "Full agonist", "Partial agonist"],
+  [
+    ["", "-8", "9.0909090909", "3.0359144704"],
+    ["", "-7.5", "24.0253073352", "8.8368670256"],
+    ["", "-7", "50", "22.3288777134"],
+    ["", "-6.5", "75.9746926648", "43.1736470252"],
+    ["", "-6", "90.9090909091", "61.2574113277"],
+    ["", "-5.5", "96.9346569968", "70.6101111697"],
+    ["", "-5", "99.0099009901", "74.1922022049"],
+    ["", "-4.5", "99.6847690817", "75.4018295819"],
+    ["", "-4", "99.9000999001", "75.7925986172"],
+  ],
+);
+
 const survivalTable = table(
   ["Title", "Days", "Treated", "Placebo"],
   [
@@ -1047,28 +1098,104 @@ const twoGroups = table(
 const grouped3way = table(
   ["Title", "Placebo:Y1", "Placebo:Y2", "Placebo:Y3", "Drug:Y1", "Drug:Y2", "Drug:Y3"],
   [
-    ["Day 1", "10.001230153357483", "10.29874553750847", "9.725862144637782", "11.109408161242726", "11.545329214828277", "11.008353445003538"],
-    ["Day 2", "14.060143602597439", "15.340215245554534", "13.50779348144867", "19.37952510018006", "20.4898420501852", "20.35688700816006"],
-    ["Day 1", "11.1054142489979", "10.069531955291795", "10.970748177536727", "13.695303194458289", "11.655785452714918", "12.542384238959782"],
-    ["Day 2", "11.098777260199157", "11.710462260215024", "11.158264962208268", "14.76490886892532", "13.732553518556298", "15.271264358821702"],
+    [
+      "Day 1",
+      "10.001230153357483",
+      "10.29874553750847",
+      "9.725862144637782",
+      "11.109408161242726",
+      "11.545329214828277",
+      "11.008353445003538",
+    ],
+    [
+      "Day 2",
+      "14.060143602597439",
+      "15.340215245554534",
+      "13.50779348144867",
+      "19.37952510018006",
+      "20.4898420501852",
+      "20.35688700816006",
+    ],
+    [
+      "Day 1",
+      "11.1054142489979",
+      "10.069531955291795",
+      "10.970748177536727",
+      "13.695303194458289",
+      "11.655785452714918",
+      "12.542384238959782",
+    ],
+    [
+      "Day 2",
+      "11.098777260199157",
+      "11.710462260215024",
+      "11.158264962208268",
+      "14.76490886892532",
+      "13.732553518556298",
+      "15.271264358821702",
+    ],
   ],
-  { groups: 2, replicates: 3, rowGroups: [{ name: "WT", count: 2 }, { name: "KO", count: 2 }] },
+  {
+    groups: 2,
+    replicates: 3,
+    rowGroups: [
+      { name: "WT", count: 2 },
+      { name: "KO", count: 2 },
+    ],
+  },
 );
 
 /** The Drug × Day 2 × KO cell emptied (all three replicates blank). */
 const grouped3wayEmpty = table(
   ["Title", "Placebo:Y1", "Placebo:Y2", "Placebo:Y3", "Drug:Y1", "Drug:Y2", "Drug:Y3"],
   [
-    ["Day 1", "10.001230153357483", "10.29874553750847", "9.725862144637782", "11.109408161242726", "11.545329214828277", "11.008353445003538"],
-    ["Day 2", "14.060143602597439", "15.340215245554534", "13.50779348144867", "19.37952510018006", "20.4898420501852", "20.35688700816006"],
-    ["Day 1", "11.1054142489979", "10.069531955291795", "10.970748177536727", "13.695303194458289", "11.655785452714918", "12.542384238959782"],
+    [
+      "Day 1",
+      "10.001230153357483",
+      "10.29874553750847",
+      "9.725862144637782",
+      "11.109408161242726",
+      "11.545329214828277",
+      "11.008353445003538",
+    ],
+    [
+      "Day 2",
+      "14.060143602597439",
+      "15.340215245554534",
+      "13.50779348144867",
+      "19.37952510018006",
+      "20.4898420501852",
+      "20.35688700816006",
+    ],
+    [
+      "Day 1",
+      "11.1054142489979",
+      "10.069531955291795",
+      "10.970748177536727",
+      "13.695303194458289",
+      "11.655785452714918",
+      "12.542384238959782",
+    ],
     ["Day 2", "11.098777260199157", "11.710462260215024", "11.158264962208268", "", "", ""],
   ],
-  { groups: 2, replicates: 3, rowGroups: [{ name: "WT", count: 2 }, { name: "KO", count: 2 }] },
+  {
+    groups: 2,
+    replicates: 3,
+    rowGroups: [
+      { name: "WT", count: 2 },
+      { name: "KO", count: 2 },
+    ],
+  },
 );
 
 /** Bands that don't tile the rows (3 + 2 ≠ 4). */
-const grouped3wayBadBands = { ...grouped3way, rowGroups: [{ name: "WT", count: 3 }, { name: "KO", count: 2 }] };
+const grouped3wayBadBands = {
+  ...grouped3way,
+  rowGroups: [
+    { name: "WT", count: 3 },
+    { name: "KO", count: 2 },
+  ],
+};
 
 /** One observation per cell: no residual degrees of freedom. */
 const grouped3wayN1 = table(
@@ -1079,7 +1206,14 @@ const grouped3wayN1 = table(
     ["Day 1", "11.1", "13.7"],
     ["Day 2", "11.1", "14.8"],
   ],
-  { groups: 2, replicates: 1, rowGroups: [{ name: "WT", count: 2 }, { name: "KO", count: 2 }] },
+  {
+    groups: 2,
+    replicates: 1,
+    rowGroups: [
+      { name: "WT", count: 2 },
+      { name: "KO", count: 2 },
+    ],
+  },
 );
 
 /** Nested t test / nested one-way ANOVA (plan 14): 3 groups × 3 subgroups × 3
@@ -1089,20 +1223,65 @@ const grouped3wayN1 = table(
 const nested3 = table(
   [
     "Title",
-    "Control:S1:R1", "Control:S1:R2", "Control:S1:R3",
-    "Control:S2:R1", "Control:S2:R2", "Control:S2:R3",
-    "Control:S3:R1", "Control:S3:R2", "Control:S3:R3",
-    "Treated:S1:R1", "Treated:S1:R2", "Treated:S1:R3",
-    "Treated:S2:R1", "Treated:S2:R2", "Treated:S2:R3",
-    "Treated:S3:R1", "Treated:S3:R2", "Treated:S3:R3",
-    "High:S1:R1", "High:S1:R2", "High:S1:R3",
-    "High:S2:R1", "High:S2:R2", "High:S2:R3",
-    "High:S3:R1", "High:S3:R2", "High:S3:R3",
+    "Control:S1:R1",
+    "Control:S1:R2",
+    "Control:S1:R3",
+    "Control:S2:R1",
+    "Control:S2:R2",
+    "Control:S2:R3",
+    "Control:S3:R1",
+    "Control:S3:R2",
+    "Control:S3:R3",
+    "Treated:S1:R1",
+    "Treated:S1:R2",
+    "Treated:S1:R3",
+    "Treated:S2:R1",
+    "Treated:S2:R2",
+    "Treated:S2:R3",
+    "Treated:S3:R1",
+    "Treated:S3:R2",
+    "Treated:S3:R3",
+    "High:S1:R1",
+    "High:S1:R2",
+    "High:S1:R3",
+    "High:S2:R1",
+    "High:S2:R2",
+    "High:S2:R3",
+    "High:S3:R1",
+    "High:S3:R2",
+    "High:S3:R3",
   ],
   [
-    ["", "10", "11", "12", "13", "12", "14", "11", "10", "12",
-     "16", "15", "17", "18", "17", "16", "15", "16", "17",
-     "20", "21", "19", "22", "21", "23", "19", "20", "21"],
+    [
+      "",
+      "10",
+      "11",
+      "12",
+      "13",
+      "12",
+      "14",
+      "11",
+      "10",
+      "12",
+      "16",
+      "15",
+      "17",
+      "18",
+      "17",
+      "16",
+      "15",
+      "16",
+      "17",
+      "20",
+      "21",
+      "19",
+      "22",
+      "21",
+      "23",
+      "19",
+      "20",
+      "21",
+    ],
   ],
   { groups: 3, subgroups: 3, replicates: 3 },
 );
@@ -1111,17 +1290,26 @@ const nested3 = table(
 const nested2 = table(
   [
     "Title",
-    "Control:S1:R1", "Control:S1:R2", "Control:S1:R3",
-    "Control:S2:R1", "Control:S2:R2", "Control:S2:R3",
-    "Control:S3:R1", "Control:S3:R2", "Control:S3:R3",
-    "Treated:S1:R1", "Treated:S1:R2", "Treated:S1:R3",
-    "Treated:S2:R1", "Treated:S2:R2", "Treated:S2:R3",
-    "Treated:S3:R1", "Treated:S3:R2", "Treated:S3:R3",
+    "Control:S1:R1",
+    "Control:S1:R2",
+    "Control:S1:R3",
+    "Control:S2:R1",
+    "Control:S2:R2",
+    "Control:S2:R3",
+    "Control:S3:R1",
+    "Control:S3:R2",
+    "Control:S3:R3",
+    "Treated:S1:R1",
+    "Treated:S1:R2",
+    "Treated:S1:R3",
+    "Treated:S2:R1",
+    "Treated:S2:R2",
+    "Treated:S2:R3",
+    "Treated:S3:R1",
+    "Treated:S3:R2",
+    "Treated:S3:R3",
   ],
-  [
-    ["", "10", "11", "12", "13", "12", "14", "11", "10", "12",
-     "16", "15", "17", "18", "17", "16", "15", "16", "17"],
-  ],
+  [["", "10", "11", "12", "13", "12", "14", "11", "10", "12", "16", "15", "17", "18", "17", "16", "15", "16", "17"]],
   { groups: 2, subgroups: 3, replicates: 3 },
 );
 
@@ -1131,17 +1319,26 @@ const nested2 = table(
 const nestedDrop = table(
   [
     "Title",
-    "Control:S1:R1", "Control:S1:R2", "Control:S1:R3",
-    "Control:S2:R1", "Control:S2:R2", "Control:S2:R3",
-    "Control:S3:R1", "Control:S3:R2", "Control:S3:R3",
-    "Treated:S1:R1", "Treated:S1:R2", "Treated:S1:R3",
-    "Treated:S2:R1", "Treated:S2:R2", "Treated:S2:R3",
-    "Treated:S3:R1", "Treated:S3:R2", "Treated:S3:R3",
+    "Control:S1:R1",
+    "Control:S1:R2",
+    "Control:S1:R3",
+    "Control:S2:R1",
+    "Control:S2:R2",
+    "Control:S2:R3",
+    "Control:S3:R1",
+    "Control:S3:R2",
+    "Control:S3:R3",
+    "Treated:S1:R1",
+    "Treated:S1:R2",
+    "Treated:S1:R3",
+    "Treated:S2:R1",
+    "Treated:S2:R2",
+    "Treated:S2:R3",
+    "Treated:S3:R1",
+    "Treated:S3:R2",
+    "Treated:S3:R3",
   ],
-  [
-    ["", "10", "11", "12", "", "", "", "11", "10", "12",
-     "16", "15", "17", "18", "17", "16", "15", "16", "17"],
-  ],
+  [["", "10", "11", "12", "", "", "", "11", "10", "12", "16", "15", "17", "18", "17", "16", "15", "16", "17"]],
   { groups: 2, subgroups: 3, replicates: 3 },
 );
 
@@ -1528,12 +1725,7 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   // association-then-dissociation run, and the validation errors.
   ["bindTotal", bindTotal, "binding-saturation", { model: "one-site-total" }],
   ["bindTwoSite", bindTwoSite, "binding-saturation", { model: "two-site-specific" }],
-  [
-    "bindTotalNs",
-    bindTotalNs,
-    "binding-saturation",
-    { y: "Total", y2: "Nonspecific", model: "one-site-total-and-ns" },
-  ],
+  ["bindTotalNs", bindTotalNs, "binding-saturation", { y: "Total", y2: "Nonspecific", model: "one-site-total-and-ns" }],
   [
     "bindTwoSiteNs",
     bindTwoSiteNs,
@@ -1581,17 +1773,95 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   // mixed-on-competitive run (Alpha unidentifiable there — only Vmax/Km/Ki
   // asserted), the Morrison run with and without [S]/Km, and the validation
   // errors (no uninhibited series; Morrison with [S] but no Km).
-  ["enzMixed", enzMixed, "enzyme-inhibition", { model: "mixed", inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 } }],
-  ["enzCompetitive", enzCompetitive, "enzyme-inhibition", { model: "competitive", inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 } }],
-  ["enzCompetitive", enzCompetitive, "enzyme-inhibition", { model: "mixed", inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 } }],
+  [
+    "enzMixed",
+    enzMixed,
+    "enzyme-inhibition",
+    { model: "mixed", inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 } },
+  ],
+  [
+    "enzCompetitive",
+    enzCompetitive,
+    "enzyme-inhibition",
+    { model: "competitive", inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 } },
+  ],
+  [
+    "enzCompetitive",
+    enzCompetitive,
+    "enzyme-inhibition",
+    { model: "mixed", inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 } },
+  ],
   ["enzMorrison", enzMorrison, "enzyme-inhibition", { model: "morrison", enzymeConcentration: 5 }],
-  ["enzMorrison", enzMorrison, "enzyme-inhibition", { model: "morrison", enzymeConcentration: 5, substrateConcentration: 10, kmForMorrison: 10 }],
-  ["enzNoZero", enzNoZero, "enzyme-inhibition", { model: "mixed", inhibitorConcentrations: { "5 nM": 5, "20 nM": 20 } }],
-  ["enzMorrison", enzMorrison, "enzyme-inhibition", { model: "morrison", enzymeConcentration: 5, substrateConcentration: 10 }],
+  [
+    "enzMorrison",
+    enzMorrison,
+    "enzyme-inhibition",
+    { model: "morrison", enzymeConcentration: 5, substrateConcentration: 10, kmForMorrison: 10 },
+  ],
+  [
+    "enzNoZero",
+    enzNoZero,
+    "enzyme-inhibition",
+    { model: "mixed", inhibitorConcentrations: { "5 nM": 5, "20 nM": 20 } },
+  ],
+  [
+    "enzMorrison",
+    enzMorrison,
+    "enzyme-inhibition",
+    { model: "morrison", enzymeConcentration: 5, substrateConcentration: 10 },
+  ],
   // The wizard always sets `y` explicitly (a string[]), so the mixed fit is
   // pinned with it too — the shared runAnalysis pre-flight once treated it
   // as one comma-joined column name and every wizard-created fit failed.
-  ["enzMixed", enzMixed, "enzyme-inhibition", { model: "mixed", y: ["0 nM", "5 nM", "20 nM"], inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 } }],
+  [
+    "enzMixed",
+    enzMixed,
+    "enzyme-inhibition",
+    { model: "mixed", y: ["0 nM", "5 nM", "20 nM"], inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 } },
+  ],
+  // Dose-response — Special (plan 18): the noiseless reference cases
+  // (coefficients + dose ratios + notes asserted in disagreements()
+  // below), the pA2 unit-trap case (B in nM → pA2 = −1), the title-parsed
+  // run (B from the "0 M" / "1e-8 M" / "1e-7 M" titles), and the
+  // validation errors (one series; first series not the control).
+  [
+    "schild",
+    schild,
+    "dose-response-special",
+    { model: "schild-slope-1", antagonistConcentrations: { "0 M": 0, "1e-8 M": 1e-8, "1e-7 M": 1e-7 } },
+  ],
+  [
+    "schild",
+    schild,
+    "dose-response-special",
+    { model: "schild", antagonistConcentrations: { "0 M": 0, "1e-8 M": 1e-8, "1e-7 M": 1e-7 } },
+  ],
+  [
+    "schild",
+    schild,
+    "dose-response-special",
+    { model: "schild-slope-1", antagonistConcentrations: { "0 M": 0, "1e-8 M": 10, "1e-7 M": 100 }, bUnits: "nM" },
+  ],
+  ["schild", schild, "dose-response-special", { model: "schild-slope-1" }],
+  [
+    "ec50shift",
+    ec50shift,
+    "dose-response-special",
+    { model: "ec50-shift", antagonistConcentrations: { "0 nM": 0, "10 nM": 10 }, bUnits: "nM" },
+  ],
+  ["operational", operational, "dose-response-special", { model: "operational-partial" }],
+  [
+    "schild",
+    schild,
+    "dose-response-special",
+    { model: "schild-slope-1", ys: ["0 M"], antagonistConcentrations: { "0 M": 0 } },
+  ],
+  [
+    "schild",
+    schild,
+    "dose-response-special",
+    { model: "schild-slope-1", antagonistConcentrations: { "0 M": 1e-8, "1e-8 M": 0, "1e-7 M": 1e-7 } },
+  ],
   ["logistic", logistic, "simple-logistic-regression", {}],
   ["logisticSeparated", logisticSeparated, "simple-logistic-regression", {}],
   ["blandAltman", blandAltman, "bland-altman", { sets: ["Method A", "Method B"] }],
@@ -1822,6 +2092,7 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["xy", xy, "xy-bar"],
   ["xy", xy, "xy-area"],
   ["doseLog", doseLog, "dose-response"],
+  ["schild", schild, "schild-plot"],
   ["doseLog", doseLog, "smooth-curve"],
   ["logistic", logistic, "logistic-curve"],
   ["blandAltman", blandAltman, "bland-altman"],
@@ -2409,8 +2680,7 @@ async function disagreements(): Promise<string[]> {
       xs.forEach((x, i) => {
         const ts = evaluateFittedCurve("one-phase-decay", fitA.coefficients ?? [], x);
         const rv = rY[`y${i}`];
-        if (rv == null || Math.abs(ts - rv) > 1e-6)
-          out.push(`Exponential overlay at X=${x}: TS ${ts}, R ${rv}`);
+        if (rv == null || Math.abs(ts - rv) > 1e-6) out.push(`Exponential overlay at X=${x}: TS ${ts}, R ${rv}`);
       });
     }
   }
@@ -2476,11 +2746,7 @@ async function disagreements(): Promise<string[]> {
   if (fitC) {
     // The fitted Y0 is −1.2e-7, not exactly 0, so the equation carries that
     // tiny value — assert the shape, not the literal string.
-    if (
-      fitC.equation == null ||
-      !fitC.equation.startsWith("Y = ") ||
-      !fitC.equation.includes("(1 − exp(−0.3·X))")
-    )
+    if (fitC.equation == null || !fitC.equation.startsWith("Y = ") || !fitC.equation.includes("(1 − exp(−0.3·X))"))
       out.push(`Exponential one-phase association equation: ${fitC.equation}`);
     if (!fitC.notes.includes("Starting values: Y0 = 0, Plateau = 97.27, K = 0.5."))
       out.push(`Exponential one-phase association notes missing starts: ${fitC.notes}`);
@@ -2559,8 +2825,7 @@ async function disagreements(): Promise<string[]> {
       xs.forEach((x, i) => {
         const ts = evaluateFittedCurve("exponential-growth", fitD2.coefficients ?? [], x);
         const rv = rY[`y${i}`];
-        if (rv == null || Math.abs(ts - rv) > 1e-6)
-          out.push(`Exponential growth overlay at X=${x}: TS ${ts}, R ${rv}`);
+        if (rv == null || Math.abs(ts - rv) > 1e-6) out.push(`Exponential growth overlay at X=${x}: TS ${ts}, R ${rv}`);
       });
     }
   }
@@ -2680,8 +2945,7 @@ async function disagreements(): Promise<string[]> {
       xs.forEach((x, i) => {
         const ts = evaluateFittedCurve("michaelis-menten", fitMM0.coefficients ?? [], x);
         const rv = rY[`y${i}`];
-        if (rv == null || Math.abs(ts - rv) > 1e-6)
-          out.push(`Enzyme MM overlay at X=${x}: TS ${ts}, R ${rv}`);
+        if (rv == null || Math.abs(ts - rv) > 1e-6) out.push(`Enzyme MM overlay at X=${x}: TS ${ts}, R ${rv}`);
       });
     }
   }
@@ -2710,7 +2974,8 @@ async function disagreements(): Promise<string[]> {
     [["R squared", 1]],
   );
   if (fitSI) {
-    if (fitSI.equation !== "Y = 100·X / (2 + X + X²/10)") out.push(`Enzyme substrate-inhibition equation: ${fitSI.equation}`);
+    if (fitSI.equation !== "Y = 100·X / (2 + X + X²/10)")
+      out.push(`Enzyme substrate-inhibition equation: ${fitSI.equation}`);
     if (!fitSI.notes.includes("Starting values: Vmax = 78.95, Km = 5, Ki = 50."))
       out.push(`Enzyme substrate-inhibition notes missing starts: ${fitSI.notes}`);
     // The overlay peaks near S ≈ 4.5 (√(Km·Ki) = √20) and decreases
@@ -2746,14 +3011,17 @@ async function disagreements(): Promise<string[]> {
     ] as const) {
       const c = fitNoisy.coefficients?.find((cc) => cc.term === term);
       if (!relClose(c?.estimate, want, 1e-3)) out.push(`Enzyme noisy MM ${term}: ${c?.estimate}, WebR says ${want}`);
-      if (!relClose(c?.stdError, wantSe, 1e-3)) out.push(`Enzyme noisy MM ${term} SE: ${c?.stdError}, WebR says ${wantSe}`);
+      if (!relClose(c?.stdError, wantSe, 1e-3))
+        out.push(`Enzyme noisy MM ${term} SE: ${c?.stdError}, WebR says ${wantSe}`);
       if (c == null || c.ciLow == null || c.ciHigh == null || c.ciHigh <= c.ciLow)
         out.push(`Enzyme noisy MM ${term}: CI not a nonzero interval (low=${c?.ciLow}, high=${c?.ciHigh})`);
       else if (c.estimate == null || c.ciLow > c.estimate || c.ciHigh < c.estimate)
         out.push(`Enzyme noisy MM ${term}: CI [${c.ciLow}, ${c.ciHigh}] does not contain ${c.estimate}`);
       else {
-        if (!relClose(c.ciLow, wantLo, 1e-3)) out.push(`Enzyme noisy MM ${term} CI low: ${c.ciLow}, WebR says ${wantLo}`);
-        if (!relClose(c.ciHigh, wantHi, 1e-3)) out.push(`Enzyme noisy MM ${term} CI high: ${c.ciHigh}, WebR says ${wantHi}`);
+        if (!relClose(c.ciLow, wantLo, 1e-3))
+          out.push(`Enzyme noisy MM ${term} CI low: ${c.ciLow}, WebR says ${wantLo}`);
+        if (!relClose(c.ciHigh, wantHi, 1e-3))
+          out.push(`Enzyme noisy MM ${term} CI high: ${c.ciHigh}, WebR says ${wantHi}`);
       }
     }
     const r2 = fitNoisy.stats.find((s) => s.label === "R squared")?.value;
@@ -3012,8 +3280,7 @@ async function disagreements(): Promise<string[]> {
       close(coxStat(coxA, "Number censored"), 4, 0, "A censored (plan prose says 3)");
       if (!coxA.notes.includes("Log partial likelihood -22.18 (vs -23.54 at β = 0)"))
         out.push(`Cox A notes: log partial likelihood line missing — ${coxA.notes}`);
-      if (!coxA.notes.includes("Ties handled by the Breslow method"))
-        out.push(`Cox A notes: tie method missing`);
+      if (!coxA.notes.includes("Ties handled by the Breslow method")) out.push(`Cox A notes: tie method missing`);
       if (!coxA.notes.includes("Proportional-hazards assumption not tested"))
         out.push(`Cox A notes: PH-assumption notice missing`);
       if (!coxA.notes.includes("fewer than 10 per covariate"))
@@ -3090,7 +3357,12 @@ async function disagreements(): Promise<string[]> {
       "must be positive",
       "zero time",
     );
-    await coxErr(coxTable, { time: "Time", status: "Status", covariates: [] }, "at least one covariate", "no covariates");
+    await coxErr(
+      coxTable,
+      { time: "Time", status: "Status", covariates: [] },
+      "at least one covariate",
+      "no covariates",
+    );
     // The forest plot for Case B: one row, HR 0.3672 with CI (0.1009, 1.3369),
     // a log-scaled x-axis, and a reference line at HR = 1.
     if (!("error" in coxB)) {
@@ -3116,7 +3388,10 @@ async function disagreements(): Promise<string[]> {
       if (!row || row.y?.[0] !== "Trt") out.push(`Forest plot row: ${JSON.stringify(row?.y)}, expected ["Trt"]`);
       if (row?.error_x?.array?.[0] == null || Math.abs(row.error_x.array[0] - (1.3369 - 0.3672)) / 1.3369 > 1e-2)
         out.push(`Forest plot CI high: ${JSON.stringify(row?.error_x?.array)}, expected [0.9697]`);
-      if (row?.error_x?.arrayminus?.[0] == null || Math.abs(row.error_x.arrayminus[0] - (0.3672 - 0.1009)) / 0.3672 > 1e-2)
+      if (
+        row?.error_x?.arrayminus?.[0] == null ||
+        Math.abs(row.error_x.arrayminus[0] - (0.3672 - 0.1009)) / 0.3672 > 1e-2
+      )
         out.push(`Forest plot CI low: ${JSON.stringify(row?.error_x?.arrayminus)}, expected [0.2663]`);
       if (!row?.text?.[0]?.includes("HR 0.3672 (95% CI 0.1009–1.337)"))
         out.push(`Forest plot label: ${JSON.stringify(row?.text)}, expected "HR 0.3672 (95% CI 0.1009–1.337)"`);
@@ -3127,11 +3402,7 @@ async function disagreements(): Promise<string[]> {
       // A log axis takes its range in log10 units: 10**range must cover the
       // whisker (0.1009, 1.3369). Passing data units here rendered [1.18, 78]
       // — caught by Linux GUI QA, Plan 10.
-      if (
-        !xaxis.range ||
-        10 ** xaxis.range[0] >= 0.1009 ||
-        10 ** xaxis.range[1] <= 1.3369
-      )
+      if (!xaxis.range || 10 ** xaxis.range[0] >= 0.1009 || 10 ** xaxis.range[1] <= 1.3369)
         out.push(
           `Forest plot x-axis range: ${JSON.stringify(xaxis.range)}, expected log10 units covering the whisker (0.1009, 1.3369)`,
         );
@@ -3157,15 +3428,10 @@ async function disagreements(): Promise<string[]> {
       if (med0 !== 10) out.push(`Cox KM median (control): ${med0}, expected 10`);
       if (med1 !== 18) out.push(`Cox KM median (treated): ${med1}, expected 18`);
       const survOpts = newGraphOptions("survival");
-      const survFig = GRAPHS["survival"].build(
-        survCols,
-        survOpts,
-        paintOf(survOpts, 2),
-        readTable(coxTable).titles,
+      const survFig = GRAPHS["survival"].build(survCols, survOpts, paintOf(survOpts, 2), readTable(coxTable).titles);
+      const curves = (survFig.data as { mode?: string; name?: string; y?: number[] }[]).filter(
+        (t) => t.mode === "lines",
       );
-      const curves = (
-        survFig.data as { mode?: string; name?: string; y?: number[] }[]
-      ).filter((t) => t.mode === "lines");
       if (curves.length !== 2) out.push(`Cox survival graph curves: ${curves.length}, expected 2`);
       const names = curves.map((t) => t.name).sort();
       if (JSON.stringify(names) !== JSON.stringify(["Trt = 0", "Trt = 1"]))
@@ -3192,20 +3458,16 @@ async function disagreements(): Promise<string[]> {
     const d = ksShiftedR.stat("KS distance D");
     const p = ksShiftedR.stat("P value");
     if (d == null || Math.abs(d - 1) > 1e-12) out.push(`KS shifted D: ${d}, plan says 1`);
-    if (p == null || Math.abs(p - 0.0001554) / 0.0001554 > 1e-4)
-      out.push(`KS shifted p: ${p}, plan says 0.0001554`);
+    if (p == null || Math.abs(p - 0.0001554) / 0.0001554 > 1e-4) out.push(`KS shifted p: ${p}, plan says 0.0001554`);
     if (ksShiftedR.stat("N (group 1)") !== 8 || ksShiftedR.stat("N (group 2)") !== 8)
-      out.push(
-        `KS shifted N: ${ksShiftedR.stat("N (group 1)")}/${ksShiftedR.stat("N (group 2)")}, expected 8/8`,
-      );
+      out.push(`KS shifted N: ${ksShiftedR.stat("N (group 1)")}/${ksShiftedR.stat("N (group 2)")}, expected 8/8`);
   }
   const ksSimilarR = await ksRun(ksSimilar, "similar");
   if (ksSimilarR) {
     const d = ksSimilarR.stat("KS distance D");
     const p = ksSimilarR.stat("P value");
     if (d == null || Math.abs(d - 0.25) > 1e-12) out.push(`KS similar D: ${d}, plan says 0.25`);
-    if (p == null || Math.abs(p - 0.9801) / 0.9801 > 1e-4)
-      out.push(`KS similar p: ${p}, plan says 0.9801`);
+    if (p == null || Math.abs(p - 0.9801) / 0.9801 > 1e-4) out.push(`KS similar p: ${p}, plan says 0.9801`);
   }
   const ksTiesR = await ksRun(ksTies, "ties");
   if (ksTiesR) {
@@ -3220,8 +3482,7 @@ async function disagreements(): Promise<string[]> {
   if (ksIdenticalR) {
     if (ksIdenticalR.stat("KS distance D") !== 0)
       out.push(`KS identical D: ${ksIdenticalR.stat("KS distance D")}, expected 0`);
-    if (ksIdenticalR.stat("P value") !== 1)
-      out.push(`KS identical p: ${ksIdenticalR.stat("P value")}, expected 1`);
+    if (ksIdenticalR.stat("P value") !== 1) out.push(`KS identical p: ${ksIdenticalR.stat("P value")}, expected 1`);
   }
   // Frequency distribution: the TypeScript binning equals R's hist() with the
   // matching (left-closed) edge rule, the auto breaks are R's pretty() breaks,
@@ -3265,12 +3526,43 @@ async function disagreements(): Promise<string[]> {
   // (equally spaced) sequence. Includes the float-boundary cases where a naive
   // floor/ceil of lo/step lands a step off (0.3/0.1, 0.07/0.005, …).
   const prettyCases: [number, number, number][] = [
-    [2.1, 9.3, 5], [0, 10, 5], [0, 1, 5], [1, 2, 5], [0, 100, 5], [3, 97, 5], [0.2, 0.9, 5],
-    [-5, 5, 5], [10, 20, 5], [100, 200, 5], [0, 7, 5], [0, 3, 5], [2, 4, 5], [0, 0.5, 5],
-    [5, 6, 5], [0, 1000, 5], [123, 456, 5], [0.001, 0.009, 5], [2.1, 9.3, 4], [2.1, 9.3, 6],
-    [0, 10, 3], [0, 10, 10], [7, 8, 5], [-100, -10, 5], [0.15, 0.85, 5], [42, 42.5, 5],
-    [0, 7.005, 5], [0, 14.02, 5], [0, 35.1, 5], [0.3, 0.9, 5], [0.6, 0.9, 5], [1.1, 1.9, 5],
-    [2.3, 2.9, 5], [0.3, 0.7, 5], [-0.3, 0.3, 5], [0.07, 0.11, 5], [999, 1001, 5],
+    [2.1, 9.3, 5],
+    [0, 10, 5],
+    [0, 1, 5],
+    [1, 2, 5],
+    [0, 100, 5],
+    [3, 97, 5],
+    [0.2, 0.9, 5],
+    [-5, 5, 5],
+    [10, 20, 5],
+    [100, 200, 5],
+    [0, 7, 5],
+    [0, 3, 5],
+    [2, 4, 5],
+    [0, 0.5, 5],
+    [5, 6, 5],
+    [0, 1000, 5],
+    [123, 456, 5],
+    [0.001, 0.009, 5],
+    [2.1, 9.3, 4],
+    [2.1, 9.3, 6],
+    [0, 10, 3],
+    [0, 10, 10],
+    [7, 8, 5],
+    [-100, -10, 5],
+    [0.15, 0.85, 5],
+    [42, 42.5, 5],
+    [0, 7.005, 5],
+    [0, 14.02, 5],
+    [0, 35.1, 5],
+    [0.3, 0.9, 5],
+    [0.6, 0.9, 5],
+    [1.1, 1.9, 5],
+    [2.3, 2.9, 5],
+    [0.3, 0.7, 5],
+    [-0.3, 0.3, 5],
+    [0.07, 0.11, 5],
+    [999, 1001, 5],
   ];
   const prettyVals = await evalNamedVector(
     `${prettyCases.map(([lo, hi, n], i) => `pr${i}<-pretty(c(${lo},${hi}),n=${n},min.n=1)`).join(";")};` +
@@ -3331,8 +3623,7 @@ async function disagreements(): Promise<string[]> {
         out.push(`Three-way ANOVA ${term} p: ${gotP}, plan says ${p}`);
       if (stat(`${term} DFn`) !== 1) out.push(`Three-way ANOVA ${term} DFn: ${stat(`${term} DFn`)}, expected 1`);
     }
-    if (stat("DFd (residual)") !== 16)
-      out.push(`Three-way ANOVA DFd: ${stat("DFd (residual)")}, expected 16`);
+    if (stat("DFd (residual)") !== 16) out.push(`Three-way ANOVA DFd: ${stat("DFd (residual)")}, expected 16`);
     if (three.subtitle !== "Ordinary three-way ANOVA") out.push(`Three-way ANOVA subtitle: ${three.subtitle}`);
     if (!three.notes.includes("A = Group (Placebo, Drug); B = Row (Day 1, Day 2); C = Row group (WT, KO)."))
       out.push(`Three-way ANOVA notes missing the factor mapping: ${three.notes}`);
@@ -3387,7 +3678,9 @@ async function disagreements(): Promise<string[]> {
   ] as const) {
     const r = await runAnalysis("three-way-anova", data, { posthoc: "none" });
     if (!("error" in r) || !r.error.includes(want))
-      out.push(`Three-way ANOVA ${label}: ${"error" in r ? r.error : "ran without error"}, expected an error naming ${want}`);
+      out.push(
+        `Three-way ANOVA ${label}: ${"error" in r ? r.error : "ran without error"}, expected an error naming ${want}`,
+      );
   }
   // Poisson regression (plan 12): the plan's values, computed by the planner
   // from R glm() in Helix's own webR. Tolerances from the plan: coefficients
@@ -3436,8 +3729,7 @@ async function disagreements(): Promise<string[]> {
     if (!close(stat("Dispersion (Pearson)"), 0.168, 0.01))
       out.push(`Poisson Case A dispersion (Pearson): ${stat("Dispersion (Pearson)")}, plan says 0.168`);
     if (stat("Residual df") !== 9) out.push(`Poisson Case A residual df: ${stat("Residual df")}, expected 9`);
-    if (poisA.notes.includes("overdispersed"))
-      out.push(`Poisson Case A notes warn of overdispersion: ${poisA.notes}`);
+    if (poisA.notes.includes("overdispersed")) out.push(`Poisson Case A notes warn of overdispersion: ${poisA.notes}`);
     if (!poisA.notes.includes("underdispersed"))
       out.push(`Poisson Case A notes missing the underdispersion note: ${poisA.notes}`);
     // The graph's fitted values, computed in TS from the coefficients —
@@ -3475,7 +3767,11 @@ async function disagreements(): Promise<string[]> {
       out.push(
         `Observed-vs-fitted identity line: ${JSON.stringify(line?.x)} vs ${JSON.stringify(line?.y)}, expected a dashed y = x line`,
       );
-    if (!pts || pts.x?.length !== 12 || JSON.stringify(pts.x) !== JSON.stringify([2, 3, 3, 5, 4, 7, 6, 9, 8, 12, 11, 14]))
+    if (
+      !pts ||
+      pts.x?.length !== 12 ||
+      JSON.stringify(pts.x) !== JSON.stringify([2, 3, 3, 5, 4, 7, 6, 9, 8, 12, 11, 14])
+    )
       out.push(`Observed-vs-fitted points x: ${JSON.stringify(pts?.x)}, expected the 12 observed counts`);
     if (pts?.y?.some((v, i) => Math.abs(v - (fitted?.[i]?.fitted ?? NaN)) > 1e-9))
       out.push(`Observed-vs-fitted points y differ from the TS fitted values`);
@@ -3492,7 +3788,8 @@ async function disagreements(): Promise<string[]> {
       out.push(`Poisson Case B Dose estimate: ${dose?.estimate}, plan says 0.4512`);
     if (dose?.stdError == null || Math.abs(dose.stdError - 0.0895) > 1e-3)
       out.push(`Poisson Case B Dose SE: ${dose?.stdError}, plan says 0.0895`);
-    if (dose?.t == null || Math.abs(dose.t - 5.04) > 1e-3) out.push(`Poisson Case B Dose z: ${dose?.t}, plan says 5.04`);
+    if (dose?.t == null || Math.abs(dose.t - 5.04) > 1e-3)
+      out.push(`Poisson Case B Dose z: ${dose?.t}, plan says 5.04`);
     if (dose?.p == null || Math.abs(dose.p - 4.66e-7) > 1e-8)
       out.push(`Poisson Case B Dose P: ${dose?.p}, plan says 4.66e-7`);
     if (stat("Residual deviance") == null || Math.abs(stat("Residual deviance")! - 95.7988) > 0.01)
@@ -3584,8 +3881,7 @@ async function disagreements(): Promise<string[]> {
     if (!close(sStat(spline, "Residual sum of squares"), 257.449, 0.5))
       out.push(`Spline RSS: ${sStat(spline, "Residual sum of squares")}, plan says 257.449`);
     if (spline.curve?.length !== 100) out.push(`Spline curve length: ${spline.curve?.length}, expected 100`);
-    if (!spline.notes.includes("spar = 0.5"))
-      out.push(`Spline notes do not name the spar used: ${spline.notes}`);
+    if (!spline.notes.includes("spar = 0.5")) out.push(`Spline notes do not name the spar used: ${spline.notes}`);
     // The smoother spline (df 3.72) has the larger RSS here.
     const rssL = sStat(lowess, "Residual sum of squares");
     const rssS = sStat(spline, "Residual sum of squares");
@@ -3616,9 +3912,15 @@ async function disagreements(): Promise<string[]> {
     if (!("error" in r) || !r.error.toLowerCase().includes(want))
       out.push(`Spline/Lowess ${label}: ${"error" in r ? r.error : "ran"}, expected an error naming “${want}”`);
   }
-  const smoothTooFewRun = await runAnalysis("spline-lowess", smoothTooFew, { y: "Response", method: "lowess", f: 2 / 3 });
+  const smoothTooFewRun = await runAnalysis("spline-lowess", smoothTooFew, {
+    y: "Response",
+    method: "lowess",
+    f: 2 / 3,
+  });
   if (!("error" in smoothTooFewRun) || !smoothTooFewRun.error.toLowerCase().includes("at least 4"))
-    out.push(`Spline/Lowess n < 4: ${"error" in smoothTooFewRun ? smoothTooFewRun.error : "ran"}, expected “at least 4 points”`);
+    out.push(
+      `Spline/Lowess n < 4: ${"error" in smoothTooFewRun ? smoothTooFewRun.error : "ran"}, expected “at least 4 points”`,
+    );
   // The smooth-curve graph draws the linked analysis's curve over the points:
   // 100 grid points, spanning exactly the data range, plus the 10 points.
   if (!("error" in lowess)) {
@@ -3654,7 +3956,9 @@ async function disagreements(): Promise<string[]> {
   if (JSON.stringify(asked({})) !== JSON.stringify(["method", "y"]))
     out.push(`Spline/Lowess wizard first steps: ${JSON.stringify(asked({}))}, expected ["method", "y"]`);
   if (JSON.stringify(asked({ method: "lowess" })) !== JSON.stringify(["method", "y", "f"]))
-    out.push(`Spline/Lowess wizard (Lowess): ${JSON.stringify(asked({ method: "lowess" }))}, expected ["method", "y", "f"]`);
+    out.push(
+      `Spline/Lowess wizard (Lowess): ${JSON.stringify(asked({ method: "lowess" }))}, expected ["method", "y", "f"]`,
+    );
   if (JSON.stringify(asked({ method: "spline" })) !== JSON.stringify(["method", "y", "spar"]))
     out.push(
       `Spline/Lowess wizard (spline): ${JSON.stringify(asked({ method: "spline" }))}, expected ["method", "y", "spar"]`,
@@ -3787,21 +4091,13 @@ async function disagreements(): Promise<string[]> {
     }
     // Every fitted parameter carries estimate + SE + t + p + 95% CI.
     for (const c of r.coefficients ?? []) {
-      if (
-        c.estimate == null ||
-        c.stdError == null ||
-        c.t == null ||
-        c.p == null ||
-        c.ciLow == null ||
-        c.ciHigh == null
-      )
+      if (c.estimate == null || c.stdError == null || c.t == null || c.p == null || c.ciLow == null || c.ciHigh == null)
         out.push(`Binding ${label} ${c.term}: missing estimate/SE/t/p/CI`);
     }
     if (bindStat(r, "R squared") !== 1 && label !== "association then dissociation") {
       // Two-series fits report the pooled R² under "R squared" too.
       const pooled = bindStat(r, "R squared");
-      if (pooled == null || Math.abs(pooled - 1) > 1e-9)
-        out.push(`Binding ${label} R²: ${pooled}, expected 1`);
+      if (pooled == null || Math.abs(pooled - 1) > 1e-9) out.push(`Binding ${label} R²: ${pooled}, expected 1`);
     }
   }
   // Derived rows: half-lives, residence time, kinetic Kd, Eq.
@@ -3899,7 +4195,14 @@ async function disagreements(): Promise<string[]> {
     const opts = newGraphOptions("dose-response");
     const cols = plotColumns(readTable(bindTotalNs), "dose-response", opts, "xy");
     const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 2), readTable(bindTotalNs).titles);
-    addBindingCurve(fig, cols, opts, twoSeries, { y: "Total", y2: "Nonspecific", model: "one-site-total-and-ns" }, paintOf(opts, 2));
+    addBindingCurve(
+      fig,
+      cols,
+      opts,
+      twoSeries,
+      { y: "Total", y2: "Nonspecific", model: "one-site-total-and-ns" },
+      paintOf(opts, 2),
+    );
     const traces = fig.data as { mode?: string; x?: number[]; y?: number[]; line?: { dash?: string } }[];
     const curves = traces.filter((t) => t.mode === "lines" && t.x?.length === 101);
     if (curves.length !== 2) out.push(`Binding curve graph draws ${curves.length} 101-point lines, expected 2`);
@@ -3908,8 +4211,7 @@ async function disagreements(): Promise<string[]> {
       out.push(`Binding total curve spans [${total.x?.[0]}, ${total.x?.at(-1)}], expected [0, 50]`);
     if (total && total.y) {
       const at5 = total.y[10];
-      if (at5 == null || Math.abs(at5 - 54.5) > 1e-6)
-        out.push(`Binding total curve at X=5: ${at5}, expected 54.5`);
+      if (at5 == null || Math.abs(at5 - 54.5) > 1e-6) out.push(`Binding total curve at X=5: ${at5}, expected 54.5`);
     }
     if (ns && ns.line?.dash !== "dash") out.push(`Binding nonspecific curve is not dashed`);
     if (ns && ns.y) {
@@ -3950,9 +4252,7 @@ async function disagreements(): Promise<string[]> {
     WIZARDS["binding-saturation"]!.questions(a, readTable(bindTotalNs)).flatMap((q) => (q ? [q.id] : []));
   if (JSON.stringify(satAsked({})) !== JSON.stringify(["y", "model"]))
     out.push(`Binding saturation wizard first steps: ${JSON.stringify(satAsked({}))}, expected ["y", "model"]`);
-  if (
-    JSON.stringify(satAsked({ model: "one-site-total-and-ns" })) !== JSON.stringify(["y", "model", "y2"])
-  )
+  if (JSON.stringify(satAsked({ model: "one-site-total-and-ns" })) !== JSON.stringify(["y", "model", "y2"]))
     out.push(
       `Binding saturation wizard (two-series): ${JSON.stringify(satAsked({ model: "one-site-total-and-ns" }))}, expected ["y", "model", "y2"]`,
     );
@@ -3999,7 +4299,10 @@ async function disagreements(): Promise<string[]> {
     ],
     [
       "competitive",
-      await runAnalysis("enzyme-inhibition", enzCompetitive, { model: "competitive", inhibitorConcentrations: enzConc }),
+      await runAnalysis("enzyme-inhibition", enzCompetitive, {
+        model: "competitive",
+        inhibitorConcentrations: enzConc,
+      }),
       [
         ["Vmax", 100, 1e-6],
         ["Km", 10, 1e-6],
@@ -4070,14 +4373,7 @@ async function disagreements(): Promise<string[]> {
         if (c.estimate == null) out.push(`Enzyme inhibition ${label} ${c.term}: missing estimate`);
         continue;
       }
-      if (
-        c.estimate == null ||
-        c.stdError == null ||
-        c.t == null ||
-        c.p == null ||
-        c.ciLow == null ||
-        c.ciHigh == null
-      )
+      if (c.estimate == null || c.stdError == null || c.t == null || c.p == null || c.ciLow == null || c.ciHigh == null)
         out.push(`Enzyme inhibition ${label} ${c.term}: missing estimate/SE/t/p/CI`);
     }
     const r2 = enzStat(r, "R squared");
@@ -4149,7 +4445,14 @@ async function disagreements(): Promise<string[]> {
     const opts = newGraphOptions("dose-response");
     const cols = plotColumns(readTable(enzMixed), "dose-response", opts, "xy");
     const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 3), readTable(enzMixed).titles);
-    addEnzymeInhibitionCurve(fig, cols, opts, enzMixedRun, { model: "mixed", inhibitorConcentrations: enzConc }, paintOf(opts, 3));
+    addEnzymeInhibitionCurve(
+      fig,
+      cols,
+      opts,
+      enzMixedRun,
+      { model: "mixed", inhibitorConcentrations: enzConc },
+      paintOf(opts, 3),
+    );
     const traces = fig.data as { mode?: string; x?: number[]; y?: number[]; line?: { color?: string } }[];
     const curves = traces.filter((t) => t.mode === "lines" && t.x?.length === 101);
     if (curves.length !== 3) out.push(`Enzyme inhibition graph draws ${curves.length} 101-point lines, expected 3`);
@@ -4215,6 +4518,368 @@ async function disagreements(): Promise<string[]> {
     })
   )
     out.push(`Enzyme inhibition wizard finish (morrison): ${JSON.stringify(enzMorrFinished)}`);
+  // Dose-response — Special (plan 18): noiseless fixtures must recover
+  // their generating parameters (relative tolerance 1e-6, absolute 1e-6
+  // for the zero-valued Bottom/Basal, 1e-5 for tau); the pA2 unit-trap
+  // case (B in nM) reports pA2 = −1; the Schild plot's points are
+  // (−8, 0) and (−7, 1) with slope 1; the multi-curve overlay draws one
+  // 101-point curve per series; the validation errors name their
+  // requirement. Every fitted parameter carries estimate + SE + t + p +
+  // 95% CI (derived EC50/KA/tau rows carry an estimate only).
+  const specialCoef = (r: AnalysisResult | { error: string }, term: string) =>
+    "error" in r ? null : (r.coefficients?.find((c) => c.term === term)?.estimate ?? null);
+  const specialStat = (r: AnalysisResult | { error: string }, label: string) =>
+    "error" in r ? null : (r.stats.find((s) => s.label === label)?.value ?? null);
+  const closeAbs = (got: number | null, want: number, tol: number) => got != null && Math.abs(got - want) <= tol;
+  const schildB = { "0 M": 0, "1e-8 M": 1e-8, "1e-7 M": 1e-7 };
+  const specialChecks: [string, AnalysisResult | { error: string }, [string, number, number, boolean][]][] = [
+    [
+      "schild-slope-1",
+      await runAnalysis("dose-response-special", schild, {
+        model: "schild-slope-1",
+        antagonistConcentrations: schildB,
+      }),
+      [
+        ["Bottom", 0, 1e-6, true],
+        ["Top", 100, 1e-6, false],
+        ["LogEC50", -6, 1e-6, false],
+        ["HillSlope", 1, 1e-6, false],
+        ["pA2", 8, 1e-6, false],
+      ],
+    ],
+    [
+      "schild free",
+      await runAnalysis("dose-response-special", schild, {
+        model: "schild",
+        antagonistConcentrations: schildB,
+      }),
+      [
+        ["Bottom", 0, 1e-6, true],
+        ["Top", 100, 1e-6, false],
+        ["LogEC50", -6, 1e-6, false],
+        ["HillSlope", 1, 1e-6, false],
+        ["pA2", 8, 1e-6, false],
+        ["SchildSlope", 1, 1e-6, false],
+      ],
+    ],
+    [
+      "schild nM units",
+      await runAnalysis("dose-response-special", schild, {
+        model: "schild-slope-1",
+        antagonistConcentrations: { "0 M": 0, "1e-8 M": 10, "1e-7 M": 100 },
+        bUnits: "nM",
+      }),
+      [
+        ["pA2", -1, 1e-6, false],
+        ["LogEC50", -6, 1e-6, false],
+      ],
+    ],
+    [
+      "ec50-shift",
+      await runAnalysis("dose-response-special", ec50shift, {
+        model: "ec50-shift",
+        antagonistConcentrations: { "0 nM": 0, "10 nM": 10 },
+        bUnits: "nM",
+      }),
+      [
+        ["Bottom", 0, 1e-6, true],
+        ["Top", 100, 1e-6, false],
+        ["HillSlope", 1, 1e-6, false],
+        ["LogEC50[0 nM]", -6, 1e-6, false],
+        ["LogEC50[10 nM]", -5, 1e-6, false],
+        ["EC50[0 nM]", 1e-6, 1e-6, false],
+        ["EC50[10 nM]", 1e-5, 1e-6, false],
+      ],
+    ],
+    [
+      "operational-partial",
+      await runAnalysis("dose-response-special", operational, { model: "operational-partial" }),
+      [
+        ["Basal", 0, 1e-6, true],
+        ["Effectmax", 100, 1e-6, false],
+        ["LogEC50", -7, 1e-6, false],
+        ["n", 1, 1e-6, false],
+        ["logKA[Partial agonist]", -6, 1e-6, false],
+        ["logtau[Partial agonist]", 0.5, 1e-6, false],
+        ["KA[Partial agonist]", 1e-6, 1e-6, false],
+        ["tau[Partial agonist]", 3.1623, 1e-5, false],
+      ],
+    ],
+  ];
+  for (const [label, r, terms] of specialChecks) {
+    if ("error" in r) {
+      out.push(`Dose-response — Special ${label}: ${r.error}`);
+      continue;
+    }
+    for (const [term, want, tol, abs] of terms) {
+      const got = specialCoef(r, term);
+      const ok = abs ? closeAbs(got, want, tol) : closeRel(got, want, tol);
+      if (!ok) out.push(`Dose-response — Special ${label} ${term}: ${got}, expected ${want}`);
+    }
+    // Every fitted parameter carries estimate + SE + t + p + 95% CI;
+    // derived rows (EC50/KA/tau) carry an estimate only.
+    for (const c of r.coefficients ?? []) {
+      const derived = c.term.startsWith("EC50[") || c.term.startsWith("KA[") || c.term.startsWith("tau[");
+      if (derived) {
+        if (c.estimate == null) out.push(`Dose-response — Special ${label} ${c.term}: missing estimate`);
+        continue;
+      }
+      if (c.estimate == null || c.stdError == null || c.t == null || c.p == null || c.ciLow == null || c.ciHigh == null)
+        out.push(`Dose-response — Special ${label} ${c.term}: missing estimate/SE/t/p/CI`);
+    }
+    const r2 = specialStat(r, "R squared");
+    if (r2 == null || Math.abs(r2 - 1) > 1e-9) out.push(`Dose-response — Special ${label} R²: ${r2}, expected 1`);
+  }
+  // Derived rows: EC50 (control) + Kb + dose ratios for Schild, dose
+  // ratio for EC50 shift.
+  const schildRun = specialChecks[0][1];
+  if (!("error" in schildRun)) {
+    if (!closeRel(specialStat(schildRun, "EC50 (control)"), 1e-6, 1e-6))
+      out.push(
+        `Dose-response — Special schild EC50 (control): ${specialStat(schildRun, "EC50 (control)")}, expected 1e-6`,
+      );
+    if (!closeRel(specialStat(schildRun, "Kb (M)"), 1e-8, 1e-6))
+      out.push(`Dose-response — Special schild Kb (M): ${specialStat(schildRun, "Kb (M)")}, expected 1e-8`);
+    if (!closeRel(specialStat(schildRun, "Dose ratio (1e-7 M)"), 11, 1e-6))
+      out.push(
+        `Dose-response — Special schild dose ratio (1e-7 M): ${specialStat(schildRun, "Dose ratio (1e-7 M)")}, expected 11`,
+      );
+    if (!closeRel(specialStat(schildRun, "Dose ratio (1e-8 M)"), 2, 1e-6))
+      out.push(
+        `Dose-response — Special schild dose ratio (1e-8 M): ${specialStat(schildRun, "Dose ratio (1e-8 M)")}, expected 2`,
+      );
+    if (!schildRun.notes.includes("is the control (no antagonist)"))
+      out.push(`Dose-response — Special schild notes do not name the control`);
+    if (!schildRun.notes.includes("“0 M” B = 0 M"))
+      out.push(`Dose-response — Special schild notes do not name B per series`);
+    if (!schildRun.notes.includes("pA2 = pKb"))
+      out.push(`Dose-response — Special schild-slope-1 notes do not say pA2 = pKb`);
+  }
+  const schildNMRun = specialChecks[2][1];
+  if (!("error" in schildNMRun)) {
+    if (!closeRel(specialStat(schildNMRun, "Kb (nM)"), 10, 1e-6))
+      out.push(`Dose-response — Special schild nM Kb (nM): ${specialStat(schildNMRun, "Kb (nM)")}, expected 10`);
+    if (!schildNMRun.notes.includes("B is entered in nM"))
+      out.push(`Dose-response — Special schild nM notes do not state B's units`);
+  }
+  const shiftRun = specialChecks[3][1];
+  if (!("error" in shiftRun)) {
+    if (!closeRel(specialStat(shiftRun, "Dose ratio (10 nM)"), 10, 1e-6))
+      out.push(
+        `Dose-response — Special ec50-shift dose ratio (10 nM): ${specialStat(shiftRun, "Dose ratio (10 nM)")}, expected 10`,
+      );
+    if (!shiftRun.notes.includes("each series has its own LogEC50"))
+      out.push(`Dose-response — Special ec50-shift notes do not say LogEC50 is per series`);
+  }
+  const operRun = specialChecks[4][1];
+  if (!("error" in operRun)) {
+    if (!operRun.notes.includes("full agonist"))
+      out.push(`Dose-response — Special operational notes do not name the full agonist`);
+  }
+  // Title parsing: the same Schild fit without antagonistConcentrations
+  // recovers the parameters from the "0 M" / "1e-8 M" / "1e-7 M" titles.
+  const schildTitleParsed = await runAnalysis("dose-response-special", schild, { model: "schild-slope-1" });
+  if ("error" in schildTitleParsed) out.push(`Dose-response — Special title-parsed schild: ${schildTitleParsed.error}`);
+  else if (!closeRel(specialCoef(schildTitleParsed, "pA2"), 8, 1e-6))
+    out.push(`Dose-response — Special title-parsed schild pA2: ${specialCoef(schildTitleParsed, "pA2")}, expected 8`);
+  // Validation errors.
+  const specialErrCases: [string, TableData, AnalysisType, AnalysisParams, string][] = [
+    [
+      "one series",
+      schild,
+      "dose-response-special",
+      { model: "schild-slope-1", ys: ["0 M"], antagonistConcentrations: { "0 M": 0 } },
+      "several curves",
+    ],
+    [
+      "first series not the control",
+      schild,
+      "dose-response-special",
+      { model: "schild-slope-1", antagonistConcentrations: { "0 M": 1e-8, "1e-8 M": 0, "1e-7 M": 1e-7 } },
+      "control",
+    ],
+  ];
+  for (const [label, tableData, type, params, want] of specialErrCases) {
+    const r = await runAnalysis(type, tableData, params);
+    if (!("error" in r) || !r.error.includes(want))
+      out.push(
+        `Dose-response — Special ${label}: ${"error" in r ? r.error : "ran"}, expected an error naming “${want}”`,
+      );
+  }
+  // The Schild plot: on the schild table the computed points are
+  // (log10 B, log10(DR−1)) = (−8, 0) and (−7, 1), slope 1 — and the
+  // graph draws them as markers plus the fitted line.
+  if (!("error" in schildRun)) {
+    const { schildPlotPoints, addSchildPlot } = await import("../src/views/graphs/schild-plot");
+    const plot = schildPlotPoints(schildRun, {
+      model: "schild-slope-1",
+      antagonistConcentrations: schildB,
+    });
+    if (
+      plot.points.length !== 2 ||
+      !closeAbs(plot.points[0]?.logB ?? null, -8, 1e-6) ||
+      !closeAbs(plot.points[0]?.logDRminus1 ?? null, 0, 1e-6) ||
+      !closeAbs(plot.points[1]?.logB ?? null, -7, 1e-6) ||
+      !closeAbs(plot.points[1]?.logDRminus1 ?? null, 1, 1e-6) ||
+      !closeAbs(plot.slope, 1, 1e-6)
+    )
+      out.push(`Schild plot points: ${JSON.stringify(plot)}, expected (−8, 0), (−7, 1), slope 1`);
+    const opts = newGraphOptions("schild-plot");
+    const cols = plotColumns(readTable(schild), "schild-plot", opts, "xy");
+    const fig = GRAPHS["schild-plot"].build(cols, opts, paintOf(opts, 3), readTable(schild).titles);
+    addSchildPlot(
+      fig,
+      schildRun,
+      { model: "schild-slope-1", antagonistConcentrations: schildB },
+      paintOf(opts, 3),
+      opts,
+    );
+    const traces = fig.data as { mode?: string; x?: number[]; y?: number[]; line?: { dash?: string } }[];
+    const markers = traces.filter((t) => t.mode === "markers");
+    const lines = traces.filter((t) => t.mode === "lines");
+    if (markers.length !== 1 || markers[0]?.x?.length !== 2 || lines.length !== 1 || lines[0]?.line?.dash !== "dash")
+      out.push(
+        `Schild plot traces: ${JSON.stringify(traces.map((t) => ({ mode: t.mode, dash: t.line?.dash, n: t.x?.length })))}`,
+      );
+    const note = (fig.layout.annotations as { text?: string }[] | undefined)?.find((a) => a.text?.includes("Slope"));
+    if (!note) out.push(`Schild plot draws no slope note`);
+  }
+  // The multi-curve overlay draws one 101-point line per series, each in
+  // its series' colour, spanning the pooled X range.
+  if (!("error" in schildRun)) {
+    const { addDoseResponseSpecialCurve } = await import("../src/views/graphs/binding-curve");
+    const opts = newGraphOptions("dose-response");
+    const cols = plotColumns(readTable(schild), "dose-response", opts, "xy");
+    const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 3), readTable(schild).titles);
+    addDoseResponseSpecialCurve(
+      fig,
+      cols,
+      opts,
+      schildRun,
+      { model: "schild-slope-1", antagonistConcentrations: schildB },
+      paintOf(opts, 3),
+    );
+    const traces = fig.data as { mode?: string; x?: number[]; y?: number[]; line?: { color?: string } }[];
+    const curves = traces.filter((t) => t.mode === "lines" && t.x?.length === 101);
+    if (curves.length !== 3)
+      out.push(`Dose-response — Special graph draws ${curves.length} 101-point lines, expected 3`);
+    const [c0, c1, c2] = curves;
+    if (c0 && (c0.x?.[0] !== -8 || c0.x?.at(-1) !== -4))
+      out.push(`Dose-response — Special curve spans [${c0.x?.[0]}, ${c0.x?.at(-1)}], expected [-8, -4]`);
+    if (c0 && c0.y?.[50] != null && Math.abs(c0.y[50] - 50) > 1e-6)
+      out.push(`Dose-response — Special control curve at X=−6: ${c0.y[50]}, expected 50`);
+    if (c0 && c1 && c2 && (c0.line?.color === c1.line?.color || c1.line?.color === c2.line?.color))
+      out.push(`Dose-response — Special curves share a colour — each series needs its own`);
+    const note = (fig.layout.annotations as { text?: string }[] | undefined)?.find((a) => a.text?.includes("pA2"));
+    if (!note) out.push(`Dose-response — Special graph draws no pA2 note`);
+  }
+  // The operational overlay: two curves, the partial agonist's lower
+  // plateau visible at X = −4.
+  if (!("error" in operRun)) {
+    const { addDoseResponseSpecialCurve } = await import("../src/views/graphs/binding-curve");
+    const opts = newGraphOptions("dose-response");
+    const cols = plotColumns(readTable(operational), "dose-response", opts, "xy");
+    const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 2), readTable(operational).titles);
+    addDoseResponseSpecialCurve(fig, cols, opts, operRun, { model: "operational-partial" }, paintOf(opts, 2));
+    const traces = fig.data as { mode?: string; x?: number[]; y?: number[] }[];
+    const curves = traces.filter((t) => t.mode === "lines" && t.x?.length === 101);
+    if (curves.length !== 2) out.push(`Operational graph draws ${curves.length} 101-point lines, expected 2`);
+    const [, c1] = curves;
+    if (c1 && c1.y?.[100] != null && Math.abs(c1.y[100] - 75.7925986172) > 1e-5)
+      out.push(`Operational partial curve at X=−4: ${c1.y[100]}, expected 75.7926`);
+  }
+  // The wizard asks model, then Y series, then which series is first
+  // (the control / full agonist), then one B field per other series, the
+  // B units and — for Schild — the HillSlope constraint; the operational
+  // model asks nothing more.
+  const specialAsked = (a: Record<string, string | string[]>) =>
+    WIZARDS["dose-response-special"]!.questions(a, readTable(schild)).flatMap((q) => (q ? [q.id] : []));
+  if (
+    JSON.stringify(specialAsked({})) !==
+    JSON.stringify(["model", "ys", "first", "B:1e-8 M", "B:1e-7 M", "bUnits", "fixHillSlope"])
+  )
+    out.push(`Dose-response — Special wizard first steps: ${JSON.stringify(specialAsked({}))}`);
+  if (
+    JSON.stringify(specialAsked({ model: "operational-partial", ys: ["Full agonist", "Partial agonist"] })) !==
+    JSON.stringify(["model", "ys", "first"])
+  )
+    out.push(
+      `Dose-response — Special wizard (operational): ${JSON.stringify(specialAsked({ model: "operational-partial", ys: ["Full agonist", "Partial agonist"] }))}`,
+    );
+  if (
+    JSON.stringify(specialAsked({ model: "ec50-shift", ys: ["0 nM", "10 nM"] })) !==
+    JSON.stringify(["model", "ys", "first", "B:10 nM", "bUnits"])
+  )
+    out.push(
+      `Dose-response — Special wizard (ec50-shift): ${JSON.stringify(specialAsked({ model: "ec50-shift", ys: ["0 nM", "10 nM"] }))}`,
+    );
+  // The wizard's finish maps the answers to the runner's params, with the
+  // control first (B = 0) and the B fields parsed per series.
+  const specialFinished = WIZARDS["dose-response-special"]!.finish(
+    {
+      model: "schild-slope-1",
+      ys: ["0 M", "1e-8 M", "1e-7 M"],
+      first: "0 M",
+      "B:1e-8 M": "1e-8",
+      "B:1e-7 M": "1e-7",
+      bUnits: "M",
+      fixHillSlope: "no",
+    },
+    readTable(schild),
+  );
+  if (
+    JSON.stringify(specialFinished) !==
+    JSON.stringify({
+      type: "dose-response-special",
+      params: {
+        model: "schild-slope-1",
+        ys: ["0 M", "1e-8 M", "1e-7 M"],
+        antagonistConcentrations: { "0 M": 0, "1e-8 M": 1e-8, "1e-7 M": 1e-7 },
+        bUnits: "M",
+        fixHillSlope: false,
+      },
+    })
+  )
+    out.push(`Dose-response — Special wizard finish (schild): ${JSON.stringify(specialFinished)}`);
+  // Re-picking the first series reorders ys and moves B = 0 with it.
+  const specialReordered = WIZARDS["dose-response-special"]!.finish(
+    {
+      model: "schild-slope-1",
+      ys: ["0 M", "1e-8 M", "1e-7 M"],
+      first: "1e-8 M",
+      "B:0 M": "1e-8",
+      "B:1e-7 M": "1e-7",
+      bUnits: "M",
+      fixHillSlope: "no",
+    },
+    readTable(schild),
+  );
+  if (
+    JSON.stringify(specialReordered) !==
+    JSON.stringify({
+      type: "dose-response-special",
+      params: {
+        model: "schild-slope-1",
+        ys: ["1e-8 M", "0 M", "1e-7 M"],
+        antagonistConcentrations: { "1e-8 M": 0, "0 M": 1e-8, "1e-7 M": 1e-7 },
+        bUnits: "M",
+        fixHillSlope: false,
+      },
+    })
+  )
+    out.push(`Dose-response — Special wizard finish (reordered): ${JSON.stringify(specialReordered)}`);
+  const specialOperFinished = WIZARDS["dose-response-special"]!.finish(
+    { model: "operational-partial", ys: ["Full agonist", "Partial agonist"], first: "Full agonist" },
+    readTable(operational),
+  );
+  if (
+    JSON.stringify(specialOperFinished) !==
+    JSON.stringify({
+      type: "dose-response-special",
+      params: { model: "operational-partial", ys: ["Full agonist", "Partial agonist"] },
+    })
+  )
+    out.push(`Dose-response — Special wizard finish (operational): ${JSON.stringify(specialOperFinished)}`);
   return out;
 }
 

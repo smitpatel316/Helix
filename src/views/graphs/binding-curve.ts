@@ -11,6 +11,8 @@ import type {
   BindingKineticsParams,
   BindingSaturationModel,
   BindingSaturationParams,
+  DoseResponseSpecialModel,
+  DoseResponseSpecialParams,
   EnzymeInhibitionModel,
   EnzymeInhibitionParams,
   RegressionCoefficient,
@@ -18,6 +20,7 @@ import type {
 } from "../../stats/types";
 import { evaluateBindingModel, isTwoSeriesSaturation } from "../../stats/xy/binding";
 import { evaluateEnzymeInhibitionModel, parseInhibitorConcentration } from "../../stats/xy/enzyme-inhibition";
+import { evaluateDoseResponseSpecialModel } from "../../stats/xy/dose-response-special";
 import { pairUp, type Column } from "../../lib/dataset";
 import type { GraphFigure } from ".";
 import { num } from "../../lib/format";
@@ -69,11 +72,7 @@ function fittedCurve(
 /** "Bmax = 100<br>Kd = 5<br>R² = 1" annotation text (Plotly-ready) — the
  *  fitted constants, the half-life / residence time for kinetics, and R²
  *  (the total series' for a two-series fit). */
-function bindingLabel(
-  model: BindingModel,
-  coefficients: RegressionCoefficient[],
-  stats: StatRow[],
-): string {
+function bindingLabel(model: BindingModel, coefficients: RegressionCoefficient[], stats: StatRow[]): string {
   const r2 = stat(stats, "R squared (total)") ?? stat(stats, "R squared");
   const lines: string[] = [];
   switch (model) {
@@ -240,9 +239,7 @@ export function addEnzymeInhibitionCurve(
   for (const col of included) {
     // Morrison's X is the inhibitor concentration itself, so no [I] is needed.
     const inhibitor =
-      model === "morrison"
-        ? 0
-        : (params.inhibitorConcentrations?.[col.name] ?? parseInhibitorConcentration(col.name));
+      model === "morrison" ? 0 : (params.inhibitorConcentrations?.[col.name] ?? parseInhibitorConcentration(col.name));
     if (inhibitor === undefined) continue;
     const curve = curvePoints((x0) => evaluateEnzymeInhibitionModel(model, coefficients, x0, inhibitor), xMin, xMax);
     traces.push({
@@ -258,4 +255,99 @@ export function addEnzymeInhibitionCurve(
   if (!traces.length) return;
   fig.data = [...traces, ...fig.data];
   addNote(fig, enzymeInhibitionLabel(model, coefficients, fit.stats), options);
+}
+
+/** "Bottom = 0<br>Top = 100<br>HillSlope = 1<br>EC50 (Control) = 1e-6<br>R² = 1"
+ *  annotation text (Plotly-ready) for a dose-response — Special fit — the
+ *  shared parameters, the per-series EC50s (EC50 shift) or pA2 + EC50
+ *  (Schild, with B's units) or the per-partial logKA/logtau (operational),
+ *  and R². */
+function doseResponseSpecialLabel(
+  model: DoseResponseSpecialModel,
+  coefficients: RegressionCoefficient[],
+  stats: StatRow[],
+  params: DoseResponseSpecialParams,
+): string {
+  const r2 = stat(stats, "R squared");
+  const lines: string[] = [];
+  if (model === "ec50-shift") {
+    lines.push(
+      `Bottom = ${num(coef(coefficients, "Bottom"))}`,
+      `Top = ${num(coef(coefficients, "Top"))}`,
+      `HillSlope = ${num(coef(coefficients, "HillSlope"))}`,
+    );
+    for (const c of coefficients.filter((c) => c.term.startsWith("EC50[")))
+      lines.push(`${c.term} = ${num(c.estimate)}`);
+  } else if (model === "schild" || model === "schild-slope-1") {
+    lines.push(
+      `pA2 = ${num(coef(coefficients, "pA2"))} (B in ${params.bUnits ?? "M"})`,
+      `EC50 = ${num(stat(stats, "EC50 (control)"))}`,
+    );
+    if (model === "schild") lines.push(`SchildSlope = ${num(coef(coefficients, "SchildSlope"))}`);
+  } else {
+    lines.push(
+      `Basal = ${num(coef(coefficients, "Basal"))}`,
+      `Effectmax = ${num(coef(coefficients, "Effectmax"))}`,
+      `n = ${num(coef(coefficients, "n"))}`,
+    );
+    for (const c of coefficients.filter((c) => c.term.startsWith("logKA[") || c.term.startsWith("logtau[")))
+      lines.push(`${c.term} = ${num(c.estimate)}`);
+  }
+  if (r2 != null) lines.push(`R² = ${num(r2)}`);
+  return lines.join("<br>");
+}
+
+/** Draws one fitted curve per Y series of a dose-response — Special fit,
+ *  each in its series' colour, evaluated from the closed-form model +
+ *  shared fitted parameters at 100 X points across the pooled X range.
+ *  The series order is the fit's (params.ys — the control / full agonist
+ *  first), not the table's, because the operational model's first series
+ *  takes the 4PL branch and the rest the operational branch. */
+export function addDoseResponseSpecialCurve(
+  fig: GraphFigure,
+  columns: Column[],
+  options: GraphOptions,
+  fit: AnalysisResult,
+  params: DoseResponseSpecialParams,
+  paint: Paint,
+) {
+  const [x, ...ys] = columns;
+  const model = params.model;
+  const coefficients = fit.coefficients ?? [];
+  if (!x || !coefficients.length) return;
+  const ordered = params.ys?.length
+    ? params.ys.map((n) => ys.find((c) => c.name === n)).filter((c): c is Column => c !== undefined)
+    : ys;
+  if (!ordered.length) return;
+  // The pooled X range, so every curve spans the data the fit saw.
+  const allXs = ordered.flatMap((c) => pairUp(x, c).x);
+  if (!allXs.length) return;
+  const [xMin, xMax] = extent(allXs);
+  const traces: GraphFigure["data"] = [];
+  for (const [i, col] of ordered.entries()) {
+    // The operational model has no B; Schild / EC50 shift read it from
+    // the params, else the column title (the Prism convention).
+    const B =
+      model === "operational-partial"
+        ? 0
+        : (params.antagonistConcentrations?.[col.name] ?? parseInhibitorConcentration(col.name));
+    if (B === undefined) continue;
+    const curve = curvePoints(
+      (x0) => evaluateDoseResponseSpecialModel(model, coefficients, { name: col.name, covariate: B }, i, x0),
+      xMin,
+      xMax,
+    );
+    traces.push({
+      type: "scatter",
+      mode: "lines",
+      x: curve.x,
+      y: curve.y,
+      line: { color: paint.color(col.name, ys.indexOf(col)), width: 1.5 },
+      hoverinfo: "skip",
+      showlegend: false,
+    });
+  }
+  if (!traces.length) return;
+  fig.data = [...traces, ...fig.data];
+  addNote(fig, doseResponseSpecialLabel(model, coefficients, fit.stats, params), options);
 }

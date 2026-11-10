@@ -5,15 +5,17 @@
 // series — the first shared-parameter fit in Helix). Kinetics fits
 // association / dissociation against time (one/two-phase), plus
 // association-then-dissociation (one experiment, HotNM/Time0 constrained).
-// All fits are base-R nls() algorithm "port" through the shared
-// fitModelSpec helper (see nonlinear-fit.ts) — no second nls plumbing.
-// The kinetics exponentials ARE plan 08's forms with binding names on the
-// parameters (association = one-phase association with Kobs, dissociation =
-// one-phase decay with Koff), so there is exactly one implementation of
-// each exponential form in the repo. Every fitted parameter reports
-// estimate + SE + t + p + Wald 95% CI (the shared plan-09 plumbing —
-// profile-likelihood confint() would be a cross-cutting change to every
-// nonlinear fit, not a plan-16 one).
+// The two-series saturation fits run through the shared global-fit helper
+// (see xy/global-fit.ts, plan 18) — one stacked nls() over both series —
+// so there is exactly one stacked-nls implementation in the repo; the
+// single-series fits use the shared fitModelSpec helper (see
+// nonlinear-fit.ts). The kinetics exponentials ARE plan 08's forms with
+// binding names on the parameters (association = one-phase association with
+// Kobs, dissociation = one-phase decay with Koff), so there is exactly one
+// implementation of each exponential form in the repo. Every fitted
+// parameter reports estimate + SE + t + p + Wald 95% CI (the shared
+// plan-09 plumbing — profile-likelihood confint() would be a cross-cutting
+// change to every nonlinear fit, not a plan-16 one).
 import type {
   AnalysisOutcome,
   BindingKineticsModel,
@@ -28,6 +30,7 @@ import { BINDING_KINETICS_MODELS, BINDING_SATURATION_MODELS } from "../types";
 import { describe } from "../column/base";
 import { num } from "../../lib/format";
 import { fitModelSpec, type ModelSpec } from "./nonlinear-fit";
+import { runGlobalFit, type GlobalModelDef } from "./global-fit";
 import { pairUp, splitXY, xyProblem } from "../../lib/dataset";
 
 export const BINDING_SATURATION_LABEL: Record<BindingSaturationModel, string> = {
@@ -78,41 +81,76 @@ function quantile(sorted: number[], p: number): number {
 
 const HALF_LIFE = (k: string) => ({ label: "Half-life", expr: `ifelse(cf[["${k}"]]>0,log(2)/cf[["${k}"]],NA_real_)` });
 
-/** The R spec for one saturation model. `g` (two-series only) is assigned by
- *  the runner before the fit. Rate/Kd parameters are bounded below by 0
- *  (nls algorithm "port" — the only algorithm base R offers bounds with);
- *  NS/Background stay unbounded. Start values are the Prism guide's rules of
- *  thumb, expressed in R so they follow the fitted points. */
+/** The R spec for a single-series saturation model. Rate/Kd parameters
+ *  are bounded below by 0 (nls algorithm "port" — the only algorithm base
+ *  R offers bounds with); NS/Background stay unbounded. Start values are
+ *  the Prism guide's rules of thumb, expressed in R so they follow the
+ *  fitted points. The two-series models fit through the shared
+ *  global-fit helper instead (twoSeriesSaturationDef below) — their
+ *  starts are the same rules, computed in TS. */
 function saturationSpec(model: BindingSaturationModel): ModelSpec {
   switch (model) {
     case "one-site-total":
       // Y = Bmax·X/(Kd + X) + NS·X + Background.
       return {
         kind: "nls",
-        fit: "m<-nls(y~Bmax*x/(Kd+x)+NS*x+Background,start=list(Bmax=max(y)*0.5,Kd=max(x)*0.2,NS=0.2*(max(y)-min(y))/(max(x)-min(x)),Background=min(y)),algorithm=\"port\",lower=c(0,0,-Inf,-Inf),upper=c(Inf,Inf,Inf,Inf))",
+        fit: 'm<-nls(y~Bmax*x/(Kd+x)+NS*x+Background,start=list(Bmax=max(y)*0.5,Kd=max(x)*0.2,NS=0.2*(max(y)-min(y))/(max(x)-min(x)),Background=min(y)),algorithm="port",lower=c(0,0,-Inf,-Inf),upper=c(Inf,Inf,Inf,Inf))',
         terms: ["Bmax", "Kd", "NS", "Background"],
       };
     case "two-site-specific":
       // Y = BmaxHi·X/(KdHi + X) + BmaxLo·X/(KdLo + X).
       return {
         kind: "nls",
-        fit: "m<-nls(y~BmaxHi*x/(KdHi+x)+BmaxLo*x/(KdLo+x),start=list(BmaxHi=max(y)*0.6,KdHi=quantile(x[x>0],0.25),BmaxLo=max(y)*0.4,KdLo=quantile(x[x>0],0.75)),algorithm=\"port\",lower=c(0,0,0,0),upper=c(Inf,Inf,Inf,Inf))",
+        fit: 'm<-nls(y~BmaxHi*x/(KdHi+x)+BmaxLo*x/(KdLo+x),start=list(BmaxHi=max(y)*0.6,KdHi=quantile(x[x>0],0.25),BmaxLo=max(y)*0.4,KdLo=quantile(x[x>0],0.75)),algorithm="port",lower=c(0,0,0,0),upper=c(Inf,Inf,Inf,Inf))',
         terms: ["BmaxHi", "KdHi", "BmaxLo", "KdLo"],
       };
-    case "one-site-total-and-ns":
-      // Total: specific + NS·X + Background; nonspecific: NS·X + Background.
-      return {
-        kind: "nls",
-        fit: "m<-nls(y~ifelse(g==1,Bmax*x/(Kd+x)+NS*x+Background,NS*x+Background),start=list(Bmax=max(y[g==1])*0.5,Kd=max(x)*0.2,NS=0.2*(max(y[g==1])-min(y[g==1]))/(max(x)-min(x)),Background=min(y[g==1])),algorithm=\"port\",lower=c(0,0,-Inf,-Inf),upper=c(Inf,Inf,Inf,Inf))",
-        terms: ["Bmax", "Kd", "NS", "Background"],
-      };
-    case "two-site-total-and-ns":
-      return {
-        kind: "nls",
-        fit: "m<-nls(y~ifelse(g==1,BmaxHi*x/(KdHi+x)+BmaxLo*x/(KdLo+x)+NS*x+Background,NS*x+Background),start=list(BmaxHi=max(y[g==1])*0.6,KdHi=quantile(x[x>0],0.25),BmaxLo=max(y[g==1])*0.4,KdLo=quantile(x[x>0],0.75),NS=0.2*(max(y[g==1])-min(y[g==1]))/(max(x)-min(x)),Background=min(y[g==1])),algorithm=\"port\",lower=c(0,0,0,0,-Inf,-Inf),upper=c(Inf,Inf,Inf,Inf,Inf,Inf))",
-        terms: ["BmaxHi", "KdHi", "BmaxLo", "KdLo", "NS", "Background"],
-      };
+    default:
+      throw new Error("Two-series saturation models fit through the global-fit helper, not a single-series spec.");
   }
+}
+
+/** The two-series saturation models as a global-fit definition: total and
+ *  nonspecific binding fitted jointly, NS and Background shared — `g`
+ *  (1 = total, 2 = nonspecific) selects the branch. Start values are the
+ *  spec's R rules computed in TS from the fitted points: Bmax/Kd from the
+ *  total series, NS/Background likewise, and the two-site Kd starts from
+ *  the quantiles of the positive X values — over the STACKED x (each value
+ *  twice), matching what the R `quantile(x[x>0], …)` saw. */
+function twoSeriesSaturationDef(model: BindingSaturationModel, xs: number[], ys: number[]): GlobalModelDef {
+  const maxX = Math.max(...xs);
+  const minX = Math.min(...xs);
+  const maxY = Math.max(...ys);
+  const minY = Math.min(...ys);
+  const ns0 = (0.2 * (maxY - minY)) / (maxX - minX);
+  const evaluate: GlobalModelDef["evaluate"] = (coefficients, _s, i, x) =>
+    evaluateBindingModel(model, coefficients, x, i === 0 ? "total" : "nonspecific");
+  if (model === "one-site-total-and-ns") {
+    // Total: specific + NS·X + Background; nonspecific: NS·X + Background.
+    return {
+      formula: "ifelse(g==1,Bmax*x/(Kd+x)+NS*x+Background,NS*x+Background)",
+      params: [
+        { name: "Bmax", shared: true, start: () => maxY * 0.5, lower: 0 },
+        { name: "Kd", shared: true, start: () => maxX * 0.2, lower: 0 },
+        { name: "NS", shared: true, start: () => ns0 },
+        { name: "Background", shared: true, start: () => minY },
+      ],
+      evaluate,
+    };
+  }
+  // two-site-total-and-ns.
+  const positive = [...xs, ...xs].filter((x) => x > 0).sort((a, b) => a - b);
+  return {
+    formula: "ifelse(g==1,BmaxHi*x/(KdHi+x)+BmaxLo*x/(KdLo+x)+NS*x+Background,NS*x+Background)",
+    params: [
+      { name: "BmaxHi", shared: true, start: () => maxY * 0.6, lower: 0 },
+      { name: "KdHi", shared: true, start: () => quantile(positive, 0.25), lower: 0 },
+      { name: "BmaxLo", shared: true, start: () => maxY * 0.4, lower: 0 },
+      { name: "KdLo", shared: true, start: () => quantile(positive, 0.75), lower: 0 },
+      { name: "NS", shared: true, start: () => ns0 },
+      { name: "Background", shared: true, start: () => minY },
+    ],
+    evaluate,
+  };
 }
 
 /** The R spec for one kinetics model. Association is plan 08's one-phase
@@ -125,7 +163,7 @@ function kineticsSpec(model: BindingKineticsModel): ModelSpec {
       // Y = Y0 + (Plateau − Y0)·(1 − exp(−Kobs·X)).
       return {
         kind: "nls",
-        fit: "m<-nls(y~Y0+(Plateau-Y0)*(1-exp(-Kobs*x)),start=list(Y0=y[which.min(x)],Plateau=max(y),Kobs=0.5/(max(x)-min(x))),algorithm=\"port\",lower=c(-Inf,-Inf,0),upper=c(Inf,Inf,Inf))",
+        fit: 'm<-nls(y~Y0+(Plateau-Y0)*(1-exp(-Kobs*x)),start=list(Y0=y[which.min(x)],Plateau=max(y),Kobs=0.5/(max(x)-min(x))),algorithm="port",lower=c(-Inf,-Inf,0),upper=c(Inf,Inf,Inf))',
         terms: ["Y0", "Plateau", "Kobs"],
         derived: [HALF_LIFE("Kobs")],
       };
@@ -133,7 +171,7 @@ function kineticsSpec(model: BindingKineticsModel): ModelSpec {
       // Y = (Y0 − Plateau)·exp(−Koff·X) + Plateau.
       return {
         kind: "nls",
-        fit: "m<-nls(y~(Y0-Plateau)*exp(-Koff*x)+Plateau,start=list(Y0=y[which.min(x)],Plateau=y[which.max(x)],Koff=0.5/(max(x)-min(x))),algorithm=\"port\",lower=c(-Inf,-Inf,0),upper=c(Inf,Inf,Inf))",
+        fit: 'm<-nls(y~(Y0-Plateau)*exp(-Koff*x)+Plateau,start=list(Y0=y[which.min(x)],Plateau=y[which.max(x)],Koff=0.5/(max(x)-min(x))),algorithm="port",lower=c(-Inf,-Inf,0),upper=c(Inf,Inf,Inf))',
         terms: ["Y0", "Plateau", "Koff"],
         derived: [
           HALF_LIFE("Koff"),
@@ -144,7 +182,7 @@ function kineticsSpec(model: BindingKineticsModel): ModelSpec {
       // Y = Y0 + (Plateau − Y0)·(PercentFast·(1 − exp(−KFast·X)) + (1 − PercentFast)·(1 − exp(−KSlow·X))).
       return {
         kind: "nls",
-        fit: "m<-nls(y~Y0+(Plateau-Y0)*(PercentFast*(1-exp(-KFast*x))+(1-PercentFast)*(1-exp(-KSlow*x))),start=list(Y0=y[which.min(x)],Plateau=max(y),PercentFast=0.5,KFast=5/(max(x)-min(x)),KSlow=0.5/(max(x)-min(x))),algorithm=\"port\",lower=c(-Inf,-Inf,0,0,0),upper=c(Inf,Inf,1,Inf,Inf))",
+        fit: 'm<-nls(y~Y0+(Plateau-Y0)*(PercentFast*(1-exp(-KFast*x))+(1-PercentFast)*(1-exp(-KSlow*x))),start=list(Y0=y[which.min(x)],Plateau=max(y),PercentFast=0.5,KFast=5/(max(x)-min(x)),KSlow=0.5/(max(x)-min(x))),algorithm="port",lower=c(-Inf,-Inf,0,0,0),upper=c(Inf,Inf,1,Inf,Inf))',
         terms: ["Y0", "Plateau", "PercentFast", "KFast", "KSlow"],
         derived: [
           { label: "Half-life (fast)", expr: 'ifelse(cf[["KFast"]]>0,log(2)/cf[["KFast"]],NA_real_)' },
@@ -155,7 +193,7 @@ function kineticsSpec(model: BindingKineticsModel): ModelSpec {
       // Y = Plateau + (Y0 − Plateau)·(PercentFast·exp(−KFast·X) + (1 − PercentFast)·exp(−KSlow·X)).
       return {
         kind: "nls",
-        fit: "m<-nls(y~Plateau+(Y0-Plateau)*(PercentFast*exp(-KFast*x)+(1-PercentFast)*exp(-KSlow*x)),start=list(Y0=y[which.min(x)],Plateau=y[which.max(x)],PercentFast=0.5,KFast=5/(max(x)-min(x)),KSlow=0.5/(max(x)-min(x))),algorithm=\"port\",lower=c(-Inf,-Inf,0,0,0),upper=c(Inf,Inf,1,Inf,Inf))",
+        fit: 'm<-nls(y~Plateau+(Y0-Plateau)*(PercentFast*exp(-KFast*x)+(1-PercentFast)*exp(-KSlow*x)),start=list(Y0=y[which.min(x)],Plateau=y[which.max(x)],PercentFast=0.5,KFast=5/(max(x)-min(x)),KSlow=0.5/(max(x)-min(x))),algorithm="port",lower=c(-Inf,-Inf,0,0,0),upper=c(Inf,Inf,1,Inf,Inf))',
         terms: ["Y0", "Plateau", "PercentFast", "KFast", "KSlow"],
         derived: [
           { label: "Half-life (fast)", expr: 'ifelse(cf[["KFast"]]>0,log(2)/cf[["KFast"]],NA_real_)' },
@@ -176,7 +214,7 @@ function kineticsSpec(model: BindingKineticsModel): ModelSpec {
       // limit on noiseless data. maxiter is raised for the same reason.
       return {
         kind: "nls",
-        fit: "f<-function(xv,Kon,Koff,Bmax,NS){Kob<-hot*Kon+Koff;Kd<-Koff/Kon;Eq<-Bmax*hot/(hot+Kd);Yat0<-Eq*(1-exp(-Kob*t0));ifelse(xv<t0,Eq*(1-exp(-Kob*xv)),Yat0*exp(-Koff*(xv-t0)))+NS};m<-nls(y~f(x,Kon,Koff,Bmax,NS),start=list(Kon=pmax((log(2)/median(x[x<t0])-0.5/(max(x)-min(x)))/hot,1e5),Koff=0.5/(max(x)-min(x)),Bmax=max(y),NS=min(y)),algorithm=\"port\",lower=c(0,0,0,-Inf),upper=c(Inf,Inf,Inf,Inf),control=nls.control(maxiter=200))",
+        fit: 'f<-function(xv,Kon,Koff,Bmax,NS){Kob<-hot*Kon+Koff;Kd<-Koff/Kon;Eq<-Bmax*hot/(hot+Kd);Yat0<-Eq*(1-exp(-Kob*t0));ifelse(xv<t0,Eq*(1-exp(-Kob*xv)),Yat0*exp(-Koff*(xv-t0)))+NS};m<-nls(y~f(x,Kon,Koff,Bmax,NS),start=list(Kon=pmax((log(2)/median(x[x<t0])-0.5/(max(x)-min(x)))/hot,1e5),Koff=0.5/(max(x)-min(x)),Bmax=max(y),NS=min(y)),algorithm="port",lower=c(0,0,0,-Inf),upper=c(Inf,Inf,Inf,Inf),control=nls.control(maxiter=200))',
         terms: ["Kon", "Koff", "Bmax", "NS"],
         derived: [
           { label: "Kinetic Kd (nM)", expr: 'cf[["Koff"]]/cf[["Kon"]]*1e9' },
@@ -360,7 +398,10 @@ function kineticsStarts(
     case "association-then-dissociation": {
       // Kon starts from the association phase's half-time (see kineticsSpec).
       const below = xs.filter((x) => x < atd!.time0).sort((a, b) => a - b);
-      const median = below.length % 2 === 1 ? below[(below.length - 1) / 2] : (below[below.length / 2 - 1] + below[below.length / 2]) / 2;
+      const median =
+        below.length % 2 === 1
+          ? below[(below.length - 1) / 2]
+          : (below[below.length / 2 - 1] + below[below.length / 2]) / 2;
       const kon0 = Math.max((Math.LN2 / median - 0.5 / range) / (atd!.hotNM * 1e-9), 1e5);
       return `Starting values: Kon = ${num(kon0)}, Koff = ${num(0.5 / range)}, Bmax = ${num(maxY)}, NS = ${num(Math.min(...ys))}.`;
     }
@@ -376,7 +417,10 @@ export async function runBindingSaturation(
   const label = BINDING_SATURATION_LABEL[model];
   const twoSeries = isTwoSeriesSaturation(model);
   const twoSite = isTwoSiteSaturation(model);
-  const spec = saturationSpec(model);
+  // Single-series models fit through their spec; the two-series models
+  // fit through the shared global-fit helper (see the fit call below).
+  const spec = twoSeries ? null : saturationSpec(model);
+  const nParams = model === "two-site-total-and-ns" ? 6 : 4;
 
   const { x: xCol, ys: yCols } = splitXY(columns);
   const yCol = params?.y === undefined ? yCols[0] : yCols.find((c) => c.name === params.y);
@@ -388,8 +432,7 @@ export async function runBindingSaturation(
       return {
         error: "A two-series saturation model needs a second Y data set for the nonspecific binding.",
       };
-    if (y2Col.name === yCol.name)
-      return { error: "The total and nonspecific binding must be different Y data sets." };
+    if (y2Col.name === yCol.name) return { error: "The total and nonspecific binding must be different Y data sets." };
   }
 
   // The complete-row set each series fits on; the two-series fit uses the
@@ -414,26 +457,28 @@ export async function runBindingSaturation(
   const n = xs.length;
 
   if (xs.some((x) => x < 0)) return { error: "Concentrations can't be negative." };
-  if (new Set(xs).size < 2)
-    return { error: "Need at least two different concentrations to fit a saturation curve." };
+  if (new Set(xs).size < 2) return { error: "Need at least two different concentrations to fit a saturation curve." };
   if (Math.max(...xs) <= 0) return { error: "No positive concentration — Kd cannot be estimated." };
-  if (twoSite && n < 10)
-    return { error: `Two-site binding needs at least 10 points (${n} complete points provided).` };
-  if (twoSeries && n < minPts)
-    return { error: `Only ${n} rows are complete in both series; need at least ${minPts}.` };
-  if (n < spec.terms.length + 1)
+  if (twoSite && n < 10) return { error: `Two-site binding needs at least 10 points (${n} complete points provided).` };
+  if (twoSeries && n < minPts) return { error: `Only ${n} rows are complete in both series; need at least ${minPts}.` };
+  if (n < nParams + 1)
     return {
-      error: `Not enough complete points (${n}) to fit this curve; need at least ${spec.terms.length + 1}.`,
+      error: `Not enough complete points (${n}) to fit this curve; need at least ${nParams + 1}.`,
     };
   if (Math.max(...ys) <= 0) return { error: "No positive binding values — Bmax cannot be estimated." };
 
-  // Stack the two series (total first, then nonspecific) with the group
-  // indicator `g` the spec's ifelse branches on.
-  const fitXs = ys2 ? [...xs, ...xs] : xs;
-  const fitYs = ys2 ? [...ys, ...ys2] : ys;
-  const extra = ys2 ? `g<-c(${Array(n).fill(1).join(",")},${Array(n).fill(0).join(",")});` : "";
   try {
-    const { coefficients, derived, stats } = await fitModelSpec(fitXs, fitYs, spec, extra);
+    // The two-series fit stacks total first, then nonspecific — the
+    // stacking lives in the shared global-fit helper, not here.
+    const { coefficients, derived, stats } = ys2
+      ? await runGlobalFit(
+          [
+            { name: yCol.name, x: xs, y: ys, covariate: 0 },
+            { name: y2Col!.name, x: xs, y: ys2, covariate: 0 },
+          ],
+          twoSeriesSaturationDef(model, xs, ys),
+        )
+      : await fitModelSpec(xs, ys, spec!);
     const bmax = coefOf(coefficients, "Bmax");
     const bmaxHi = coefOf(coefficients, "BmaxHi");
     const bmaxLo = coefOf(coefficients, "BmaxLo");
@@ -553,8 +598,7 @@ export async function runBindingKinetics(
     if (plateau != null && plateau < 0)
       return { error: "Fitted Plateau < 0 — the data do not support this binding model." };
     const bmax = coefOf(coefficients, "Bmax");
-    if (bmax != null && bmax <= 0)
-      return { error: "Fitted Bmax ≤ 0 — the data do not support this binding model." };
+    if (bmax != null && bmax <= 0) return { error: "Fitted Bmax ≤ 0 — the data do not support this binding model." };
 
     const notes = [
       `Binding kinetics fit ("${label}") of "${yCol.name}" on "${xCol.name}" (time).`,
@@ -565,9 +609,7 @@ export async function runBindingKinetics(
         `HotNM = ${num(hotNM!)} nM and Time0 = ${num(time0!)} are constrained constants, not fitted parameters.`,
       );
     if (isTwoPhaseKinetics(model))
-      notes.push(
-        "Two-phase fits need dense early time points — without them the fast phase is poorly identified.",
-      );
+      notes.push("Two-phase fits need dense early time points — without them the fast phase is poorly identified.");
     const kobs = coefOf(coefficients, "Kobs");
     const koff = coefOf(coefficients, "Koff");
     if (model === "association-one-phase" && kobs != null && kobs <= 0)
@@ -610,9 +652,7 @@ export async function runBindingKinetics(
           `Radioligand concentration ${num(ligand)} supplied, but no Koff — kon and the kinetic Kd need a dissociation experiment (supply Koff).`,
         );
       } else if (koffIn !== undefined) {
-        notes.push(
-          `Koff ${num(koffIn)} supplied, but no radioligand concentration — kon needs [L].`,
-        );
+        notes.push(`Koff ${num(koffIn)} supplied, but no radioligand concentration — kon needs [L].`);
       }
     }
 
