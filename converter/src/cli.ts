@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { serializeProjectFile } from "../../src/lib/project-file";
-import { convertPrism, formatReport } from "./prism";
+import { convertPrism, formatReport, type ConvertResult } from "./prism";
 
 function usage(): never {
   console.error("Usage: prism2hlx <input.prism> [output.hlx] [--json]");
@@ -40,7 +40,7 @@ try {
   process.exit(1);
 }
 const before = createHash("sha256").update(inputBuffer).digest("hex");
-let result;
+let result: ConvertResult;
 try {
   result = await convertPrism(inputBuffer, basename(input));
 } catch (err) {

@@ -14,6 +14,12 @@ npm run convert -- converter ... # see converter/package.json scripts
 node --import tsx converter/src/cli.ts <input.prism> [output.hlx] [--json]
 ```
 
+Setup: `npm ci` in the repo root AND in `converter/` — the converter
+reuses Helix's own project-file code, so `npm run check` needs the root
+`node_modules` (React/WebR types) as well as the converter's own
+`@types/node`. The `convert` and `verify` commands run without the root
+install; `check` does not.
+
 - The input file is only ever read, never written (the CLI verifies its
   checksum before and after).
 - The output is written with Helix's own `serializeProjectFile`, so it opens

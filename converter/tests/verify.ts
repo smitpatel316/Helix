@@ -25,7 +25,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import JSZip from "jszip";
 import { parseProjectFile, serializeProjectFile } from "../../src/lib/project-file";
-import { convertPrism } from "../src/prism";
+import { convertPrism, type ConvertResult } from "../src/prism";
 import { parseCsv } from "../src/csv";
 
 const CORPUS = process.env.PRISM_TEST_CORPUS ?? join(process.env.HOME ?? "~", "workspace/helix/test-corpus");
@@ -73,7 +73,7 @@ const doc = await json<{
   sheetAttributesMap: Record<string, { title?: string }>;
 }>("document.json");
 
-let result;
+let result: ConvertResult;
 try {
   result = await convertPrism(input, "prism2R-demo_dataset.prism");
   check("V1 convert", true, `no error; ${result.report.tables.length} tables, ${result.report.analyses.length} analysis nodes`);
