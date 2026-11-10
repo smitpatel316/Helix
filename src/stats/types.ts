@@ -28,6 +28,8 @@ export type AnalysisType =
   | "multiple-logistic-regression"
   | "poisson-regression"
   | "spline-lowess"
+  | "binding-saturation"
+  | "binding-kinetics"
   | "outliers"
   | "chi-square"
   | "survival"
@@ -84,6 +86,23 @@ export const NONLINEAR_MODELS = [
 /** What comparing two curves asks: is the EC50 different, or does one curve fit both. */
 export const CURVE_COMPARISONS = ["ec50", "all"] as const;
 export const CORRELATION_METHODS = ["pearson", "spearman"] as const;
+/** Binding — Saturation models (plan 16): one-site total, two-site
+ *  specific, and the two-series total+nonspecific fits (NS/Background shared). */
+export const BINDING_SATURATION_MODELS = [
+  "one-site-total",
+  "two-site-specific",
+  "one-site-total-and-ns",
+  "two-site-total-and-ns",
+] as const;
+/** Binding — Kinetics models (plan 16): one/two-phase association and
+ *  dissociation, plus association-then-dissociation (one experiment). */
+export const BINDING_KINETICS_MODELS = [
+  "association-one-phase",
+  "dissociation-one-phase",
+  "association-two-phase",
+  "dissociation-two-phase",
+  "association-then-dissociation",
+] as const;
 export const CORRELATION_MODES = ["x-vs-every-y", "two-datasets", "matrix"] as const;
 export const TWO_WAY_DESIGNS = ["ordinary", "repeated-measures", "nonparametric"] as const;
 export const POSTHOC_TARGETS = ["groups", "rows"] as const;
@@ -302,6 +321,45 @@ export interface MultipleTTestsParams {
   correction: (typeof CORRECTIONS)[number];
 }
 
+/** Params for "binding-saturation" (XY table): which Y series is the total
+ *  binding, and which saturation model. The two-series models also take
+ *  `y2`, the nonspecific-binding series, fitted jointly with NS and
+ *  Background shared between the series. */
+export type BindingSaturationModel = (typeof BINDING_SATURATION_MODELS)[number];
+export interface BindingSaturationParams {
+  /** Omitted defaults to the first Y data column. */
+  y?: string;
+  model: BindingSaturationModel;
+  /** The nonspecific series (two-series models only); omitted defaults to
+   *  the second Y data column. */
+  y2?: string;
+}
+
+/** Params for "binding-kinetics" (XY table, X = time): which Y series, and
+ *  which kinetics model. `ligandConcentration` (association-one-phase only)
+ *  is the radioligand concentration in the experiment; with a `koff` from a
+ *  dissociation experiment it derives kon and the kinetic Kd. `hotNM` /
+ *  `time0` are the constrained constants of association-then-dissociation
+ *  (required for that model). */
+export type BindingKineticsModel = (typeof BINDING_KINETICS_MODELS)[number];
+export interface BindingKineticsParams {
+  /** Omitted defaults to the first Y data column. */
+  y?: string;
+  model: BindingKineticsModel;
+  /** Radioligand concentration (association-one-phase only), same units as
+   *  the experiment; omitted = kon / kinetic Kd not reported. */
+  ligandConcentration?: number;
+  /** Koff from a dissociation experiment (association-one-phase only), same
+   *  time units as X; omitted = kon / kinetic Kd not reported. */
+  koff?: number;
+  /** Radioligand concentration in nM during association
+   *  (association-then-dissociation only, required). */
+  hotNM?: number;
+  /** Time at which dissociation starts (association-then-dissociation only,
+   *  required), same time units as X. */
+  time0?: number;
+}
+
 /** Params for "spline-lowess" (XY table): smooth a chosen Y series against X
  *  with no model assumed — Lowess (locally weighted smoothing, span `f`) or a
  *  smoothing spline (`spar`, or `df`, or neither for the GCV auto-choice).
@@ -398,6 +456,8 @@ export type AnalysisParams = DataSetsParam &
     | AreaUnderCurveParams
     | NonlinearRegressionParams
     | StandardCurveInterpolationParams
+    | BindingSaturationParams
+    | BindingKineticsParams
     | TwoWayAnovaParams
     | ThreeWayAnovaParams
     | MultipleTTestsParams

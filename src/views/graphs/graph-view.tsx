@@ -17,7 +17,7 @@ import {
   type ProjectNode,
   type SeriesStyle,
 } from "../../store/types";
-import type { LinearRegressionParams, NonlinearRegressionParams, CoxPHParams, PoissonRegressionParams, DemingRegressionParams } from "../../stats/types";
+import type { BindingKineticsParams, BindingSaturationParams, LinearRegressionParams, NonlinearRegressionParams, CoxPHParams, PoissonRegressionParams, DemingRegressionParams } from "../../stats/types";
 import { useProjectStore } from "../../store/use-project-store";
 import { groupsOf, readTable, xyProblem } from "../../lib/dataset";
 import { paletteOf } from "../../lib/palettes";
@@ -26,6 +26,7 @@ import { useAnalysis } from "../analyses/use-analysis";
 import { GRAPHS, graphSeries, plotColumns } from ".";
 import { addFittedCurve } from "./fitted-curve";
 import { addDoseCurve } from "./dose-response-curve";
+import { addBindingCurve } from "./binding-curve";
 import { addSmoothCurve } from "./smooth-curve";
 import { addLogisticCurve } from "./logistic-curve";
 import { addForestPlot } from "./forest-plot";
@@ -294,6 +295,24 @@ export function GraphView({ node }: { node: ProjectNode }) {
     interpAnalysis?.analysisParams,
   );
   const interpFit = interpOutcome && !("error" in interpOutcome) ? interpOutcome : null;
+  // A dose-response graph also draws a sibling binding analysis's fitted
+  // curve (saturation or kinetics) — the same cached run (no extra R call),
+  // as the interpolation drop-lines above. Without one it draws only its
+  // own dose curve.
+  const bindingAnalysis =
+    type === "dose-response"
+      ? analyses.find((n) => n.analysisType === "binding-saturation" || n.analysisType === "binding-kinetics")
+      : undefined;
+  const bindingOutcome = useAnalysis(
+    bindingAnalysis?.analysisType,
+    data,
+    bindingAnalysis?.analysisParams,
+  );
+  const bindingFit = bindingOutcome && !("error" in bindingOutcome) ? bindingOutcome : null;
+  const bindingParams = (bindingAnalysis?.analysisParams ?? undefined) as
+    | BindingSaturationParams
+    | BindingKineticsParams
+    | undefined;
   // A logistic-curve graph fits its own curve (no analysis node needed): the
   // first Y series is the binary outcome, as in the analysis's default.
   const logisticY = columns[1]?.name;
@@ -431,6 +450,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
       } else if (type === "xy-scatter" && regNode) addRegression(fig, columns, options, regParams, paint);
       if (type === "xy-scatter" && options.demingAnalysisId) addDeming(fig, columns, options, demingParams, paint);
       if (doseFit) addDoseCurve(fig, columns, options, doseFit, paint, interpFit);
+      if (bindingFit && bindingParams) addBindingCurve(fig, columns, options, bindingFit, bindingParams, paint);
       if (type === "smooth-curve" && smoothResult) addSmoothCurve(fig, columns, options, smoothResult, paint);
       if (logisticFit) addLogisticCurve(fig, columns, logisticFit, paint);
       if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint);
@@ -477,6 +497,8 @@ export function GraphView({ node }: { node: ProjectNode }) {
     curveFit,
     doseFit,
     interpFit,
+    bindingFit,
+    bindingParams,
     smoothResult,
     logisticFit,
     coxResult,

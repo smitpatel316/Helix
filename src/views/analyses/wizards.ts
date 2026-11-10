@@ -16,6 +16,8 @@ import type {
   AnalysisParams,
   AnalysisPickerValue,
   AnalysisType,
+  BindingKineticsParams,
+  BindingSaturationParams,
   CompareTwoGroupsParams,
   CorrelationParams,
   CoxPHParams,
@@ -83,6 +85,29 @@ export function parseSpar(text: string): { value: number | null; error?: string 
     };
   if (v < 0 || v > 1.5) return { value: null, error: "The smoothing parameter (spar) must be between 0 and 1.5." };
   return { value: v };
+}
+
+/** Parse an optional positive number (the binding kinetics constants):
+ *  blank = not supplied, otherwise a number > 0. `value` is undefined when
+ *  blank; `error` is set (and `value` undefined) when the text is neither —
+ *  the runner re-checks, so a bad value passed straight to `runAnalysis`
+ *  still fails clearly. */
+export function parseOptionalPositive(text: string, label: string): { value?: number; error?: string } {
+  const t = text.trim();
+  if (t === "") return {};
+  const v = Number(t);
+  if (!Number.isFinite(v)) return { error: `“${t}” is not a number — enter a ${label}, or leave it blank.` };
+  if (v <= 0) return { error: `The ${label} must be greater than 0.` };
+  return { value: v };
+}
+
+/** Parse a required positive number (association-then-dissociation's
+ *  HotNM / Time0): blank is an error — the wizard must not proceed without it. */
+export function parseRequiredPositive(text: string, label: string): { value?: number; error?: string } {
+  const t = text.trim();
+  if (t === "") return { error: `Enter a ${label} — it is required for this model.` };
+  const parsed = parseOptionalPositive(t, label);
+  return parsed.error ? parsed : { value: parsed.value };
 }
 
 export interface Wizard {
@@ -596,6 +621,105 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       type: "nonlinear-regression",
       params: { y: a.y as string, model: a.model as NonlinearRegressionParams["model"], interpolate: true },
     }),
+  },
+
+  "binding-saturation": {
+    questions: (a, table) => [
+      choice("y", "Which Y data set is the total binding?", names(yNames(table))),
+      choice("model", "Which saturation model should be fitted?", [
+        ["one-site-total", "One site — Total binding"],
+        ["two-site-specific", "Two sites — Specific binding"],
+        ["one-site-total-and-ns", "One site — Total and nonspecific"],
+        ["two-site-total-and-ns", "Two sites — Total and nonspecific"],
+      ]),
+      // Two-series models fit a second Y series jointly, with NS and
+      // Background shared — the first option after the total series is the
+      // second Y column, so it defaults to the second Y data set.
+      (a.model === "one-site-total-and-ns" || a.model === "two-site-total-and-ns") &&
+        choice(
+          "y2",
+          "Which Y data set is the nonspecific binding?",
+          names(yNames(table).filter((n) => n !== a.y)),
+        ),
+    ],
+    finish: (a) => ({
+      type: "binding-saturation",
+      params: {
+        y: a.y as string,
+        model: a.model as BindingSaturationParams["model"],
+        ...(a.y2 ? { y2: a.y2 as string } : {}),
+      },
+    }),
+  },
+
+  "binding-kinetics": {
+    questions: (a, table) => [
+      choice("y", "Which Y data set should be fitted?", names(yNames(table))),
+      choice("model", "Which kinetics model should be fitted?", [
+        ["association-one-phase", "Association — One phase"],
+        ["dissociation-one-phase", "Dissociation — One phase"],
+        ["association-two-phase", "Association — Two phases"],
+        ["dissociation-two-phase", "Dissociation — Two phases"],
+        ["association-then-dissociation", "Association then dissociation"],
+      ]),
+      // Derived kon / kinetic Kd need the radioligand concentration and a
+      // Koff from a dissociation experiment — both optional, blank = not reported.
+      a.model === "association-one-phase" && {
+        id: "ligandConcentration",
+        ask: "Radioligand concentration (for kon — same units as in the experiment; leave blank if unknown).",
+        kind: "text",
+        label: "Radioligand concentration (for kon)",
+        initial: "",
+        placeholder: "Blank = unknown",
+        parse: (text) => parseOptionalPositive(text, "radioligand concentration"),
+      },
+      a.model === "association-one-phase" && {
+        id: "koff",
+        ask: "Koff from a dissociation experiment, in the same time units as X (leave blank if unknown). Needed with the radioligand concentration to derive kon and the kinetic Kd.",
+        kind: "text",
+        label: "Koff from a dissociation experiment",
+        initial: "",
+        placeholder: "Blank = unknown",
+        parse: (text) => parseOptionalPositive(text, "Koff"),
+      },
+      // Association-then-dissociation's constrained constants: no defaults,
+      // the wizard must not proceed without them.
+      a.model === "association-then-dissociation" && {
+        id: "hotNM",
+        ask: "Radioligand concentration in nM during association (HotNM).",
+        kind: "text",
+        label: "HotNM (nM)",
+        initial: "",
+        placeholder: "e.g. 1",
+        parse: (text) => parseRequiredPositive(text, "HotNM"),
+      },
+      a.model === "association-then-dissociation" && {
+        id: "time0",
+        ask: "Time at which dissociation starts (Time0), in the same time units as X.",
+        kind: "text",
+        label: "Time0",
+        initial: "",
+        placeholder: "e.g. 10",
+        parse: (text) => parseRequiredPositive(text, "Time0"),
+      },
+    ],
+    finish: (a) => {
+      const ligand = parseOptionalPositive(String(a.ligandConcentration ?? ""), "radioligand concentration");
+      const koff = parseOptionalPositive(String(a.koff ?? ""), "Koff");
+      const hotNM = parseRequiredPositive(String(a.hotNM ?? ""), "HotNM");
+      const time0 = parseRequiredPositive(String(a.time0 ?? ""), "Time0");
+      return {
+        type: "binding-kinetics",
+        params: {
+          y: a.y as string,
+          model: a.model as BindingKineticsParams["model"],
+          ...(ligand.value !== undefined ? { ligandConcentration: ligand.value } : {}),
+          ...(koff.value !== undefined ? { koff: koff.value } : {}),
+          ...(hotNM.value !== undefined ? { hotNM: hotNM.value } : {}),
+          ...(time0.value !== undefined ? { time0: time0.value } : {}),
+        },
+      };
+    },
   },
 
   "spline-lowess": {

@@ -324,15 +324,26 @@ export function prepareFit(
  *  up to the final `c(...)`. The caller appends its own result vector, so one
  *  eval can cover the fit plus further computation on it (interpolation).
  *  `fitOverride` replaces the spec's fit assignment (the substrate-inhibition
- *  retry with its alternate Ki start). */
-export function fitStatements(xs: number[], ys: number[], model: NonlinearModel, fitOverride?: string): string {
-  const spec = modelSpec(model);
+ *  retry with its alternate Ki start). `extraAssignments` is R run after the
+ *  `x`/`y` assignments and before the fit — a two-series binding fit's group
+ *  indicator, or an association-then-dissociation fit's HotNM/Time0 constants. */
+export function fitStatementsForSpec(
+  xs: number[],
+  ys: number[],
+  spec: ModelSpec,
+  fitOverride?: string,
+  extraAssignments = "",
+): string {
   // R² for lm comes from summary(); for nls we compute it from residual/total SS.
   const r2 = spec.kind === "lm" ? "s$r.squared" : "1-ss/sst";
   return (
-    `x<-${rVec(xs)};y<-${rVec(ys)};${fitOverride ?? spec.fit};s<-summary(m);co<-s$coefficients;cf<-coef(m);` +
+    `x<-${rVec(xs)};y<-${rVec(ys)};${extraAssignments}${fitOverride ?? spec.fit};s<-summary(m);co<-s$coefficients;cf<-coef(m);` +
     `df<-df.residual(m);ss<-sum(residuals(m)^2);sst<-sum((y-mean(y))^2);r2<-${r2};syx<-sqrt(ss/df);`
   );
+}
+
+export function fitStatements(xs: number[], ys: number[], model: NonlinearModel, fitOverride?: string): string {
+  return fitStatementsForSpec(xs, ys, modelSpec(model), fitOverride);
 }
 
 /** The named entries the fit contributes to the result vector, in order.
@@ -392,23 +403,36 @@ export interface NonlinearFit {
   retried?: boolean;
 }
 
-/** Fit the curve and return its coefficients, derived quantities and
- *  goodness-of-fit rows — one R call (two when a spec carries a retry fit
- *  and the first attempt fails). */
-export async function fitNonlinearModel(xs: number[], ys: number[], model: NonlinearModel): Promise<NonlinearFit> {
-  const spec = modelSpec(model);
+/** Fit a model spec (not necessarily one of the curated nonlinear models)
+ *  and return its coefficients, derived quantities and goodness-of-fit rows —
+ *  one R call (two when a spec carries a retry fit and the first attempt
+ *  fails). The binding runners (plan 16) fit their own specs through this,
+ *  so there is exactly one nls call site in the repo. */
+export async function fitModelSpec(
+  xs: number[],
+  ys: number[],
+  spec: ModelSpec,
+  extraAssignments = "",
+): Promise<NonlinearFit> {
   try {
-    const rCode = `${fitStatements(xs, ys, model)}c(${fitEntries(spec)})`;
+    const rCode = `${fitStatementsForSpec(xs, ys, spec, undefined, extraAssignments)}c(${fitEntries(spec)})`;
     const v = await evalNamedVector(rCode);
     const { coefficients, derived, stats } = parseFit(v, spec, xs.length);
     return { coefficients, derived, stats, rCode };
   } catch (err) {
     if (!spec.retryFit) throw err;
-    const rCode = `${fitStatements(xs, ys, model, spec.retryFit)}c(${fitEntries(spec)})`;
+    const rCode = `${fitStatementsForSpec(xs, ys, spec, spec.retryFit, extraAssignments)}c(${fitEntries(spec)})`;
     const v = await evalNamedVector(rCode);
     const { coefficients, derived, stats } = parseFit(v, spec, xs.length);
     return { coefficients, derived, stats, rCode, retried: true };
   }
+}
+
+/** Fit the curve and return its coefficients, derived quantities and
+ *  goodness-of-fit rows — one R call (two when a spec carries a retry fit
+ *  and the first attempt fails). */
+export async function fitNonlinearModel(xs: number[], ys: number[], model: NonlinearModel): Promise<NonlinearFit> {
+  return fitModelSpec(xs, ys, modelSpec(model));
 }
 
 /** The nls non-convergence message, shared by both runners — it names the

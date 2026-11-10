@@ -7,6 +7,8 @@ import type {
   AnalysisOutcome,
   AnalysisParams,
   AreaUnderCurveParams,
+  BindingKineticsParams,
+  BindingSaturationParams,
   CorrelationParams,
   CoxPHParams,
   FrequencyDistributionParams,
@@ -44,6 +46,7 @@ import { demingRegressionSpec } from "./xy/deming-regression";
 import { runSimpleLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
+import { runBindingKinetics, runBindingSaturation } from "./xy/binding";
 import { runSplineLowess } from "./xy/spline-lowess";
 import { runStandardCurveInterpolation } from "./xy/standard-curve-interpolation";
 import { runTwoWayAnova } from "./grouped/two-way-anova";
@@ -132,6 +135,16 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
         ? "Interpolated standard curve"
         : "Nonlinear regression",
     run: (c, p) => runNonlinearRegression(c, p as NonlinearRegressionParams),
+  },
+  "binding-saturation": {
+    label: "Binding — Saturation",
+    minColumns: 2,
+    run: (c, p) => runBindingSaturation(c, p as BindingSaturationParams),
+  },
+  "binding-kinetics": {
+    label: "Binding — Kinetics",
+    minColumns: 2,
+    run: (c, p) => runBindingKinetics(c, p as BindingKineticsParams),
   },
   "spline-lowess": {
     label: "Spline and Lowess",
@@ -251,9 +264,9 @@ export function runAnalysis(
   // A data set or a column the analysis names (a regression's Y…) must still be there.
   // prettier-ignore
   const named = params as
-    { y?: string; dependent?: string; reference?: string; control?: string; compareWith?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string } | undefined;
+    { y?: string; y2?: string; dependent?: string; reference?: string; control?: string; compareWith?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string } | undefined;
   // prettier-ignore
-  const chosen = [named?.y, named?.dependent, named?.reference, named?.control, named?.compareWith, ...(named?.predictors ?? []), ...(named?.datasets ?? []), named?.time, named?.status, ...(named?.covariates ?? []), named?.stratifyBy];
+  const chosen = [named?.y, named?.y2, named?.dependent, named?.reference, named?.control, named?.compareWith, ...(named?.predictors ?? []), ...(named?.datasets ?? []), named?.time, named?.status, ...(named?.covariates ?? []), named?.stratifyBy];
   const gone =
     params?.sets?.find((name) => !table.sets.some((s) => s.name === name)) ??
     chosen.find((name) => name !== undefined && !table.columns.some((c) => c.name === name));

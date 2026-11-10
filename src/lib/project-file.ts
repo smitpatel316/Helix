@@ -32,6 +32,8 @@ import {
 import {
   type AnalysisParams,
   ANOVA_POSTHOCS,
+  BINDING_KINETICS_MODELS,
+  BINDING_SATURATION_MODELS,
   BIN_MODES,
   CORRECTIONS,
   CURVE_COMPARISONS,
@@ -153,14 +155,18 @@ type ParamKind = "yes/no" | "number" | "numbers" | "name" | "names" | "name-or-n
 // prettier-ignore
 const PARAMS = {
   paired: "yes/no", gaussian: "yes/no", equalVariance: "yes/no", ratio: "yes/no", forceOrigin: "yes/no", pooledSd: "yes/no", quasi: "yes/no",
-  equalSd: "yes/no", sphericity: "yes/no", interpolate: "yes/no", tails: TAILS, posthoc: [...ANOVA_POSTHOCS, ...RANK_POSTHOCS], model: NONLINEAR_MODELS,
+  equalSd: "yes/no", sphericity: "yes/no", interpolate: "yes/no", tails: TAILS, posthoc: [...ANOVA_POSTHOCS, ...RANK_POSTHOCS],
+  // `model` is shared by nonlinear-regression and the binding runners:
+  // the reader only sanitizes, each runner validates its own.
+  model: [...NONLINEAR_MODELS, ...BINDING_SATURATION_MODELS, ...BINDING_KINETICS_MODELS],
   // `method` is shared by correlation ("pearson"/"spearman") and Spline/Lowess
   // ("spline"/"lowess"): the reader only sanitizes, each runner validates its own.
   method: [...CORRELATION_METHODS, "spline", "lowess"],
   mode: CORRELATION_MODES, design: TWO_WAY_DESIGNS, posthocTarget: POSTHOC_TARGETS, correction: CORRECTIONS, curveTest: CURVE_TESTS, compare: CURVE_COMPARISONS,
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q, lambda: "number",
   f: "number", spar: "number", df: "number",
-  y: "name", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names", unknowns: "numbers",
+  y: "name", y2: "name", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names", unknowns: "numbers",
+  ligandConcentration: "number", koff: "number", hotNM: "number", time0: "number",
   binMode: BIN_MODES, binWidth: "number", binCount: { min: 2, max: 100 }, startAt: "number",
   posthocTerm: THREE_WAY_TERMS,
   truth: "name", score: "name", positive: "name-or-number",
