@@ -292,6 +292,22 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
+      {result.frequencyBins &&
+        result.frequencyBins.map((f) => (
+          <Table
+            key={f.column}
+            title={result.frequencyBins!.length > 1 ? `Frequency distribution — ${f.column}` : "Frequency distribution"}
+            columns={[
+              { label: "Bin" },
+              { label: "Count", numeric: true },
+              { label: "Relative frequency", numeric: true },
+              { label: "Cumulative count", numeric: true },
+              { label: "Cumulative frequency", numeric: true },
+            ]}
+            rows={f.bins.map((b) => [b.bin, b.count, num(b.relativeFrequency), b.cumulativeCount, num(b.cumulativeFrequency)])}
+          />
+        ))}
+
       {groups.length > 0 && (
         <Table
           title="Descriptive statistics"

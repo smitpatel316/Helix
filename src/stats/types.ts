@@ -24,7 +24,8 @@ export type AnalysisType =
   | "survival"
   | "cox"
   | "survival-log-rank"
-  | "bland-altman";
+  | "bland-altman"
+  | "frequency-distribution";
 
 /** What the New Analysis picker offers: a test, or "Compare more than two groups",
  *  which its wizard resolves to one-way ANOVA, Kruskal-Wallis, repeated-measures ANOVA
@@ -68,6 +69,7 @@ export const TWO_WAY_DESIGNS = ["ordinary", "repeated-measures", "nonparametric"
 export const POSTHOC_TARGETS = ["groups", "rows"] as const;
 export const CORRECTIONS = ["holm", "fdr", "none"] as const;
 export const CURVE_TESTS = ["logrank", "trend", "gehan"] as const;
+export const BIN_MODES = ["auto", "width", "count"] as const;
 /** ROUT's Q, in percent. */
 export const ROUT_Q = { min: 0.01, max: 50 };
 
@@ -220,6 +222,17 @@ export interface OutliersParams {
   q: number;
 }
 
+/** Params for "frequency-distribution" (Column table): how each column's values
+ *  are grouped into bins. `binWidth` is required for "width", `binCount` for
+ *  "count"; `startAt` is the lower edge of the first bin (width/count modes),
+ *  defaulting to the data minimum. */
+export interface FrequencyDistributionParams {
+  binMode: (typeof BIN_MODES)[number];
+  binWidth?: number;
+  binCount?: number;
+  startAt?: number;
+}
+
 /** The data sets an analysis runs on, in this order: columns, or a grouped table's groups.
  *  Absent (files before Helix 1.0.5): all of them, the first two for a two-group test. */
 interface DataSetsParam {
@@ -247,6 +260,7 @@ export type AnalysisParams = DataSetsParam &
     | OutliersParams
     | SurvivalParams
     | CoxParams
+    | FrequencyDistributionParams
   );
 
 /** Params for "survival" (Survival table): the test comparing the curves — log-rank,
@@ -384,6 +398,27 @@ interface OutlierGroupRow {
   robustMean: number | null;
 }
 
+/** One bin of a frequency distribution: left-closed `[lower, upper)`, except
+ *  the last bin, which is closed on both sides so the maximum is always counted.
+ *  The label matches the edge rule, e.g. "2 to <4", last bin "8 to 10". */
+export interface FrequencyBinRow {
+  bin: string;
+  lower: number;
+  upper: number;
+  count: number;
+  /** count / n, 0–1. */
+  relativeFrequency: number;
+  cumulativeCount: number;
+  /** cumulativeCount / n, 0–1. */
+  cumulativeFrequency: number;
+}
+
+/** One column's frequency-distribution bins. */
+export interface FrequencyBins {
+  column: string;
+  bins: FrequencyBinRow[];
+}
+
 /** Unified result shape returned by every analysis module. */
 export interface AnalysisResult {
   testType: AnalysisType;
@@ -420,6 +455,8 @@ export interface AnalysisResult {
   comparisonsEffect?: string;
   /** Optional hazard ratios of a Cox regression, each group's to the reference's. */
   hazardRatios?: HazardRatioRow[];
+  /** Optional per-column frequency-distribution bins ("frequency-distribution"). */
+  frequencyBins?: FrequencyBins[];
 }
 
 /** A test returns either a result or a user-facing error message. */

@@ -8,6 +8,7 @@ import type {
   AnalysisParams,
   AreaUnderCurveParams,
   CorrelationParams,
+  FrequencyDistributionParams,
   MultipleRegressionParams,
   MultipleTTestsParams,
   NonlinearRegressionParams,
@@ -42,6 +43,7 @@ import { runSurvival } from "./survival/survival-analysis";
 import { runCox } from "./survival/cox-regression";
 import { runLogRank } from "./survival/log-rank";
 import { runBlandAltman } from "./column/bland-altman";
+import { runFrequencyDistribution } from "./column/frequency-distribution";
 import type { TableData } from "../store/types";
 import { readTable, setColumns, type Column } from "../lib/dataset";
 
@@ -131,6 +133,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     run: (c) => runLogRank(c),
   },
   "bland-altman": { label: "Bland-Altman method comparison", minColumns: 2, run: (c) => runBlandAltman(c) },
+  "frequency-distribution": {
+    label: "Frequency distribution",
+    minColumns: 1,
+    run: (c, p) => runFrequencyDistribution(c, p as FrequencyDistributionParams),
+  },
 };
 
 // One result per table version, test and params, shared by everyone who asks:

@@ -6,12 +6,18 @@ import { DOSE_MODELS, KINETIC_MODELS, NONLINEAR_MODELS, ROUT_Q } from "../../sta
 import { MODEL_LABEL } from "../../stats/xy/nonlinear-regression";
 
 const isDoseModel = (m: string) => (DOSE_MODELS as readonly string[]).includes(m);
+import {
+  floorToWidth,
+  niceWidthUp,
+  sturgesCount,
+} from "../../stats/column/frequency-distribution";
 import type {
   AnalysisParams,
   AnalysisPickerValue,
   AnalysisType,
   CompareTwoGroupsParams,
   CorrelationParams,
+  FrequencyDistributionParams,
   MultipleTTestsParams,
   NonlinearRegressionParams,
   OneSampleTParams,
@@ -278,6 +284,61 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       },
     ],
     finish: (a) => ({ type: "outliers", params: withSets(a, { q: a.q as number }) }),
+  },
+
+  "frequency-distribution": {
+    questions: (a, table) => {
+      // Defaults from the first data column (the runner bins every column with
+      // the same settings, so one column's scale is the honest starting point).
+      const values = table.numeric[0]?.values ?? [];
+      const min = values.length ? Math.min(...values) : 0;
+      const max = values.length ? Math.max(...values) : 0;
+      const k = sturgesCount(Math.max(values.length, 2));
+      const width = niceWidthUp((max - min) / k);
+      const mode = a.binMode as string | undefined;
+      return [
+        ...someSets(table, 1),
+        choice("binMode", "How should the values be grouped into bins?", [
+          ["auto", "Automatic (Sturges' rule)"],
+          ["width", "Bin width"],
+          ["count", "Number of bins"],
+        ]),
+        mode === "width" && {
+          id: "binWidth",
+          ask: "Each bin covers this range of values.",
+          kind: "number",
+          label: "Bin width",
+          initial: width,
+        },
+        mode === "count" && {
+          id: "binCount",
+          ask: "Split the range into this many bins of equal width.",
+          kind: "number",
+          label: "Number of bins",
+          initial: k,
+          min: 2,
+          max: 100,
+        },
+        (mode === "width" || mode === "count") && {
+          id: "startAt",
+          ask: "The lower edge of the first bin.",
+          kind: "number",
+          label: "First bin starts at",
+          initial: mode === "width" ? floorToWidth(min, (a.binWidth as number | undefined) ?? width) : min,
+        },
+      ];
+    },
+    finish: (a) => ({
+      type: "frequency-distribution",
+      params: withSets(a, {
+        binMode: (a.binMode as FrequencyDistributionParams["binMode"] | undefined) ?? "auto",
+        ...(a.binMode === "width"
+          ? { binWidth: a.binWidth as number, startAt: a.startAt as number }
+          : a.binMode === "count"
+            ? { binCount: a.binCount as number, startAt: a.startAt as number }
+            : {}),
+      }),
+    }),
   },
 
   "bland-altman": {

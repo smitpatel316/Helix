@@ -31,6 +31,7 @@ import {
 import {
   type AnalysisParams,
   ANOVA_POSTHOCS,
+  BIN_MODES,
   CORRECTIONS,
   CURVE_COMPARISONS,
   CORRELATION_METHODS,
@@ -154,6 +155,7 @@ const PARAMS = {
   mode: CORRELATION_MODES, design: TWO_WAY_DESIGNS, posthocTarget: POSTHOC_TARGETS, correction: CORRECTIONS, curveTest: CURVE_TESTS, compare: CURVE_COMPARISONS,
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q,
   y: "name", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names",
+  binMode: BIN_MODES, binWidth: "number", binCount: { min: 2, max: 100 }, startAt: "number",
 } satisfies Record<ParamKey, ParamKind>;
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);

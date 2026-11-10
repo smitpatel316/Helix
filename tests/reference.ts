@@ -23,6 +23,7 @@ import { evaluate as doseCurveAt } from "../src/views/graphs/fitted-curve";
 import { NONLINEAR_MODELS, type NonlinearModel } from "../src/stats/types";
 import { positiveXOnly } from "../src/stats/xy/nonlinear-regression";
 import { evalNamedVector, startR } from "../src/stats/webr";
+import { prettyBreaks } from "../src/stats/column/frequency-distribution";
 import { sampleProject } from "./sample-project";
 
 // ── Tables ───────────────────────────────────────────────────────────────
@@ -305,6 +306,58 @@ const logisticSeparated = table(
   ],
 );
 
+/** Frequency distribution (plan 06): one column, n = 10. */
+const freqCol = table(
+  ["Title", "Values"],
+  [
+    ["", "2.1"],
+    ["", "3.5"],
+    ["", "3.9"],
+    ["", "4.2"],
+    ["", "5.0"],
+    ["", "5.8"],
+    ["", "6.1"],
+    ["", "7.4"],
+    ["", "8.0"],
+    ["", "9.3"],
+  ],
+);
+
+/** Values sitting exactly on the bin edges (plan 06, case D). */
+const freqEdge = table(
+  ["Title", "Values"],
+  [
+    ["", "2"],
+    ["", "4"],
+    ["", "6"],
+    ["", "8"],
+  ],
+);
+
+/** A gap in the middle, so two bins stay empty (plan 06, case B2). */
+const freqGap = table(
+  ["Title", "Values"],
+  [
+    ["", "1"],
+    ["", "2"],
+    ["", "9"],
+    ["", "10"],
+  ],
+);
+
+/** A constant column: one bin (plan 06 edge case). */
+const freqConst = table(
+  ["Title", "Values"],
+  [
+    ["", "5"],
+    ["", "5"],
+    ["", "5"],
+  ],
+);
+
+/** A single value: too few to bin (plan 06 edge case). */
+const freqSingle = table(["Title", "Values"], [["", "5"]]);
+
 /** Two methods on the same subjects (Bland-Altman method comparison). */
 const blandAltman = table(
   ["Title", "Method A", "Method B"],
@@ -580,6 +633,22 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["logistic", logistic, "simple-logistic-regression", {}],
   ["logisticSeparated", logisticSeparated, "simple-logistic-regression", {}],
   ["blandAltman", blandAltman, "bland-altman", { sets: ["Method A", "Method B"] }],
+  // Frequency distribution (plan 06): A explicit width, B explicit count, B2
+  // empty bins, C auto (Sturges + pretty), D on-edge values, plus the constant,
+  // too-few and invalid-params edge cases and a multi-column run (the shared
+  // `column` table, whose Low column holds a non-numeric cell).
+  ["freqCol", freqCol, "frequency-distribution", { binMode: "width", binWidth: 2, startAt: 2 }],
+  ["freqCol", freqCol, "frequency-distribution", { binMode: "count", binCount: 5, startAt: 2 }],
+  ["freqGap", freqGap, "frequency-distribution", { binMode: "width", binWidth: 2, startAt: 0 }],
+  ["freqCol", freqCol, "frequency-distribution", { binMode: "auto" }],
+  ["freqCol", freqCol, "frequency-distribution", {}],
+  ["freqCol", freqCol, "frequency-distribution", { binMode: "width", binWidth: 100, startAt: 2 }],
+  ["freqEdge", freqEdge, "frequency-distribution", { binMode: "width", binWidth: 2, startAt: 2 }],
+  ["freqConst", freqConst, "frequency-distribution", { binMode: "auto" }],
+  ["freqSingle", freqSingle, "frequency-distribution", { binMode: "auto" }],
+  ["freqCol", freqCol, "frequency-distribution", { binMode: "width", binWidth: 0, startAt: 2 }],
+  ["freqCol", freqCol, "frequency-distribution", { binMode: "count", binCount: 1, startAt: 2 }],
+  ["column", column, "frequency-distribution", { binMode: "auto" }],
   ["survival", survivalTable, "survival-log-rank"],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "none", posthocTarget: "groups" }],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "tukey", posthocTarget: "groups" }],
@@ -697,6 +766,7 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["doseLog", doseLog, "dose-response"],
   ["logistic", logistic, "logistic-curve"],
   ["blandAltman", blandAltman, "bland-altman"],
+  ["freqCol", freqCol, "histogram"],
   ["survival", survivalTable, "survival"],
   ["freireich", freireich, "survival", { survivalShowBand: true }],
   ["grouped", grouped, "grouped-scatter"],
@@ -1047,6 +1117,85 @@ async function disagreements(): Promise<string[]> {
     }
     if (stat("N (pairs)") !== 10) out.push(`Bland-Altman N: ${stat("N (pairs)")}, expected 10`);
   }
+  // Frequency distribution: the TypeScript binning equals R's hist() with the
+  // matching (left-closed) edge rule, the auto breaks are R's pretty() breaks,
+  // and the histogram's bars equal the analysis's counts. The plan's counts are
+  // exact arithmetic on the stated data; R's hist(right=FALSE) confirms them.
+  const freqCounts = async (params: AnalysisParams) => {
+    const r = await runAnalysis("frequency-distribution", freqCol, params);
+    return "error" in r ? null : (r.frequencyBins?.[0].bins.map((b) => b.count) ?? null);
+  };
+  const freqX = "c(2.1,3.5,3.9,4.2,5,5.8,6.1,7.4,8,9.3)";
+  const hist = await evalNamedVector(
+    `x<-${freqX};h<-hist(x,plot=FALSE);ha<-hist(x,breaks=c(2,4,6,8,10),plot=FALSE,right=FALSE);` +
+      `hb<-hist(x,breaks=c(2,3.6,5.2,6.8,8.4,10),plot=FALSE,right=FALSE);` +
+      `hd<-hist(c(2,4,6,8),breaks=c(2,4,6,8),plot=FALSE,right=FALSE);` +
+      `c(sturges=nclass.Sturges(x),` +
+      `b1=h$breaks[1],b2=h$breaks[2],b3=h$breaks[3],b4=h$breaks[4],b5=h$breaks[5],` +
+      `a1=ha$counts[1],a2=ha$counts[2],a3=ha$counts[3],a4=ha$counts[4],` +
+      `c1=hb$counts[1],c2=hb$counts[2],c3=hb$counts[3],c4=hb$counts[4],c5=hb$counts[5],` +
+      `d1=hd$counts[1],d2=hd$counts[2],d3=hd$counts[3])`,
+  );
+  const eq = (a: (number | null)[] | null, b: (number | null)[]) =>
+    a !== null && a.length === b.length && a.every((v, i) => v === b[i]);
+  if (hist.sturges !== 5) out.push(`Sturges count: ${hist.sturges}, expected 5`);
+  if (!eq([hist.b1, hist.b2, hist.b3, hist.b4, hist.b5], [2, 4, 6, 8, 10]))
+    out.push(`R hist() breaks: ${[hist.b1, hist.b2, hist.b3, hist.b4, hist.b5]}, expected 2,4,6,8,10`);
+  const planCounts: [AnalysisParams, (number | null)[], string][] = [
+    [{ binMode: "width", binWidth: 2, startAt: 2 }, [hist.a1, hist.a2, hist.a3, hist.a4], "case A (width 2)"],
+    [{ binMode: "count", binCount: 5, startAt: 2 }, [hist.c1, hist.c2, hist.c3, hist.c4, hist.c5], "case B (count 5)"],
+  ];
+  for (const [params, expected, label] of planCounts) {
+    const got = await freqCounts(params);
+    if (!eq(got, expected)) out.push(`Frequency distribution ${label}: ${got}, R hist() (right=FALSE): ${expected}`);
+  }
+  const edge = await runAnalysis("frequency-distribution", freqEdge, { binMode: "width", binWidth: 2, startAt: 2 });
+  const edgeCounts = "error" in edge ? null : (edge.frequencyBins?.[0].bins.map((b) => b.count) ?? null);
+  if (!eq(edgeCounts, [hist.d1, hist.d2, hist.d3]))
+    out.push(
+      `Frequency distribution case D (on-edge): ${edgeCounts}, R hist() (right=FALSE): ${[hist.d1, hist.d2, hist.d3]}`,
+    );
+  // The auto breaks are R's pretty() breaks: step, count and ends pin the
+  // (equally spaced) sequence. Includes the float-boundary cases where a naive
+  // floor/ceil of lo/step lands a step off (0.3/0.1, 0.07/0.005, …).
+  const prettyCases: [number, number, number][] = [
+    [2.1, 9.3, 5], [0, 10, 5], [0, 1, 5], [1, 2, 5], [0, 100, 5], [3, 97, 5], [0.2, 0.9, 5],
+    [-5, 5, 5], [10, 20, 5], [100, 200, 5], [0, 7, 5], [0, 3, 5], [2, 4, 5], [0, 0.5, 5],
+    [5, 6, 5], [0, 1000, 5], [123, 456, 5], [0.001, 0.009, 5], [2.1, 9.3, 4], [2.1, 9.3, 6],
+    [0, 10, 3], [0, 10, 10], [7, 8, 5], [-100, -10, 5], [0.15, 0.85, 5], [42, 42.5, 5],
+    [0, 7.005, 5], [0, 14.02, 5], [0, 35.1, 5], [0.3, 0.9, 5], [0.6, 0.9, 5], [1.1, 1.9, 5],
+    [2.3, 2.9, 5], [0.3, 0.7, 5], [-0.3, 0.3, 5], [0.07, 0.11, 5], [999, 1001, 5],
+  ];
+  const prettyVals = await evalNamedVector(
+    `${prettyCases.map(([lo, hi, n], i) => `pr${i}<-pretty(c(${lo},${hi}),n=${n},min.n=1)`).join(";")};` +
+      `c(${prettyCases.map((_, i) => `s${i}=pr${i}[2]-pr${i}[1],k${i}=length(pr${i}),l${i}=pr${i}[1],h${i}=pr${i}[length(pr${i})]`).join(",")})`,
+  );
+  prettyCases.forEach(([lo, hi, n], i) => {
+    const got = prettyBreaks(lo, hi, n);
+    const close = (a: number | null, b: number) => a != null && Math.abs(a - b) < 1e-9 * Math.max(1, Math.abs(b));
+    if (
+      !close(prettyVals[`s${i}`], got[1] - got[0]) ||
+      prettyVals[`k${i}`] !== got.length ||
+      !close(prettyVals[`l${i}`], got[0]) ||
+      !close(prettyVals[`h${i}`], got.at(-1)!)
+    )
+      out.push(
+        `pretty(${lo},${hi},n=${n}): TS=[${got.join(", ")}], R step=${prettyVals[`s${i}`]} k=${prettyVals[`k${i}`]} ${prettyVals[`l${i}`]}..${prettyVals[`h${i}`]}`,
+      );
+  });
+  // The histogram's bars equal the auto analysis's counts.
+  const auto = await runAnalysis("frequency-distribution", freqCol, { binMode: "auto" });
+  const fig = GRAPHS.histogram.build(
+    plotColumns(readTable(freqCol), "histogram", newGraphOptions("histogram"), "xy"),
+    newGraphOptions("histogram"),
+    paintOf(newGraphOptions("histogram"), 1),
+    readTable(freqCol).titles,
+  );
+  const bars = (fig.data as { y?: number[] }[])[0]?.y ?? null;
+  const autoCounts = "error" in auto ? null : auto.frequencyBins?.[0].bins.map((b) => b.count);
+  if (!eq(bars, autoCounts ?? [])) out.push(`Histogram bars: ${bars}, analysis counts: ${autoCounts}`);
+  if (JSON.stringify(bars) !== JSON.stringify([3, 3, 2, 2]))
+    out.push(`Histogram bars for freqCol: ${bars}, plan says [3, 3, 2, 2]`);
   return out;
 }
 
