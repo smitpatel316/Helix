@@ -286,6 +286,49 @@ when reporting import results.
 3. Run the app / `npm run dev` on the Mac and exercise File ▸ Import Prism File… with a real `.pzfx` file, plus the log-rank test.
 4. Signing / notarization and `npm run install-app` if installing locally.
 
+## Mac DMG build — DONE 2026-11-09 (Smit's MacBook Air, M2, macOS 26.6)
+
+- Prereqs found missing on the Mac and installed: Node/npm via Homebrew
+  (`/opt/homebrew/bin`, node v25.1.0); Rust was absent — installed rustup
+  (stable, cargo/rustc 1.99.1) + `rustup target add x86_64-apple-darwin`.
+  Xcode CLT was already present. `npm ci`, `npm run check`, `npm test`
+  87/87 all green on the Mac. HEAD built: `59f5260`.
+- **Both DMGs built and verified** (mount + contents check):
+  `src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Helix_1.0.6_aarch64.dmg`
+  (40 MB, sha256 `67dfb96e…5aa005f`) and
+  `src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/Helix_1.0.6_x64.dmg`
+  (41 MB, sha256 `88e4c363…6a2050`). arm64 DMG installed to
+  `/Applications/Helix.app` (ditto from mounted DMG, quarantine cleared,
+  `codesign --verify` clean); app launches, window "Untitled" appears.
+- **Two Tauri DMG-step failures, both worked around — use
+  `scripts/build-mac-dmg.sh` instead of plain `npm run build`:**
+  1. Tauri invokes `bundle_dmg.sh` with a cwd that drops its temp image
+     (`rw.<pid>.Helix_*.dmg`) INSIDE the source folder
+     (`bundle/macos/`); hdiutil then copies the growing image into itself
+     → `hdiutil: create failed - No space left on device` (real disk had
+     24 GiB free). Fix: delete any `rw.*.dmg` under `bundle/` before
+     bundling, and run `bundle_dmg.sh` with absolute paths from a neutral
+     cwd (`/tmp`). (Watch out: in zsh, `rm -f …/rw.*.dmg` with no match
+     aborts the whole command — use `find … -name 'rw.*.dmg' -delete`.)
+  2. Over SSH the Finder's AppleScript prettifying step times out
+     (`Finder got an error: AppleEvent timed out. (-1712)`, same as the
+     Cricket 07 osascript note) and the script aborts before finalizing.
+     Fix: pass `--skip-jenkins` (skips the Finder AppleScript). The DMG
+     still gets Helix.app + Applications link + background + volume icon,
+     just without the Finder window/icon layout dressing.
+- **In-app testing on the Mac, PARTIAL (2026-11-09 ~17:20 PT):** app
+  launched fine, File menu lists "Import Prism File…", but after clicking
+  it via System Events the app stopped answering window/menu queries
+  (empty window list, menu bar -1719; process alive, frontmost, ~idle).
+  Escape did not recover it. This looks like the same
+  `blocking_pick_file` freeze seen on Linux — NOT yet proven on Mac.
+  Further testing was blocked because outbound SSH from the Hatch VM
+  started being refused by the egress proxy mid-session ("Outbound SSH
+  is turned off for this assistant" — Muse settings → Permissions →
+  Direct network protocols → ssh). Smit to confirm by hand tonight
+  whether the picker opens; `screencapture` from SSH is blocked by the
+  Screen Recording permission, so visual proof needs his session.
+
 ## Environment gotchas (learned 2026-11-08)
 
 - `pkill -f "<pattern>"` matches your own exec command line and SIGTERMs
