@@ -37,6 +37,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
   xy: optionsFor([
     "correlation",
     "linear-regression",
+    "deming-regression",
     "simple-logistic-regression",
     "area-under-curve",
     "nonlinear-regression",

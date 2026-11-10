@@ -2240,6 +2240,153 @@
   ],
   "notes": "Ordinary least-squares linear regression of “Y3” on “X”, forced through the origin. Assumes a linear relationship and homoscedastic residuals."
  },
+ "deming-regression deming {\"y\":\"Y\",\"lambda\":1}": {
+  "testType": "deming-regression",
+  "subtitle": "Deming regression",
+  "equation": "Y = 0.9764*X + 0.25",
+  "stats": [
+   {
+    "label": "Slope",
+    "value": 0.976356367
+   },
+   {
+    "label": "Slope 95% CI lower",
+    "value": 0.6998148465
+   },
+   {
+    "label": "Slope 95% CI upper",
+    "value": 1.252897887
+   },
+   {
+    "label": "Y-intercept",
+    "value": 0.2500399816
+   },
+   {
+    "label": "Intercept 95% CI lower",
+    "value": -1.331433169
+   },
+   {
+    "label": "Intercept 95% CI upper",
+    "value": 1.831513132
+   },
+   {
+    "label": "Lambda",
+    "value": 1
+   },
+   {
+    "label": "OLS slope",
+    "value": 0.9684848485
+   },
+   {
+    "label": "OLS Y-intercept",
+    "value": 0.2933333333
+   },
+   {
+    "label": "Complete pairs",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 5.5,
+    "sd": 3.027650354,
+    "sem": 0.9574271078,
+    "median": 5.5,
+    "n": 10
+   },
+   {
+    "name": "Y",
+    "mean": 5.62,
+    "sd": 2.956649756,
+    "sem": 0.9349747471,
+    "median": 5.6,
+    "n": 10
+   }
+  ],
+  "notes": "Deming regression of “Y” on “X”, λ = 1 (equal error in X and Y). 95% confidence intervals are leave-one-out jackknife intervals. The ordinary least-squares fit is Y = 0.9685*X + 0.2933, for comparison — OLS assumes X is measured without error, so it attenuates the slope. If the slope CI excludes 1 there is proportional bias; if the intercept CI excludes 0 there is constant bias. Assumes the errors in X and Y are independent and roughly homoscedastic."
+ },
+ "deming-regression deming {\"y\":\"Y\",\"lambda\":0.25}": {
+  "testType": "deming-regression",
+  "subtitle": "Deming regression",
+  "equation": "Y = 0.9813*X + 0.2228",
+  "stats": [
+   {
+    "label": "Slope",
+    "value": 0.9813077568
+   },
+   {
+    "label": "Slope 95% CI lower",
+    "value": 0.7001480543
+   },
+   {
+    "label": "Slope 95% CI upper",
+    "value": 1.262467459
+   },
+   {
+    "label": "Y-intercept",
+    "value": 0.2228073378
+   },
+   {
+    "label": "Intercept 95% CI lower",
+    "value": -1.383977006
+   },
+   {
+    "label": "Intercept 95% CI upper",
+    "value": 1.829591682
+   },
+   {
+    "label": "Lambda",
+    "value": 0.25
+   },
+   {
+    "label": "OLS slope",
+    "value": 0.9684848485
+   },
+   {
+    "label": "OLS Y-intercept",
+    "value": 0.2933333333
+   },
+   {
+    "label": "Complete pairs",
+    "value": 10
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 5.5,
+    "sd": 3.027650354,
+    "sem": 0.9574271078,
+    "median": 5.5,
+    "n": 10
+   },
+   {
+    "name": "Y",
+    "mean": 5.62,
+    "sd": 2.956649756,
+    "sem": 0.9349747471,
+    "median": 5.6,
+    "n": 10
+   }
+  ],
+  "notes": "Deming regression of “Y” on “X”, λ = 0.25 (the error variance in Y is 0.25× that in X). 95% confidence intervals are leave-one-out jackknife intervals. The ordinary least-squares fit is Y = 0.9685*X + 0.2933, for comparison — OLS assumes X is measured without error, so it attenuates the slope. If the slope CI excludes 1 there is proportional bias; if the intercept CI excludes 0 there is constant bias. Assumes the errors in X and Y are independent and roughly homoscedastic."
+ },
+ "deming-regression deming {\"y\":\"Y\",\"lambda\":0}": {
+  "error": "The error variance ratio must be greater than 0."
+ },
+ "deming-regression demingNoCovary {\"y\":\"Y\",\"lambda\":1}": {
+  "error": "X and Y do not covary — Deming regression has no defined slope here"
+ },
+ "deming-regression demingTooFew {\"y\":\"Y\",\"lambda\":1}": {
+  "error": "Deming regression needs at least 3 complete pairs for the jackknife confidence intervals; this table has 2."
+ },
+ "deming-regression demingConstX {\"y\":\"Y\",\"lambda\":1}": {
+  "error": "“X” is constant — Deming regression needs X values that vary."
+ },
+ "deming-regression demingConstY {\"y\":\"Y\",\"lambda\":1}": {
+  "error": "“Y” is constant — Deming regression needs Y values that vary."
+ },
  "area-under-curve xy {\"baseline\":0}": {
   "testType": "area-under-curve",
   "subtitle": "Area under the curve (trapezoidal rule, baseline Y = 0)",

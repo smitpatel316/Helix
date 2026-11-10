@@ -33,7 +33,7 @@ export type Question = { id: string; ask: string } & (
       /** Adds "Not sure — check for normality first", answered "yes" or "no" by Shapiro-Wilk. */
       normality?: boolean;
     }
-  | { kind: "number"; label: string; initial: number; min?: number; max?: number; step?: number }
+  | { kind: "number"; label: string; initial: number; min?: number; max?: number; step?: number; validate?: (value: number) => string | undefined }
   /** Several of `options`, all ticked at first: at least `min` (1 by default). */
   | { kind: "names"; options: string[]; min?: number }
   /** Free text, a single line — the answer is the raw string. */
@@ -414,6 +414,21 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       ]),
     ],
     finish: (a) => ({ type: "linear-regression", params: { y: a.y as string, forceOrigin: a.origin === "yes" } }),
+  },
+
+  "deming-regression": {
+    questions: (_, table) => [
+      choice("y", "Which Y data set should be compared with X?", names(yNames(table))),
+      {
+        id: "lambda",
+        ask: "What is the error variance ratio (λ = error in Y ÷ error in X)? 1 = both methods have equal error. Use the ratio of the squared standard deviations if you know them.",
+        kind: "number",
+        label: "Error variance ratio (λ = error in Y ÷ error in X).",
+        initial: 1,
+        validate: (v) => (v > 0 ? undefined : "The error variance ratio must be greater than 0."),
+      },
+    ],
+    finish: (a) => ({ type: "deming-regression", params: { y: a.y as string, lambda: a.lambda as number } }),
   },
 
   "simple-logistic-regression": {

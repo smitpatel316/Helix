@@ -13,7 +13,7 @@ import { withOpacity } from "../../lib/palettes";
 import { addNote, extent, type Paint } from "./plot-helpers";
 import { mean } from "../../lib/summary";
 
-interface LinearFit {
+export interface LinearFit {
   slope: number;
   intercept: number; // 0 when forced through the origin
   forceOrigin: boolean;

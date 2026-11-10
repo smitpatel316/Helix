@@ -103,15 +103,37 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
     return <SignificanceControls analyses={sources} comparisons={c.comparisons} options={options} set={set} />;
   }
   if (graphType === "xy-scatter") {
-    const sources = c.analyses.filter((a) => a.analysisType === "linear-regression");
-    if (!sources.length) {
+    const regSources = c.analyses.filter((a) => a.analysisType === "linear-regression");
+    const demingSources = c.analyses.filter((a) => a.analysisType === "deming-regression");
+    if (!regSources.length && !demingSources.length) {
       return (
         <NoAnalysis test="linear-regression" onNewAnalysis={c.onNewAnalysis}>
           Draw the fitted line of a linear regression of this table.
         </NoAnalysis>
       );
     }
-    return <RegressionControls analyses={sources} options={options} set={set} />;
+    return (
+      <>
+        {regSources.length ? (
+          <Group title="Linear regression">
+            <RegressionControls analyses={regSources} options={options} set={set} />
+          </Group>
+        ) : (
+          <NoAnalysis test="linear-regression" onNewAnalysis={c.onNewAnalysis}>
+            Draw the fitted line of a linear regression of this table.
+          </NoAnalysis>
+        )}
+        {demingSources.length ? (
+          <Group title="Deming regression">
+            <DemingControls analyses={demingSources} options={options} set={set} />
+          </Group>
+        ) : (
+          <NoAnalysis test="deming-regression" onNewAnalysis={c.onNewAnalysis}>
+            Draw the Deming and OLS lines of a Deming regression of this table.
+          </NoAnalysis>
+        )}
+      </>
+    );
   }
   if (graphType === "forest-plot") {
     const sources = c.analyses.filter((a) => a.analysisType === "cox-proportional-hazards");
@@ -361,6 +383,38 @@ function SignificanceControls({
               comparisons.
             </p>
           )}
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/** Pick a Deming regression, then which of its lines to draw. */
+function DemingControls({
+  analyses,
+  options,
+  set,
+}: {
+  analyses: ProjectNode[];
+  options: GraphOptions;
+  set: SetOptions;
+}) {
+  return (
+    <>
+      <AnalysisRow
+        analyses={analyses}
+        value={options.demingAnalysisId}
+        onChange={(demingAnalysisId) => set({ demingAnalysisId })}
+      />
+      {options.demingAnalysisId ? (
+        <>
+          <Toggle label="Deming line" checked={options.demingShowLine} onChange={(demingShowLine) => set({ demingShowLine })} />
+          <Toggle label="OLS line" checked={options.demingShowOls} onChange={(demingShowOls) => set({ demingShowOls })} />
+          <Toggle
+            label="Equations"
+            checked={options.demingShowEquation}
+            onChange={(demingShowEquation) => set({ demingShowEquation })}
+          />
         </>
       ) : null}
     </>
