@@ -29,6 +29,7 @@ export type GraphType =
   | "logistic-curve"
   | "heatmap"
   | "survival"
+  | "forest-plot"
   | "volcano"
   | "bland-altman"
   | "roc-curve"
@@ -139,6 +140,11 @@ export interface GraphOptions {
   regShowLine: boolean;
   regShowBand: boolean;
   regShowEquation: boolean;
+  // Cox proportional-hazards regression (Multiple Variables only): the sibling
+  // "Cox proportional-hazards regression" analysis a forest plot draws its
+  // hazard ratios from, or a survival curve stratifies by (see forest-plot.ts
+  // and survival.ts) — the graph runs the same cached runAnalysis result.
+  coxAnalysisId?: string;
   // Dose-response curve (XY family only): a one-click sigmoidal 4PL fit of the
   // chosen Y series against X, run via WebR (see dose-response-curve.ts) — no
   // sibling analysis node needed, unlike the Linear-regression overlay above.

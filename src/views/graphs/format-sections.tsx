@@ -127,6 +127,17 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
       </>
     );
   }
+  if (graphType === "forest-plot") {
+    const sources = c.analyses.filter((a) => a.analysisType === "cox-proportional-hazards");
+    if (!sources.length) {
+      return (
+        <NoAnalysis test="cox-proportional-hazards" onNewAnalysis={c.onNewAnalysis}>
+          Draw the hazard ratios of a Cox proportional-hazards regression of this table.
+        </NoAnalysis>
+      );
+    }
+    return <CoxControls analyses={sources} options={options} set={set} />;
+  }
   if (graphType === "dose-response") {
     const exponential = (EXPONENTIAL_MODELS as readonly string[]).includes(options.doseModel);
     const summaryLabel =
@@ -245,6 +256,27 @@ function AnalysisRow({
         options={analyses.map((a) => ({ value: a.id, label: a.name }))}
       />
     </Row>
+  );
+}
+
+/** Pick a Cox proportional-hazards regression: the forest plot draws its
+ *  hazard ratios, and a survival curve on a Multiple Variables table
+ *  stratifies by its binary covariate. */
+function CoxControls({
+  analyses,
+  options,
+  set,
+}: {
+  analyses: ProjectNode[];
+  options: GraphOptions;
+  set: SetOptions;
+}) {
+  return (
+    <AnalysisRow
+      analyses={analyses}
+      value={options.coxAnalysisId}
+      onChange={(coxAnalysisId) => set({ coxAnalysisId })}
+    />
   );
 }
 
@@ -402,6 +434,20 @@ export function dataControls(c: SectionContext): React.ReactNode {
       );
     case "survival":
       // A Survival table holds event codes; survivor counts are an XY table's.
+      // On a Multiple Variables table the curves come from a Cox analysis
+      // (its time/status columns, stratified by its binary covariate); the
+      // codes/counts format only applies to XY survival tables.
+      if (c.tableType === "multiple") {
+        const sources = c.analyses.filter((a) => a.analysisType === "cox-proportional-hazards");
+        if (!sources.length) {
+          return (
+            <NoAnalysis test="cox-proportional-hazards" onNewAnalysis={c.onNewAnalysis}>
+              Stratify the survival curves by a Cox proportional-hazards regression of this table.
+            </NoAnalysis>
+          );
+        }
+        return <CoxControls analyses={sources} options={options} set={set} />;
+      }
       return (
         c.tableType === "xy" && (
           <Choice

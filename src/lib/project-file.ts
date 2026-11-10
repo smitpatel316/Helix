@@ -129,7 +129,7 @@ type OptionalOption = {
 // prettier-ignore
 const OPTIONAL_OPTIONS = {
   yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number",
-  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", doseY: "text", xVariable: "text", yVariable: "text",
+  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", coxAnalysisId: "text", doseY: "text", xVariable: "text", yVariable: "text",
   volcanoX: "text", volcanoY: "text", volcanoLabel: "text", volcanoGroupA: "text", volcanoGroupB: "text",
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",
@@ -160,6 +160,7 @@ const PARAMS = {
   binMode: BIN_MODES, binWidth: "number", binCount: { min: 2, max: 100 }, startAt: "number",
   posthocTerm: THREE_WAY_TERMS,
   truth: "name", score: "name", positive: "name-or-number",
+  time: "name", status: "name", covariates: "names", stratifyBy: "name", ties: ["efron", "breslow"],
 } satisfies Record<ParamKey, ParamKind>;
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -513,7 +514,11 @@ export function parseProjectFile(
       });
     }
     const o = node.graphOptions!;
-    if ((o.sigAnalysisId && !nodeOf(o.sigAnalysisId)) || (o.regAnalysisId && !nodeOf(o.regAnalysisId))) {
+    if (
+      (o.sigAnalysisId && !nodeOf(o.sigAnalysisId)) ||
+      (o.regAnalysisId && !nodeOf(o.regAnalysisId)) ||
+      (o.coxAnalysisId && !nodeOf(o.coxAnalysisId))
+    ) {
       issues.push({
         severity: "warning",
         message: `Graph “${node.name}” refers to an analysis that no longer exists.`,

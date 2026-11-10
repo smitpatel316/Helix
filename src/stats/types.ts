@@ -27,6 +27,7 @@ export type AnalysisType =
   | "survival"
   | "cox"
   | "survival-log-rank"
+  | "cox-proportional-hazards"
   | "bland-altman"
   | "roc-curve"
   | "frequency-distribution";
@@ -277,6 +278,23 @@ export interface FrequencyDistributionParams {
   startAt?: number;
 }
 
+/** Params for "cox-proportional-hazards" (Multiple Variables table): which
+ *  column holds survival times, which holds the 1 = event / 0 = censored
+ *  codes, and which columns are the covariates. `ties` is the coxph tie
+ *  method (Efron default); `stratifyBy` names the binary covariate the
+ *  survival-curves graph stratifies by (the first binary covariate, or
+ *  "None" — omitted when there is none). */
+export interface CoxPHParams {
+  /** Omitted defaults to the first data column. */
+  time?: string;
+  /** Omitted defaults to the second data column. */
+  status?: string;
+  /** Omitted (or empty — see the runner) defaults to all remaining data columns. */
+  covariates?: string[];
+  ties?: "efron" | "breslow";
+  stratifyBy?: string;
+}
+
 /** Params for "roc-curve": a binary truth column against a continuous score
  *  column, paired by row. */
 export interface RocParams {
@@ -324,6 +342,7 @@ export type AnalysisParams = DataSetsParam &
     | ThreeWayAnovaParams
     | MultipleTTestsParams
     | MultipleRegressionParams
+    | CoxPHParams
     | OutliersParams
     | SurvivalParams
     | CoxParams
@@ -417,7 +436,10 @@ export interface HazardRatioRow {
  *  `ciLow`/`ciHigh` are the Wald 95% CIs (estimate ± t(0.975, df)·SE),
  *  populated by the nonlinear-fit runner (plan 09) — other runners leave
  *  them undefined, and the results view only shows the CI columns when a
- *  coefficient carries them. */
+ *  coefficient carries them. A Cox regression (plan 10) also carries the
+ *  hazard ratio `hazardRatio` = exp(estimate), with `ciLow`/`ciHigh` its
+ *  95% CI on the hazard-ratio scale — the results view adds a Hazard ratio
+ *  column when a coefficient carries one. */
 export interface RegressionCoefficient {
   term: string;
   estimate: number | null;
@@ -432,6 +454,7 @@ export interface RegressionCoefficient {
    *  these to low/high per the upstream shape. */
   ciLow?: number | null;
   ciHigh?: number | null;
+  hazardRatio?: number | null;
 }
 
 /** One row of best-fit values: a value per data set, or an interval (`ranges`, low and high). */

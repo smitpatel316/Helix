@@ -25,9 +25,13 @@ const PARAM_NAMES = [
   "predictors",
   "datasets",
   "sets",
+  "time",
+  "status",
+  "covariates",
+  "stratifyBy",
 ] as const;
 // prettier-ignore
-const OPTION_NAMES = ["xVariable", "yVariable", "volcanoX", "volcanoY", "volcanoLabel", "volcanoGroupA", "volcanoGroupB"] as const;
+const OPTION_NAMES = ["doseY", "xVariable", "yVariable", "volcanoX", "volcanoY", "volcanoLabel", "volcanoGroupA", "volcanoGroupB"] as const;
 
 /** `node` following a table edit's `move`; `columns`: the table's columns after it (a
  *  point in a column that is gone loses its style). */

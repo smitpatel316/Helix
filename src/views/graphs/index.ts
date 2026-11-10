@@ -31,6 +31,7 @@ import { doseResponse } from "./dose-response";
 import { logisticCurveGraph } from "./logistic-curve";
 import { heatmap } from "./heatmap";
 import { survival } from "./survival";
+import { forestPlot } from "./forest-plot";
 import { volcano, VOLCANO_SERIES } from "./volcano";
 import { blandAltmanGraph } from "./bland-altman";
 import { rocCurveGraph } from "./roc-curve";
@@ -87,6 +88,7 @@ export const GRAPHS: Record<GraphType, GraphModule> = {
   "logistic-curve": logisticCurveGraph,
   heatmap,
   survival,
+  "forest-plot": forestPlot,
   volcano,
   "bland-altman": blandAltmanGraph,
   "roc-curve": rocCurveGraph,
@@ -193,7 +195,7 @@ export const GRAPH_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<GraphType>
     "heatmap",
     "volcano",
   ]),
-  multiple: optionsFor(["xy-scatter", "heatmap", "volcano"]),
+  multiple: optionsFor(["xy-scatter", "heatmap", "volcano", "forest-plot", "survival"]),
   // Outcomes as series across the row categories, as Prism graphs contingency tables.
   contingency: optionsFor(["grouped-bars", "grouped-stacked", "grouped-hbars", "heatmap"]),
   survival: optionsFor(["survival"]),

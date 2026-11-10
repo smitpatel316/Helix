@@ -49,7 +49,7 @@ import {
   withoutColors,
 } from "../src/lib/palettes";
 import { deletePalette, keepPalette, loadMyPalettes } from "../src/store/my-palettes";
-import { GRAPHS, newGraphOptions, type GraphFigure } from "../src/views/graphs";
+import { GRAPHS, GRAPH_OPTIONS_BY_TABLE, newGraphOptions, type GraphFigure } from "../src/views/graphs";
 import { readTable, setColumns } from "../src/lib/dataset";
 import { incompleteRows, missingColumn } from "../src/stats/column/base";
 import { toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
@@ -1969,6 +1969,77 @@ check("the ROC wizard asks truth, score and positive class, defaulting to the la
       .slice(-2),
     ["roc-curve", "survival-log-rank"],
   );
+});
+
+check("the Cox wizard asks time, status, covariates, stratifier and ties, with binary-only stratification", () => {
+  const data: TableData = {
+    columns: ["Title", "Time", "Status", "Trt", "Age"],
+    rows: [
+      [null, "3", "1", "0", "62"],
+      [null, "6", "1", "1", "60"],
+      [null, "9", "0", "1", "57"],
+    ],
+  };
+  const asked = (a: Record<string, string>) =>
+    WIZARDS["cox-proportional-hazards"]!.questions(a, readTable(data)).flatMap((q) => (q ? [q.id] : []));
+  deepStrictEqual(asked({}), ["time", "status", "covariates", "stratifyBy", "ties"]);
+  const qs = WIZARDS["cox-proportional-hazards"]!.questions({}, readTable(data)).filter(
+    (q): q is Question => q !== false,
+  );
+  const covariates = qs.find((q) => q.id === "covariates");
+  ok(covariates && covariates.kind === "names");
+  deepStrictEqual(covariates.kind === "names" ? covariates.options : [], ["Trt", "Age"]);
+  // Only binary (exactly two distinct values) covariates stratify the curves.
+  const stratify = qs.find((q) => q.id === "stratifyBy");
+  ok(stratify && stratify.kind === "choice");
+  deepStrictEqual(
+    stratify.kind === "choice" ? stratify.options.map((o) => o.value) : [],
+    ["Trt", "none"],
+  );
+  deepStrictEqual(
+    WIZARDS["cox-proportional-hazards"]!.finish(
+      { time: "Time", status: "Status", covariates: ["Trt", "Age"], stratifyBy: "Trt", ties: "breslow" },
+      readTable(data),
+    ),
+    {
+      type: "cox-proportional-hazards",
+      params: { time: "Time", status: "Status", covariates: ["Trt", "Age"], ties: "breslow", stratifyBy: "Trt" },
+    },
+  );
+  // "None" drops the stratifier from the params.
+  deepStrictEqual(
+    WIZARDS["cox-proportional-hazards"]!.finish(
+      { time: "Time", status: "Status", covariates: ["Trt"], stratifyBy: "none", ties: "efron" },
+      readTable(data),
+    ).params,
+    { time: "Time", status: "Status", covariates: ["Trt"], ties: "efron" },
+  );
+  // The menu offers Cox after Multiple regression on Multiple Variables tables.
+  deepStrictEqual(
+    analysisOptionsForTable("multiple").map((o) => o.value),
+    ["correlation-matrix", "multiple-regression", "cox-proportional-hazards"],
+  );
+  // Multiple Variables tables offer the forest plot and survival curves.
+  deepStrictEqual(
+    GRAPH_OPTIONS_BY_TABLE["multiple"].map((o) => o.value),
+    ["heatmap", "volcano", "forest-plot", "survival"],
+  );
+  // Renaming a column follows the Cox analysis's params.
+  const renamed = followTable(
+    {
+      ...analysis,
+      analysisType: "cox-proportional-hazards",
+      analysisParams: { time: "Time", status: "Status", covariates: ["Trt", "Age"], stratifyBy: "Trt" },
+    },
+    { renamed: { Trt: "Treatment", Age: "Years" } },
+    [],
+  );
+  deepStrictEqual(renamed.analysisParams, {
+    time: "Time",
+    status: "Status",
+    covariates: ["Treatment", "Years"],
+    stratifyBy: "Treatment",
+  });
 });
 
 check("an XY table without numbers in X or Y says which, in every XY analysis", async () => {
