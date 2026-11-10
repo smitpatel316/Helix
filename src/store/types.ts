@@ -141,6 +141,15 @@ export interface GraphOptions {
   regShowLine: boolean;
   regShowBand: boolean;
   regShowEquation: boolean;
+  // Deming-regression overlay (XY scatter only): draw a sibling "Deming regression"
+  // analysis's fit line (solid) plus the OLS line (dashed) for comparison, both
+  // computed directly from the plotted x/y pairs (see deming-overlay.ts) — no
+  // WebR round-trip, since the closed form has one unique solution and always
+  // matches the sibling analysis's R-computed fit exactly.
+  demingAnalysisId?: string;
+  demingShowLine: boolean;
+  demingShowOls: boolean;
+  demingShowEquation: boolean;
   // Cox proportional-hazards regression (Multiple Variables only): the sibling
   // "Cox proportional-hazards regression" analysis a forest plot draws its
   // hazard ratios from, or a survival curve stratifies by (see forest-plot.ts
@@ -266,6 +275,9 @@ export const DEFAULT_GRAPH_OPTIONS: GraphOptions = {
   regShowLine: true,
   regShowBand: true,
   regShowEquation: true,
+  demingShowLine: true,
+  demingShowOls: true,
+  demingShowEquation: true,
   doseModel: "sigmoidal-4pl-x",
   doseShowCurve: true,
   doseShowEquation: true,

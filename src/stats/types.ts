@@ -13,6 +13,7 @@ export type AnalysisType =
   | "kolmogorov-smirnov"
   | "correlation"
   | "linear-regression"
+  | "deming-regression"
   | "simple-logistic-regression"
   | "area-under-curve"
   | "nonlinear-regression"
@@ -146,6 +147,16 @@ export interface LinearRegressionParams {
   /** Omitted defaults to the first Y data column. */
   y?: string;
   forceOrigin: boolean;
+}
+
+/** Params for "deming-regression" (XY table): which Y series to compare with X,
+ *  and the error-variance ratio λ = σ²ε/σ²δ (variance of the Y errors over
+ *  variance of the X errors — the deming::deming / MethComp::Deming convention,
+ *  λ = (ystd/xstd)²). λ = 1 assumes equal error in both; λ must be > 0. */
+export interface DemingRegressionParams {
+  /** Omitted defaults to the first Y data column. */
+  y?: string;
+  lambda: number;
 }
 
 /** Params for "simple-logistic-regression" (XY table): which Y series is the
@@ -357,6 +368,7 @@ export type AnalysisParams = DataSetsParam &
     | CorrelationParams
     | XYCorrelationParams
     | LinearRegressionParams
+    | DemingRegressionParams
     | SimpleLogisticRegressionParams
     | AreaUnderCurveParams
     | NonlinearRegressionParams

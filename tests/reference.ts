@@ -15,6 +15,7 @@ import { paintOf } from "../src/views/graphs/plot-helpers";
 import { pairUp, readTable, splitXY } from "../src/lib/dataset";
 import { countDataColumns, countDataGroups } from "../src/views/analyses";
 import { fitLinear } from "../src/views/graphs/regression-overlay";
+import { addDeming, fitDeming } from "../src/views/graphs/deming-overlay";
 import { computeGroupedDEG } from "../src/lib/deg";
 import { tCrit95 } from "../src/lib/student-t";
 import { kaplanMeier } from "../src/lib/kaplan-meier";
@@ -1026,6 +1027,65 @@ const xyNoX = table(
   ],
 );
 
+/** Deming regression (plan 13): the reference case, X = 1..10 with a noisy
+ *  near-linear Y; λ = 1 and λ = 0.25 runs below. */
+const deming = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "1", "1.4"],
+    ["", "2", "1.9"],
+    ["", "3", "3.6"],
+    ["", "4", "3.8"],
+    ["", "5", "5.5"],
+    ["", "6", "5.7"],
+    ["", "7", "7.4"],
+    ["", "8", "7.6"],
+    ["", "9", "9.5"],
+    ["", "10", "9.8"],
+  ],
+);
+
+/** X and Y with no covariation (Sxy = 0): the closed form divides by zero. */
+const demingNoCovary = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "1", "1"],
+    ["", "2", "2"],
+    ["", "3", "1"],
+    ["", "4", "2"],
+    ["", "5", "1"],
+  ],
+);
+
+/** Too few complete pairs for the jackknife (n = 2). */
+const demingTooFew = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "1", "1.4"],
+    ["", "2", "1.9"],
+  ],
+);
+
+/** Constant X / constant Y: no defined slope. */
+const demingConstX = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "5", "1.4"],
+    ["", "5", "1.9"],
+    ["", "5", "3.6"],
+    ["", "5", "3.8"],
+  ],
+);
+const demingConstY = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "1", "2"],
+    ["", "2", "2"],
+    ["", "3", "2"],
+    ["", "4", "2"],
+  ],
+);
+
 // ── What to run ──────────────────────────────────────────────────────────
 
 const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
@@ -1103,6 +1163,24 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["xy", xy, "linear-regression", { forceOrigin: false }],
   ["xy", xy, "linear-regression", { y: "Y2", forceOrigin: false }],
   ["xy", xy, "linear-regression", { y: "Y3", forceOrigin: true }],
+  // Deming regression (plan 13): the reference case at λ = 1 and λ = 0.25
+  // (the λ-sensitivity check lives in disagreements() below), plus the
+  // error paths — λ ≤ 0, no covariation, too few pairs, constant X/Y.
+  // Cross-check against deming::deming() is a follow-up, not done here:
+  // the closed form is exact for known λ and needs no package — but the
+  // λ direction was verified 2026-11-10 against both packages on this
+  // table (deming::deming xstd=1, ystd=0.5 and MethComp::Deming sdr=0.5
+  // both give slope 0.9813, the closed form at λ = 0.25), so λ is the
+  // Y-error variance over the X-error variance; see the spec's header
+  // comment for why the plan's "λ = error in X ÷ error in Y" prose and
+  // its "slope(λ=0.25) between slope(λ=1) and OLS" assertion are inverted.
+  ["deming", deming, "deming-regression", { y: "Y", lambda: 1 }],
+  ["deming", deming, "deming-regression", { y: "Y", lambda: 0.25 }],
+  ["deming", deming, "deming-regression", { y: "Y", lambda: 0 }],
+  ["demingNoCovary", demingNoCovary, "deming-regression", { y: "Y", lambda: 1 }],
+  ["demingTooFew", demingTooFew, "deming-regression", { y: "Y", lambda: 1 }],
+  ["demingConstX", demingConstX, "deming-regression", { y: "Y", lambda: 1 }],
+  ["demingConstY", demingConstY, "deming-regression", { y: "Y", lambda: 1 }],
   ["xy", xy, "area-under-curve", { baseline: 0 }],
   ["xy", xy, "area-under-curve", { baseline: 2 }],
   ["xy", xy, "nonlinear-regression", { model: "line" }],
@@ -1457,6 +1535,100 @@ async function disagreements(): Promise<string[]> {
         );
     }
   }
+  // Deming regression (plan 13): the TS closed form must match the R closed
+  // form on the reference table, and λ must run the right way round. The
+  // slope decreases monotonically in λ, from the inverse-regression slope
+  // (Syy/Sxy, the λ → 0 limit) toward the OLS slope (the λ → ∞ limit) — so
+  // slope(λ=0.25) sits between slope(λ=1) and the inverse slope, and
+  // slope(λ=4) between slope(λ=1) and OLS. (The plan's "slope(λ=0.25)
+  // between slope(λ=1) and OLS" is inverted: 0.9813 > 0.9764 > 0.9685. A
+  // λ-inversion bug would reverse this order.)
+  const { x: demX, ys: demYs } = splitXY(readTable(deming).columns);
+  const demPairs = pairUp(demX!, demYs[0]);
+  const demStat = (r: AnalysisResult | { error: string }, label: string) =>
+    "error" in r ? null : r.stats.find((s) => s.label === label)?.value;
+  const deming1 = await runAnalysis("deming-regression", deming, { y: "Y", lambda: 1 });
+  const deming025 = await runAnalysis("deming-regression", deming, { y: "Y", lambda: 0.25 });
+  const deming4 = await runAnalysis("deming-regression", deming, { y: "Y", lambda: 4 });
+  for (const [r, lam] of [
+    [deming1, 1],
+    [deming025, 0.25],
+    [deming4, 4],
+  ] as const) {
+    const js = fitDeming(demPairs.x, demPairs.y, lam);
+    const rSlope = demStat(r, "Slope");
+    const rInt = demStat(r, "Y-intercept");
+    if (
+      rSlope == null ||
+      rInt == null ||
+      js == null ||
+      Math.abs(rSlope - js.slope) > 1e-9 ||
+      Math.abs(rInt - js.intercept) > 1e-9
+    )
+      out.push(
+        `Deming λ=${lam}: graph slope ${js?.slope}, R slope ${rSlope}; graph intercept ${js?.intercept}, R intercept ${rInt}`,
+      );
+  }
+  const s1 = demStat(deming1, "Slope");
+  const s025 = demStat(deming025, "Slope");
+  const s4 = demStat(deming4, "Slope");
+  const sOls = demStat(deming1, "OLS slope");
+  const inv = (() => {
+    const xb = demPairs.x.reduce((s, v) => s + v, 0) / demPairs.x.length;
+    const yb = demPairs.y.reduce((s, v) => s + v, 0) / demPairs.y.length;
+    const syy = demPairs.y.reduce((s, v) => s + (v - yb) ** 2, 0);
+    const sxy = demPairs.x.reduce((s, v, i) => s + (v - xb) * (demPairs.y[i] - yb), 0);
+    return syy / sxy;
+  })();
+  if (s1 == null || s025 == null || s4 == null || sOls == null || !(s025 > s1 && s1 > s4 && s4 > sOls && s025 < inv))
+    out.push(
+      `Deming λ-sensitivity: λ=0.25 slope ${s025}, λ=1 slope ${s1}, λ=4 slope ${s4}, OLS slope ${sOls}, inverse slope ${inv}`,
+    );
+  // The near-perfect line: all three lines nearly coincide, which is the
+  // correct behaviour when error is small relative to signal — this catches
+  // a sign or λ-inversion bug, which would show up large on the noisy table.
+  const cleanX = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const cleanY = [1.1, 2.3, 2.8, 4.2, 4.9, 6.1, 6.8, 8.3, 8.9, 10.2];
+  const clean1 = fitDeming(cleanX, cleanY, 1);
+  const clean4 = fitDeming(cleanX, cleanY, 4);
+  const cleanOls = fitLinear(cleanX, cleanY, false);
+  if (!clean1 || Math.abs(clean1.slope - 0.9997) > 1e-3 || Math.abs(clean1.intercept - 0.0619) > 1e-3)
+    out.push(`Deming clean line λ=1: slope ${clean1?.slope}, intercept ${clean1?.intercept}`);
+  if (!clean4 || Math.abs(clean4.slope - 0.9984) > 1e-3 || Math.abs(clean4.intercept - 0.0688) > 1e-3)
+    out.push(`Deming clean line λ=4: slope ${clean4?.slope}, intercept ${clean4?.intercept}`);
+  if (!cleanOls || Math.abs(cleanOls.slope - 0.9976) > 1e-3 || Math.abs(cleanOls.intercept - 0.0733) > 1e-3)
+    out.push(`Deming clean line OLS: slope ${cleanOls?.slope}, intercept ${cleanOls?.intercept}`);
+  // The overlay itself: the xy-scatter of the reference table plus a linked
+  // Deming analysis draws a solid Deming line and a dashed OLS line, with
+  // the equations named.
+  const demFig = GRAPHS["xy-scatter"].build(
+    plotColumns(readTable(deming), "xy-scatter", newGraphOptions("xy-scatter"), "xy"),
+    newGraphOptions("xy-scatter"),
+    paintOf(newGraphOptions("xy-scatter"), 1),
+    readTable(deming).titles,
+  );
+  addDeming(
+    demFig,
+    plotColumns(readTable(deming), "xy-scatter", newGraphOptions("xy-scatter"), "xy"),
+    newGraphOptions("xy-scatter"),
+    { y: "Y", lambda: 1 },
+    paintOf(newGraphOptions("xy-scatter"), 1),
+  );
+  const demTraces = demFig.data as { x?: number[]; y?: number[]; line?: { dash?: string }; mode?: string }[];
+  if (
+    demTraces.length !== 3 ||
+    demTraces[0]?.line?.dash !== "dash" ||
+    demTraces[1]?.line?.dash !== undefined ||
+    demTraces[0]?.x?.length !== 2 ||
+    demTraces[1]?.x?.length !== 2
+  )
+    out.push(
+      `Deming overlay traces: ${JSON.stringify(demTraces.map((t) => ({ mode: t.mode, dash: t.line?.dash, n: t.x?.length })))}`,
+    );
+  const demNote = (demFig.layout.annotations as { text?: string }[] | undefined)?.find((a) =>
+    a.text?.includes("Deming:"),
+  );
+  if (!demNote) out.push("Deming overlay draws no equation note");
   const tests = await runAnalysis("multiple-t-tests", twoGroups, {
     paired: false,
     gaussian: true,

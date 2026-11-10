@@ -38,6 +38,7 @@ import { kolmogorovSmirnovSpec } from "./column/kolmogorov-smirnov";
 import { runRout } from "./column/rout";
 import { runXYCorrelation } from "./xy/correlation";
 import { linearRegressionSpec } from "./xy/linear-regression";
+import { demingRegressionSpec } from "./xy/deming-regression";
 import { runSimpleLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
@@ -107,6 +108,7 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
   outliers: { label: "Identify outliers (ROUT)", minColumns: 1, run: (c, p) => runRout(c, p as OutliersParams) },
   correlation: { label: "Correlation", minColumns: 2, run: (c, p) => runXYCorrelation(c, p as XYCorrelationParams) },
   "linear-regression": spec("Linear regression", linearRegressionSpec),
+  "deming-regression": spec("Deming regression", demingRegressionSpec),
   "simple-logistic-regression": {
     label: "Simple logistic regression",
     minColumns: 2,

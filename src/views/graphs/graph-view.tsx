@@ -17,7 +17,7 @@ import {
   type ProjectNode,
   type SeriesStyle,
 } from "../../store/types";
-import type { LinearRegressionParams, NonlinearRegressionParams, CoxPHParams, PoissonRegressionParams } from "../../stats/types";
+import type { LinearRegressionParams, NonlinearRegressionParams, CoxPHParams, PoissonRegressionParams, DemingRegressionParams } from "../../stats/types";
 import { useProjectStore } from "../../store/use-project-store";
 import { groupsOf, readTable, xyProblem } from "../../lib/dataset";
 import { paletteOf } from "../../lib/palettes";
@@ -35,6 +35,7 @@ import { INK, MOVABLE, marginsFor, movedText, paintOf, withCaps } from "./plot-h
 import { useStartAnalysis } from "../analyses/use-analysis-launcher";
 import { loadPlotly } from "./plotly";
 import { addRegression } from "./regression-overlay";
+import { addDeming } from "./deming-overlay";
 import { addObservedFitted } from "./observed-fitted";
 import { addSignificance, deriveComparisons } from "./significance-overlay";
 import {
@@ -271,6 +272,8 @@ export function GraphView({ node }: { node: ProjectNode }) {
     curveParams,
   );
   const curveFit = curveOutcome && !("error" in curveOutcome) ? curveOutcome : null;
+  const demingParams = (options.demingAnalysisId ? nodes[options.demingAnalysisId]?.analysisParams : undefined) as
+    DemingRegressionParams | undefined;
   // A dose-response graph fits its own curve (no analysis node needed).
   const doseY = options.doseY ?? columns[1]?.name;
   const doseOutcome = useAnalysis(type === "dose-response" && doseY ? "nonlinear-regression" : undefined, data, {
@@ -415,6 +418,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
         if (curveFit && x && y && options.regShowLine)
           addFittedCurve(fig, x, y, ys, curveParams.model, curveFit, options.regShowEquation, options, paint);
       } else if (type === "xy-scatter" && regNode) addRegression(fig, columns, options, regParams, paint);
+      if (type === "xy-scatter" && options.demingAnalysisId) addDeming(fig, columns, options, demingParams, paint);
       if (doseFit) addDoseCurve(fig, columns, options, doseFit, paint, interpFit);
       if (logisticFit) addLogisticCurve(fig, columns, logisticFit, paint);
       if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint);

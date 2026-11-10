@@ -119,10 +119,14 @@ function Steps({
   // its error, when the user has typed something, replaces the question text.
   const textError =
     q.kind === "text" && String(value ?? "").trim() !== "" ? (parseUnknowns(String(value ?? "")).error ?? null) : null;
+  // A number answer only counts once it passes its question's validation;
+  // its error, like the free-text one, replaces the question text.
+  const numberError = q.kind === "number" && typeof value === "number" ? (q.validate?.(value) ?? null) : null;
   const ready =
     value !== null &&
     !(Array.isArray(value) && value.length < (q.kind === "names" ? (q.min ?? 1) : 1)) &&
-    !(q.kind === "text" && parseUnknowns(String(value ?? "")).error);
+    !(q.kind === "text" && parseUnknowns(String(value ?? "")).error) &&
+    !numberError;
 
   return (
     <Dialog
@@ -131,7 +135,11 @@ function Steps({
       onReturn={ready && !checking ? () => void next() : undefined}
       title={title}
       description={
-        gate.blocked ? gate.message! : checking ? "Running the Shapiro-Wilk normality test…" : (textError ?? q.ask)
+        gate.blocked
+          ? gate.message!
+          : checking
+            ? "Running the Shapiro-Wilk normality test…"
+            : (textError ?? numberError ?? q.ask)
       }
       footer={
         !checking && (

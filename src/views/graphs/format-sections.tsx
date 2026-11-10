@@ -106,24 +106,47 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
     return <SignificanceControls analyses={sources} comparisons={c.comparisons} options={options} set={set} />;
   }
   if (graphType === "xy-scatter" && c.tableType === "xy") {
-    // A linear regression, or a nonlinear one of one data set (not two curves compared).
-    const sources = c.analyses.filter(
+    // A linear regression, a Deming regression, or a nonlinear one of one data set (not two curves compared).
+    const regSources = c.analyses.filter((a) => a.analysisType === "linear-regression");
+    const demingSources = c.analyses.filter((a) => a.analysisType === "deming-regression");
+    const nonlinearSources = c.analyses.filter(
       (a) =>
-        a.analysisType === "linear-regression" ||
-        (a.analysisType === "nonlinear-regression" &&
-          (a.analysisParams as NonlinearRegressionParams | undefined)?.compareWith === undefined),
+        a.analysisType === "nonlinear-regression" &&
+        (a.analysisParams as NonlinearRegressionParams | undefined)?.compareWith === undefined,
     );
-    if (!sources.length) {
+    if (!regSources.length && !demingSources.length && !nonlinearSources.length) {
       return (
         <NoAnalysis onNewAnalysis={c.onNewAnalysis}>
-          Draw the fitted line or curve of a linear or nonlinear regression of this table.
+          Draw the fitted line or curve of a linear, Deming or nonlinear regression of this table.
         </NoAnalysis>
       );
     }
     return (
       <>
-        <RegressionControls analyses={sources} options={options} set={set} />
-        {c.fitError && <p className="text-small text-secondary">{c.fitError}</p>}
+        {regSources.length ? (
+          <Group title="Linear regression">
+            <RegressionControls analyses={regSources} options={options} set={set} />
+          </Group>
+        ) : (
+          <NoAnalysis test="linear-regression" onNewAnalysis={c.onNewAnalysis}>
+            Draw the fitted line of a linear regression of this table.
+          </NoAnalysis>
+        )}
+        {demingSources.length ? (
+          <Group title="Deming regression">
+            <DemingControls analyses={demingSources} options={options} set={set} />
+          </Group>
+        ) : (
+          <NoAnalysis test="deming-regression" onNewAnalysis={c.onNewAnalysis}>
+            Draw the Deming and OLS lines of a Deming regression of this table.
+          </NoAnalysis>
+        )}
+        {nonlinearSources.length ? (
+          <Group title="Nonlinear regression">
+            <RegressionControls analyses={nonlinearSources} options={options} set={set} />
+            {c.fitError && <p className="text-small text-secondary">{c.fitError}</p>}
+          </Group>
+        ) : null}
       </>
     );
   }
@@ -375,6 +398,38 @@ function SignificanceControls({
               comparisons.
             </p>
           )}
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/** Pick a Deming regression, then which of its lines to draw. */
+function DemingControls({
+  analyses,
+  options,
+  set,
+}: {
+  analyses: ProjectNode[];
+  options: GraphOptions;
+  set: SetOptions;
+}) {
+  return (
+    <>
+      <AnalysisRow
+        analyses={analyses}
+        value={options.demingAnalysisId}
+        onChange={(demingAnalysisId) => set({ demingAnalysisId })}
+      />
+      {options.demingAnalysisId ? (
+        <>
+          <Toggle label="Deming line" checked={options.demingShowLine} onChange={(demingShowLine) => set({ demingShowLine })} />
+          <Toggle label="OLS line" checked={options.demingShowOls} onChange={(demingShowOls) => set({ demingShowOls })} />
+          <Toggle
+            label="Equations"
+            checked={options.demingShowEquation}
+            onChange={(demingShowEquation) => set({ demingShowEquation })}
+          />
         </>
       ) : null}
     </>
