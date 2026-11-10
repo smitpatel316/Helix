@@ -30,6 +30,7 @@ export type AnalysisType =
   | "spline-lowess"
   | "binding-saturation"
   | "binding-kinetics"
+  | "enzyme-inhibition"
   | "outliers"
   | "chi-square"
   | "survival-log-rank"
@@ -85,6 +86,18 @@ export const BINDING_KINETICS_MODELS = [
   "association-two-phase",
   "dissociation-two-phase",
   "association-then-dissociation",
+] as const;
+/** Enzyme kinetics — Inhibition models (plan 17): global fits over
+ *  substrate–velocity curves at several inhibitor concentrations
+ *  (competitive, noncompetitive, uncompetitive, mixed — Vmax, Km, Ki and
+ *  Alpha shared across series), plus the single-curve tight-binding
+ *  Morrison Ki fit. */
+export const ENZYME_INHIBITION_MODELS = [
+  "competitive",
+  "noncompetitive",
+  "uncompetitive",
+  "mixed",
+  "morrison",
 ] as const;
 export const CORRELATION_MODES = ["x-vs-every-y", "two-datasets", "matrix"] as const;
 export const TWO_WAY_DESIGNS = ["ordinary", "repeated-measures", "nonparametric"] as const;
@@ -324,6 +337,28 @@ export interface BindingKineticsParams {
   time0?: number;
 }
 
+/** Params for "enzyme-inhibition" (XY table): which Y series to include
+ *  (default: all), which inhibition model, and the per-series inhibitor
+ *  concentration [I] — from the column titles when numeric, else
+ *  wizard-filled. Morrison is a single-curve fit (X = total inhibitor
+ *  concentration at one fixed [S]): `enzymeConcentration` (Et) is required,
+ *  and `substrateConcentration` + `kmForMorrison` (both or neither) convert
+ *  the fitted Kiapp to Ki. */
+export type EnzymeInhibitionModel = (typeof ENZYME_INHIBITION_MODELS)[number];
+export interface EnzymeInhibitionParams {
+  /** Omitted defaults to all Y data columns. */
+  y?: string[];
+  model: EnzymeInhibitionModel;
+  /** Per-series [I], keyed by Y column name. */
+  inhibitorConcentrations?: Record<string, number>;
+  /** Total enzyme concentration Et (Morrison only, required). */
+  enzymeConcentration?: number;
+  /** Fixed substrate concentration [S] (Morrison only, with Km). */
+  substrateConcentration?: number;
+  /** Michaelis constant Km (Morrison only, with [S]) — converts Kiapp to Ki. */
+  kmForMorrison?: number;
+}
+
 /** Params for "spline-lowess" (XY table): smooth a chosen Y series against X
  *  with no model assumed — Lowess (locally weighted smoothing, span `f`) or a
  *  smoothing spline (`spar`, or `df`, or neither for the GCV auto-choice).
@@ -421,6 +456,7 @@ export type AnalysisParams = DataSetsParam &
     | StandardCurveInterpolationParams
     | BindingSaturationParams
     | BindingKineticsParams
+    | EnzymeInhibitionParams
     | TwoWayAnovaParams
     | ThreeWayAnovaParams
     | MultipleTTestsParams

@@ -37,6 +37,7 @@ import {
   CORRECTIONS,
   CORRELATION_METHODS,
   CORRELATION_MODES,
+  ENZYME_INHIBITION_MODELS,
   NONLINEAR_MODELS,
   POSTHOC_TARGETS,
   POSTHOCS,
@@ -148,14 +149,24 @@ GRAPH_LIMITS satisfies Record<NumberOption, Limits>;
 // limits), or the user's names (of columns). The R code is written with them: anything
 // else is left out (the test takes its default), so a file can't slip R code into it.
 type ParamKey = AnalysisParams extends infer P ? (P extends unknown ? keyof P : never) : never;
-type ParamKind = "yes/no" | "number" | "numbers" | "name" | "names" | "name-or-number" | readonly string[] | Limits;
+type ParamKind =
+  | "yes/no"
+  | "number"
+  | "numbers"
+  | "name"
+  | "names"
+  | "name-or-names"
+  | "name-or-number"
+  | "numbers-by-name"
+  | readonly string[]
+  | Limits;
 // prettier-ignore
 const PARAMS = {
   paired: "yes/no", gaussian: "yes/no", equalVariance: "yes/no", ratio: "yes/no", forceOrigin: "yes/no", pooledSd: "yes/no", quasi: "yes/no",
   tails: TAILS, posthoc: [...POSTHOCS, ...RANK_POSTHOCS],
   // `model` is shared by nonlinear-regression and the binding runners:
   // the reader only sanitizes, each runner validates its own.
-  model: [...NONLINEAR_MODELS, ...BINDING_SATURATION_MODELS, ...BINDING_KINETICS_MODELS],
+  model: [...NONLINEAR_MODELS, ...BINDING_SATURATION_MODELS, ...BINDING_KINETICS_MODELS, ...ENZYME_INHIBITION_MODELS],
   // `method` is shared by correlation ("pearson"/"spearman") and Spline/Lowess
   // ("spline"/"lowess"): the reader only sanitizes, each runner validates its own.
   method: [...CORRELATION_METHODS, "spline", "lowess"],
@@ -163,9 +174,11 @@ const PARAMS = {
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q, lambda: "number",
   f: "number", spar: "number", df: "number",
   ligandConcentration: "number", koff: "number", hotNM: "number", time0: "number",
+  enzymeConcentration: "number", substrateConcentration: "number", kmForMorrison: "number",
+  inhibitorConcentrations: "numbers-by-name",
   binMode: BIN_MODES, binWidth: "number", binCount: { min: 2, max: 100 }, startAt: "number",
   posthocTerm: THREE_WAY_TERMS,
-  y: "name", y2: "name", dependent: "name", datasets: "names", predictors: "names", sets: "names", unknowns: "numbers",
+  y: "name-or-names", y2: "name", dependent: "name", datasets: "names", predictors: "names", sets: "names", unknowns: "numbers",
   truth: "name", score: "name", positive: "name-or-number",
   time: "name", status: "name", covariates: "names", stratifyBy: "name", ties: ["efron", "breslow"],
 } satisfies Record<ParamKey, ParamKind>;
@@ -387,6 +400,10 @@ function readParam(kind: ParamKind, v: unknown): unknown {
   if (kind === "numbers") return Array.isArray(v) && v.every(isFiniteNumber) ? v : undefined;
   if (kind === "name") return typeof v === "string" ? v : undefined;
   if (kind === "name-or-number") return typeof v === "string" || isFiniteNumber(v) ? v : undefined;
+  if (kind === "name-or-names")
+    return typeof v === "string" ? v : Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
+  if (kind === "numbers-by-name")
+    return isObj(v) && Object.values(v).every(isFiniteNumber) ? v : undefined;
   if (kind === "names") return Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
   return Array.isArray(kind) ? oneOf(kind, v) : within(v, kind as Limits);
 }

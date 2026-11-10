@@ -11,6 +11,7 @@ import type {
   BindingSaturationParams,
   CorrelationParams,
   CoxPHParams,
+  EnzymeInhibitionParams,
   FrequencyDistributionParams,
   MultipleRegressionParams,
   MultipleLogisticRegressionParams,
@@ -45,6 +46,7 @@ import { runSimpleLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
 import { runBindingKinetics, runBindingSaturation } from "./xy/binding";
+import { runEnzymeInhibition } from "./xy/enzyme-inhibition";
 import { runSplineLowess } from "./xy/spline-lowess";
 import { runStandardCurveInterpolation } from "./xy/standard-curve-interpolation";
 import { runTwoWayAnova } from "./grouped/two-way-anova";
@@ -137,6 +139,14 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Binding — Kinetics",
     minColumns: 2,
     run: (c, p) => runBindingKinetics(c, p as BindingKineticsParams),
+  },
+  // minColumns is a floor only: the global models need X + ≥ 2 Y series
+  // (including an uninhibited one), while Morrison needs X + 1 Y series —
+  // the runner enforces the per-model minimum.
+  "enzyme-inhibition": {
+    label: "Enzyme kinetics — Inhibition",
+    minColumns: 2,
+    run: (c, p) => runEnzymeInhibition(c, p as EnzymeInhibitionParams),
   },
   "spline-lowess": {
     label: "Spline and Lowess",
@@ -252,11 +262,16 @@ export function runAnalysis(
   if (!analysis) return Promise.resolve({ error: `Unknown analysis type: ${String(testType)}` });
   const table = readTable(data);
   // A data set or a column the analysis names (a regression's Y…) must still be there.
+  // Enzyme inhibition names several Y series (its `y` is a string[]), so an
+  // array `y` is spread — a bare array here would stringify to one bogus
+  // comma-joined column name and every wizard-created inhibition fit would
+  // fail the check below (found in the plan-17 GUI pass: the wizard always
+  // sets `y`, so its fits hit this path while the `y`-less fixtures did not).
   const named = params as
-    | { y?: string; y2?: string; dependent?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string }
+    | { y?: string | string[]; y2?: string; dependent?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string }
     | undefined;
   const chosen = [
-    named?.y,
+    ...(Array.isArray(named?.y) ? named.y : named?.y !== undefined ? [named.y] : []),
     named?.y2,
     named?.dependent,
     ...(named?.predictors ?? []),

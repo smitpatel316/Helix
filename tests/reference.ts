@@ -410,6 +410,62 @@ const bindAssocThenDissoc = table(
   ],
 );
 
+/** Enzyme kinetics — Inhibition (plan 17): noiseless by construction on
+ *  the shared substrate grid 1–100. enzMixed: Vmax=100, Km=10, Ki=5,
+ *  Alpha=2 (mixed equation). enzCompetitive: Vmax=100, Km=10, Ki=5
+ *  (competitive equation). The Y titles carry [I] ("0 nM" → 0), so the
+ *  title-parsing path is exercised too. enzMorrison: Et=5, Kiapp=2,
+ *  v0=100 on the It grid 0–50 nM. */
+const enzMixed = table(
+  ["Title", "X", "0 nM", "5 nM", "20 nM"],
+  [
+    ["", "1", "9.0909090909", "4.6511627907", "1.8867924528"],
+    ["", "2", "16.6666666667", "8.6956521739", "3.5714285714"],
+    ["", "5", "33.3333333333", "18.1818181818", "7.6923076923"],
+    ["", "10", "50", "28.5714285714", "12.5"],
+    ["", "20", "66.6666666667", "40", "18.1818181818"],
+    ["", "50", "83.3333333333", "52.6315789474", "25"],
+    ["", "100", "90.9090909091", "58.8235294118", "28.5714285714"],
+  ],
+);
+const enzCompetitive = table(
+  ["Title", "X", "0 nM", "5 nM", "20 nM"],
+  [
+    ["", "1", "9.0909090909", "4.7619047619", "1.9607843137"],
+    ["", "2", "16.6666666667", "9.0909090909", "3.8461538462"],
+    ["", "5", "33.3333333333", "20", "9.0909090909"],
+    ["", "10", "50", "33.3333333333", "16.6666666667"],
+    ["", "20", "66.6666666667", "50", "28.5714285714"],
+    ["", "50", "83.3333333333", "71.4285714286", "50"],
+    ["", "100", "90.9090909091", "83.3333333333", "66.6666666667"],
+  ],
+);
+/** Global model with no uninhibited series: must error naming "uninhibited". */
+const enzNoZero = table(
+  ["Title", "X", "5 nM", "20 nM"],
+  [
+    ["", "1", "4.7619047619", "1.9607843137"],
+    ["", "2", "9.0909090909", "3.8461538462"],
+    ["", "5", "20", "9.0909090909"],
+    ["", "10", "33.3333333333", "16.6666666667"],
+    ["", "20", "50", "28.5714285714"],
+    ["", "50", "71.4285714286", "50"],
+    ["", "100", "83.3333333333", "66.6666666667"],
+  ],
+);
+const enzMorrison = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "0", "100"],
+    ["", "1", "86.3324958071"],
+    ["", "2", "74.0312423743"],
+    ["", "5", "46.3324958071"],
+    ["", "10", "24.3398113206"],
+    ["", "20", "11.3835714722"],
+    ["", "50", "4.2362280552"],
+  ],
+);
+
 const survivalTable = table(
   ["Title", "Days", "Treated", "Placebo"],
   [
@@ -1251,6 +1307,22 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
     "binding-kinetics",
     { model: "association-then-dissociation", hotNM: 1, time0: 100 },
   ],
+  // Enzyme kinetics — Inhibition (plan 17): the noiseless reference cases
+  // (coefficients + AICc + notes asserted in disagreements() below), the
+  // mixed-on-competitive run (Alpha unidentifiable there — only Vmax/Km/Ki
+  // asserted), the Morrison run with and without [S]/Km, and the validation
+  // errors (no uninhibited series; Morrison with [S] but no Km).
+  ["enzMixed", enzMixed, "enzyme-inhibition", { model: "mixed", inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 } }],
+  ["enzCompetitive", enzCompetitive, "enzyme-inhibition", { model: "competitive", inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 } }],
+  ["enzCompetitive", enzCompetitive, "enzyme-inhibition", { model: "mixed", inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 } }],
+  ["enzMorrison", enzMorrison, "enzyme-inhibition", { model: "morrison", enzymeConcentration: 5 }],
+  ["enzMorrison", enzMorrison, "enzyme-inhibition", { model: "morrison", enzymeConcentration: 5, substrateConcentration: 10, kmForMorrison: 10 }],
+  ["enzNoZero", enzNoZero, "enzyme-inhibition", { model: "mixed", inhibitorConcentrations: { "5 nM": 5, "20 nM": 20 } }],
+  ["enzMorrison", enzMorrison, "enzyme-inhibition", { model: "morrison", enzymeConcentration: 5, substrateConcentration: 10 }],
+  // The wizard always sets `y` explicitly (a string[]), so the mixed fit is
+  // pinned with it too — the shared runAnalysis pre-flight once treated it
+  // as one comma-joined column name and every wizard-created fit failed.
+  ["enzMixed", enzMixed, "enzyme-inhibition", { model: "mixed", y: ["0 nM", "5 nM", "20 nM"], inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 } }],
   ["logistic", logistic, "simple-logistic-regression", {}],
   ["logisticSeparated", logisticSeparated, "simple-logistic-regression", {}],
   ["blandAltman", blandAltman, "bland-altman", { sets: ["Method A", "Method B"] }],
@@ -3400,6 +3472,247 @@ async function disagreements(): Promise<string[]> {
     out.push(
       `Binding kinetics wizard (assoc-then-dissoc): ${JSON.stringify(kinAsked({ model: "association-then-dissociation" }))}, expected ["y", "model", "hotNM", "time0"]`,
     );
+  // Enzyme kinetics — Inhibition (plan 17): noiseless fixtures must recover
+  // their generating parameters (relative tolerance 1e-6; 1e-4 for the
+  // mixed-on-competitive run, where Alpha is unidentifiable); every fitted
+  // parameter carries estimate + SE + t + p + 95% CI; AICc is reported per
+  // global model; the notes name the [I] per series, the shared fit and the
+  // Alpha mechanism; the graph draws one 101-point curve per series; the
+  // validation errors name their requirement.
+  const enzCoef = (r: AnalysisResult | { error: string }, term: string) =>
+    "error" in r ? null : (r.coefficients?.find((c) => c.term === term)?.estimate ?? null);
+  const enzStat = (r: AnalysisResult | { error: string }, label: string) =>
+    "error" in r ? null : (r.stats.find((s) => s.label === label)?.value ?? null);
+  const enzConc = { "0 nM": 0, "5 nM": 5, "20 nM": 20 };
+  const enzChecks: [string, AnalysisResult | { error: string }, [string, number, number][]][] = [
+    [
+      "mixed",
+      await runAnalysis("enzyme-inhibition", enzMixed, { model: "mixed", inhibitorConcentrations: enzConc }),
+      [
+        ["Vmax", 100, 1e-6],
+        ["Km", 10, 1e-6],
+        ["Ki", 5, 1e-6],
+        ["Alpha", 2, 1e-6],
+      ],
+    ],
+    [
+      "competitive",
+      await runAnalysis("enzyme-inhibition", enzCompetitive, { model: "competitive", inhibitorConcentrations: enzConc }),
+      [
+        ["Vmax", 100, 1e-6],
+        ["Km", 10, 1e-6],
+        ["Ki", 5, 1e-6],
+      ],
+    ],
+    [
+      "mixed on competitive",
+      await runAnalysis("enzyme-inhibition", enzCompetitive, { model: "mixed", inhibitorConcentrations: enzConc }),
+      [
+        ["Vmax", 100, 1e-4],
+        ["Km", 10, 1e-4],
+        ["Ki", 5, 1e-4],
+      ],
+    ],
+    [
+      "morrison",
+      await runAnalysis("enzyme-inhibition", enzMorrison, { model: "morrison", enzymeConcentration: 5 }),
+      [
+        ["v0", 100, 1e-6],
+        ["Kiapp", 2, 1e-6],
+      ],
+    ],
+    [
+      "morrison with [S]/Km",
+      await runAnalysis("enzyme-inhibition", enzMorrison, {
+        model: "morrison",
+        enzymeConcentration: 5,
+        substrateConcentration: 10,
+        kmForMorrison: 10,
+      }),
+      [
+        ["v0", 100, 1e-6],
+        ["Kiapp", 2, 1e-6],
+        ["Ki", 1, 1e-6],
+      ],
+    ],
+    [
+      // The wizard's params name the Y series explicitly — the same mixed
+      // fit must recover its parameters when `y` is a string[].
+      "mixed (explicit y)",
+      await runAnalysis("enzyme-inhibition", enzMixed, {
+        model: "mixed",
+        y: ["0 nM", "5 nM", "20 nM"],
+        inhibitorConcentrations: enzConc,
+      }),
+      [
+        ["Vmax", 100, 1e-6],
+        ["Km", 10, 1e-6],
+        ["Ki", 5, 1e-6],
+        ["Alpha", 2, 1e-6],
+      ],
+    ],
+  ];
+  for (const [label, r, terms] of enzChecks) {
+    if ("error" in r) {
+      out.push(`Enzyme inhibition ${label}: ${r.error}`);
+      continue;
+    }
+    for (const [term, want, tol] of terms) {
+      const got = enzCoef(r, term);
+      if (!closeRel(got, want, tol)) out.push(`Enzyme inhibition ${label} ${term}: ${got}, expected ${want}`);
+    }
+    // Every fitted parameter carries estimate + SE + t + p + 95% CI (Et and
+    // the derived Ki are not fitted, so they carry an estimate only).
+    for (const c of r.coefficients ?? []) {
+      if (c.term === "Et" || c.term === "Ki") {
+        if (c.estimate == null) out.push(`Enzyme inhibition ${label} ${c.term}: missing estimate`);
+        continue;
+      }
+      if (
+        c.estimate == null ||
+        c.stdError == null ||
+        c.t == null ||
+        c.p == null ||
+        c.ciLow == null ||
+        c.ciHigh == null
+      )
+        out.push(`Enzyme inhibition ${label} ${c.term}: missing estimate/SE/t/p/CI`);
+    }
+    const r2 = enzStat(r, "R squared");
+    if (r2 == null || Math.abs(r2 - 1) > 1e-9) out.push(`Enzyme inhibition ${label} R²: ${r2}, expected 1`);
+    // Global fits only: Morrison is a single-curve fit, not a shared fit.
+    if (!label.startsWith("morrison") && !r.notes.includes("shared across"))
+      out.push(`Enzyme inhibition ${label} notes do not say the parameters are shared`);
+  }
+  // AICc is reported per global model (not for the single-curve Morrison fit).
+  const enzMixedRun = enzChecks[0][1];
+  if (!("error" in enzMixedRun) && enzStat(enzMixedRun, "AICc") == null)
+    out.push(`Enzyme inhibition mixed: no AICc row`);
+  const enzMorrRun = enzChecks[3][1];
+  if (!("error" in enzMorrRun) && enzStat(enzMorrRun, "AICc") != null)
+    out.push(`Enzyme inhibition morrison: unexpected AICc row`);
+  if (!("error" in enzMorrRun) && !enzMorrRun.notes.includes("Ki needs [S] and Km"))
+    out.push(`Enzyme inhibition morrison notes do not say Ki needs [S] and Km`);
+  if (!("error" in enzMorrRun) && enzCoef(enzMorrRun, "Ki") != null)
+    out.push(`Enzyme inhibition morrison without [S]/Km: Ki ${enzCoef(enzMorrRun, "Ki")}, expected none`);
+  // Mixed notes name the Alpha mechanism; on competitive truth they point
+  // to the competitive limit.
+  const enzMixedOnComp = enzChecks[2][1];
+  if (!("error" in enzMixedOnComp) && !enzMixedOnComp.notes.includes("competitive limit"))
+    out.push(`Enzyme inhibition mixed-on-competitive notes do not mention the competitive limit`);
+  if (!("error" in enzMixedRun) && !enzMixedRun.notes.includes("Alpha = 1 is noncompetitive"))
+    out.push(`Enzyme inhibition mixed notes do not state the Alpha interpretation`);
+  // [I] per series is named in the notes.
+  if (!("error" in enzMixedRun) && !enzMixedRun.notes.includes("“0 nM” [I] = 0"))
+    out.push(`Enzyme inhibition mixed notes do not name [I] per series`);
+  // Title parsing: the same mixed fit without inhibitorConcentrations
+  // recovers the parameters from the "0 nM"/"5 nM"/"20 nM" titles.
+  const enzTitleParsed = await runAnalysis("enzyme-inhibition", enzMixed, { model: "mixed" });
+  if ("error" in enzTitleParsed) out.push(`Enzyme inhibition title-parsed mixed: ${enzTitleParsed.error}`);
+  else if (!closeRel(enzCoef(enzTitleParsed, "Ki"), 5, 1e-6))
+    out.push(`Enzyme inhibition title-parsed mixed Ki: ${enzCoef(enzTitleParsed, "Ki")}, expected 5`);
+  // Validation errors.
+  const enzErrCases: [string, TableData, AnalysisType, AnalysisParams, string][] = [
+    [
+      "no uninhibited series",
+      enzNoZero,
+      "enzyme-inhibition",
+      { model: "mixed", inhibitorConcentrations: { "5 nM": 5, "20 nM": 20 } },
+      "uninhibited",
+    ],
+    [
+      "morrison [S] without Km",
+      enzMorrison,
+      "enzyme-inhibition",
+      { model: "morrison", enzymeConcentration: 5, substrateConcentration: 10 },
+      "both",
+    ],
+    [
+      "morrison [S] without Km",
+      enzMorrison,
+      "enzyme-inhibition",
+      { model: "morrison", enzymeConcentration: 5, substrateConcentration: 10 },
+      "neither",
+    ],
+  ];
+  for (const [label, tableData, type, params, want] of enzErrCases) {
+    const r = await runAnalysis(type, tableData, params);
+    if (!("error" in r) || !r.error.includes(want))
+      out.push(`Enzyme inhibition ${label}: ${"error" in r ? r.error : "ran"}, expected an error naming “${want}”`);
+  }
+  // The inhibition-curve graph draws one 101-point line per series, each in
+  // its series' colour, spanning the pooled X range.
+  if (!("error" in enzMixedRun)) {
+    const { addEnzymeInhibitionCurve } = await import("../src/views/graphs/binding-curve");
+    const cols = plotColumns(readTable(enzMixed), "dose-response");
+    const opts = newGraphOptions("dose-response");
+    const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 3), readTable(enzMixed).titles);
+    addEnzymeInhibitionCurve(fig, cols, opts, enzMixedRun, { model: "mixed", inhibitorConcentrations: enzConc }, paintOf(opts, 3));
+    const traces = fig.data as { mode?: string; x?: number[]; y?: number[]; line?: { color?: string } }[];
+    const curves = traces.filter((t) => t.mode === "lines" && t.x?.length === 101);
+    if (curves.length !== 3) out.push(`Enzyme inhibition graph draws ${curves.length} 101-point lines, expected 3`);
+    const [c0, c5, c20] = curves;
+    if (c0 && (c0.x?.[0] !== 1 || c0.x?.at(-1) !== 100))
+      out.push(`Enzyme inhibition curve spans [${c0.x?.[0]}, ${c0.x?.at(-1)}], expected [1, 100]`);
+    if (c0 && c0.y?.[0] != null && Math.abs(c0.y[0] - 9.0909090909) > 1e-6)
+      out.push(`Enzyme inhibition [I]=0 curve at X=1: ${c0.y[0]}, expected 9.0909`);
+    if (c20 && c20.y?.[100] != null && Math.abs(c20.y[100] - 28.5714285714) > 1e-6)
+      out.push(`Enzyme inhibition [I]=20 curve at X=100: ${c20.y[100]}, expected 28.5714`);
+    if (c5 && c20 && c5.line?.color === c20.line?.color)
+      out.push(`Enzyme inhibition curves share a colour — each series needs its own`);
+    const note = (fig.layout.annotations as { text?: string }[] | undefined)?.find((a) => a.text?.includes("Ki"));
+    if (!note) out.push(`Enzyme inhibition graph draws no Ki note`);
+  }
+  // The wizard asks model, then Y series, then one [I] field per series
+  // (pre-filled from the title); Morrison asks Et, [S] and Km instead.
+  const enzAsked = (a: Record<string, string | string[]>) =>
+    WIZARDS["enzyme-inhibition"]!.questions(a, readTable(enzMixed)).flatMap((q) => (q ? [q.id] : []));
+  if (JSON.stringify(enzAsked({})) !== JSON.stringify(["model", "y"]))
+    out.push(`Enzyme inhibition wizard first steps: ${JSON.stringify(enzAsked({}))}, expected ["model", "y"]`);
+  if (
+    JSON.stringify(enzAsked({ model: "mixed", y: ["0 nM", "5 nM", "20 nM"] })) !==
+    JSON.stringify(["model", "y", "I:0 nM", "I:5 nM", "I:20 nM"])
+  )
+    out.push(
+      `Enzyme inhibition wizard (mixed): ${JSON.stringify(enzAsked({ model: "mixed", y: ["0 nM", "5 nM", "20 nM"] }))}, expected ["model", "y", "I:0 nM", "I:5 nM", "I:20 nM"]`,
+    );
+  if (
+    JSON.stringify(enzAsked({ model: "morrison", y: ["Y"] })) !==
+    JSON.stringify(["model", "y", "enzymeConcentration", "substrateConcentration", "kmForMorrison"])
+  )
+    out.push(
+      `Enzyme inhibition wizard (morrison): ${JSON.stringify(enzAsked({ model: "morrison", y: ["Y"] }))}, expected ["model", "y", "enzymeConcentration", "substrateConcentration", "kmForMorrison"]`,
+    );
+  // The wizard's finish maps the answers to the runner's params, with [I]
+  // parsed from the fields (title pre-fill) and Et/[S]/Km for Morrison.
+  const enzFinished = WIZARDS["enzyme-inhibition"]!.finish(
+    { model: "mixed", y: ["0 nM", "5 nM", "20 nM"], "I:0 nM": "0", "I:5 nM": "5", "I:20 nM": "20" },
+    readTable(enzMixed),
+  );
+  if (
+    JSON.stringify(enzFinished) !==
+    JSON.stringify({
+      type: "enzyme-inhibition",
+      params: {
+        model: "mixed",
+        y: ["0 nM", "5 nM", "20 nM"],
+        inhibitorConcentrations: { "0 nM": 0, "5 nM": 5, "20 nM": 20 },
+      },
+    })
+  )
+    out.push(`Enzyme inhibition wizard finish (mixed): ${JSON.stringify(enzFinished)}`);
+  const enzMorrFinished = WIZARDS["enzyme-inhibition"]!.finish(
+    { model: "morrison", y: ["Y"], enzymeConcentration: "5", substrateConcentration: "10", kmForMorrison: "10" },
+    readTable(enzMorrison),
+  );
+  if (
+    JSON.stringify(enzMorrFinished) !==
+    JSON.stringify({
+      type: "enzyme-inhibition",
+      params: { model: "morrison", y: ["Y"], enzymeConcentration: 5, substrateConcentration: 10, kmForMorrison: 10 },
+    })
+  )
+    out.push(`Enzyme inhibition wizard finish (morrison): ${JSON.stringify(enzMorrFinished)}`);
   return out;
 }
 

@@ -6842,6 +6842,570 @@
  "binding-kinetics bindAssocThenDissoc {\"model\":\"association-then-dissociation\",\"hotNM\":1,\"time0\":100}": {
   "error": "Time0 must lie strictly inside the observed time range, with data on both sides."
  },
+ "enzyme-inhibition enzMixed {\"model\":\"mixed\",\"inhibitorConcentrations\":{\"0 nM\":0,\"5 nM\":5,\"20 nM\":20}}": {
+  "testType": "enzyme-inhibition",
+  "subtitle": "Mixed model",
+  "equation": "Y = VmaxApp·X/(KmApp + X), VmaxApp = 100/(1 + I/(2·5)), KmApp = 10·(1 + I/5)/(1 + I/(2·5))",
+  "stats": [
+   {
+    "label": "AICc",
+    "value": -960.3671694
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.343505777e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 9.336432854e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 17
+   },
+   {
+    "label": "N",
+    "value": 21
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 26.85714286,
+    "sd": 36.47112361,
+    "sem": 13.78478901,
+    "median": 10,
+    "n": 7
+   },
+   {
+    "name": "0 nM",
+    "mean": 50,
+    "sd": 31.95018314,
+    "sem": 12.07603413,
+    "median": 50,
+    "n": 7
+   },
+   {
+    "name": "5 nM",
+    "mean": 30.22216715,
+    "sd": 21.13759576,
+    "sem": 7.989260243,
+    "median": 28.57142857,
+    "n": 7
+   },
+   {
+    "name": "20 nM",
+    "mean": 13.91482507,
+    "sd": 10.3945918,
+    "sem": 3.928786411,
+    "median": 12.5,
+    "n": 7
+   }
+  ],
+  "notes": "Enzyme kinetics — Inhibition fit (\"Mixed model\") of “0 nM”, “5 nM”, “20 nM” on “X” — one global fit: Vmax, Km, Ki and Alpha are shared across all 3 series. Inhibitor concentrations: “0 nM” [I] = 0, “5 nM” [I] = 5, “20 nM” [I] = 20 (same units for every series; Ki is reported in these units). Starting values: Vmax = 90.91, Km = 10, Ki = 5, Alpha = 1. Alpha = 1 is noncompetitive; Alpha > 1 means the inhibitor prefers the free enzyme; Alpha < 1 means it prefers the enzyme–substrate complex. Alpha > 1 — the inhibitor prefers the free enzyme; the fit points toward competitive inhibition (Alpha → ∞ is the competitive limit).",
+  "coefficients": [
+   {
+    "term": "Vmax",
+    "estimate": 100,
+    "stdError": 2.497104667e-11,
+    "t": 4004637904000,
+    "p": 3.130207329e-205,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Km",
+    "estimate": 10,
+    "stdError": 8.359066947e-12,
+    "t": 1196305767000,
+    "p": 2.605140055e-196,
+    "ciLow": 10,
+    "ciHigh": 10
+   },
+   {
+    "term": "Ki",
+    "estimate": 5,
+    "stdError": 9.871680984e-12,
+    "t": 506499349800,
+    "p": 5.771746514e-190,
+    "ciLow": 5,
+    "ciHigh": 5
+   },
+   {
+    "term": "Alpha",
+    "estimate": 2,
+    "stdError": 5.731491583e-12,
+    "t": 348949304200,
+    "p": 3.252285728e-187,
+    "ciLow": 2,
+    "ciHigh": 2
+   }
+  ]
+ },
+ "enzyme-inhibition enzCompetitive {\"model\":\"competitive\",\"inhibitorConcentrations\":{\"0 nM\":0,\"5 nM\":5,\"20 nM\":20}}": {
+  "testType": "enzyme-inhibition",
+  "subtitle": "Competitive",
+  "equation": "Y = 100·X/(KmApp + X), KmApp = 10·(1 + I/5)",
+  "stats": [
+   {
+    "label": "AICc",
+    "value": -955.0667448
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.780967234e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 1.392080176e-20
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 18
+   },
+   {
+    "label": "N",
+    "value": 21
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 26.85714286,
+    "sd": 36.47112361,
+    "sem": 13.78478901,
+    "median": 10,
+    "n": 7
+   },
+   {
+    "name": "0 nM",
+    "mean": 50,
+    "sd": 31.95018314,
+    "sem": 12.07603413,
+    "median": 50,
+    "n": 7
+   },
+   {
+    "name": "5 nM",
+    "mean": 38.84972171,
+    "sd": 30.54453197,
+    "sem": 11.54474793,
+    "median": 33.33333333,
+    "n": 7
+   },
+   {
+    "name": "20 nM",
+    "mean": 25.25751559,
+    "sd": 24.74616569,
+    "sem": 9.353171473,
+    "median": 16.66666667,
+    "n": 7
+   }
+  ],
+  "notes": "Enzyme kinetics — Inhibition fit (\"Competitive\") of “0 nM”, “5 nM”, “20 nM” on “X” — one global fit: Vmax, Km and Ki are shared across all 3 series. Inhibitor concentrations: “0 nM” [I] = 0, “5 nM” [I] = 5, “20 nM” [I] = 20 (same units for every series; Ki is reported in these units). Starting values: Vmax = 90.91, Km = 10, Ki = 5.",
+  "coefficients": [
+   {
+    "term": "Vmax",
+    "estimate": 100,
+    "stdError": 2.407366676e-11,
+    "t": 4153916435000,
+    "p": 2.713238554e-217,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Km",
+    "estimate": 10,
+    "stdError": 8.685600042e-12,
+    "t": 1151330933000,
+    "p": 2.911551408e-207,
+    "ciLow": 10,
+    "ciHigh": 10
+   },
+   {
+    "term": "Ki",
+    "estimate": 5,
+    "stdError": 5.526815129e-12,
+    "t": 904680160800,
+    "p": 2.232628069e-205,
+    "ciLow": 5,
+    "ciHigh": 5
+   }
+  ]
+ },
+ "enzyme-inhibition enzCompetitive {\"model\":\"mixed\",\"inhibitorConcentrations\":{\"0 nM\":0,\"5 nM\":5,\"20 nM\":20}}": {
+  "testType": "enzyme-inhibition",
+  "subtitle": "Mixed model",
+  "equation": "Y = VmaxApp·X/(KmApp + X), VmaxApp = 100/(1 + I/(1000000·5)), KmApp = 10·(1 + I/5)/(1 + I/(1000000·5))",
+  "stats": [
+   {
+    "label": "AICc",
+    "value": -369.890701
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 0.00002989484544
+   },
+   {
+    "label": "Sum of squares",
+    "value": 1.519293032e-8
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 17
+   },
+   {
+    "label": "N",
+    "value": 21
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 26.85714286,
+    "sd": 36.47112361,
+    "sem": 13.78478901,
+    "median": 10,
+    "n": 7
+   },
+   {
+    "name": "0 nM",
+    "mean": 50,
+    "sd": 31.95018314,
+    "sem": 12.07603413,
+    "median": 50,
+    "n": 7
+   },
+   {
+    "name": "5 nM",
+    "mean": 38.84972171,
+    "sd": 30.54453197,
+    "sem": 11.54474793,
+    "median": 33.33333333,
+    "n": 7
+   },
+   {
+    "name": "20 nM",
+    "mean": 25.25751559,
+    "sd": 24.74616569,
+    "sem": 9.353171473,
+    "median": 16.66666667,
+    "n": 7
+   }
+  ],
+  "notes": "Enzyme kinetics — Inhibition fit (\"Mixed model\") of “0 nM”, “5 nM”, “20 nM” on “X” — one global fit: Vmax, Km, Ki and Alpha are shared across all 3 series. Inhibitor concentrations: “0 nM” [I] = 0, “5 nM” [I] = 5, “20 nM” [I] = 20 (same units for every series; Ki is reported in these units). Starting values: Vmax = 90.91, Km = 10, Ki = 5, Alpha = 1. Alpha = 1 is noncompetitive; Alpha > 1 means the inhibitor prefers the free enzyme; Alpha < 1 means it prefers the enzyme–substrate complex. Alpha > 1 — the inhibitor prefers the free enzyme; the fit points toward competitive inhibition (Alpha → ∞ is the competitive limit). Alpha at the boundary — mechanism not identified by these data; compare the simpler models.",
+  "coefficients": [
+   {
+    "term": "Vmax",
+    "estimate": 100.0000532,
+    "stdError": 0.00002890672867,
+    "t": 3459404.016,
+    "p": 3.768135988e-102,
+    "ciLow": 99.99999226,
+    "ciHigh": 100.0001142
+   },
+   {
+    "term": "Km",
+    "estimate": 10.00001691,
+    "stdError": 0.00001019631808,
+    "t": 980747.8373,
+    "p": 7.632614217e-93,
+    "ciLow": 9.999995394,
+    "ciHigh": 10.00003842
+   },
+   {
+    "term": "Ki",
+    "estimate": 5.000025709,
+    "stdError": 0.000008637998771,
+    "t": 578840.7526,
+    "p": 5.96545708e-89,
+    "ciLow": 5.000007485,
+    "ciHigh": 5.000043934
+   },
+   {
+    "term": "Alpha",
+    "estimate": 1000000,
+    "stdError": 244790.4961,
+    "t": 4.085125917,
+    "p": 0.000771135656,
+    "ciLow": 483537.198,
+    "ciHigh": 1516462.802
+   }
+  ]
+ },
+ "enzyme-inhibition enzMorrison {\"model\":\"morrison\",\"enzymeConcentration\":5}": {
+  "testType": "enzyme-inhibition",
+  "subtitle": "Morrison Ki (tight binding)",
+  "equation": "Y = 100·(1 − ((Et + X + 2) − √((Et + X + 2)² − 4·Et·X))/(2·Et)), Et = 5",
+  "stats": [
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.233163353e-11
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 5
+   },
+   {
+    "label": "N",
+    "value": 7
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 12.57142857,
+    "sd": 17.90583837,
+    "sem": 6.767770762,
+    "median": 5,
+    "n": 7
+   },
+   {
+    "name": "Y",
+    "mean": 49.52226355,
+    "sd": 37.97674833,
+    "sem": 14.35386167,
+    "median": 46.33249581,
+    "n": 7
+   }
+  ],
+  "notes": "Morrison Ki fit (\"Morrison Ki (tight binding)\") of “Y” on “X” (total inhibitor concentration) at one fixed substrate concentration — a single-curve fit, not a global fit. Total enzyme concentration Et = 5 is a constrained constant, not a fitted parameter. Starting values: v0 = 100, Kiapp = 5. Ki needs [S] and Km — supply both to convert Kiapp to Ki; Kiapp is reported on its own.",
+  "coefficients": [
+   {
+    "term": "v0",
+    "estimate": 100,
+    "stdError": 1.625010988e-11,
+    "t": 6153804542000,
+    "p": 2.150727419e-63,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Kiapp",
+    "estimate": 2,
+    "stdError": 1.95487289e-12,
+    "t": 1023084422000,
+    "p": 1.693349106e-59,
+    "ciLow": 2,
+    "ciHigh": 2
+   },
+   {
+    "term": "Et",
+    "estimate": 5,
+    "stdError": null,
+    "t": null,
+    "p": null,
+    "ciLow": null,
+    "ciHigh": null
+   }
+  ]
+ },
+ "enzyme-inhibition enzMorrison {\"model\":\"morrison\",\"enzymeConcentration\":5,\"substrateConcentration\":10,\"kmForMorrison\":10}": {
+  "testType": "enzyme-inhibition",
+  "subtitle": "Morrison Ki (tight binding)",
+  "equation": "Y = 100·(1 − ((Et + X + 2) − √((Et + X + 2)² − 4·Et·X))/(2·Et)), Et = 5",
+  "stats": [
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.233163353e-11
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 5
+   },
+   {
+    "label": "N",
+    "value": 7
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 12.57142857,
+    "sd": 17.90583837,
+    "sem": 6.767770762,
+    "median": 5,
+    "n": 7
+   },
+   {
+    "name": "Y",
+    "mean": 49.52226355,
+    "sd": 37.97674833,
+    "sem": 14.35386167,
+    "median": 46.33249581,
+    "n": 7
+   }
+  ],
+  "notes": "Morrison Ki fit (\"Morrison Ki (tight binding)\") of “Y” on “X” (total inhibitor concentration) at one fixed substrate concentration — a single-curve fit, not a global fit. Total enzyme concentration Et = 5 is a constrained constant, not a fitted parameter. Starting values: v0 = 100, Kiapp = 5. Ki = Kiapp/(1 + [S]/Km) = 2/(1 + 10/10) = 1.",
+  "coefficients": [
+   {
+    "term": "v0",
+    "estimate": 100,
+    "stdError": 1.625010988e-11,
+    "t": 6153804542000,
+    "p": 2.150727419e-63,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Kiapp",
+    "estimate": 2,
+    "stdError": 1.95487289e-12,
+    "t": 1023084422000,
+    "p": 1.693349106e-59,
+    "ciLow": 2,
+    "ciHigh": 2
+   },
+   {
+    "term": "Ki",
+    "estimate": 1,
+    "stdError": null,
+    "t": null,
+    "p": null,
+    "ciLow": null,
+    "ciHigh": null
+   },
+   {
+    "term": "Et",
+    "estimate": 5,
+    "stdError": null,
+    "t": null,
+    "p": null,
+    "ciLow": null,
+    "ciHigh": null
+   }
+  ]
+ },
+ "enzyme-inhibition enzNoZero {\"model\":\"mixed\",\"inhibitorConcentrations\":{\"5 nM\":5,\"20 nM\":20}}": {
+  "error": "Include an uninhibited series ([I] = 0) — Vmax and Km cannot be determined without it."
+ },
+ "enzyme-inhibition enzMorrison {\"model\":\"morrison\",\"enzymeConcentration\":5,\"substrateConcentration\":10}": {
+  "error": "Substrate concentration and Km must be supplied together — provide both, or neither, to convert Kiapp to Ki."
+ },
+ "enzyme-inhibition enzMixed {\"model\":\"mixed\",\"y\":[\"0 nM\",\"5 nM\",\"20 nM\"],\"inhibitorConcentrations\":{\"0 nM\":0,\"5 nM\":5,\"20 nM\":20}}": {
+  "testType": "enzyme-inhibition",
+  "subtitle": "Mixed model",
+  "equation": "Y = VmaxApp·X/(KmApp + X), VmaxApp = 100/(1 + I/(2·5)), KmApp = 10·(1 + I/5)/(1 + I/(2·5))",
+  "stats": [
+   {
+    "label": "AICc",
+    "value": -960.3671694
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 2.343505777e-11
+   },
+   {
+    "label": "Sum of squares",
+    "value": 9.336432854e-21
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 17
+   },
+   {
+    "label": "N",
+    "value": 21
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 26.85714286,
+    "sd": 36.47112361,
+    "sem": 13.78478901,
+    "median": 10,
+    "n": 7
+   },
+   {
+    "name": "0 nM",
+    "mean": 50,
+    "sd": 31.95018314,
+    "sem": 12.07603413,
+    "median": 50,
+    "n": 7
+   },
+   {
+    "name": "5 nM",
+    "mean": 30.22216715,
+    "sd": 21.13759576,
+    "sem": 7.989260243,
+    "median": 28.57142857,
+    "n": 7
+   },
+   {
+    "name": "20 nM",
+    "mean": 13.91482507,
+    "sd": 10.3945918,
+    "sem": 3.928786411,
+    "median": 12.5,
+    "n": 7
+   }
+  ],
+  "notes": "Enzyme kinetics — Inhibition fit (\"Mixed model\") of “0 nM”, “5 nM”, “20 nM” on “X” — one global fit: Vmax, Km, Ki and Alpha are shared across all 3 series. Inhibitor concentrations: “0 nM” [I] = 0, “5 nM” [I] = 5, “20 nM” [I] = 20 (same units for every series; Ki is reported in these units). Starting values: Vmax = 90.91, Km = 10, Ki = 5, Alpha = 1. Alpha = 1 is noncompetitive; Alpha > 1 means the inhibitor prefers the free enzyme; Alpha < 1 means it prefers the enzyme–substrate complex. Alpha > 1 — the inhibitor prefers the free enzyme; the fit points toward competitive inhibition (Alpha → ∞ is the competitive limit).",
+  "coefficients": [
+   {
+    "term": "Vmax",
+    "estimate": 100,
+    "stdError": 2.497104667e-11,
+    "t": 4004637904000,
+    "p": 3.130207329e-205,
+    "ciLow": 100,
+    "ciHigh": 100
+   },
+   {
+    "term": "Km",
+    "estimate": 10,
+    "stdError": 8.359066947e-12,
+    "t": 1196305767000,
+    "p": 2.605140055e-196,
+    "ciLow": 10,
+    "ciHigh": 10
+   },
+   {
+    "term": "Ki",
+    "estimate": 5,
+    "stdError": 9.871680984e-12,
+    "t": 506499349800,
+    "p": 5.771746514e-190,
+    "ciLow": 5,
+    "ciHigh": 5
+   },
+   {
+    "term": "Alpha",
+    "estimate": 2,
+    "stdError": 5.731491583e-12,
+    "t": 348949304200,
+    "p": 3.252285728e-187,
+    "ciLow": 2,
+    "ciHigh": 2
+   }
+  ]
+ },
  "simple-logistic-regression logistic {}": {
   "testType": "simple-logistic-regression",
   "subtitle": "Simple logistic regression",
