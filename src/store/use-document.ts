@@ -3,6 +3,9 @@ import { useProjectStore, type ProjectNode } from "./use-project-store";
 import { parseProjectFile, serializeProjectFile, PROJECT_FILE_EXTENSION } from "../lib/project-file";
 import { parsePzfx } from "../lib/pzfx";
 import { convertPrism, formatReport } from "../lib/prism";
+import { writePrism } from "../lib/prism-write";
+import { loadPrismSaveChoice, nextSaveAction, savePrismSaveChoice } from "../lib/prism-nudge";
+import type { SavePromptChoice } from "../components/save-prompt-dialog";
 import * as native from "../native";
 import { loadRecents, MAX_RECENTS, saveRecents } from "./recents";
 import { openProjectsOrSay, sayGone } from "../menus";
@@ -52,8 +55,119 @@ export function useDocument() {
   const report = () => native.setDocument(title, filePath, isDirty, blank);
   React.useEffect(() => report(), [title, filePath, isDirty, blank]);
 
+  // ── Open-format nudge (f) ─────────────────────────────────────────────
+  // The rule lives in docs/open-format-nudge.md: prompt once per project
+  // when a Prism-origin project is saved; respect "don't ask again" (app
+  // settings, never the file); Prism save always one click away.
+  // `prismOrigin` is set by either Prism import and cleared when a `.hlx`
+  // file is opened; `prompted` is per project, per window.
+  const prismOrigin = React.useRef(false);
+  const prompted = React.useRef(false);
+  const pendingPrompt = React.useRef<((choice: SavePromptChoice, remember: boolean) => void) | null>(null);
+
+  /** The save prompt's answer: remember it if asked, close the dialog, and
+   *  let the save waiting on it continue. */
+  const resolveSavePrompt = (choice: SavePromptChoice, remember: boolean) => {
+    if (remember && choice !== "cancel") savePrismSaveChoice(choice);
+    const resolve = pendingPrompt.current;
+    pendingPrompt.current = null;
+    store.closeSelector();
+    resolve?.(choice, remember);
+  };
+
+  /** Ask the save prompt and wait for its answer. */
+  const askSaveFormat = () =>
+    new Promise<{ choice: SavePromptChoice; remember: boolean }>((resolve) => {
+      pendingPrompt.current = (choice, remember) => resolve({ choice, remember });
+      store.openSelector({ kind: "save-prompt" });
+    });
+
+  /** Save the current project as a Prism `.prism` file (the prompt's Prism
+   *  option, or the remembered choice). Returns false when the user cancels
+   *  the path picker — the save is abandoned, not silently saved as `.hlx`. */
+  const saveAsPrism = async (): Promise<boolean> => {
+    const s = latest.current.get();
+    const revision = s.revision;
+    const version = native.isNative ? await native.appVersion().catch(() => "1.0.7") : "1.0.7";
+    let bytes: Uint8Array;
+    try {
+      bytes = (
+        await writePrism(
+          { nodes: s.nodes, rootOrder: s.rootOrder, childOrder: s.childOrder, activeNodeId: s.activeNodeId },
+          version,
+        )
+      ).bytes;
+    } catch (err) {
+      await native.alert(
+        "Couldn't Save as Prism",
+        err instanceof Error ? err.message : "This project couldn't be written as .prism.",
+        "error",
+      );
+      return false;
+    }
+    const target = await native.pickSavePath("Save as Prism", `${title}.prism`, "GraphPad Prism File", "prism");
+    if (!target) return false;
+    try {
+      await native.writeFile(target, bytes);
+      latest.current.markProjectSaved(target, revision);
+      addRecent(target);
+      return true;
+    } catch (err) {
+      const name = fileName(target);
+      await native.alert(
+        "Couldn't Save Project",
+        `“${name}” couldn't be saved there (${err}). Try Save As… another folder.`,
+        "error",
+      );
+      return false;
+    }
+  };
+
   const save = async (saveAs = false): Promise<boolean> => {
     const { filePath } = latest.current;
+    // A project already saved as `.prism` saves back as `.prism` — never
+    // write `.hlx` JSON into a `.prism` file.
+    if (!saveAs && filePath?.toLowerCase().endsWith(".prism")) {
+      const s = latest.current.get();
+      const revision = s.revision;
+      const version = native.isNative ? await native.appVersion().catch(() => "1.0.7") : "1.0.7";
+      try {
+        const { bytes } = await writePrism(
+          { nodes: s.nodes, rootOrder: s.rootOrder, childOrder: s.childOrder, activeNodeId: s.activeNodeId },
+          version,
+        );
+        await native.writeFile(filePath, bytes);
+        latest.current.markProjectSaved(filePath, revision);
+        return true;
+      } catch (err) {
+        await native.alert(
+          "Couldn't Save Project",
+          err instanceof Error ? err.message : "This project couldn't be written as .prism.",
+          "error",
+        );
+        return false;
+      }
+    }
+    // Nudge (f.1/f.4): a Prism-origin project prompts once; a remembered
+    // choice applies silently. Marked prompted before awaiting, so a
+    // re-entrant save can't double-prompt.
+    if (prismOrigin.current && !prompted.current) {
+      const action = nextSaveAction({
+        prismOrigin: prismOrigin.current,
+        prompted: prompted.current,
+        remembered: loadPrismSaveChoice(),
+      });
+      if (action === "save-prism") {
+        prompted.current = true;
+        return saveAsPrism();
+      }
+      if (action === "prompt") {
+        prompted.current = true;
+        const { choice } = await askSaveFormat();
+        if (choice === "prism") return saveAsPrism();
+        // "hlx" or Cancel: fall through to the normal `.hlx` save below.
+      }
+    }
     const target =
       (!saveAs && filePath) ||
       (await native.pickSavePath(
@@ -111,6 +225,8 @@ export function useDocument() {
       // A file changed as it was read (repaired, or from an older Helix) opens edited: saving
       // it keeps the project as it is now. The sample stays untitled, never to be saved.
       const edited = parsed.updated && !untitled;
+      prismOrigin.current = false;
+      prompted.current = false;
       latest.current.loadProject({ ...parsed.project, filePath: untitled ? null : path, edited });
       if (untitled) setUntitled(fileTitle(path));
       else addRecent(path);
@@ -150,6 +266,8 @@ export function useDocument() {
       );
     }
     if (!(await confirmDiscard())) return;
+    prismOrigin.current = true;
+    prompted.current = false;
     latest.current.loadProject({ ...imported.project, filePath: null, edited: true });
     setUntitled(name);
     const lines = [
@@ -208,6 +326,8 @@ export function useDocument() {
       );
     }
     if (!(await confirmDiscard())) return;
+    prismOrigin.current = true;
+    prompted.current = false;
     latest.current.loadProject({ ...converted.project, filePath: null, edited: true });
     setUntitled(name);
     await native.alert(
@@ -279,7 +399,7 @@ export function useDocument() {
   React.useEffect(() => native.onDrop((paths) => handlers.current.openPaths(paths)), []);
   React.useEffect(() => native.onOpening(({ path, untitled }) => void handlers.current.load(path, untitled)), []);
 
-  return { save, recents, forgetRecent, clearRecents, importPrism };
+  return { save, recents, forgetRecent, clearRecents, importPrism, resolveSavePrompt };
 }
 
 export type DocumentActions = ReturnType<typeof useDocument>;

@@ -8,6 +8,7 @@ import { useLayout } from "../store/use-layout";
 import { onFullscreenChange } from "../native";
 import { UniversalModal } from "./universal-modal";
 import { ConverterDialog } from "./converter-dialog";
+import { SavePromptDialog } from "./save-prompt-dialog";
 import { TABLE_TYPE_OPTIONS } from "../views/tables";
 import { TableDetail } from "../views/tables/table-detail";
 import { analysisOptionsForTable } from "../views/analyses";
@@ -25,7 +26,8 @@ const HIDDEN_SIDEBAR = {
 };
 
 export function AppShell() {
-  useAppMenu(useDocument());
+  const doc = useDocument();
+  useAppMenu(doc);
   const { sidebar } = useLayout();
   const [fullscreen, setFullscreen] = React.useState(false);
   React.useEffect(() => onFullscreenChange(setFullscreen), []);
@@ -78,6 +80,8 @@ export function AppShell() {
       <SimulateDataDialog />
 
       <ConverterDialog />
+
+      <SavePromptDialog onChoose={(choice, remember) => doc.resolveSavePrompt(choice, remember)} />
 
       <UniversalModal
         open={selector?.kind === "new-graph"}

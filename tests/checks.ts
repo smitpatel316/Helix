@@ -79,6 +79,7 @@ import { examplesFor, matched, type Matched } from "../src/views/graphs/match-gr
 import type { OutlineNode } from "../src/store/use-project-store";
 import { deriveComparisons } from "../src/views/graphs/significance-overlay";
 import { headline } from "../src/views/analyses/analysis-results-view";
+import { loadPrismSaveChoice, nextSaveAction } from "../src/lib/prism-nudge";
 import { fitWidths } from "../src/store/use-layout";
 import { computeGroupedDEG } from "../src/lib/deg";
 import { runAnalysis } from "../src/stats";
@@ -4335,6 +4336,23 @@ check("the Monte Carlo histogram draws the bins, shades P < 0.05 and marks the o
   const fig2 = GRAPHS["monte-carlo-histogram"].build([], options, paint);
   addMonteCarloHistogram(fig2, fake("Slope", 0.03), paint);
   deepStrictEqual((fig2.layout.shapes as { type: string }[]).map((s) => s.type), ["line"]);
+});
+
+// ── Open-format nudge (prism-format-work (f)) ─────────────────────────────
+
+check("the save prompt asks once per Prism project, and a remembered choice applies silently", () => {
+  // No Prism origin, or already prompted: straight to the .hlx save.
+  strictEqual(nextSaveAction({ prismOrigin: false, prompted: false, remembered: null }), "save-hlx");
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: true, remembered: null }), "save-hlx");
+  // Prism origin, never prompted, nothing remembered: prompt.
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: false, remembered: null }), "prompt");
+  // Remembered choices apply silently — "don't ask again" (f.4).
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: false, remembered: "hlx" }), "save-hlx");
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: false, remembered: "prism" }), "save-prism");
+  // A remembered choice doesn't matter once prompted: still no prompt.
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: true, remembered: "prism" }), "save-prism");
+  // No localStorage under Node: reads as "no remembered choice", never throws.
+  strictEqual(loadPrismSaveChoice(), null);
 });
 
 // ── Run ──────────────────────────────────────────────────────────────────

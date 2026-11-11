@@ -26,7 +26,8 @@ type Selector =
   | { kind: "analysis-params"; tableId: string; testType: AnalysisPickerValue }
   | { kind: "new-graph"; tableId: string }
   | { kind: "simulate-data"; tableId: string }
-  | { kind: "converter" };
+  | { kind: "converter" }
+  | { kind: "save-prompt" };
 
 /** The project's content: what a file holds, and what Undo brings back. */
 interface Content {
