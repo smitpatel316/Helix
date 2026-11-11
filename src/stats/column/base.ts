@@ -153,24 +153,67 @@ export function pairwisePosthocStatements(
   return { setup: `pm<-${matrixExpr};${assigns.join(";")}`, keys, assign: asNamedArgs(keys) };
 }
 
-/** Dunn's test: pairwise z-tests between each group's mean rank, Bonferroni-corrected
+/** Dunn's test: pairwise z-tests between each group's mean rank, corrected
  *  across all `k*(k-1)/2` comparisons — the standard rank-based post-hoc for both
  *  Kruskal-Wallis (global ranks across all groups) and Friedman (within-block ranks).
  *  `rbarSetup` must assign a `Rbar` vector named "G1".."Gk" (each group's mean rank);
- *  `seExpr(i, j)` is the R expression for that pair's standard error. */
+ *  `seExpr(i, j)` is the R expression for that pair's standard error. `adjustment`
+ *  picks the correction: "bonferroni" multiplies the raw P by m in R (as before);
+ *  "sidak" / "holm-sidak" leave the raw P values for the TypeScript adjustment
+ *  (`adjustPValues`, via the spec's `adjustComparisons`) — the step-down
+ *  Holm–Šídák needs the whole family sorted, which R can't see one pair at a time. */
 export function dunnPosthocStatements(
   k: number,
   rbarSetup: string,
   seExpr: (i: number, j: number) => string,
+  adjustment: "bonferroni" | "sidak" | "holm-sidak" = "bonferroni",
 ): { setup: string; keys: string[]; assign: string } {
   const pairs = pairIndices(k);
   const m = pairs.length;
   const keys = pairs.map(([i, j]) => `p_${i}_${j}`);
   const assigns = pairs.map(([i, j], idx) => {
     const z = `((Rbar[["G${i + 1}"]]-Rbar[["G${j + 1}"]])/(${seExpr(i, j)}))`;
-    return `${keys[idx]}<-pmin(1,2*(1-pnorm(abs(${z})))*${m})`;
+    const raw = `2*(1-pnorm(abs(${z})))`;
+    return adjustment === "bonferroni"
+      ? `${keys[idx]}<-pmin(1,${raw}*${m})`
+      : `${keys[idx]}<-${raw}`;
   });
   return { setup: `${rbarSetup};${assigns.join(";")}`, keys, assign: asNamedArgs(keys) };
+}
+
+/** The P-value adjustments a post-hoc can apply to a family's raw P values, in
+ *  TypeScript (plan 25): Šídák's single-step `1 − (1 − p)^m`, and Holm–Šídák's
+ *  step-down — for the i-th smallest P (i = 1…m), the max over j ≤ i of
+ *  `1 − (1 − p_(j))^(m−j+1)`, capped at 1. `m` is the family size (the rows'
+ *  length); null P values pass through unadjusted. With m = 1 both are the
+ *  identity. Pure arithmetic — no R, no package. */
+export type PAdjustment = "sidak" | "holm-sidak";
+
+export function adjustPValues(ps: (number | null)[], method: PAdjustment): (number | null)[] {
+  const m = ps.length;
+  if (method === "sidak") {
+    return ps.map((p) => (p == null ? null : Math.min(1, 1 - (1 - p) ** m)));
+  }
+  // Holm–Šídák: sort the non-null values, adjust step-down, then unsort.
+  const indexed = ps.map((p, i) => [p, i] as const).filter(([p]) => p != null);
+  const sorted = [...indexed].sort((a, b) => a[0]! - b[0]!);
+  const out: (number | null)[] = ps.map(() => null);
+  let runningMax = 0;
+  sorted.forEach(([p, i], rank) => {
+    runningMax = Math.max(runningMax, Math.min(1, 1 - (1 - p!) ** (m - rank)));
+    out[i] = runningMax;
+  });
+  return ps.map((p, i) => (p == null ? null : out[i]));
+}
+
+/** Adjust a comparisons table's P values in place-order (same rows back, new P
+ *  values) — the spec hook's one-liner for a whole-family adjustment. */
+export function adjustComparisonRows(rows: ComparisonRow[], method: PAdjustment): ComparisonRow[] {
+  const adjusted = adjustPValues(
+    rows.map((r) => r.p),
+    method,
+  );
+  return rows.map((r, i) => ({ ...r, p: adjusted[i] }));
 }
 
 /** The comparisons table: each pair's names, its difference of means and its P value. */
@@ -192,7 +235,12 @@ function buildComparisons(
 const POSTHOC_LABELS: Record<string, string> = {
   tukey: "Tukey's multiple comparisons test",
   bonferroni: "Bonferroni-corrected multiple comparisons",
+  sidak: "Šídák-corrected multiple comparisons",
+  "holm-sidak": "Holm–Šídák multiple comparisons test",
+  lsd: "Fisher's LSD test (uncorrected)",
   dunn: "Dunn's multiple comparisons test (Bonferroni-corrected)",
+  "dunn-sidak": "Dunn's multiple comparisons test (Šídák-corrected)",
+  "dunn-holm-sidak": "Dunn's multiple comparisons test (Holm–Šídák-corrected)",
   "games-howell": "Games-Howell multiple comparisons test",
   t3: "Dunnett's T3 multiple comparisons test",
 };
@@ -227,6 +275,10 @@ export interface ColumnTestSpec<P = unknown> {
   /** The post-hoc comparisons that ran, as their table's heading ("Tukey's multiple
    *  comparisons test"); none, no table. Its R gives each pair's P value as `p_i_j`. */
   posthoc?: (params: P | undefined) => string | undefined;
+  /** Adjust the comparisons' P values after R returns them (Šídák / Holm–Šídák:
+   *  the raw P values cross the boundary, the adjustment runs here in TS). The
+   *  rows arrive in the spec's pair order — one family, in pair order. */
+  adjustComparisons?: (rows: ComparisonRow[], params: P | undefined) => ComparisonRow[];
   /** The pairs it compares, group1 first (every pair by default: `pairIndices`). */
   pairs?: (groups: Group[], params: P | undefined) => [number, number][];
   /** Static notes, or resolved from params (e.g. which t-test variant ran) — also given
@@ -274,6 +326,8 @@ export async function runColumnTest<P>(
   const posthoc = spec.posthoc?.(params);
   const pairs = posthoc ? (spec.pairs?.(groups, params) ?? pairIndices(groups.length)) : [];
   const { groups: described, diff } = await describe(groups, pairs);
+  const raw = posthoc ? buildComparisons(groups, pairs, diff, (i, j) => v[`p_${i}_${j}`] ?? null) : undefined;
+  const comparisons = raw ? (spec.adjustComparisons?.(raw, params) ?? raw) : undefined;
   return {
     testType: spec.testType,
     subtitle: spec.subtitle?.(params),
@@ -281,7 +335,7 @@ export async function runColumnTest<P>(
     stats: spec.rows(v, described, params),
     groups: described,
     notes: typeof spec.notes === "function" ? spec.notes(params, groups, columns) : spec.notes,
-    comparisons: posthoc ? buildComparisons(groups, pairs, diff, (i, j) => v[`p_${i}_${j}`] ?? null) : undefined,
+    comparisons,
     comparisonsLabel: posthoc,
   };
 }

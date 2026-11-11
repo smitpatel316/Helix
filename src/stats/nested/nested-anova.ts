@@ -23,6 +23,16 @@ export async function runNestedAnova(
   params: NestedAnovaParams | undefined,
 ): Promise<AnalysisOutcome> {
   const method = (params ?? DEFAULTS).posthoc;
+  // POSTHOCS also carries the Šídák / Holm–Šídák / LSD options other ANOVAs
+  // offer — this runner only does Tukey and Bonferroni, so refuse those here
+  // rather than silently running Bonferroni under a Šídák label.
+  if (method !== "none" && method !== "tukey" && method !== "bonferroni") {
+    return {
+      error:
+        `“${method}” multiple comparisons are not available for nested one-way ANOVA — ` +
+        `choose Tukey or Bonferroni.`,
+    };
+  }
   const { groups, dropped } = nestedMeans(columns);
   if (groups.length < 3) {
     return {

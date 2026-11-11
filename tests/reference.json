@@ -977,6 +977,982 @@
   ],
   "comparisonsLabel": "Dunnett's multiple comparisons test (vs. Control)"
  },
+ "anova column {\"posthoc\":\"sidak\"}": {
+  "testType": "anova",
+  "subtitle": "One-way ANOVA",
+  "stats": [
+   {
+    "label": "F",
+    "value": 4.857880533
+   },
+   {
+    "label": "DFn",
+    "value": 3
+   },
+   {
+    "label": "DFd",
+    "value": 21
+   },
+   {
+    "label": "P value",
+    "value": 0.01013594077,
+    "p": true
+   },
+   {
+    "label": "R squared (eta squared)",
+    "value": 0.4096752805
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 14.3375,
+    "sd": 6.372247305,
+    "sem": 2.25292964,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Low",
+    "mean": 14.84285714,
+    "sd": 0.8443086775,
+    "sem": 0.3191186843,
+    "median": 14.9,
+    "n": 7
+   },
+   {
+    "name": "High",
+    "mean": 19.61666667,
+    "sd": 1.083358974,
+    "sem": 0.4422794491,
+    "median": 19.65,
+    "n": 6
+   },
+   {
+    "name": "Sparse",
+    "mean": 10.625,
+    "sd": 1.25,
+    "sem": 0.625,
+    "median": 10.75,
+    "n": 4
+   }
+  ],
+  "notes": "Compares means across groups; assumes normal distributions with equal variances.",
+  "comparisons": [
+   {
+    "group1": "Control",
+    "group2": "Low",
+    "diff": -0.5053571429,
+    "p": 0.9999327713
+   },
+   {
+    "group1": "Control",
+    "group2": "High",
+    "diff": -5.279166667,
+    "p": 0.09818070727
+   },
+   {
+    "group1": "Control",
+    "group2": "Sparse",
+    "diff": 3.7125,
+    "p": 0.545337089
+   },
+   {
+    "group1": "Low",
+    "group2": "High",
+    "diff": -4.773809524,
+    "p": 0.1853870846
+   },
+   {
+    "group1": "Low",
+    "group2": "Sparse",
+    "diff": 4.217857143,
+    "p": 0.4284437924
+   },
+   {
+    "group1": "High",
+    "group2": "Sparse",
+    "diff": 8.991666667,
+    "p": 0.008109345609
+   }
+  ],
+  "comparisonsLabel": "Šídák-corrected multiple comparisons"
+ },
+ "anova column {\"posthoc\":\"holm-sidak\"}": {
+  "testType": "anova",
+  "subtitle": "One-way ANOVA",
+  "stats": [
+   {
+    "label": "F",
+    "value": 4.857880533
+   },
+   {
+    "label": "DFn",
+    "value": 3
+   },
+   {
+    "label": "DFd",
+    "value": 21
+   },
+   {
+    "label": "P value",
+    "value": 0.01013594077,
+    "p": true
+   },
+   {
+    "label": "R squared (eta squared)",
+    "value": 0.4096752805
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 14.3375,
+    "sd": 6.372247305,
+    "sem": 2.25292964,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Low",
+    "mean": 14.84285714,
+    "sd": 0.8443086775,
+    "sem": 0.3191186843,
+    "median": 14.9,
+    "n": 7
+   },
+   {
+    "name": "High",
+    "mean": 19.61666667,
+    "sd": 1.083358974,
+    "sem": 0.4422794491,
+    "median": 19.65,
+    "n": 6
+   },
+   {
+    "name": "Sparse",
+    "mean": 10.625,
+    "sd": 1.25,
+    "sem": 0.625,
+    "median": 10.75,
+    "n": 4
+   }
+  ],
+  "notes": "Compares means across groups; assumes normal distributions with equal variances.",
+  "comparisons": [
+   {
+    "group1": "Control",
+    "group2": "Low",
+    "diff": -0.5053571429,
+    "p": 0.79835268
+   },
+   {
+    "group1": "Control",
+    "group2": "High",
+    "diff": -5.279166667,
+    "p": 0.08251367125
+   },
+   {
+    "group1": "Control",
+    "group2": "Sparse",
+    "diff": 3.7125,
+    "p": 0.2439866353
+   },
+   {
+    "group1": "Low",
+    "group2": "High",
+    "diff": -4.773809524,
+    "p": 0.1277636248
+   },
+   {
+    "group1": "Low",
+    "group2": "Sparse",
+    "diff": 4.217857143,
+    "p": 0.2439866353
+   },
+   {
+    "group1": "High",
+    "group2": "Sparse",
+    "diff": 8.991666667,
+    "p": 0.008109345609
+   }
+  ],
+  "comparisonsLabel": "Holm–Šídák multiple comparisons test"
+ },
+ "anova column {\"posthoc\":\"lsd\"}": {
+  "testType": "anova",
+  "subtitle": "One-way ANOVA",
+  "stats": [
+   {
+    "label": "F",
+    "value": 4.857880533
+   },
+   {
+    "label": "DFn",
+    "value": 3
+   },
+   {
+    "label": "DFd",
+    "value": 21
+   },
+   {
+    "label": "P value",
+    "value": 0.01013594077,
+    "p": true
+   },
+   {
+    "label": "R squared (eta squared)",
+    "value": 0.4096752805
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 14.3375,
+    "sd": 6.372247305,
+    "sem": 2.25292964,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Low",
+    "mean": 14.84285714,
+    "sd": 0.8443086775,
+    "sem": 0.3191186843,
+    "median": 14.9,
+    "n": 7
+   },
+   {
+    "name": "High",
+    "mean": 19.61666667,
+    "sd": 1.083358974,
+    "sem": 0.4422794491,
+    "median": 19.65,
+    "n": 6
+   },
+   {
+    "name": "Sparse",
+    "mean": 10.625,
+    "sd": 1.25,
+    "sem": 0.625,
+    "median": 10.75,
+    "n": 4
+   }
+  ],
+  "notes": "Compares means across groups; assumes normal distributions with equal variances. Fisher's LSD is uncorrected — only interpretable when the overall ANOVA was significant.",
+  "comparisons": [
+   {
+    "group1": "Control",
+    "group2": "Low",
+    "diff": -0.5053571429,
+    "p": 0.79835268
+   },
+   {
+    "group1": "Control",
+    "group2": "High",
+    "diff": -5.279166667,
+    "p": 0.01707604303
+   },
+   {
+    "group1": "Control",
+    "group2": "Sparse",
+    "diff": 3.7125,
+    "p": 0.1231036655
+   },
+   {
+    "group1": "Low",
+    "group2": "High",
+    "diff": -4.773809524,
+    "p": 0.03359637891
+   },
+   {
+    "group1": "Low",
+    "group2": "Sparse",
+    "diff": 4.217857143,
+    "p": 0.08901794033
+   },
+   {
+    "group1": "High",
+    "group2": "Sparse",
+    "diff": 8.991666667,
+    "p": 0.001356147134
+   }
+  ],
+  "comparisonsLabel": "Fisher's LSD test (uncorrected)"
+ },
+ "kruskal-wallis column {\"posthoc\":\"dunn-sidak\"}": {
+  "testType": "kruskal-wallis",
+  "stats": [
+   {
+    "label": "Kruskal-Wallis H",
+    "value": 16.86692308
+   },
+   {
+    "label": "df",
+    "value": 3
+   },
+   {
+    "label": "P value",
+    "value": 0.000752704677,
+    "p": true
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 14.3375,
+    "sd": 6.372247305,
+    "sem": 2.25292964,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Low",
+    "mean": 14.84285714,
+    "sd": 0.8443086775,
+    "sem": 0.3191186843,
+    "median": 14.9,
+    "n": 7
+   },
+   {
+    "name": "High",
+    "mean": 19.61666667,
+    "sd": 1.083358974,
+    "sem": 0.4422794491,
+    "median": 19.65,
+    "n": 6
+   },
+   {
+    "name": "Sparse",
+    "mean": 10.625,
+    "sd": 1.25,
+    "sem": 0.625,
+    "median": 10.75,
+    "n": 4
+   }
+  ],
+  "notes": "Non-parametric alternative to one-way ANOVA; no normality assumption.",
+  "comparisons": [
+   {
+    "group1": "Control",
+    "group2": "Low",
+    "diff": -0.5053571429,
+    "p": 0.6441920846
+   },
+   {
+    "group1": "Control",
+    "group2": "High",
+    "diff": -5.279166667,
+    "p": 0.01675184883
+   },
+   {
+    "group1": "Control",
+    "group2": "Sparse",
+    "diff": 3.7125,
+    "p": 0.6827268794
+   },
+   {
+    "group1": "Low",
+    "group2": "High",
+    "diff": -4.773809524,
+    "p": 0.5110407264
+   },
+   {
+    "group1": "Low",
+    "group2": "Sparse",
+    "diff": 4.217857143,
+    "p": 0.07364383804
+   },
+   {
+    "group1": "High",
+    "group2": "Sparse",
+    "diff": 8.991666667,
+    "p": 0.0009075856075
+   }
+  ],
+  "comparisonsLabel": "Dunn's multiple comparisons test (Šídák-corrected)"
+ },
+ "kruskal-wallis column {\"posthoc\":\"dunn-holm-sidak\"}": {
+  "testType": "kruskal-wallis",
+  "stats": [
+   {
+    "label": "Kruskal-Wallis H",
+    "value": 16.86692308
+   },
+   {
+    "label": "df",
+    "value": 3
+   },
+   {
+    "label": "P value",
+    "value": 0.000752704677,
+    "p": true
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 14.3375,
+    "sd": 6.372247305,
+    "sem": 2.25292964,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Low",
+    "mean": 14.84285714,
+    "sd": 0.8443086775,
+    "sem": 0.3191186843,
+    "median": 14.9,
+    "n": 7
+   },
+   {
+    "name": "High",
+    "mean": 19.61666667,
+    "sd": 1.083358974,
+    "sem": 0.4422794491,
+    "median": 19.65,
+    "n": 6
+   },
+   {
+    "name": "Sparse",
+    "mean": 10.625,
+    "sd": 1.25,
+    "sem": 0.625,
+    "median": 10.75,
+    "n": 4
+   }
+  ],
+  "notes": "Non-parametric alternative to one-way ANOVA; no normality assumption.",
+  "comparisons": [
+   {
+    "group1": "Control",
+    "group2": "Low",
+    "diff": -0.5053571429,
+    "p": 0.3007437712
+   },
+   {
+    "group1": "Control",
+    "group2": "High",
+    "diff": -5.279166667,
+    "p": 0.01397948996
+   },
+   {
+    "group1": "Control",
+    "group2": "Sparse",
+    "diff": 3.7125,
+    "p": 0.3007437712
+   },
+   {
+    "group1": "Low",
+    "group2": "High",
+    "diff": -4.773809524,
+    "p": 0.3007437712
+   },
+   {
+    "group1": "Low",
+    "group2": "Sparse",
+    "diff": 4.217857143,
+    "p": 0.04971910843
+   },
+   {
+    "group1": "High",
+    "group2": "Sparse",
+    "diff": 8.991666667,
+    "p": 0.0009075856075
+   }
+  ],
+  "comparisonsLabel": "Dunn's multiple comparisons test (Holm–Šídák-corrected)"
+ },
+ "rm-anova column {\"posthoc\":\"sidak\"}": {
+  "testType": "rm-anova",
+  "subtitle": "Repeated-measures one-way ANOVA",
+  "stats": [
+   {
+    "label": "F",
+    "value": 45.99545159
+   },
+   {
+    "label": "DFn",
+    "value": 3
+   },
+   {
+    "label": "DFd",
+    "value": 3
+   },
+   {
+    "label": "P value",
+    "value": 0.005235680979,
+    "p": true
+   },
+   {
+    "label": "R squared (eta squared)",
+    "value": 0.9756860691
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 11.5,
+    "sd": 0.8485281374,
+    "sem": 0.6,
+    "median": 11.5,
+    "n": 2
+   },
+   {
+    "name": "Low",
+    "mean": 14.6,
+    "sd": 0.4242640687,
+    "sem": 0.3,
+    "median": 14.6,
+    "n": 2
+   },
+   {
+    "name": "High",
+    "mean": 18.5,
+    "sd": 0.4242640687,
+    "sem": 0.3,
+    "median": 18.5,
+    "n": 2
+   },
+   {
+    "name": "Sparse",
+    "mean": 9.75,
+    "sd": 1.060660172,
+    "sem": 0.75,
+    "median": 9.75,
+    "n": 2
+   }
+  ],
+  "notes": "Compares means across matched groups, blocking on subject; assumes normal distributions. Assumes sphericity (no Geisser-Greenhouse correction). Uses complete rows only (every subject measured in every group). 6 rows left out for missing data.",
+  "comparisons": [
+   {
+    "group1": "Control",
+    "group2": "Low",
+    "diff": -3.1,
+    "p": 0.1696126898
+   },
+   {
+    "group1": "Control",
+    "group2": "High",
+    "diff": -7,
+    "p": 0.01876532269
+   },
+   {
+    "group1": "Control",
+    "group2": "Sparse",
+    "diff": 1.75,
+    "p": 0.5252419818
+   },
+   {
+    "group1": "Low",
+    "group2": "High",
+    "diff": -3.9,
+    "p": 0.09522641956
+   },
+   {
+    "group1": "Low",
+    "group2": "Sparse",
+    "diff": 4.85,
+    "p": 0.05297608008
+   },
+   {
+    "group1": "High",
+    "group2": "Sparse",
+    "diff": 8.75,
+    "p": 0.009804276981
+   }
+  ],
+  "comparisonsLabel": "Šídák-corrected multiple comparisons"
+ },
+ "rm-anova column {\"posthoc\":\"holm-sidak\"}": {
+  "testType": "rm-anova",
+  "subtitle": "Repeated-measures one-way ANOVA",
+  "stats": [
+   {
+    "label": "F",
+    "value": 45.99545159
+   },
+   {
+    "label": "DFn",
+    "value": 3
+   },
+   {
+    "label": "DFd",
+    "value": 3
+   },
+   {
+    "label": "P value",
+    "value": 0.005235680979,
+    "p": true
+   },
+   {
+    "label": "R squared (eta squared)",
+    "value": 0.9756860691
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 11.5,
+    "sd": 0.8485281374,
+    "sem": 0.6,
+    "median": 11.5,
+    "n": 2
+   },
+   {
+    "name": "Low",
+    "mean": 14.6,
+    "sd": 0.4242640687,
+    "sem": 0.3,
+    "median": 14.6,
+    "n": 2
+   },
+   {
+    "name": "High",
+    "mean": 18.5,
+    "sd": 0.4242640687,
+    "sem": 0.3,
+    "median": 18.5,
+    "n": 2
+   },
+   {
+    "name": "Sparse",
+    "mean": 9.75,
+    "sd": 1.060660172,
+    "sem": 0.75,
+    "median": 9.75,
+    "n": 2
+   }
+  ],
+  "notes": "Compares means across matched groups, blocking on subject; assumes normal distributions. Assumes sphericity (no Geisser-Greenhouse correction). Uses complete rows only (every subject measured in every group). 6 rows left out for missing data.",
+  "comparisons": [
+   {
+    "group1": "Control",
+    "group2": "Low",
+    "diff": -3.1,
+    "p": 0.06007420602
+   },
+   {
+    "group1": "Control",
+    "group2": "High",
+    "diff": -7,
+    "p": 0.01566240318
+   },
+   {
+    "group1": "Control",
+    "group2": "Sparse",
+    "diff": 1.75,
+    "p": 0.1167600224
+   },
+   {
+    "group1": "Low",
+    "group2": "High",
+    "diff": -3.9,
+    "p": 0.0488041314
+   },
+   {
+    "group1": "Low",
+    "group2": "Sparse",
+    "diff": 4.85,
+    "p": 0.0356367934
+   },
+   {
+    "group1": "High",
+    "group2": "Sparse",
+    "diff": 8.75,
+    "p": 0.009804276981
+   }
+  ],
+  "comparisonsLabel": "Holm–Šídák multiple comparisons test"
+ },
+ "rm-anova column {\"posthoc\":\"lsd\"}": {
+  "testType": "rm-anova",
+  "subtitle": "Repeated-measures one-way ANOVA",
+  "stats": [
+   {
+    "label": "F",
+    "value": 45.99545159
+   },
+   {
+    "label": "DFn",
+    "value": 3
+   },
+   {
+    "label": "DFd",
+    "value": 3
+   },
+   {
+    "label": "P value",
+    "value": 0.005235680979,
+    "p": true
+   },
+   {
+    "label": "R squared (eta squared)",
+    "value": 0.9756860691
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 11.5,
+    "sd": 0.8485281374,
+    "sem": 0.6,
+    "median": 11.5,
+    "n": 2
+   },
+   {
+    "name": "Low",
+    "mean": 14.6,
+    "sd": 0.4242640687,
+    "sem": 0.3,
+    "median": 14.6,
+    "n": 2
+   },
+   {
+    "name": "High",
+    "mean": 18.5,
+    "sd": 0.4242640687,
+    "sem": 0.3,
+    "median": 18.5,
+    "n": 2
+   },
+   {
+    "name": "Sparse",
+    "mean": 9.75,
+    "sd": 1.060660172,
+    "sem": 0.75,
+    "median": 9.75,
+    "n": 2
+   }
+  ],
+  "notes": "Compares means across matched groups, blocking on subject; assumes normal distributions. Assumes sphericity (no Geisser-Greenhouse correction). Fisher's LSD is uncorrected — only interpretable when the overall ANOVA was significant. Uses complete rows only (every subject measured in every group). 6 rows left out for missing data.",
+  "comparisons": [
+   {
+    "group1": "Control",
+    "group2": "Low",
+    "diff": -3.1,
+    "p": 0.0305022981
+   },
+   {
+    "group1": "Control",
+    "group2": "High",
+    "diff": -7,
+    "p": 0.003152291976
+   },
+   {
+    "group1": "Control",
+    "group2": "Sparse",
+    "diff": 1.75,
+    "p": 0.1167600224
+   },
+   {
+    "group1": "Low",
+    "group2": "High",
+    "diff": -3.9,
+    "p": 0.01654011074
+   },
+   {
+    "group1": "Low",
+    "group2": "Sparse",
+    "diff": 4.85,
+    "p": 0.009030796429
+   },
+   {
+    "group1": "High",
+    "group2": "Sparse",
+    "diff": 8.75,
+    "p": 0.001640761705
+   }
+  ],
+  "comparisonsLabel": "Fisher's LSD test (uncorrected)"
+ },
+ "friedman column {\"posthoc\":\"dunn-sidak\"}": {
+  "testType": "friedman",
+  "subtitle": "Friedman test",
+  "stats": [
+   {
+    "label": "Friedman statistic (Q)",
+    "value": 6
+   },
+   {
+    "label": "df",
+    "value": 3
+   },
+   {
+    "label": "P value",
+    "value": 0.1116102251,
+    "p": true
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 11.5,
+    "sd": 0.8485281374,
+    "sem": 0.6,
+    "median": 11.5,
+    "n": 2
+   },
+   {
+    "name": "Low",
+    "mean": 14.6,
+    "sd": 0.4242640687,
+    "sem": 0.3,
+    "median": 14.6,
+    "n": 2
+   },
+   {
+    "name": "High",
+    "mean": 18.5,
+    "sd": 0.4242640687,
+    "sem": 0.3,
+    "median": 18.5,
+    "n": 2
+   },
+   {
+    "name": "Sparse",
+    "mean": 9.75,
+    "sd": 1.060660172,
+    "sem": 0.75,
+    "median": 9.75,
+    "n": 2
+   }
+  ],
+  "notes": "Non-parametric alternative to repeated-measures ANOVA for ≥3 matched groups; no normality assumption. Uses complete rows only (every subject measured in every group). 6 rows left out for missing data.",
+  "comparisons": [
+   {
+    "group1": "Control",
+    "group2": "Low",
+    "diff": -3.1,
+    "p": 0.9686861519
+   },
+   {
+    "group1": "Control",
+    "group2": "High",
+    "diff": -7,
+    "p": 0.5398078331
+   },
+   {
+    "group1": "Control",
+    "group2": "Sparse",
+    "diff": 1.75,
+    "p": 0.9686861519
+   },
+   {
+    "group1": "Low",
+    "group2": "High",
+    "diff": -3.9,
+    "p": 0.9686861519
+   },
+   {
+    "group1": "Low",
+    "group2": "Sparse",
+    "diff": 4.85,
+    "p": 0.5398078331
+   },
+   {
+    "group1": "High",
+    "group2": "Sparse",
+    "diff": 8.75,
+    "p": 0.1148990359
+   }
+  ],
+  "comparisonsLabel": "Dunn's multiple comparisons test (Šídák-corrected)"
+ },
+ "friedman column {\"posthoc\":\"dunn-holm-sidak\"}": {
+  "testType": "friedman",
+  "subtitle": "Friedman test",
+  "stats": [
+   {
+    "label": "Friedman statistic (Q)",
+    "value": 6
+   },
+   {
+    "label": "df",
+    "value": 3
+   },
+   {
+    "label": "P value",
+    "value": 0.1116102251,
+    "p": true
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 11.5,
+    "sd": 0.8485281374,
+    "sem": 0.6,
+    "median": 11.5,
+    "n": 2
+   },
+   {
+    "name": "Low",
+    "mean": 14.6,
+    "sd": 0.4242640687,
+    "sem": 0.3,
+    "median": 14.6,
+    "n": 2
+   },
+   {
+    "name": "High",
+    "mean": 18.5,
+    "sd": 0.4242640687,
+    "sem": 0.3,
+    "median": 18.5,
+    "n": 2
+   },
+   {
+    "name": "Sparse",
+    "mean": 9.75,
+    "sd": 1.060660172,
+    "sem": 0.75,
+    "median": 9.75,
+    "n": 2
+   }
+  ],
+  "notes": "Non-parametric alternative to repeated-measures ANOVA for ≥3 matched groups; no normality assumption. Uses complete rows only (every subject measured in every group). 6 rows left out for missing data.",
+  "comparisons": [
+   {
+    "group1": "Control",
+    "group2": "Low",
+    "diff": -3.1,
+    "p": 0.8230428071
+   },
+   {
+    "group1": "Control",
+    "group2": "High",
+    "diff": -7,
+    "p": 0.4762596689
+   },
+   {
+    "group1": "Control",
+    "group2": "Sparse",
+    "diff": 1.75,
+    "p": 0.8230428071
+   },
+   {
+    "group1": "Low",
+    "group2": "High",
+    "diff": -3.9,
+    "p": 0.8230428071
+   },
+   {
+    "group1": "Low",
+    "group2": "Sparse",
+    "diff": 4.85,
+    "p": 0.4762596689
+   },
+   {
+    "group1": "High",
+    "group2": "Sparse",
+    "diff": 8.75,
+    "p": 0.1148990359
+   }
+  ],
+  "comparisonsLabel": "Dunn's multiple comparisons test (Holm–Šídák-corrected)"
+ },
  "anova column {\"posthoc\":\"none\",\"equalSd\":false}": {
   "testType": "anova",
   "subtitle": "Welch's ANOVA",
@@ -13963,6 +14939,780 @@
    }
   ],
   "comparisonsLabel": "Bonferroni-corrected multiple comparisons (rows within each group, each group a family)"
+ },
+ "two-way-anova grouped {\"design\":\"ordinary\",\"posthoc\":\"sidak\",\"posthocTarget\":\"groups\"}": {
+  "testType": "two-way-anova",
+  "subtitle": "Ordinary two-way ANOVA",
+  "stats": [
+   {
+    "label": "Group F",
+    "value": 337.3565972
+   },
+   {
+    "label": "Group DFn",
+    "value": 2
+   },
+   {
+    "label": "Group P value",
+    "value": 8.270531238e-21,
+    "p": true
+   },
+   {
+    "label": "Row F",
+    "value": 120.8037173
+   },
+   {
+    "label": "Row DFn",
+    "value": 4
+   },
+   {
+    "label": "Row P value",
+    "value": 1.214541748e-17,
+    "p": true
+   },
+   {
+    "label": "Interaction F",
+    "value": 17.6411367
+   },
+   {
+    "label": "Interaction DFn",
+    "value": 8
+   },
+   {
+    "label": "Interaction P value",
+    "value": 3.199293327e-9,
+    "p": true
+   },
+   {
+    "label": "DFd (residual)",
+    "value": 29
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 15.6,
+    "sd": 3.775863194,
+    "sem": 0.9749236844,
+    "median": 15,
+    "n": 15
+   },
+   {
+    "name": "B",
+    "mean": 22.53333333,
+    "sd": 6.479270976,
+    "sem": 1.672940572,
+    "median": 22,
+    "n": 15
+   },
+   {
+    "name": "C",
+    "mean": 12,
+    "sd": 1.664100589,
+    "sem": 0.44474959,
+    "median": 12,
+    "n": 14
+   }
+  ],
+  "notes": "Compares group and row-position effects, plus their interaction; assumes normal distributions with equal variances (Type III sums of squares).",
+  "comparisons": [
+   {
+    "group1": "A (Day 1)",
+    "group2": "B (Day 1)",
+    "diff": -3,
+    "p": 0.007726075285
+   },
+   {
+    "group1": "A (Day 1)",
+    "group2": "C (Day 1)",
+    "diff": 1,
+    "p": 0.6278467959
+   },
+   {
+    "group1": "B (Day 1)",
+    "group2": "C (Day 1)",
+    "diff": 4,
+    "p": 0.000404743865
+   },
+   {
+    "group1": "A (Day 2)",
+    "group2": "B (Day 2)",
+    "diff": -5,
+    "p": 0.00001918099473
+   },
+   {
+    "group1": "A (Day 2)",
+    "group2": "C (Day 2)",
+    "diff": 2,
+    "p": 0.1664722343
+   },
+   {
+    "group1": "B (Day 2)",
+    "group2": "C (Day 2)",
+    "diff": 7,
+    "p": 4.388189743e-7
+   },
+   {
+    "group1": "A (Day 3)",
+    "group2": "B (Day 3)",
+    "diff": -7.333333333,
+    "p": 2.059907966e-8
+   },
+   {
+    "group1": "A (Day 3)",
+    "group2": "C (Day 3)",
+    "diff": 3,
+    "p": 0.007726075285
+   },
+   {
+    "group1": "B (Day 3)",
+    "group2": "C (Day 3)",
+    "diff": 10.33333333,
+    "p": 1.01945119e-11
+   },
+   {
+    "group1": "A (Day 4)",
+    "group2": "B (Day 4)",
+    "diff": -9,
+    "p": 2.524800369e-10
+   },
+   {
+    "group1": "A (Day 4)",
+    "group2": "C (Day 4)",
+    "diff": 5,
+    "p": 0.00001918099473
+   },
+   {
+    "group1": "B (Day 4)",
+    "group2": "C (Day 4)",
+    "diff": 14,
+    "p": 5.329070518e-15
+   },
+   {
+    "group1": "A (Day 5)",
+    "group2": "B (Day 5)",
+    "diff": -10.33333333,
+    "p": 1.01945119e-11
+   },
+   {
+    "group1": "A (Day 5)",
+    "group2": "C (Day 5)",
+    "diff": 7.333333333,
+    "p": 2.059907966e-8
+   },
+   {
+    "group1": "B (Day 5)",
+    "group2": "C (Day 5)",
+    "diff": 17.66666667,
+    "p": 0
+   }
+  ],
+  "comparisonsLabel": "Šídák-corrected multiple comparisons (groups within each row, each row a family)"
+ },
+ "two-way-anova grouped {\"design\":\"ordinary\",\"posthoc\":\"holm-sidak\",\"posthocTarget\":\"rows\"}": {
+  "testType": "two-way-anova",
+  "subtitle": "Ordinary two-way ANOVA",
+  "stats": [
+   {
+    "label": "Group F",
+    "value": 337.3565972
+   },
+   {
+    "label": "Group DFn",
+    "value": 2
+   },
+   {
+    "label": "Group P value",
+    "value": 8.270531238e-21,
+    "p": true
+   },
+   {
+    "label": "Row F",
+    "value": 120.8037173
+   },
+   {
+    "label": "Row DFn",
+    "value": 4
+   },
+   {
+    "label": "Row P value",
+    "value": 1.214541748e-17,
+    "p": true
+   },
+   {
+    "label": "Interaction F",
+    "value": 17.6411367
+   },
+   {
+    "label": "Interaction DFn",
+    "value": 8
+   },
+   {
+    "label": "Interaction P value",
+    "value": 3.199293327e-9,
+    "p": true
+   },
+   {
+    "label": "DFd (residual)",
+    "value": 29
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 15.6,
+    "sd": 3.775863194,
+    "sem": 0.9749236844,
+    "median": 15,
+    "n": 15
+   },
+   {
+    "name": "B",
+    "mean": 22.53333333,
+    "sd": 6.479270976,
+    "sem": 1.672940572,
+    "median": 22,
+    "n": 15
+   },
+   {
+    "name": "C",
+    "mean": 12,
+    "sd": 1.664100589,
+    "sem": 0.44474959,
+    "median": 12,
+    "n": 14
+   }
+  ],
+  "notes": "Compares group and row-position effects, plus their interaction; assumes normal distributions with equal variances (Type III sums of squares).",
+  "comparisons": [
+   {
+    "group1": "Day 1 (A)",
+    "group2": "Day 2 (A)",
+    "diff": -2,
+    "p": 0.07079138432
+   },
+   {
+    "group1": "Day 1 (A)",
+    "group2": "Day 3 (A)",
+    "diff": -4,
+    "p": 0.0006744820944
+   },
+   {
+    "group1": "Day 1 (A)",
+    "group2": "Day 4 (A)",
+    "diff": -7,
+    "p": 1.396068153e-7
+   },
+   {
+    "group1": "Day 1 (A)",
+    "group2": "Day 5 (A)",
+    "diff": -10,
+    "p": 7.393530232e-11
+   },
+   {
+    "group1": "Day 2 (A)",
+    "group2": "Day 3 (A)",
+    "diff": -2,
+    "p": 0.07079138432
+   },
+   {
+    "group1": "Day 2 (A)",
+    "group2": "Day 4 (A)",
+    "diff": -5,
+    "p": 0.00003836162155
+   },
+   {
+    "group1": "Day 2 (A)",
+    "group2": "Day 5 (A)",
+    "diff": -8,
+    "p": 1.007726302e-8
+   },
+   {
+    "group1": "Day 3 (A)",
+    "group2": "Day 4 (A)",
+    "diff": -3,
+    "p": 0.01028814592
+   },
+   {
+    "group1": "Day 3 (A)",
+    "group2": "Day 5 (A)",
+    "diff": -6,
+    "p": 0.000002207889386
+   },
+   {
+    "group1": "Day 4 (A)",
+    "group2": "Day 5 (A)",
+    "diff": -3,
+    "p": 0.01028814592
+   },
+   {
+    "group1": "Day 1 (B)",
+    "group2": "Day 2 (B)",
+    "diff": -4,
+    "p": 0.0001468395012
+   },
+   {
+    "group1": "Day 1 (B)",
+    "group2": "Day 3 (B)",
+    "diff": -8.333333333,
+    "p": 2.321352555e-9
+   },
+   {
+    "group1": "Day 1 (B)",
+    "group2": "Day 4 (B)",
+    "diff": -13,
+    "p": 9.325873407e-14
+   },
+   {
+    "group1": "Day 1 (B)",
+    "group2": "Day 5 (B)",
+    "diff": -17.33333333,
+    "p": 0
+   },
+   {
+    "group1": "Day 2 (B)",
+    "group2": "Day 3 (B)",
+    "diff": -4.333333333,
+    "p": 0.0001468395012
+   },
+   {
+    "group1": "Day 2 (B)",
+    "group2": "Day 4 (B)",
+    "diff": -9,
+    "p": 5.89120086e-10
+   },
+   {
+    "group1": "Day 2 (B)",
+    "group2": "Day 5 (B)",
+    "diff": -13.33333333,
+    "p": 5.495603972e-14
+   },
+   {
+    "group1": "Day 3 (B)",
+    "group2": "Day 4 (B)",
+    "diff": -4.666666667,
+    "p": 0.00007073068163
+   },
+   {
+    "group1": "Day 3 (B)",
+    "group2": "Day 5 (B)",
+    "diff": -9,
+    "p": 5.89120086e-10
+   },
+   {
+    "group1": "Day 4 (B)",
+    "group2": "Day 5 (B)",
+    "diff": -4.333333333,
+    "p": 0.0001468395012
+   },
+   {
+    "group1": "Day 1 (C)",
+    "group2": "Day 2 (C)",
+    "diff": -1,
+    "p": 0.7323119299
+   },
+   {
+    "group1": "Day 1 (C)",
+    "group2": "Day 3 (C)",
+    "diff": -2,
+    "p": 0.2266140148
+   },
+   {
+    "group1": "Day 1 (C)",
+    "group2": "Day 4 (C)",
+    "diff": -3,
+    "p": 0.02299961032
+   },
+   {
+    "group1": "Day 1 (C)",
+    "group2": "Day 5 (C)",
+    "diff": -3.666666667,
+    "p": 0.003675780415
+   },
+   {
+    "group1": "Day 2 (C)",
+    "group2": "Day 3 (C)",
+    "diff": -1,
+    "p": 0.7323119299
+   },
+   {
+    "group1": "Day 2 (C)",
+    "group2": "Day 4 (C)",
+    "diff": -2,
+    "p": 0.3052314638
+   },
+   {
+    "group1": "Day 2 (C)",
+    "group2": "Day 5 (C)",
+    "diff": -2.666666667,
+    "p": 0.1051127044
+   },
+   {
+    "group1": "Day 3 (C)",
+    "group2": "Day 4 (C)",
+    "diff": -1,
+    "p": 0.7323119299
+   },
+   {
+    "group1": "Day 3 (C)",
+    "group2": "Day 5 (C)",
+    "diff": -1.666666667,
+    "p": 0.330935524
+   },
+   {
+    "group1": "Day 4 (C)",
+    "group2": "Day 5 (C)",
+    "diff": -0.6666666667,
+    "p": 0.7323119299
+   }
+  ],
+  "comparisonsLabel": "Holm–Šídák multiple comparisons (rows within each group, each group a family)"
+ },
+ "two-way-anova grouped {\"design\":\"ordinary\",\"posthoc\":\"lsd\",\"posthocTarget\":\"groups\"}": {
+  "testType": "two-way-anova",
+  "subtitle": "Ordinary two-way ANOVA",
+  "stats": [
+   {
+    "label": "Group F",
+    "value": 337.3565972
+   },
+   {
+    "label": "Group DFn",
+    "value": 2
+   },
+   {
+    "label": "Group P value",
+    "value": 8.270531238e-21,
+    "p": true
+   },
+   {
+    "label": "Row F",
+    "value": 120.8037173
+   },
+   {
+    "label": "Row DFn",
+    "value": 4
+   },
+   {
+    "label": "Row P value",
+    "value": 1.214541748e-17,
+    "p": true
+   },
+   {
+    "label": "Interaction F",
+    "value": 17.6411367
+   },
+   {
+    "label": "Interaction DFn",
+    "value": 8
+   },
+   {
+    "label": "Interaction P value",
+    "value": 3.199293327e-9,
+    "p": true
+   },
+   {
+    "label": "DFd (residual)",
+    "value": 29
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 15.6,
+    "sd": 3.775863194,
+    "sem": 0.9749236844,
+    "median": 15,
+    "n": 15
+   },
+   {
+    "name": "B",
+    "mean": 22.53333333,
+    "sd": 6.479270976,
+    "sem": 1.672940572,
+    "median": 22,
+    "n": 15
+   },
+   {
+    "name": "C",
+    "mean": 12,
+    "sd": 1.664100589,
+    "sem": 0.44474959,
+    "median": 12,
+    "n": 14
+   }
+  ],
+  "notes": "Compares group and row-position effects, plus their interaction; assumes normal distributions with equal variances (Type III sums of squares).",
+  "comparisons": [
+   {
+    "group1": "A (Day 1)",
+    "group2": "B (Day 1)",
+    "diff": -3,
+    "p": 0.002582019515
+   },
+   {
+    "group1": "A (Day 1)",
+    "group2": "C (Day 1)",
+    "diff": 1,
+    "p": 0.2807046476
+   },
+   {
+    "group1": "B (Day 1)",
+    "group2": "C (Day 1)",
+    "diff": 4,
+    "p": 0.0001349328277
+   },
+   {
+    "group1": "A (Day 2)",
+    "group2": "B (Day 2)",
+    "diff": -5,
+    "p": 0.00000639370579
+   },
+   {
+    "group1": "A (Day 2)",
+    "group2": "C (Day 2)",
+    "diff": 2,
+    "p": 0.05889078966
+   },
+   {
+    "group1": "B (Day 2)",
+    "group2": "C (Day 2)",
+    "diff": 7,
+    "p": 1.462730128e-7
+   },
+   {
+    "group1": "A (Day 3)",
+    "group2": "B (Day 3)",
+    "diff": -7.333333333,
+    "p": 6.866359957e-9
+   },
+   {
+    "group1": "A (Day 3)",
+    "group2": "C (Day 3)",
+    "diff": 3,
+    "p": 0.002582019515
+   },
+   {
+    "group1": "B (Day 3)",
+    "group2": "C (Day 3)",
+    "diff": 10.33333333,
+    "p": 3.398189434e-12
+   },
+   {
+    "group1": "A (Day 4)",
+    "group2": "B (Day 4)",
+    "diff": -9,
+    "p": 8.415997831e-11
+   },
+   {
+    "group1": "A (Day 4)",
+    "group2": "C (Day 4)",
+    "diff": 5,
+    "p": 0.00000639370579
+   },
+   {
+    "group1": "B (Day 4)",
+    "group2": "C (Day 4)",
+    "diff": 14,
+    "p": 1.731072753e-15
+   },
+   {
+    "group1": "A (Day 5)",
+    "group2": "B (Day 5)",
+    "diff": -10.33333333,
+    "p": 3.398189434e-12
+   },
+   {
+    "group1": "A (Day 5)",
+    "group2": "C (Day 5)",
+    "diff": 7.333333333,
+    "p": 6.866359957e-9
+   },
+   {
+    "group1": "B (Day 5)",
+    "group2": "C (Day 5)",
+    "diff": 17.66666667,
+    "p": 3.639778547e-18
+   }
+  ],
+  "comparisonsLabel": "Fisher's LSD (uncorrected) multiple comparisons (groups within each row, each row a family)"
+ },
+ "two-way-anova grouped {\"design\":\"repeated-measures\",\"posthoc\":\"sidak\",\"posthocTarget\":\"groups\",\"sphericity\":false}": {
+  "testType": "two-way-anova",
+  "subtitle": "Repeated-measures two-way ANOVA",
+  "stats": [
+   {
+    "label": "Group F",
+    "value": 152.3995232
+   },
+   {
+    "label": "Group DFn",
+    "value": 2
+   },
+   {
+    "label": "Group P value",
+    "value": 0.00003309213745,
+    "p": true
+   },
+   {
+    "label": "Row F",
+    "value": 146.8402778
+   },
+   {
+    "label": "Row DFn",
+    "value": 1.57891887
+   },
+   {
+    "label": "Row DFd",
+    "value": 7.894594351
+   },
+   {
+    "label": "Row P value",
+    "value": 8.8294201e-7,
+    "p": true
+   },
+   {
+    "label": "Interaction F",
+    "value": 16.90393519
+   },
+   {
+    "label": "Interaction DFn",
+    "value": 3.15783774
+   },
+   {
+    "label": "Interaction DFd",
+    "value": 7.894594351
+   },
+   {
+    "label": "Interaction P value",
+    "value": 0.0007963933421,
+    "p": true
+   },
+   {
+    "label": "Geisser-Greenhouse epsilon",
+    "value": 0.3947297175
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 15.6,
+    "sd": 3.775863194,
+    "sem": 0.9749236844,
+    "median": 15,
+    "n": 15
+   },
+   {
+    "name": "B",
+    "mean": 22.53333333,
+    "sd": 6.479270976,
+    "sem": 1.672940572,
+    "median": 22,
+    "n": 15
+   },
+   {
+    "name": "C",
+    "mean": 11.9,
+    "sd": 1.728840331,
+    "sem": 0.5467073156,
+    "median": 12,
+    "n": 10
+   }
+  ],
+  "notes": "Matched by row: each replicate column is treated as the same subject across every row within its group. Sphericity not assumed: the Geisser-Greenhouse epsilon corrects the degrees of freedom of the row and interaction effects, and each comparison has its own error (rows within a group: a paired t test; groups within a row: that row's pooled SD). 1 replicate column excluded (missing a value in at least one row).",
+  "comparisons": [
+   {
+    "group1": "A (Day 1)",
+    "group2": "B (Day 1)",
+    "diff": -3,
+    "p": 0.05949321026
+   },
+   {
+    "group1": "A (Day 1)",
+    "group2": "C (Day 1)",
+    "diff": 1,
+    "p": 0.7417897815
+   },
+   {
+    "group1": "B (Day 1)",
+    "group2": "C (Day 1)",
+    "diff": 4,
+    "p": 0.03065162792
+   },
+   {
+    "group1": "A (Day 2)",
+    "group2": "B (Day 2)",
+    "diff": -5,
+    "p": 0.007563958307
+   },
+   {
+    "group1": "A (Day 2)",
+    "group2": "C (Day 2)",
+    "diff": 2,
+    "p": 0.2757027846
+   },
+   {
+    "group1": "B (Day 2)",
+    "group2": "C (Day 2)",
+    "diff": 7,
+    "p": 0.002747722036
+   },
+   {
+    "group1": "A (Day 3)",
+    "group2": "B (Day 3)",
+    "diff": -7.333333333,
+    "p": 0.003092586011
+   },
+   {
+    "group1": "A (Day 3)",
+    "group2": "C (Day 3)",
+    "diff": 3,
+    "p": 0.1554142239
+   },
+   {
+    "group1": "B (Day 3)",
+    "group2": "C (Day 3)",
+    "diff": 10.33333333,
+    "p": 0.00105281121
+   },
+   {
+    "group1": "A (Day 4)",
+    "group2": "B (Day 4)",
+    "diff": -9,
+    "p": 0.0002487082812
+   },
+   {
+    "group1": "A (Day 4)",
+    "group2": "C (Day 4)",
+    "diff": 5.5,
+    "p": 0.004282358659
+   },
+   {
+    "group1": "B (Day 4)",
+    "group2": "C (Day 4)",
+    "diff": 14.5,
+    "p": 0.0000416653705
+   },
+   {
+    "group1": "A (Day 5)",
+    "group2": "B (Day 5)",
+    "diff": -10.33333333,
+    "p": 0.0006194804177
+   },
+   {
+    "group1": "A (Day 5)",
+    "group2": "C (Day 5)",
+    "diff": 7,
+    "p": 0.006310089136
+   },
+   {
+    "group1": "B (Day 5)",
+    "group2": "C (Day 5)",
+    "diff": 17.33333333,
+    "p": 0.00008672405706
+   }
+  ],
+  "comparisonsLabel": "Šídák-corrected multiple comparisons (groups within each row, each row a family)"
  },
  "two-way-anova grouped {\"design\":\"repeated-measures\",\"posthoc\":\"tukey\",\"posthocTarget\":\"groups\"}": {
   "testType": "two-way-anova",

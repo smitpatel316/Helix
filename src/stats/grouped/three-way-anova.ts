@@ -174,6 +174,16 @@ export async function runThreeWayAnova(
   ).groups;
 
   const posthoc = params?.posthoc ?? "none";
+  // POSTHOCS also carries the Šídák / Holm–Šídák / LSD options other ANOVAs
+  // offer — this runner only does Tukey and Bonferroni, so refuse those here
+  // rather than silently running Bonferroni under a Šídák label.
+  if (posthoc !== "none" && posthoc !== "tukey" && posthoc !== "bonferroni") {
+    return {
+      error:
+        `“${posthoc}” multiple comparisons are not available for three-way ANOVA — ` +
+        `choose Tukey or Bonferroni.`,
+    };
+  }
   const posthocTerm: ThreeWayTerm =
     params?.posthocTerm && (TERMS as readonly string[]).includes(params.posthocTerm) ? params.posthocTerm : "A";
   const cells = posthoc === "none" ? [] : termCells(posthocTerm, flat, titles);

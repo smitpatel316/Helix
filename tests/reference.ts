@@ -20,7 +20,7 @@ import { addDeming, fitDeming } from "../src/views/graphs/deming-overlay";
 import { computeGroupedDEG } from "../src/lib/deg";
 import { tCrit95 } from "../src/lib/student-t";
 import { kaplanMeier } from "../src/lib/kaplan-meier";
-import { rVec } from "../src/stats/column/base";
+import { dataGroups, groupsSetup, rVec } from "../src/stats/column/base";
 import { R_MAXIMUM_T } from "../src/stats/column/anova";
 import { evaluate as doseCurveAt } from "../src/views/graphs/fitted-curve";
 import { NONLINEAR_MODELS, type NonlinearModel } from "../src/stats/types";
@@ -1882,6 +1882,19 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["column", column, "anova", { posthoc: "tukey" }],
   ["column", column, "anova", { posthoc: "bonferroni" }],
   ["column", column, "anova", { posthoc: "dunnett", control: "Control" }],
+  // Multiple comparisons completion (plan 25): Šídák, Holm–Šídák and Fisher's
+  // LSD on the same table — raw P from pairwise.t.test, adjusted in TS
+  // (see disagreements() below); Dunn–Šídák / Dunn–Holm–Šídák likewise.
+  ["column", column, "anova", { posthoc: "sidak" }],
+  ["column", column, "anova", { posthoc: "holm-sidak" }],
+  ["column", column, "anova", { posthoc: "lsd" }],
+  ["column", column, "kruskal-wallis", { posthoc: "dunn-sidak" }],
+  ["column", column, "kruskal-wallis", { posthoc: "dunn-holm-sidak" }],
+  ["column", column, "rm-anova", { posthoc: "sidak" }],
+  ["column", column, "rm-anova", { posthoc: "holm-sidak" }],
+  ["column", column, "rm-anova", { posthoc: "lsd" }],
+  ["column", column, "friedman", { posthoc: "dunn-sidak" }],
+  ["column", column, "friedman", { posthoc: "dunn-holm-sidak" }],
   ["column", column, "anova", { posthoc: "none", equalSd: false }],
   ["column", column, "anova", { posthoc: "games-howell", equalSd: false }],
   ["column", column, "anova", { posthoc: "t3", equalSd: false }],
@@ -2227,6 +2240,17 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "none", posthocTarget: "groups" }],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "tukey", posthocTarget: "groups" }],
   ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "bonferroni", posthocTarget: "rows" }],
+  // Multiple comparisons completion (plan 25): per-family Šídák / Holm–Šídák /
+  // LSD, both targets, plus the no-sphericity corrected path.
+  ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "sidak", posthocTarget: "groups" }],
+  ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "holm-sidak", posthocTarget: "rows" }],
+  ["grouped", grouped, "two-way-anova", { design: "ordinary", posthoc: "lsd", posthocTarget: "groups" }],
+  [
+    "grouped",
+    grouped,
+    "two-way-anova",
+    { design: "repeated-measures", posthoc: "sidak", posthocTarget: "groups", sphericity: false },
+  ],
   ["grouped", grouped, "two-way-anova", { design: "repeated-measures", posthoc: "tukey", posthocTarget: "groups" }],
   [
     "grouped",
@@ -2716,6 +2740,54 @@ async function disagreements(): Promise<string[]> {
   const a4 =
     "error" in kept ? undefined : kept.comparisons?.find((c) => c.group1 === "A (Day 4)" && c.group2 === "C (Day 4)");
   if (a4?.diff !== 5.5) out.push(`Two-way RM comparisons: A − C at Day 4 is ${a4?.diff}, not 5.5`);
+  // Šídák / Holm–Šídák (plan 25) adjust R's raw P values in TypeScript: the LSD
+  // run's P values equal pairwise.t.test's unadjusted ones, and the Šídák /
+  // Holm–Šídák runs' equal R's own arithmetic on those raw values (m = 6 pairs).
+  const lsd = await runAnalysis("anova", column, { posthoc: "lsd" });
+  const sid = await runAnalysis("anova", column, { posthoc: "sidak" });
+  const hs = await runAnalysis("anova", column, { posthoc: "holm-sidak" });
+  const rawP = await evalNamedVector(
+    `${groupsSetup(dataGroups(readTable(column).columns))};` +
+      `pm<-pairwise.t.test(v,gr,p.adjust.method="none")$p.value;` +
+      `raw<-c(pm["G2","G1"],pm["G3","G1"],pm["G4","G1"],pm["G3","G2"],pm["G4","G2"],pm["G4","G3"]);` +
+      `o<-order(raw);s<-raw[o];adj<-sapply(1:6,function(i)1-(1-s[i])^(6-i+1));h<-cummax(adj)[order(o)];` +
+      `c(${[0, 1, 2, 3, 4, 5].map((n) => `r${n}=raw[${n + 1}],s${n}=1-(1-raw[${n + 1}])^6,h${n}=h[${n + 1}]`).join(",")})`,
+  );
+  const lsdP = "error" in lsd ? [] : (lsd.comparisons ?? []).map((c) => c.p);
+  const sidP = "error" in sid ? [] : (sid.comparisons ?? []).map((c) => c.p);
+  const hsP = "error" in hs ? [] : (hs.comparisons ?? []).map((c) => c.p);
+  [0, 1, 2, 3, 4, 5].forEach((n) => {
+    for (const [ours, theirs, what] of [
+      [lsdP[n], rawP[`r${n}`], "LSD"],
+      [sidP[n], rawP[`s${n}`], "Šídák"],
+      [hsP[n], rawP[`h${n}`], "Holm–Šídák"],
+    ] as const)
+      if (ours == null || theirs == null || Math.abs(ours - theirs) > 1e-9)
+        out.push(`ANOVA ${what} P #${n}: ${ours}, R's: ${theirs}`);
+  });
+  // Dunn's Šídák (plan 25): the same TS adjustment, raw P from Dunn's z
+  // (global ranks, tie-corrected) — checked against R's arithmetic, not the
+  // runner's own R code.
+  const dunnSid = await runAnalysis("kruskal-wallis", column, { posthoc: "dunn-sidak" });
+  const dunnRaw = await evalNamedVector(
+    `${groupsSetup(dataGroups(readTable(column).columns))};` +
+      `r<-rank(v);Rbar<-tapply(r,gr,mean);N<-length(v);tab<-table(v);` +
+      `tiecorr<-sum(tab^3-tab)/(12*(N-1));n<-as.numeric(table(gr));` +
+      `raw<-c(${[[1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4]]
+        .map(
+          ([i, j]) =>
+            `2*(1-pnorm(abs((Rbar[["G${i}"]]-Rbar[["G${j}"]])/sqrt((N*(N+1)/12-tiecorr)*(1/n[${i}]+1/n[${j}])))))`,
+        )
+        .join(",")});` +
+      `c(${[0, 1, 2, 3, 4, 5].map((n) => `s${n}=1-(1-raw[${n + 1}])^6`).join(",")})`,
+  );
+  const dunnP = "error" in dunnSid ? [] : (dunnSid.comparisons ?? []).map((c) => c.p);
+  [0, 1, 2, 3, 4, 5].forEach((n) => {
+    const ours = dunnP[n];
+    const theirs = dunnRaw[`s${n}`];
+    if (ours == null || theirs == null || Math.abs(ours - theirs) > 1e-9)
+      out.push(`Dunn–Šídák P #${n}: ${ours}, R's: ${theirs}`);
+  });
   // Graphs draw each model's curve as R fits it: its squared distances to the points add up to
   // R's sum of squares.
   // Each model runs on the table (and Y series) it was fitted on: the

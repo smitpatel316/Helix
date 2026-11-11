@@ -6,11 +6,26 @@
 // every pair: on the ANOVA's residual mean square while sphericity is assumed, else each
 // pair on its own differences, a paired t test (Maxwell and Delaney, as Prism does).
 import type { RmAnovaParams } from "../types";
-import { groupsSetup, matchedRowsNote, pairedGroups, pairIndices, posthocOf, pRow, type ColumnTestSpec } from "./base";
+import {
+  adjustComparisonRows,
+  groupsSetup,
+  matchedRowsNote,
+  pairedGroups,
+  pairIndices,
+  posthocOf,
+  pRow,
+  type ColumnTestSpec,
+} from "./base";
 
-/** Tukey or Bonferroni, else none (a file may name another). */
+/** Tukey, Bonferroni, Šídák, Holm–Šídák or LSD, else none (a file may name another). */
 const posthocIn = (params: RmAnovaParams | undefined) =>
-  params?.posthoc === "tukey" || params?.posthoc === "bonferroni" ? params.posthoc : "none";
+  params?.posthoc === "tukey" ||
+  params?.posthoc === "bonferroni" ||
+  params?.posthoc === "sidak" ||
+  params?.posthoc === "holm-sidak" ||
+  params?.posthoc === "lsd"
+    ? params.posthoc
+    : "none";
 
 /** Sphericity is assumed unless the params say it isn't (an analysis from before 1.0.7). */
 const corrected = (params: RmAnovaParams | undefined) => params?.sphericity === false;
@@ -50,7 +65,10 @@ export const rmAnovaSpec: ColumnTestSpec<RmAnovaParams> = {
       `p_${i}_${j}={w<-${t(i, j)};` +
       (posthoc === "tukey"
         ? `ptukey(w[1]*sqrt(2),${k},w[2],lower.tail=FALSE)}`
-        : `pmin(1,${pairs.length}*2*pt(-w[1],w[2]))}`);
+        : posthoc === "bonferroni"
+          ? `pmin(1,${pairs.length}*2*pt(-w[1],w[2]))}`
+          : // Šídák / Holm–Šídák take the raw P and adjust in TS; LSD reports it as is.
+            `2*pt(-w[1],w[2])}`);
     return `${head};c(${main},${pairs.map(([i, j]) => p(i, j)).join(",")})`;
   },
   rows: (v, _groups, params) => [
@@ -62,12 +80,21 @@ export const rmAnovaSpec: ColumnTestSpec<RmAnovaParams> = {
     ...(corrected(params) ? [{ label: "Geisser-Greenhouse epsilon", value: v.eps }] : []),
   ],
   posthoc: (params) => posthocOf({ posthoc: posthocIn(params) }),
+  adjustComparisons: (rows, params) =>
+    posthocIn(params) === "sidak"
+      ? adjustComparisonRows(rows, "sidak")
+      : posthocIn(params) === "holm-sidak"
+        ? adjustComparisonRows(rows, "holm-sidak")
+        : rows,
   notes: (params, _groups, columns) =>
     "Compares means across matched groups, blocking on subject; assumes normal distributions. " +
     (corrected(params)
       ? "Sphericity not assumed: the Geisser-Greenhouse epsilon corrects both degrees of freedom" +
         (posthocIn(params) === "none" ? "." : ", and each pair is compared on its own differences (paired t test).")
       : "Assumes sphericity (no Geisser-Greenhouse correction).") +
+    (posthocIn(params) === "lsd"
+      ? " Fisher's LSD is uncorrected — only interpretable when the overall ANOVA was significant."
+      : "") +
     ` ${matchedRowsNote(columns)}`,
   subtitle: () => "Repeated-measures one-way ANOVA",
 };
