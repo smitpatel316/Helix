@@ -1223,6 +1223,56 @@ check("a two-way ANOVA of one value per cell asks nothing and runs the ordinary 
   });
 });
 
+check("a saved analysis without sphericity still assumes it (Geisser-Greenhouse compat)", async () => {
+  // Geisser-Greenhouse is the default for new analyses, but a file saved
+  // before 1.0.7 has no `sphericity` field — loading it must keep the
+  // sphericity-assumed result, not silently correct it. The table is the
+  // reference `matched` fixture; the uncorrected F/df/P are its pinned values.
+  const matched: TableData = {
+    columns: ["Title", "Day 0", "Day 7", "Day 14"],
+    rows: [
+      ["", "10.1", "12.0", "15.2"],
+      ["", "9.8", "12.9", "18.1"],
+      ["", "11.2", "13.1", "14.0"],
+      ["", "10.5", "14.2", "21.3"],
+      ["", "9.9", "11.8", "13.1"],
+      ["", "10.8", "13.6", "19.4"],
+    ],
+  };
+  const file = JSON.parse(
+    serializeProjectFile({
+      nodes: {
+        t1: { id: "t1", type: "table", name: "Matched", parentId: null, tableType: "column", data: matched },
+        a1: {
+          id: "a1",
+          type: "analysis",
+          name: "RM ANOVA",
+          parentId: "t1",
+          analysisType: "rm-anova",
+          analysisParams: { posthoc: "tukey" },
+        },
+      },
+      rootOrder: ["t1"],
+      childOrder: { t1: ["a1"] },
+      activeNodeId: "a1",
+    }),
+  );
+  ok(!("sphericity" in file.project.nodes.a1.analysisParams));
+  const { project } = read(JSON.stringify(file));
+  const node = project.nodes.a1;
+  if (!node || node.type !== "analysis") throw new Error("no analysis after load");
+  strictEqual("sphericity" in (node.analysisParams ?? {}), false);
+  const out = await runAnalysis("rm-anova", project.nodes.t1.data!, node.analysisParams as AnalysisParams);
+  if ("error" in out) throw new Error(out.error);
+  const stats = Object.fromEntries(out.stats.map((s) => [s.label, s.value]));
+  ok(Math.abs((stats.F ?? NaN) - 21.84728313) < 1e-8);
+  strictEqual(stats.DFn, 2);
+  strictEqual(stats.DFd, 10);
+  ok(Math.abs((stats["P value"] ?? NaN) - 0.0002240517331) < 1e-9);
+  ok(!out.stats.some((s) => s.label === "Geisser-Greenhouse epsilon"));
+  ok(out.notes.includes("Assumes sphericity (no Geisser-Greenhouse correction)."));
+});
+
 check("fitting a curve asks its kind, then its model, then what to compare", () => {
   const wizard = WIZARDS["nonlinear-regression"]!;
   const table = readTable({ columns: ["Title", "X", "A", "B"], rows: [["", "1", "2", "3"]] });

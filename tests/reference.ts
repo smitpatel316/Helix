@@ -3007,6 +3007,9 @@ async function disagreements(): Promise<string[]> {
     out.push(`Grubbs masked column: ${flaggedOf(grubbsMaskedRun)} outliers, expected 0`);
   // Two-way, rows repeated: the corrected row and interaction P equal anova.mlm's, on the
   // subjects holding every row (C:Y2 lacks one); rows within a group, a paired t test.
+  // The corrected comparisons are pinned exactly in reference.json too, and differ from
+  // the sphericity-assumed ones — that pin is what asserts each comparison's own error
+  // (rows within a group: a paired t test; groups within a row: that row's pooled SD).
   const gg2 = await runAnalysis("two-way-anova", grouped, {
     design: "repeated-measures",
     posthoc: "bonferroni",

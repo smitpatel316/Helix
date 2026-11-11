@@ -217,11 +217,13 @@ async function runRepeatedMeasures(
   const setup = `v<-${rVec(values)};g<-${rFactor(group)};r<-${rFactor(row)};id<-${rFactor(subject)}`;
   // Y: a subject per row (values come subject by subject, rows in order); gs its group.
   // Geisser-Greenhouse: epsilon of the rows' covariance pooled over the groups, double-centered.
+  // A zero denominator means the differences have no variance at all (sphericity holds
+  // exactly) — epsilon is 1, never 0/0.
   const q = rowKeys.length;
   const gg =
     `Y<-matrix(v,ncol=${q},byrow=TRUE);gs<-factor(g[seq(1,length(v),by=${q})]);` +
     `S<-Reduce("+",lapply(split(seq_len(nrow(Y)),gs),function(i)(length(i)-1)*cov(Y[i,,drop=FALSE])))/(nrow(Y)-nlevels(gs));` +
-    `H<-diag(${q})-1/${q};C<-H%*%S%*%H;e<-min(1,sum(diag(C))^2/(${q - 1}*sum(C*C)))`;
+    `H<-diag(${q})-1/${q};C<-H%*%S%*%H;ggd<-(${q - 1})*sum(C*C);e<-if(ggd>0)min(1,sum(diag(C))^2/ggd)else 1`;
   const within = (k: string, f: string, df: string, resid: string, p: string) =>
     corrected
       ? `${k}S=${f},${k}Df=e*${df},${k}DfResid=e*${resid},${k}P=pf(${f},e*${df},e*${resid},lower.tail=FALSE)`
