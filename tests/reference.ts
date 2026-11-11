@@ -933,6 +933,25 @@ const freqConst = table(
 /** A single value: too few to bin (plan 06 edge case). */
 const freqSingle = table(["Title", "Values"], [["", "5"]]);
 
+/** Grubbs' test (plan 24): the plan's masking case — two outliers so far out
+ *  they inflate the SD and mask each other. Round 1: G = 1.5287, P = 0.6774
+ *  (R outliers::grubbs.test, two-sided), not significant, so the standard
+ *  iteration (stop when not significant) flags nothing. The plan expected
+ *  both flagged; R says otherwise — masking wins outright here, which is the
+ *  phenomenon the plan's own edge-case note describes. */
+const grubbsMasked = table(
+  ["Title", "Masked"],
+  [["", "10"], ["", "10.2"], ["", "9.8"], ["", "10.1"], ["", "10"], ["", "25"], ["", "26"]],
+);
+
+/** Grubbs' test (plan 24): the iteration case that does flag twice — round 1
+ *  G = 2.0643, P = 0.0309 flags 45, round 2 G = 2.0408, P = 0.0000 flags 25,
+ *  round 3 G = 1.4832, P = 0.4128 stops (all R outliers::grubbs.test). */
+const grubbsIterate = table(
+  ["Title", "Values"],
+  [["", "10"], ["", "10.2"], ["", "9.8"], ["", "10.1"], ["", "10"], ["", "25"], ["", "45"]],
+);
+
 /** Kolmogorov-Smirnov (plan 07): two clearly separated groups (D = 1). */
 const ksShifted = table(
   ["Title", "Control", "Treated"],
@@ -1814,6 +1833,18 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["column", column, "kolmogorov-smirnov", { sets: ["High", "Control"] }],
   ["column", column, "outliers", { q: 1 }],
   ["column", column, "outliers", { q: 5 }],
+  // Grubbs' test (plan 24): the shared column table (Control flags 30, round
+  // 2 clean; Low/High/Sparse clean), the masked column (nothing flagged —
+  // see the table note), and the iterating column (45 then 25 with iteration,
+  // 45 only without). G/P ground truth is R outliers::grubbs.test
+  // (two-sided); the TS-vs-R cross-check is in disagreements() below.
+  // High uses [18.2, 19.9, 21.3, 18.8, 20.1, 19.4] (n=6): the table's
+  // excluded: ["2,3"] drops the 17.5 cell, and the row-7 High cell is blank.
+  ["column", column, "outliers", { method: "grubbs" }],
+  ["column", column, "outliers", { method: "grubbs", alpha: 0.05, iterate: false }],
+  ["grubbsMasked", grubbsMasked, "outliers", { method: "grubbs" }],
+  ["grubbsIterate", grubbsIterate, "outliers", { method: "grubbs" }],
+  ["grubbsIterate", grubbsIterate, "outliers", { method: "grubbs", alpha: 0.05, iterate: false }],
   ["xy", xy, "correlation", { method: "pearson", mode: "x-vs-every-y" }],
   ["xy", xy, "correlation", { method: "spearman", mode: "x-vs-every-y" }],
   ["xy", xy, "correlation", { method: "pearson", mode: "two-datasets", datasets: ["Y1", "Y3"] }],
@@ -2528,6 +2559,55 @@ async function disagreements(): Promise<string[]> {
   const ours = "error" in gg ? {} : Object.fromEntries(gg.stats.map((s) => [s.label, s.value]));
   if (mlm.p == null || Math.abs(mlm.p - (ours["P value"] ?? NaN)) > 1e-9)
     out.push(`Geisser-Greenhouse P: ${ours["P value"]}, R's: ${mlm.p}`);
+  // Grubbs' test (plan 24): the TypeScript G and P must match R's t tail on
+  // the reference table — G from R's mean/SD, P from 2n × pt(−t, n−2) with
+  // t² = n(n−2)G²/((n−1)² − nG²). The formula itself was verified against
+  // outliers::grubbs.test on desktop R 4.3.3 (G and P agree to ~1e-7 on
+  // every reference column; the critical values match qgrubbs(0.975, n)).
+  const grubbs = await runAnalysis("outliers", column, { method: "grubbs" });
+  if ("error" in grubbs) out.push(`Grubbs on the column table: ${grubbs.error}`);
+  else {
+    const gStat = (label: string) => grubbs.stats.find((s) => s.label === label)?.value ?? null;
+    const r = await evalNamedVector(
+      `G<-list(${readTable(column).numeric.map((c) => rVec(c.values)).join(",")});` +
+        `c(unlist(lapply(seq_along(G),function(i){x<-G[[i]];n<-length(x);m<-mean(x);s<-sd(x);` +
+        `g<-max(abs(x-m))/s;t<-sqrt(n*(n-2)*g*g/((n-1)^2-n*g*g));` +
+        `setNames(c(g,2*n*pt(-t,n-2)),paste0(c("g_","p_"),i-1))})))`,
+    );
+    for (const [i, name] of ["Control", "Low", "High", "Sparse"].entries()) {
+      if (gStat(`${name} — G`) == null || Math.abs(gStat(`${name} — G`)! - (r[`g_${i}`] ?? NaN)) > 1e-6)
+        out.push(`Grubbs G, ${name}: TS ${gStat(`${name} — G`)}, R ${r[`g_${i}`]}`);
+      if (gStat(`${name} — P value`) == null || Math.abs(gStat(`${name} — P value`)! - (r[`p_${i}`] ?? NaN)) > 1e-6)
+        out.push(`Grubbs P, ${name}: TS ${gStat(`${name} — P value`)}, R ${r[`p_${i}`]}`);
+    }
+    // Verdicts: Control flags its 30 (and only that), the rest flag nothing;
+    // the cleaned mean of Control is 12.1.
+    const counts = Object.fromEntries((grubbs.outlierGroups ?? []).map((g) => [g.group, g.outliers]));
+    if (JSON.stringify(counts) !== JSON.stringify({ Control: 1, Low: 0, High: 0, Sparse: 0 }))
+      out.push(`Grubbs outlier counts: ${JSON.stringify(counts)}`);
+    if (!grubbs.notes.includes("Control row 8 (value 30, P = 0.0000)"))
+      out.push(`Grubbs notes do not flag Control row 8: ${grubbs.notes}`);
+    const controlMean = grubbs.outlierGroups?.find((g) => g.group === "Control")?.mean;
+    if (controlMean == null || Math.abs(controlMean - 12.1) > 1e-9)
+      out.push(`Grubbs cleaned mean, Control: ${controlMean}, expected 12.1`);
+  }
+  // The iterating column flags 45 then 25 with iteration, 45 only without;
+  // the masked column flags nothing (round 1 is not significant — see the
+  // table note).
+  const grubbsIt = await runAnalysis("outliers", grubbsIterate, { method: "grubbs" });
+  const grubbsItOnce = await runAnalysis("outliers", grubbsIterate, {
+    method: "grubbs",
+    alpha: 0.05,
+    iterate: false,
+  });
+  const grubbsMaskedRun = await runAnalysis("outliers", grubbsMasked, { method: "grubbs" });
+  const flaggedOf = (r: AnalysisResult | { error: string }) =>
+    "error" in r ? r.error : (r.outlierGroups ?? []).map((g) => g.outliers).join(",");
+  if (flaggedOf(grubbsIt) !== "2") out.push(`Grubbs iterating column: ${flaggedOf(grubbsIt)} outliers, expected 2`);
+  if (flaggedOf(grubbsItOnce) !== "1")
+    out.push(`Grubbs iterating column, once: ${flaggedOf(grubbsItOnce)} outliers, expected 1`);
+  if (flaggedOf(grubbsMaskedRun) !== "0")
+    out.push(`Grubbs masked column: ${flaggedOf(grubbsMaskedRun)} outliers, expected 0`);
   // Two-way, rows repeated: the corrected row and interaction P equal anova.mlm's, on the
   // subjects holding every row (C:Y2 lacks one); rows within a group, a paired t test.
   const gg2 = await runAnalysis("two-way-anova", grouped, {
@@ -4856,6 +4936,34 @@ async function disagreements(): Promise<string[]> {
     out.push(
       `Spline/Lowess wizard (spline): ${JSON.stringify(asked({ method: "spline" }))}, expected ["method", "y", "spar"]`,
     );
+  // Outliers wizard (plan 24): method first, then Q (ROUT) or alpha +
+  // iterate (Grubbs); ROUT stays the default and carries no alpha/iterate,
+  // Grubbs carries no q.
+  const outAsked = (a: Record<string, string>) =>
+    WIZARDS["outliers"]!.questions(a, readTable(column)).flatMap((q) => (q ? [q.id] : []));
+  if (JSON.stringify(outAsked({})) !== JSON.stringify(["sets", "method", "q"]))
+    out.push(`Outliers wizard first steps: ${JSON.stringify(outAsked({}))}, expected ["sets", "method", "q"]`);
+  if (JSON.stringify(outAsked({ method: "rout" })) !== JSON.stringify(["sets", "method", "q"]))
+    out.push(`Outliers wizard (ROUT): ${JSON.stringify(outAsked({ method: "rout" }))}, expected ["sets", "method", "q"]`);
+  if (JSON.stringify(outAsked({ method: "grubbs" })) !== JSON.stringify(["sets", "method", "alpha", "iterate"]))
+    out.push(
+      `Outliers wizard (Grubbs): ${JSON.stringify(outAsked({ method: "grubbs" }))}, expected ["sets", "method", "alpha", "iterate"]`,
+    );
+  const outRout = WIZARDS["outliers"]!.finish({ method: "rout", q: 1 }, readTable(column));
+  if (JSON.stringify(outRout) !== JSON.stringify({ type: "outliers", params: { q: 1 } }))
+    out.push(`Outliers wizard finish (ROUT): ${JSON.stringify(outRout)}`);
+  const outGrubbs = WIZARDS["outliers"]!.finish({ method: "grubbs", alpha: 0.05, iterate: "yes" }, readTable(column));
+  if (
+    JSON.stringify(outGrubbs) !==
+    JSON.stringify({ type: "outliers", params: { method: "grubbs", alpha: 0.05, iterate: true } })
+  )
+    out.push(`Outliers wizard finish (Grubbs): ${JSON.stringify(outGrubbs)}`);
+  const outGrubbsOnce = WIZARDS["outliers"]!.finish({ method: "grubbs", alpha: 0.01, iterate: "no" }, readTable(column));
+  if (
+    JSON.stringify(outGrubbsOnce) !==
+    JSON.stringify({ type: "outliers", params: { method: "grubbs", alpha: 0.01, iterate: false } })
+  )
+    out.push(`Outliers wizard finish (Grubbs, once): ${JSON.stringify(outGrubbsOnce)}`);
   // Binding — Saturation / Kinetics (plan 16): noiseless fixtures must
   // recover their generating parameters (relative tolerances from the plan:
   // 1e-6 one-site/kinetics, 1e-4 two-site specific, 1e-3 two-phase

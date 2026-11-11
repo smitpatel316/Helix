@@ -2399,6 +2399,425 @@
   ],
   "notes": "Flagged as outliers (FDR-adjusted P < Q): Control row 8 (value 30, adj. P = 0.0000). Use Edit ▸ Exclude / Include (⌘E) on those cells to leave them out of other tests and graphs. Method: each column fit independently to a robust mean (Huber M-estimator, scale from the median absolute deviation), residuals tested via a two-tailed t distribution and FDR-corrected (Benjamini-Hochberg) within that column. This mirrors the published Motulsky & Brown (2006) ROUT algorithm's logic, not GraphPad's certified implementation."
  },
+ "outliers column {\"method\":\"grubbs\"}": {
+  "testType": "outliers",
+  "subtitle": "Grubbs' test (α = 0.05)",
+  "stats": [
+   {
+    "label": "Total observations",
+    "value": 25
+   },
+   {
+    "label": "Groups analyzed",
+    "value": 4
+   },
+   {
+    "label": "Outliers detected",
+    "value": 1
+   },
+   {
+    "label": "Outlier percentage (%)",
+    "value": 4
+   },
+   {
+    "label": "Significance level (alpha)",
+    "value": 0.05
+   },
+   {
+    "label": "Control — G",
+    "value": 2.457924065
+   },
+   {
+    "label": "Control — P value",
+    "value": 0.00000639176906
+   },
+   {
+    "label": "Low — G",
+    "value": 1.60740129
+   },
+   {
+    "label": "Low — P value",
+    "value": 0.522030338
+   },
+   {
+    "label": "High — G",
+    "value": 1.553809378
+   },
+   {
+    "label": "High — P value",
+    "value": 0.4723455532
+   },
+   {
+    "label": "Sparse — G",
+    "value": 1.3
+   },
+   {
+    "label": "Sparse — P value",
+    "value": 0.5333333333
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 14.3375,
+    "sd": 6.372247305,
+    "sem": 2.25292964,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Low",
+    "mean": 14.84285714,
+    "sd": 0.8443086775,
+    "sem": 0.3191186843,
+    "median": 14.9,
+    "n": 7
+   },
+   {
+    "name": "High",
+    "mean": 19.61666667,
+    "sd": 1.083358974,
+    "sem": 0.4422794491,
+    "median": 19.65,
+    "n": 6
+   },
+   {
+    "name": "Sparse",
+    "mean": 10.625,
+    "sd": 1.25,
+    "sem": 0.625,
+    "median": 10.75,
+    "n": 4
+   }
+  ],
+  "outlierGroups": [
+   {
+    "group": "Control",
+    "points": 8,
+    "outliers": 1,
+    "percent": 12.5,
+    "robustMean": null,
+    "mean": 12.1
+   },
+   {
+    "group": "Low",
+    "points": 7,
+    "outliers": 0,
+    "percent": 0,
+    "robustMean": null,
+    "mean": 14.84285714
+   },
+   {
+    "group": "High",
+    "points": 6,
+    "outliers": 0,
+    "percent": 0,
+    "robustMean": null,
+    "mean": 19.61666667
+   },
+   {
+    "group": "Sparse",
+    "points": 4,
+    "outliers": 0,
+    "percent": 0,
+    "robustMean": null,
+    "mean": 10.625
+   }
+  ],
+  "notes": "Flagged as outliers (Grubbs' test, α = 0.05): Control row 8 (value 30, P = 0.0000). Use Edit ▸ Exclude / Include (⌘E) on those cells to leave them out of other tests and graphs. Method: each column's single most extreme value is tested against the t distribution (G = max|Y − mean| / SD); a value is an outlier when G exceeds the critical value for its sample size at α. The test assumes the data (without the outlier) are Gaussian — if they look clearly non-Gaussian, check with the normality analysis first. It tests one value at a time, so two outliers can mask each other; re-testing after each removal (iteration) mitigates this. The per-column mean shown is the mean after removing flagged outliers."
+ },
+ "outliers column {\"method\":\"grubbs\",\"alpha\":0.05,\"iterate\":false}": {
+  "testType": "outliers",
+  "subtitle": "Grubbs' test (α = 0.05)",
+  "stats": [
+   {
+    "label": "Total observations",
+    "value": 25
+   },
+   {
+    "label": "Groups analyzed",
+    "value": 4
+   },
+   {
+    "label": "Outliers detected",
+    "value": 1
+   },
+   {
+    "label": "Outlier percentage (%)",
+    "value": 4
+   },
+   {
+    "label": "Significance level (alpha)",
+    "value": 0.05
+   },
+   {
+    "label": "Control — G",
+    "value": 2.457924065
+   },
+   {
+    "label": "Control — P value",
+    "value": 0.00000639176906
+   },
+   {
+    "label": "Low — G",
+    "value": 1.60740129
+   },
+   {
+    "label": "Low — P value",
+    "value": 0.522030338
+   },
+   {
+    "label": "High — G",
+    "value": 1.553809378
+   },
+   {
+    "label": "High — P value",
+    "value": 0.4723455532
+   },
+   {
+    "label": "Sparse — G",
+    "value": 1.3
+   },
+   {
+    "label": "Sparse — P value",
+    "value": 0.5333333333
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 14.3375,
+    "sd": 6.372247305,
+    "sem": 2.25292964,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Low",
+    "mean": 14.84285714,
+    "sd": 0.8443086775,
+    "sem": 0.3191186843,
+    "median": 14.9,
+    "n": 7
+   },
+   {
+    "name": "High",
+    "mean": 19.61666667,
+    "sd": 1.083358974,
+    "sem": 0.4422794491,
+    "median": 19.65,
+    "n": 6
+   },
+   {
+    "name": "Sparse",
+    "mean": 10.625,
+    "sd": 1.25,
+    "sem": 0.625,
+    "median": 10.75,
+    "n": 4
+   }
+  ],
+  "outlierGroups": [
+   {
+    "group": "Control",
+    "points": 8,
+    "outliers": 1,
+    "percent": 12.5,
+    "robustMean": null,
+    "mean": 12.1
+   },
+   {
+    "group": "Low",
+    "points": 7,
+    "outliers": 0,
+    "percent": 0,
+    "robustMean": null,
+    "mean": 14.84285714
+   },
+   {
+    "group": "High",
+    "points": 6,
+    "outliers": 0,
+    "percent": 0,
+    "robustMean": null,
+    "mean": 19.61666667
+   },
+   {
+    "group": "Sparse",
+    "points": 4,
+    "outliers": 0,
+    "percent": 0,
+    "robustMean": null,
+    "mean": 10.625
+   }
+  ],
+  "notes": "Flagged as outliers (Grubbs' test, α = 0.05): Control row 8 (value 30, P = 0.0000). Use Edit ▸ Exclude / Include (⌘E) on those cells to leave them out of other tests and graphs. Method: each column's single most extreme value is tested against the t distribution (G = max|Y − mean| / SD); a value is an outlier when G exceeds the critical value for its sample size at α. The test assumes the data (without the outlier) are Gaussian — if they look clearly non-Gaussian, check with the normality analysis first. It tests one value at a time, so two outliers can mask each other — with iteration off, a second outlier can hide behind the first. The per-column mean shown is the mean after removing flagged outliers."
+ },
+ "outliers grubbsMasked {\"method\":\"grubbs\"}": {
+  "testType": "outliers",
+  "subtitle": "Grubbs' test (α = 0.05)",
+  "stats": [
+   {
+    "label": "Total observations",
+    "value": 7
+   },
+   {
+    "label": "Groups analyzed",
+    "value": 1
+   },
+   {
+    "label": "Outliers detected",
+    "value": 0
+   },
+   {
+    "label": "Outlier percentage (%)",
+    "value": 0
+   },
+   {
+    "label": "Significance level (alpha)",
+    "value": 0.05
+   },
+   {
+    "label": "Masked — G",
+    "value": 1.528732535
+   },
+   {
+    "label": "Masked — P value",
+    "value": 0.6774511628
+   }
+  ],
+  "groups": [
+   {
+    "name": "Masked",
+    "mean": 14.44285714,
+    "sd": 7.559950869,
+    "sem": 2.857392846,
+    "median": 10.1,
+    "n": 7
+   }
+  ],
+  "outlierGroups": [
+   {
+    "group": "Masked",
+    "points": 7,
+    "outliers": 0,
+    "percent": 0,
+    "robustMean": null,
+    "mean": 14.44285714
+   }
+  ],
+  "notes": "No outliers detected by Grubbs' test at α = 0.05. Method: each column's single most extreme value is tested against the t distribution (G = max|Y − mean| / SD); a value is an outlier when G exceeds the critical value for its sample size at α. The test assumes the data (without the outlier) are Gaussian — if they look clearly non-Gaussian, check with the normality analysis first. It tests one value at a time, so two outliers can mask each other; re-testing after each removal (iteration) mitigates this. The per-column mean shown is the mean after removing flagged outliers."
+ },
+ "outliers grubbsIterate {\"method\":\"grubbs\"}": {
+  "testType": "outliers",
+  "subtitle": "Grubbs' test (α = 0.05)",
+  "stats": [
+   {
+    "label": "Total observations",
+    "value": 7
+   },
+   {
+    "label": "Groups analyzed",
+    "value": 1
+   },
+   {
+    "label": "Outliers detected",
+    "value": 2
+   },
+   {
+    "label": "Outlier percentage (%)",
+    "value": 28.57142857
+   },
+   {
+    "label": "Significance level (alpha)",
+    "value": 0.05
+   },
+   {
+    "label": "Values — G",
+    "value": 2.064306328
+   },
+   {
+    "label": "Values — P value",
+    "value": 0.03087818994
+   }
+  ],
+  "groups": [
+   {
+    "name": "Values",
+    "mean": 17.15714286,
+    "sd": 13.48775459,
+    "sem": 5.097892055,
+    "median": 10.1,
+    "n": 7
+   }
+  ],
+  "outlierGroups": [
+   {
+    "group": "Values",
+    "points": 7,
+    "outliers": 2,
+    "percent": 28.57142857,
+    "robustMean": null,
+    "mean": 10.02
+   }
+  ],
+  "notes": "Flagged as outliers (Grubbs' test, α = 0.05): Values row 7 (value 45, P = 0.0309); Values row 6 (value 25, P = 0.0000). Use Edit ▸ Exclude / Include (⌘E) on those cells to leave them out of other tests and graphs. Method: each column's single most extreme value is tested against the t distribution (G = max|Y − mean| / SD); a value is an outlier when G exceeds the critical value for its sample size at α. The test assumes the data (without the outlier) are Gaussian — if they look clearly non-Gaussian, check with the normality analysis first. It tests one value at a time, so two outliers can mask each other; re-testing after each removal (iteration) mitigates this. The per-column mean shown is the mean after removing flagged outliers."
+ },
+ "outliers grubbsIterate {\"method\":\"grubbs\",\"alpha\":0.05,\"iterate\":false}": {
+  "testType": "outliers",
+  "subtitle": "Grubbs' test (α = 0.05)",
+  "stats": [
+   {
+    "label": "Total observations",
+    "value": 7
+   },
+   {
+    "label": "Groups analyzed",
+    "value": 1
+   },
+   {
+    "label": "Outliers detected",
+    "value": 1
+   },
+   {
+    "label": "Outlier percentage (%)",
+    "value": 14.28571429
+   },
+   {
+    "label": "Significance level (alpha)",
+    "value": 0.05
+   },
+   {
+    "label": "Values — G",
+    "value": 2.064306328
+   },
+   {
+    "label": "Values — P value",
+    "value": 0.03087818994
+   }
+  ],
+  "groups": [
+   {
+    "name": "Values",
+    "mean": 17.15714286,
+    "sd": 13.48775459,
+    "sem": 5.097892055,
+    "median": 10.1,
+    "n": 7
+   }
+  ],
+  "outlierGroups": [
+   {
+    "group": "Values",
+    "points": 7,
+    "outliers": 1,
+    "percent": 14.28571429,
+    "robustMean": null,
+    "mean": 12.51666667
+   }
+  ],
+  "notes": "Flagged as outliers (Grubbs' test, α = 0.05): Values row 7 (value 45, P = 0.0309). Use Edit ▸ Exclude / Include (⌘E) on those cells to leave them out of other tests and graphs. Method: each column's single most extreme value is tested against the t distribution (G = max|Y − mean| / SD); a value is an outlier when G exceeds the critical value for its sample size at α. The test assumes the data (without the outlier) are Gaussian — if they look clearly non-Gaussian, check with the normality analysis first. It tests one value at a time, so two outliers can mask each other — with iteration off, a second outlier can hide behind the first. The per-column mean shown is the mean after removing flagged outliers."
+ },
  "correlation xy {\"method\":\"pearson\",\"mode\":\"x-vs-every-y\"}": {
   "testType": "correlation",
   "subtitle": "Pearson correlation",

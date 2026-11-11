@@ -529,9 +529,16 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
   },
 
   outliers: {
-    questions: (_, table) => [
+    questions: (a, table) => [
       ...someSets(table, 1),
-      {
+      choice("method", "Which method should identify the outliers?", [
+        ["rout", "ROUT method (recommended — Q = maximum false discovery rate)"],
+        ["grubbs", "Grubbs' test (tests the single most extreme value; assumes Gaussian data)"],
+      ]),
+      // Before the method is answered the ROUT question shows (ROUT is the
+      // default — the first option); picking Grubbs swaps it for alpha +
+      // iterate on the next step.
+      (a.method === "rout" || a.method === undefined) && {
         id: "q",
         ask: "How strict should the search be? ROUT fits each data set to a robust mean and flags a point as an outlier when its false discovery rate is below Q: a smaller Q flags fewer.",
         kind: "number",
@@ -540,8 +547,36 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         ...ROUT_Q,
         step: 0.5,
       },
+      a.method === "grubbs" && {
+        id: "alpha",
+        ask: "How strict should the test be? A value is an outlier when its Grubbs P value is below alpha.",
+        kind: "number",
+        label: "Significance level (alpha) =",
+        initial: 0.05,
+        min: 0.001,
+        max: 0.5,
+        step: 0.01,
+      },
+      a.method === "grubbs" &&
+        choice("iterate", "Keep testing after removing each outlier?", [
+          ["yes", "Keep testing after removing each outlier (recommended)"],
+          ["no", "Test only the single most extreme value"],
+        ]),
     ],
-    finish: (a) => ({ type: "outliers", params: withSets(a, { q: a.q as number }) }),
+    finish: (a) => {
+      const method = (a.method as "rout" | "grubbs" | undefined) ?? "rout";
+      return {
+        type: "outliers",
+        params: withSets(
+          a,
+          // ROUT params carry no alpha/iterate and Grubbs params carry no q,
+          // so each method's cached results keep their existing keys.
+          method === "grubbs"
+            ? { method, alpha: (a.alpha as number | undefined) ?? 0.05, iterate: a.iterate !== "no" }
+            : { q: (a.q as number | undefined) ?? 1 },
+        ),
+      };
+    },
   },
 
   "frequency-distribution": {

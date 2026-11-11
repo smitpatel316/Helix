@@ -44,7 +44,7 @@ import { rmAnovaSpec } from "./column/rm-anova";
 import { friedmanSpec } from "./column/friedman";
 import { shapiroWilkSpec } from "./column/shapiro-wilk";
 import { kolmogorovSmirnovSpec } from "./column/kolmogorov-smirnov";
-import { runRout } from "./column/rout";
+import { runOutliers } from "./column/rout";
 import { runXYCorrelation } from "./xy/correlation";
 import { linearRegressionSpec } from "./xy/linear-regression";
 import { demingRegressionSpec } from "./xy/deming-regression";
@@ -121,7 +121,7 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
   friedman: spec("Friedman test", friedmanSpec),
   "shapiro-wilk": spec("Shapiro-Wilk normality", shapiroWilkSpec),
   "kolmogorov-smirnov": spec("Kolmogorov-Smirnov test", kolmogorovSmirnovSpec),
-  outliers: { label: "Identify outliers (ROUT)", minColumns: 1, run: (c, p) => runRout(c, p as OutliersParams) },
+  outliers: { label: "Identify outliers", minColumns: 1, run: (c, p) => runOutliers(c, p as OutliersParams) },
   correlation: { label: "Correlation", minColumns: 2, run: (c, p) => runXYCorrelation(c, p as XYCorrelationParams) },
   "linear-regression": spec("Linear regression", linearRegressionSpec),
   "deming-regression": spec("Deming regression", demingRegressionSpec),

@@ -49,14 +49,19 @@ function ibeta(x: number, a: number, b: number): number {
 /** Two-sided P value of a t statistic with `df` degrees of freedom. */
 export const tTwoSidedP = (t: number, df: number) => ibeta(df / (df + t * t), df / 2, 0.5);
 
-/** The two-sided 95% critical value of t (its 97.5th percentile), by bisection. */
-export function tCrit95(df: number): number {
+/** The two-sided critical value of t at two-sided P `p` with `df` degrees of freedom, by bisection. */
+export function tCrit(p: number, df: number): number {
   let lo = 0;
   let hi = 1000;
   for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2;
-    if (tTwoSidedP(mid, df) > 0.05) lo = mid;
+    if (tTwoSidedP(mid, df) > p) lo = mid;
     else hi = mid;
   }
   return (lo + hi) / 2;
+}
+
+/** The two-sided 95% critical value of t (its 97.5th percentile), by bisection. */
+export function tCrit95(df: number): number {
+  return tCrit(0.05, df);
 }

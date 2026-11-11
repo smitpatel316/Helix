@@ -237,9 +237,18 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
             { label: "Points", numeric: true },
             { label: "Outliers", numeric: true },
             { label: "%", numeric: true },
-            { label: "Robust mean", numeric: true },
+            {
+              label: result.outlierGroups.some((g) => g.mean != null) ? "Mean (outliers removed)" : "Robust mean",
+              numeric: true,
+            },
           ]}
-          rows={result.outlierGroups.map((g) => [g.group, g.points, g.outliers, num(g.percent), num(g.robustMean)])}
+          rows={result.outlierGroups.map((g) => [
+            g.group,
+            g.points,
+            g.outliers,
+            num(g.percent),
+            num(g.mean ?? g.robustMean),
+          ])}
         />
       )}
 
