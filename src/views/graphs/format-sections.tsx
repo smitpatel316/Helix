@@ -5,7 +5,6 @@ import * as React from "react";
 import { Button, Checkbox, Input, Select, cn } from "../../ui/controls";
 import { Row, Stepper } from "../../components/inspector";
 import type { AnalysisPickerValue, AnalysisType, NonlinearRegressionParams, DoseResponseSpecialParams } from "../../stats/types";
-import { EXPONENTIAL_MODELS, MODEL_LABEL } from "../../stats/xy/nonlinear-fit";
 import { analysisLabel } from "../analyses";
 import {
   GRAPH_LIMITS,
@@ -51,8 +50,6 @@ export interface SectionContext {
   allNames: string[];
   /** The chosen regression's failure, when it couldn't be fitted. */
   fitError: string | null;
-  /** The dose-response graph's own fit failure, when it couldn't be fitted. */
-  doseError: string | null;
   /** Starts `test` (its wizard), or with none opens the New Analysis picker. */
   onNewAnalysis: (test?: AnalysisPickerValue) => void;
   /** Volcano: selects the genes named (comma-separated); returns the names no gene has. */
@@ -215,77 +212,6 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
       );
     }
     return <KmeansControls analyses={sources} options={options} set={set} />;
-  }
-  if (graphType === "dose-response") {
-    const exponential = (EXPONENTIAL_MODELS as readonly string[]).includes(options.doseModel);
-    const summaryLabel =
-      options.doseModel === "exponential-growth"
-        ? "Doubling time"
-        : exponential
-          ? "Half-life"
-          : options.doseModel === "michaelis-menten"
-            ? "Vmax & Km"
-            : options.doseModel === "allosteric-sigmoidal"
-              ? "Khalf & Hill slope"
-              : options.doseModel === "substrate-inhibition"
-                ? "Km & Ki"
-                : options.doseModel === "two-site-competition-logx" || options.doseModel === "two-site-competition-x"
-                  ? "IC50s"
-                  : options.doseModel === "homologous-competition-logx"
-                    ? "Kd"
-                    : "EC50 & Hill slope";
-    return (
-      <>
-        <Choice
-          label="Model"
-          value={options.doseModel}
-          onChange={(doseModel) => set({ doseModel })}
-          wrap
-          items={[
-            { value: "sigmoidal-4pl-logx", label: "Log X" },
-            { value: "sigmoidal-4pl-x", label: "Linear X" },
-            // Prism's dose-response (sigmoidal) family, 3PL/5PL (rebase).
-            { value: "agonist-3pl-logx", label: MODEL_LABEL["agonist-3pl-logx"] },
-            { value: "inhibitor-3pl-logx", label: MODEL_LABEL["inhibitor-3pl-logx"] },
-            { value: "asymmetric-5pl-logx", label: MODEL_LABEL["asymmetric-5pl-logx"] },
-            { value: "asymmetric-5pl-x", label: MODEL_LABEL["asymmetric-5pl-x"] },
-            // Prism's "Exponential" family (plan 08, 1/2: decay first).
-            { value: "one-phase-decay", label: MODEL_LABEL["one-phase-decay"] },
-            { value: "two-phase-decay", label: MODEL_LABEL["two-phase-decay"] },
-            { value: "plateau-decay", label: MODEL_LABEL["plateau-decay"] },
-            // Plan 08, 2/2: association + growth.
-            { value: "one-phase-association", label: MODEL_LABEL["one-phase-association"] },
-            { value: "exponential-growth", label: MODEL_LABEL["exponential-growth"] },
-            // Prism's "Enzyme kinetics" family (plan 09).
-            { value: "michaelis-menten", label: MODEL_LABEL["michaelis-menten"] },
-            { value: "allosteric-sigmoidal", label: MODEL_LABEL["allosteric-sigmoidal"] },
-            { value: "substrate-inhibition", label: MODEL_LABEL["substrate-inhibition"] },
-            // Prism's "Binding — Competition" family (plan 28).
-            { value: "two-site-competition-logx", label: MODEL_LABEL["two-site-competition-logx"] },
-            { value: "two-site-competition-x", label: MODEL_LABEL["two-site-competition-x"] },
-            { value: "homologous-competition-logx", label: MODEL_LABEL["homologous-competition-logx"] },
-          ]}
-        />
-        <Toggle
-          label="Fitted curve"
-          checked={options.doseShowCurve}
-          onChange={(doseShowCurve) => set({ doseShowCurve })}
-        />
-        {options.doseModel === "homologous-competition-logx" && (
-          <NumRow
-            label="Radioligand [L]"
-            value={options.doseLigandConcentration}
-            onChange={(doseLigandConcentration) => set({ doseLigandConcentration })}
-          />
-        )}
-        <Toggle
-          label={summaryLabel}
-          checked={options.doseShowEquation}
-          onChange={(doseShowEquation) => set({ doseShowEquation })}
-        />
-        {c.doseError && <p className="text-small text-secondary">{c.doseError}</p>}
-      </>
-    );
   }
   if (graphType === "schild-plot") {
     // The plot draws from a sibling Gaddum/Schild analysis — nothing to

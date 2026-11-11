@@ -25,7 +25,6 @@ import { computeGroupedDEG } from "../../lib/deg";
 import { useAnalysis } from "../analyses/use-analysis";
 import { GRAPHS, graphSeries, plotColumns } from ".";
 import { addFittedCurve } from "./fitted-curve";
-import { addDoseCurve } from "./dose-response-curve";
 import { addBindingCurve, addDoseResponseSpecialCurve, addEnzymeInhibitionCurve } from "./binding-curve";
 import { addSchildPlot } from "./schild-plot";
 import { addSmoothCurve } from "./smooth-curve";
@@ -281,63 +280,31 @@ export function GraphView({ node }: { node: ProjectNode }) {
   const curveFit = curveOutcome && !("error" in curveOutcome) ? curveOutcome : null;
   const demingParams = (options.demingAnalysisId ? nodes[options.demingAnalysisId]?.analysisParams : undefined) as
     DemingRegressionParams | undefined;
-  // A dose-response graph fits its own curve (no analysis node needed).
-  const doseY = options.doseY ?? columns[1]?.name;
-  const doseOutcome = useAnalysis(type === "dose-response" && doseY ? "nonlinear-regression" : undefined, data, {
-    y: doseY,
-    model: options.doseModel,
-    // The homologous model needs [L] (plan 28); the graph carries it in its
-    // own options — without it the fit errors and the graph draws points only.
-    ...(options.doseLigandConcentration != null
-      ? { ligandConcentration: options.doseLigandConcentration }
-      : {}),
-  });
-  const doseFit = doseOutcome && !("error" in doseOutcome) ? doseOutcome : null;
-  // A dose-response graph also draws the drop-lines of a sibling
-  // nonlinear-regression analysis with `interpolate: true` on the same table:
-  // its cached run (no extra R call), when it fits the same model and Y
-  // series — the curve it was interpolated from. Without one, the graph is
-  // just the curve.
-  const interpAnalysis =
-    type === "dose-response"
-      ? analyses.find(
-          (n) =>
-            n.analysisType === "nonlinear-regression" &&
-            (n.analysisParams as NonlinearRegressionParams | undefined)?.interpolate === true,
-        )
-      : undefined;
-  const interpOutcome = useAnalysis(
-    interpAnalysis ? "nonlinear-regression" : undefined,
-    data,
-    interpAnalysis?.analysisParams,
-  );
-  const interpFit = interpOutcome && !("error" in interpOutcome) ? interpOutcome : null;
-  // A dose-response graph also draws a sibling binding analysis's fitted
-  // curve (saturation or kinetics) — the same cached run (no extra R call),
-  // as the interpolation drop-lines above. Without one it draws only its
-  // own dose curve.
+  // An XY scatter also draws a sibling binding analysis's fitted curve
+  // (saturation or kinetics) — the same cached run (no extra R call).
+  // Without one it draws only its own regression curve.
   const bindingAnalysis =
-    type === "dose-response"
+    type === "xy-scatter"
       ? analyses.find((n) => n.analysisType === "binding-saturation" || n.analysisType === "binding-kinetics")
       : undefined;
   const bindingOutcome = useAnalysis(bindingAnalysis?.analysisType, data, bindingAnalysis?.analysisParams);
   const bindingFit = bindingOutcome && !("error" in bindingOutcome) ? bindingOutcome : null;
   const bindingParams = (bindingAnalysis?.analysisParams ?? undefined) as
     BindingSaturationParams | BindingKineticsParams | undefined;
-  // A dose-response graph also draws a sibling enzyme-inhibition analysis's
+  // An XY scatter also draws a sibling enzyme-inhibition analysis's
   // fitted curves — one per inhibitor concentration — from the same cached
   // run (no extra R call), as the binding overlay above.
   const inhibitionAnalysis =
-    type === "dose-response" ? analyses.find((n) => n.analysisType === "enzyme-inhibition") : undefined;
+    type === "xy-scatter" ? analyses.find((n) => n.analysisType === "enzyme-inhibition") : undefined;
   const inhibitionOutcome = useAnalysis(inhibitionAnalysis?.analysisType, data, inhibitionAnalysis?.analysisParams);
   const inhibitionFit = inhibitionOutcome && !("error" in inhibitionOutcome) ? inhibitionOutcome : null;
   const inhibitionParams = (inhibitionAnalysis?.analysisParams ?? undefined) as EnzymeInhibitionParams | undefined;
-  // A dose-response graph also draws a sibling dose-response — Special
+  // An XY scatter also draws a sibling dose-response — Special
   // analysis's fitted curves — one per Y series — from the same cached
   // run (no extra R call), as the binding overlay above. A Schild plot
   // draws its computed points from a sibling Gaddum/Schild analysis.
   const specialAnalysis =
-    type === "dose-response" || type === "schild-plot"
+    type === "xy-scatter" || type === "schild-plot"
       ? analyses.find((n) => n.analysisType === "dose-response-special")
       : undefined;
   const specialOutcome = useAnalysis(specialAnalysis?.analysisType, data, specialAnalysis?.analysisParams);
@@ -524,11 +491,10 @@ export function GraphView({ node }: { node: ProjectNode }) {
           addFittedCurve(fig, x, y, ys, curveParams.model, curveFit, options.regShowEquation, options, paint);
       } else if (type === "xy-scatter" && regNode) addRegression(fig, columns, options, regParams, paint);
       if (type === "xy-scatter" && options.demingAnalysisId) addDeming(fig, columns, options, demingParams, paint);
-      if (doseFit) addDoseCurve(fig, columns, options, doseFit, paint, interpFit);
       if (bindingFit && bindingParams) addBindingCurve(fig, columns, options, bindingFit, bindingParams, paint);
       if (inhibitionFit && inhibitionParams)
         addEnzymeInhibitionCurve(fig, columns, options, inhibitionFit, inhibitionParams, paint);
-      if (specialFit && specialParams && type === "dose-response")
+      if (specialFit && specialParams && type === "xy-scatter")
         addDoseResponseSpecialCurve(fig, columns, options, specialFit, specialParams, paint);
       if (type === "schild-plot") {
         if (
@@ -601,8 +567,6 @@ export function GraphView({ node }: { node: ProjectNode }) {
     regParams,
     curveParams,
     curveFit,
-    doseFit,
-    interpFit,
     bindingFit,
     bindingParams,
     inhibitionFit,
@@ -702,7 +666,6 @@ export function GraphView({ node }: { node: ProjectNode }) {
           numericNames={dataset?.numeric.map((c) => c.name) ?? []}
           allNames={dataset?.columns.map((c) => c.name) ?? []}
           fitError={curveOutcome && "error" in curveOutcome ? curveOutcome.error : null}
-          doseError={doseOutcome && "error" in doseOutcome ? doseOutcome.error : null}
           onNewAnalysis={(test) => {
             if (!node.parentId) return;
             if (test) startAnalysis(node.parentId, test);

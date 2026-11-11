@@ -206,16 +206,20 @@ check("a file Helix had to repair or bring up to date opens to be saved; a sound
 // Nonlinear regression analysis carries [L], so the homologous curve draws
 // instead of erroring.
 check("a dose-response graph keeps its radioligand concentration", () => {
+  // The retired graph's own options, as an old file holds them: the loader
+  // still reads them (see LEGACY_DOSE_OPTIONS) to build the replacement analysis.
   const doseGraph: ProjectNode = {
     id: "g2",
     type: "graph",
     name: "Homologous curve",
     parentId: "t1",
-    graphType: "dose-response",
+    graphType: "dose-response" as GraphType,
     graphOptions: {
-      ...newGraphOptions("dose-response"),
-      doseModel: "homologous-competition-logx",
-      doseLigandConcentration: 1,
+      ...newGraphOptions("xy-scatter"),
+      ...({
+        doseModel: "homologous-competition-logx",
+        doseLigandConcentration: 1,
+      } as Partial<GraphOptions>),
     },
   };
   const file = JSON.parse(
@@ -492,6 +496,43 @@ check("a dose-response graph from an older Helix becomes a scatter drawing a new
   const children = project.childOrder.t1;
   strictEqual(children.indexOf("analysis_fit_g1") + 1, children.indexOf("g1"));
   ok(updated && issues.length === 0);
+});
+
+// Plan 32: the graph menu for XY tables no longer offers the retired curve.
+check("an XY table's graph menu no longer offers the dose-response curve", () => {
+  ok(!GRAPH_OPTIONS_BY_TABLE.xy.some((o) => (o.value as string) === "dose-response"));
+  ok(!("dose-response" in GRAPHS));
+});
+
+// Plan 32: the migration takes the model from the graph — a rising 3PL and
+// a falling 3PL alike (the loader never evaluates the curve, so direction
+// doesn't matter, only the model's name).
+check("a dose-response graph with a 3PL model migrates to a 3PL Nonlinear regression analysis", () => {
+  for (const model of ["agonist-3pl-logx", "inhibitor-3pl-logx"]) {
+    const file = JSON.parse(serializeProjectFile(payload));
+    file.project.nodes.g1.graphType = "dose-response";
+    Object.assign(file.project.nodes.g1.graphOptions, {
+      doseY: "Y1",
+      doseModel: model,
+      doseShowCurve: true,
+      doseShowEquation: true,
+    });
+    const { project } = read(JSON.stringify(file));
+    deepStrictEqual(project.nodes.analysis_fit_g1.analysisParams, { y: "Y1", model });
+    strictEqual(project.nodes.g1.graphType, "xy-scatter");
+  }
+});
+
+// Plan 32: a dose-response graph whose table is gone is left out with the
+// other dangling items — the migration never sees it, so it can't crash.
+check("a dose-response graph whose table is gone is left out, not crashed on", () => {
+  const file = JSON.parse(serializeProjectFile(payload));
+  file.project.nodes.g1.graphType = "dose-response";
+  file.project.nodes.g1.parentId = "missing";
+  const { project, issues } = read(JSON.stringify(file));
+  ok(!("g1" in project.nodes));
+  ok(!("analysis_fit_g1" in project.nodes));
+  ok(issues.some((i) => i.message.includes("unreadable")));
 });
 
 check("a broken item is left out alone, and said so", () => {

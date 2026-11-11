@@ -2703,7 +2703,7 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["xy", xy, "xy-scatter", { xyStyle: "points+line" }],
   ["xy", xy, "xy-bar"],
   ["xy", xy, "xy-area"],
-  ["doseLog", doseLog, "dose-response"],
+  ["doseLog", doseLog, "xy-scatter", { xyStyle: "points" }],
   ["schild", schild, "schild-plot"],
   ["doseLog", doseLog, "smooth-curve"],
   ["logistic", logistic, "logistic-curve"],
@@ -2770,6 +2770,24 @@ async function run() {
     out[`counts ${name}`] = { columns: countDataColumns(data), groups: countDataGroups(data) };
   }
   return rounded(out) as Record<string, unknown>;
+}
+
+/** The retired dose-response graph's replacement: an XY scatter (points)
+ *  with the fitted curve of `fit` drawn over the `y` series, and its note. */
+async function scatterWithFittedCurve(data: TableData, y: string, model: NonlinearModel, fit: AnalysisResult) {
+  const { addFittedCurve } = await import("../src/views/graphs/fitted-curve");
+  const opts = newGraphOptions("xy-scatter");
+  const cols = plotColumns(readTable(data), "xy-scatter", opts, "xy");
+  const fig = GRAPHS["xy-scatter"].build(
+    cols,
+    { ...opts, xyStyle: "points" },
+    paintOf(opts, 1),
+    readTable(data).titles,
+  );
+  const [x, ...ys] = cols;
+  const yCol = ys.find((c) => c.name === y) ?? ys[0];
+  if (x && yCol) addFittedCurve(fig, x, yCol, ys, model, fit, true, opts, paintOf(opts, 1));
+  return fig;
 }
 
 /** Where TypeScript computes what R also computes, both must agree: a graph's
@@ -3382,35 +3400,14 @@ async function disagreements(): Promise<string[]> {
       )
         out.push(`Interpolation Y=${y0}: CI=[${row?.low}, ${row?.high}], delta-method cross-check [${lo}, ${hi}]`);
     }
-    // The dose-response graph's drop-lines, from the same cached result.
-    const { addDoseCurve } = await import("../src/views/graphs/dose-response-curve");
-    const doseOpts = { ...newGraphOptions("dose-response"), doseModel: "sigmoidal-4pl-logx" as const };
-    const doseColumns = plotColumns(readTable(doseLog), "dose-response", doseOpts, "xy");
-    const doseFig = GRAPHS["dose-response"].build(
-      doseColumns,
-      doseOpts,
-      paintOf(doseOpts, 1),
-      readTable(doseLog).titles,
-    );
-    addDoseCurve(doseFig, doseColumns, doseOpts, nonlin, paintOf(doseOpts, 1), interp);
-    const traces = doseFig.data as { mode?: string; x?: number[]; y?: number[]; line?: { dash?: string } }[];
-    const dashed = traces.filter((t) => t.line?.dash === "dash");
-    const dropMarkers = traces.filter(
-      (t) => t.mode === "markers" && t.x?.length === 3 && JSON.stringify(t.y) === JSON.stringify([20, 50, 80]),
-    );
-    const xs = (interp.interpolated ?? []).map((r) => r.x);
-    if (dashed.length !== 6) out.push(`Dose-response drop-lines: ${dashed.length} dashed traces, expected 6`);
-    if (dropMarkers.length !== 1 || JSON.stringify(dropMarkers[0]?.x) !== JSON.stringify(xs))
-      out.push(`Dose-response drop-line markers: ${JSON.stringify(dropMarkers[0]?.x)}, expected ${JSON.stringify(xs)}`);
-    for (const y0 of [20, 50, 80]) {
-      const row = interp.interpolated?.find((r) => r.y === y0);
-      const horiz = dashed.find((t) => t.y?.[0] === y0 && t.y?.[1] === y0);
-      if (!horiz || horiz.x?.[1] !== row?.x)
-        out.push(`Dose-response drop-line Y=${y0}: horizontal to ${horiz?.x?.[1]}, expected ${row?.x}`);
-      const vert = dashed.find((t) => t.x?.[0] === row?.x && t.x?.[1] === row?.x);
-      if (!vert || vert.y?.[1] !== y0)
-        out.push(`Dose-response drop-line Y=${y0}: vertical to ${vert?.y?.[1]}, expected ${y0}`);
-    }
+    // The drop-lines retired with the dose-response graph (plan 32) — but
+    // its replacement still draws the 4PL curve over the same points.
+    const doseFig = await scatterWithFittedCurve(doseLog, "Response", "sigmoidal-4pl-logx", nonlin);
+    const traces = doseFig.data as { mode?: string; x?: number[]; y?: number[] }[];
+    const curve = traces.find((t) => t.mode === "lines" && t.x?.length === 101);
+    if (!curve) out.push(`Standard-curve fitted curve draws no 101-point line`);
+    if (curve && (curve.x?.[0] !== -3 || curve.x?.at(-1) !== 1.5))
+      out.push(`Standard-curve fitted curve spans [${curve.x?.[0]}, ${curve.x?.at(-1)}], expected [-3, 1.5]`);
   }
   // Exponential curves (plan 08): the plan's values, by construction
   // (noiseless fixtures) and re-verified against WebR nls() before locking.
@@ -3464,16 +3461,7 @@ async function disagreements(): Promise<string[]> {
     // The fitted-curve overlay: passes through (0, 100) and (12, ~10.2),
     // monotone decreasing, and the TypeScript evaluator matches an
     // independent R evaluation of the fitted formula at the data X to 1e-6.
-    const { addDoseCurve, evaluateFittedCurve } = await import("../src/views/graphs/dose-response-curve");
-    const expOpts = { ...newGraphOptions("dose-response"), doseModel: "one-phase-decay" as const, doseY: "A" };
-    const expColumns = plotColumns(readTable(expX), "dose-response", expOpts, "xy");
-    const expFig = GRAPHS["dose-response"].build(
-      expColumns,
-      expOpts,
-      paintOf(expOpts, 1),
-      readTable(expX).titles,
-    );
-    addDoseCurve(expFig, expColumns, expOpts, fitA, paintOf(expOpts, 1));
+    const expFig = await scatterWithFittedCurve(expX, "A", "one-phase-decay", fitA);
     const traces = expFig.data as { mode?: string; x?: number[]; y?: number[] }[];
     const curve = traces.find((t) => t.mode === "lines" && t.x?.length === 101);
     if (!curve || curve.x?.[0] !== 0 || curve.y?.[0] == null || Math.abs(curve.y[0] - 100) > 1e-9)
@@ -3496,7 +3484,7 @@ async function disagreements(): Promise<string[]> {
           `c(${xs.map((_, i) => `y${i}=yv[${i + 1}]`).join(",")})`,
       );
       xs.forEach((x, i) => {
-        const ts = evaluateFittedCurve("one-phase-decay", fitA.coefficients ?? [], x);
+        const ts = doseCurveAt("one-phase-decay", fitA.coefficients ?? [], x);
         const rv = rY[`y${i}`];
         if (rv == null || Math.abs(ts - rv) > 1e-6) out.push(`Exponential overlay at X=${x}: TS ${ts}, R ${rv}`);
       });
@@ -3610,16 +3598,7 @@ async function disagreements(): Promise<string[]> {
     // The growth overlay: passes through (0, 10) and (12, ~110.2), monotone
     // increasing, and the TypeScript evaluator matches an independent R
     // evaluation of the fitted formula at the data X to 1e-6.
-    const { addDoseCurve, evaluateFittedCurve } = await import("../src/views/graphs/dose-response-curve");
-    const growthOpts = { ...newGraphOptions("dose-response"), doseModel: "exponential-growth" as const, doseY: "D2" };
-    const growthColumns = plotColumns(readTable(expX), "dose-response", growthOpts, "xy");
-    const growthFig = GRAPHS["dose-response"].build(
-      growthColumns,
-      growthOpts,
-      paintOf(growthOpts, 1),
-      readTable(expX).titles,
-    );
-    addDoseCurve(growthFig, growthColumns, growthOpts, fitD2, paintOf(growthOpts, 1));
+    const growthFig = await scatterWithFittedCurve(expX, "D2", "exponential-growth", fitD2);
     const gTraces = growthFig.data as { mode?: string; x?: number[]; y?: number[] }[];
     const gCurve = gTraces.find((t) => t.mode === "lines" && t.x?.length === 101);
     if (!gCurve || gCurve.x?.[0] !== 0 || gCurve.y?.[0] == null || Math.abs(gCurve.y[0] - 10) > 1e-9)
@@ -3641,7 +3620,7 @@ async function disagreements(): Promise<string[]> {
           `c(${xs.map((_, i) => `y${i}=yv[${i + 1}]`).join(",")})`,
       );
       xs.forEach((x, i) => {
-        const ts = evaluateFittedCurve("exponential-growth", fitD2.coefficients ?? [], x);
+        const ts = doseCurveAt("exponential-growth", fitD2.coefficients ?? [], x);
         const rv = rY[`y${i}`];
         if (rv == null || Math.abs(ts - rv) > 1e-6) out.push(`Exponential growth overlay at X=${x}: TS ${ts}, R ${rv}`);
       });
@@ -3735,11 +3714,7 @@ async function disagreements(): Promise<string[]> {
     // The fitted-curve overlay: passes through (0, 0) and (50, ~90.9),
     // monotone increasing, and the TypeScript evaluator matches an
     // independent R evaluation of the fitted formula at the data X to 1e-6.
-    const { addDoseCurve, evaluateFittedCurve } = await import("../src/views/graphs/dose-response-curve");
-    const mmOpts = { ...newGraphOptions("dose-response"), doseModel: "michaelis-menten" as const, doseY: "Y" };
-    const mmColumns = plotColumns(readTable(enzymeS0), "dose-response", mmOpts, "xy");
-    const mmFig = GRAPHS["dose-response"].build(mmColumns, mmOpts, paintOf(mmOpts, 1), readTable(enzymeS0).titles);
-    addDoseCurve(mmFig, mmColumns, mmOpts, fitMM0, paintOf(mmOpts, 1));
+    const mmFig = await scatterWithFittedCurve(enzymeS0, "Y", "michaelis-menten", fitMM0);
     const mmTraces = mmFig.data as { mode?: string; x?: number[]; y?: number[] }[];
     const mmCurve = mmTraces.find((t) => t.mode === "lines" && t.x?.length === 101);
     if (!mmCurve || mmCurve.x?.[0] !== 0 || mmCurve.y?.[0] == null || Math.abs(mmCurve.y[0]) > 1e-9)
@@ -3761,7 +3736,7 @@ async function disagreements(): Promise<string[]> {
           `c(${xs.map((_, i) => `y${i}=yv[${i + 1}]`).join(",")})`,
       );
       xs.forEach((x, i) => {
-        const ts = evaluateFittedCurve("michaelis-menten", fitMM0.coefficients ?? [], x);
+        const ts = doseCurveAt("michaelis-menten", fitMM0.coefficients ?? [], x);
         const rv = rY[`y${i}`];
         if (rv == null || Math.abs(ts - rv) > 1e-6) out.push(`Enzyme MM overlay at X=${x}: TS ${ts}, R ${rv}`);
       });
@@ -3798,11 +3773,7 @@ async function disagreements(): Promise<string[]> {
       out.push(`Enzyme substrate-inhibition notes missing starts: ${fitSI.notes}`);
     // The overlay peaks near S ≈ 4.5 (√(Km·Ki) = √20) and decreases
     // thereafter — the key discriminator for substrate inhibition.
-    const { addDoseCurve } = await import("../src/views/graphs/dose-response-curve");
-    const siOpts = { ...newGraphOptions("dose-response"), doseModel: "substrate-inhibition" as const, doseY: "C" };
-    const siColumns = plotColumns(readTable(enzymeS), "dose-response", siOpts, "xy");
-    const siFig = GRAPHS["dose-response"].build(siColumns, siOpts, paintOf(siOpts, 1), readTable(enzymeS).titles);
-    addDoseCurve(siFig, siColumns, siOpts, fitSI, paintOf(siOpts, 1));
+    const siFig = await scatterWithFittedCurve(enzymeS, "C", "substrate-inhibition", fitSI);
     const siTraces = siFig.data as { mode?: string; x?: number[]; y?: number[] }[];
     const siCurve = siTraces.find((t) => t.mode === "lines" && t.x?.length === 101);
     if (!siCurve || !siCurve.x?.length || !siCurve.y?.length) {
@@ -5856,9 +5827,14 @@ async function disagreements(): Promise<string[]> {
   // two-series fit — the nonspecific curve dashed in its own colour.
   if (!("error" in twoSeries)) {
     const { addBindingCurve } = await import("../src/views/graphs/binding-curve");
-    const opts = newGraphOptions("dose-response");
-    const cols = plotColumns(readTable(bindTotalNs), "dose-response", opts, "xy");
-    const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 2), readTable(bindTotalNs).titles);
+    const opts = newGraphOptions("xy-scatter");
+    const cols = plotColumns(readTable(bindTotalNs), "xy-scatter", opts, "xy");
+    const fig = GRAPHS["xy-scatter"].build(
+      cols,
+      { ...opts, xyStyle: "points" },
+      paintOf(opts, 2),
+      readTable(bindTotalNs).titles,
+    );
     addBindingCurve(
       fig,
       cols,
@@ -5885,16 +5861,16 @@ async function disagreements(): Promise<string[]> {
     const note = (fig.layout.annotations as { text?: string }[] | undefined)?.find((a) => a.text?.includes("Bmax"));
     if (!note) out.push(`Binding curve graph draws no Bmax note`);
     // Kinetics curve: starts at Y0 (0), not forced through the origin.
-    const fig2 = GRAPHS["dose-response"].build(
-      plotColumns(readTable(bindKinetics), "dose-response", opts, "xy"),
-      opts,
+    const fig2 = GRAPHS["xy-scatter"].build(
+      plotColumns(readTable(bindKinetics), "xy-scatter", opts, "xy"),
+      { ...opts, xyStyle: "points" },
       paintOf(opts, 4),
       readTable(bindKinetics).titles,
     );
     if (!("error" in assoc)) {
       addBindingCurve(
         fig2,
-        plotColumns(readTable(bindKinetics), "dose-response", opts, "xy"),
+        plotColumns(readTable(bindKinetics), "xy-scatter", opts, "xy"),
         opts,
         assoc,
         { y: "Assoc", model: "association-one-phase" },
@@ -6165,17 +6141,14 @@ async function disagreements(): Promise<string[]> {
   // Overlays: the two-site and homologous curves pass through the data's
   // endpoints, decrease monotonically, and the TypeScript evaluator matches
   // an independent R evaluation of the fitted formula at the data X to 1e-6.
-  const { addDoseCurve, evaluateFittedCurve } = await import("../src/views/graphs/dose-response-curve");
   const compXs = [-3, -2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5];
   if (!("error" in twoSite)) {
-    const opts = {
-      ...newGraphOptions("dose-response"),
-      doseModel: "two-site-competition-logx" as const,
-      doseY: "Response",
-    };
-    const cols = plotColumns(readTable(competitionTwoSite), "dose-response", opts, "xy");
-    const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 1), readTable(competitionTwoSite).titles);
-    addDoseCurve(fig, cols, opts, twoSite, paintOf(opts, 1));
+    const fig = await scatterWithFittedCurve(
+      competitionTwoSite,
+      "Response",
+      "two-site-competition-logx",
+      twoSite,
+    );
     const traces = fig.data as { mode?: string; x?: number[]; y?: number[] }[];
     const curve = traces.find((t) => t.mode === "lines" && t.x?.length === 101);
     if (!curve) out.push(`Competition two-site overlay draws no 101-point line`);
@@ -6203,21 +6176,19 @@ async function disagreements(): Promise<string[]> {
         `c(${compXs.map((_, i) => `y${i}=yv[${i + 1}]`).join(",")})`,
     );
     compXs.forEach((x, i) => {
-      const ts = evaluateFittedCurve("two-site-competition-logx", twoSite.coefficients ?? [], x);
+      const ts = doseCurveAt("two-site-competition-logx", twoSite.coefficients ?? [], x);
       const rv = rY[`y${i}`];
       if (rv == null || Math.abs(ts - rv) > 1e-6)
         out.push(`Competition two-site overlay at X=${x}: TS ${ts}, R ${rv}`);
     });
   }
   if (!("error" in homol)) {
-    const opts = {
-      ...newGraphOptions("dose-response"),
-      doseModel: "homologous-competition-logx" as const,
-      doseY: "Response",
-    };
-    const cols = plotColumns(readTable(competitionHomologous), "dose-response", opts, "xy");
-    const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 1), readTable(competitionHomologous).titles);
-    addDoseCurve(fig, cols, opts, homol, paintOf(opts, 1));
+    const fig = await scatterWithFittedCurve(
+      competitionHomologous,
+      "Response",
+      "homologous-competition-logx",
+      homol,
+    );
     const traces = fig.data as { mode?: string; x?: number[]; y?: number[] }[];
     const curve = traces.find((t) => t.mode === "lines" && t.x?.length === 101);
     if (!curve) out.push(`Competition homologous overlay draws no 101-point line`);
@@ -6241,7 +6212,7 @@ async function disagreements(): Promise<string[]> {
         `c(${compXs.map((_, i) => `y${i}=yv[${i + 1}]`).join(",")})`,
     );
     compXs.forEach((x, i) => {
-      const ts = evaluateFittedCurve("homologous-competition-logx", homol.coefficients ?? [], x, 1);
+      const ts = doseCurveAt("homologous-competition-logx", homol.coefficients ?? [], x, 1);
       const rv = rY[`y${i}`];
       if (rv == null || Math.abs(ts - rv) > 1e-6)
         out.push(`Competition homologous overlay at X=${x}: TS ${ts}, R ${rv}`);
@@ -6453,9 +6424,14 @@ async function disagreements(): Promise<string[]> {
   // its series' colour, spanning the pooled X range.
   if (!("error" in enzMixedRun)) {
     const { addEnzymeInhibitionCurve } = await import("../src/views/graphs/binding-curve");
-    const opts = newGraphOptions("dose-response");
-    const cols = plotColumns(readTable(enzMixed), "dose-response", opts, "xy");
-    const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 3), readTable(enzMixed).titles);
+    const opts = newGraphOptions("xy-scatter");
+    const cols = plotColumns(readTable(enzMixed), "xy-scatter", opts, "xy");
+    const fig = GRAPHS["xy-scatter"].build(
+      cols,
+      { ...opts, xyStyle: "points" },
+      paintOf(opts, 3),
+      readTable(enzMixed).titles,
+    );
     addEnzymeInhibitionCurve(
       fig,
       cols,
@@ -6759,9 +6735,14 @@ async function disagreements(): Promise<string[]> {
   // its series' colour, spanning the pooled X range.
   if (!("error" in schildRun)) {
     const { addDoseResponseSpecialCurve } = await import("../src/views/graphs/binding-curve");
-    const opts = newGraphOptions("dose-response");
-    const cols = plotColumns(readTable(schild), "dose-response", opts, "xy");
-    const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 3), readTable(schild).titles);
+    const opts = newGraphOptions("xy-scatter");
+    const cols = plotColumns(readTable(schild), "xy-scatter", opts, "xy");
+    const fig = GRAPHS["xy-scatter"].build(
+      cols,
+      { ...opts, xyStyle: "points" },
+      paintOf(opts, 3),
+      readTable(schild).titles,
+    );
     addDoseResponseSpecialCurve(
       fig,
       cols,
@@ -6788,9 +6769,14 @@ async function disagreements(): Promise<string[]> {
   // plateau visible at X = −4.
   if (!("error" in operRun)) {
     const { addDoseResponseSpecialCurve } = await import("../src/views/graphs/binding-curve");
-    const opts = newGraphOptions("dose-response");
-    const cols = plotColumns(readTable(operational), "dose-response", opts, "xy");
-    const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 2), readTable(operational).titles);
+    const opts = newGraphOptions("xy-scatter");
+    const cols = plotColumns(readTable(operational), "xy-scatter", opts, "xy");
+    const fig = GRAPHS["xy-scatter"].build(
+      cols,
+      { ...opts, xyStyle: "points" },
+      paintOf(opts, 2),
+      readTable(operational).titles,
+    );
     addDoseResponseSpecialCurve(fig, cols, opts, operRun, { model: "operational-partial" }, paintOf(opts, 2));
     const traces = fig.data as { mode?: string; x?: number[]; y?: number[] }[];
     const curves = traces.filter((t) => t.mode === "lines" && t.x?.length === 101);

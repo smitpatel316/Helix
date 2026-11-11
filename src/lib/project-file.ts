@@ -135,11 +135,16 @@ type OptionalOption = {
 // prettier-ignore
 const OPTIONAL_OPTIONS = {
   yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number",
-  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", pcaAnalysisId: "text", kmeansAnalysisId: "text", monteCarloAnalysisId: "text", doseY: "text", doseLigandConcentration: "number", xVariable: "text", yVariable: "text",
+  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", pcaAnalysisId: "text", kmeansAnalysisId: "text", monteCarloAnalysisId: "text", xVariable: "text", yVariable: "text",
   volcanoX: "text", volcanoY: "text", volcanoLabel: "text", volcanoGroupA: "text", volcanoGroupB: "text",
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",
 } as const satisfies Record<OptionalOption, keyof typeof READ_OPTION>;
+// The retired dose-response graph's own options (before Helix 1.0.7): no
+// longer a GraphOptions field, but still read — fitsFromDoseGraphs below
+// needs them to turn an old graph into a scatter + analysis — and stripped
+// from every graph on the way out (see parseProjectFile).
+const LEGACY_DOSE_OPTIONS = ["doseY", "doseModel", "doseShowCurve", "doseShowEquation", "doseLigandConcentration"];
 // Options whose text is the user's (titles, column names), not a choice from a list.
 const FREE_TEXT_OPTIONS = new Set(["title", "xLabel", "yLabel"]);
 
@@ -418,7 +423,13 @@ function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: num
 /** Every option, of the right type, one of its choices and within its limits: a missing
  *  or wrong one takes its default, a number beyond its limits the nearest it can be. */
 function readOptions(raw: unknown): GraphOptions {
-  const o = isObj(raw) ? canonical(raw, [...Object.keys(DEFAULT_GRAPH_OPTIONS), ...Object.keys(OPTIONAL_OPTIONS)]) : {};
+  const o = isObj(raw)
+    ? canonical(raw, [
+        ...Object.keys(DEFAULT_GRAPH_OPTIONS),
+        ...Object.keys(OPTIONAL_OPTIONS),
+        ...LEGACY_DOSE_OPTIONS,
+      ])
+    : {};
   const out: Obj = { ...o, ...DEFAULT_GRAPH_OPTIONS };
   for (const [key, fallback] of Object.entries(DEFAULT_GRAPH_OPTIONS)) {
     const v = typeof o[key] === "string" && !FREE_TEXT_OPTIONS.has(key) ? lower(o[key]) : o[key];
@@ -576,6 +587,12 @@ export function parseProjectFile(
   }
 
   const fits = fitsFromDoseGraphs(nodes);
+  // The retired graph's options, on any graph that still carries them, go:
+  // the migration above already took them off the graphs it converted.
+  for (const node of Object.values(nodes)) {
+    if (node.type !== "graph" || !node.graphOptions) continue;
+    for (const key of LEGACY_DOSE_OPTIONS) delete (node.graphOptions as unknown as Obj)[key];
+  }
   const ids = (v: unknown) => (Array.isArray(v) ? v.filter((id): id is string => typeof id === "string") : []);
   const tables = Object.values(nodes).filter((n) => n.type === "table");
   if (tables.length === 0) return { error: "This project file has no readable data tables." };
@@ -667,7 +684,7 @@ function fitsFromDoseGraphs(nodes: Record<string, ProjectNode>): Record<string, 
         // The homologous model needs [L] (plan 28) — the graph carries it in
         // doseLigandConcentration; without it the created analysis errors
         // and the migrated scatter draws points only.
-        ...(typeof doseLigandConcentration === "number"
+        ...(typeof doseLigandConcentration === "number" && Number.isFinite(doseLigandConcentration)
           ? { ligandConcentration: doseLigandConcentration }
           : {}),
       }),

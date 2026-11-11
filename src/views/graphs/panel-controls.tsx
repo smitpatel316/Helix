@@ -398,8 +398,8 @@ export function NumRow({ label, value, onChange }: { label: string; value?: numb
 }
 
 /** A labelled single-select row built on SegmentedControl. `wrap` lets the
- *  options flow onto more rows instead of squeezing into one (the
- *  dose-response Model row, now 14 models, would clip otherwise). */
+ *  options flow onto more rows instead of squeezing into one (a long model
+ *  list would clip otherwise). */
 export function Choice<T extends string>({
   label,
   value,
