@@ -173,7 +173,7 @@ export const newProject = () => invoke("new_project");
 /** File ▸ Open…: the Open panel, then the chosen project opens as `openProjects` decides. */
 export const chooseProject = () => invoke("choose_project");
 
-/** File ▸ Import Prism File…: the Open panel for a Prism `.pzfx` file.
+/** File ▸ Import Prism File…: the Open panel for a Prism file (`.pzfx` or `.prism`).
  *  Non-blocking: the invoke returns at once, and the shell emits
  *  "prism-file-picked" with the path, or null on Cancel, once the user
  *  picks. A blocking picker here deadlocked the app (Nov 9, macOS +
@@ -191,6 +191,16 @@ export async function onPrismFilePicked(handler: (path: string | null) => void) 
 
 /** A Prism `.pzfx` file's text, for import. */
 export const readPrismText = (path: string) => invoke<string>("read_prism_text", { path });
+
+/** A Prism `.prism` file's bytes, for import — a `.prism` file is a ZIP, so
+ *  text won't do. The shell returns base64; this decodes it. */
+export async function readPrismBytes(path: string): Promise<Uint8Array> {
+  const base64 = await invoke<string>("read_prism_bytes", { path });
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
 
 /** In the engine window: calls `handler` when the last project window has closed. */
 export function onNoWindows(handler: () => void) {

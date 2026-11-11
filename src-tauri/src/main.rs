@@ -5,6 +5,7 @@
 // macOS-only Objective-C calls live behind #[cfg(target_os = "macos")]; the
 // Linux build (dev/test only — the Mac DMG stays the release) gets no-op or
 // xdg-open equivalents so the same commands keep their signatures.
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 #[cfg(target_os = "macos")]
 use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
 use serde::Serialize;
@@ -212,7 +213,8 @@ fn choose_project(app: AppHandle, window: WebviewWindow) {
     });
 }
 
-/// File ▸ Import Prism File…: the Open panel for a Prism `.pzfx` file.
+/// File ▸ Import Prism File…: the Open panel for a Prism file (`.pzfx` or
+/// `.prism`).
 /// Non-blocking, like choose_project: blocking_pick_file parks the main
 /// thread on a semaphore while the NSOpenPanel needs that same thread to
 /// process clicks — deadlock, Helix (not responding), 0% CPU (confirmed
@@ -223,7 +225,7 @@ fn choose_project(app: AppHandle, window: WebviewWindow) {
 #[tauri::command]
 fn choose_prism_file(app: AppHandle, window: WebviewWindow) {
     let label = window.label().to_string();
-    app.dialog().file().set_title("Import Prism File").add_filter("GraphPad Prism File", &["pzfx"]).pick_file(
+    app.dialog().file().set_title("Import Prism File").add_filter("GraphPad Prism File", &["pzfx", "prism"]).pick_file(
         move |file| {
             let picked = file.and_then(|file| file.into_path().ok()).map(|path| path.to_string_lossy().into_owned());
             let _ = app.emit_to(label.as_str(), "prism-file-picked", picked);
@@ -301,12 +303,21 @@ fn read_prism_text(path: String) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| e.to_string())
 }
 
+/// A Prism `.prism` file's bytes, for import — a `.prism` file is a ZIP, so
+/// text won't do. Base64, not a JSON number array: a 40 MB file would be a
+/// 40 M-number array the webview would have to parse one number at a time.
+#[tauri::command]
+fn read_prism_bytes(path: String) -> Result<String, String> {
+    check_extension(&path, &["prism"])?;
+    fs::read(path).map(|bytes| BASE64.encode(bytes)).map_err(|e| e.to_string())
+}
+
 /// Writes the raw request body to the (URL-encoded) `path` header, atomically.
 #[tauri::command]
 fn write_file(request: Request) -> Result<(), String> {
     let header = request.headers().get("path").and_then(|v| v.to_str().ok()).ok_or("missing path")?;
     let path = percent_encoding::percent_decode_str(header).decode_utf8().map_err(|e| e.to_string())?;
-    check_extension(&path, &["hlx", "png", "jpg", "jpeg", "svg"])?;
+    check_extension(&path, &["hlx", "prism", "png", "jpg", "jpeg", "svg"])?;
     let InvokeBody::Raw(data) = request.body() else { return Err("expected raw bytes".into()) };
     write_atomically(Path::new(path.as_ref()), data)
 }
@@ -619,6 +630,7 @@ fn main() {
             cancel_quit,
             read_text,
             read_prism_text,
+            read_prism_bytes,
             write_file,
             read_my_palettes,
             write_my_palettes,

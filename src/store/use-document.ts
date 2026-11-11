@@ -2,6 +2,7 @@ import * as React from "react";
 import { useProjectStore, type ProjectNode } from "./use-project-store";
 import { parseProjectFile, serializeProjectFile, PROJECT_FILE_EXTENSION } from "../lib/project-file";
 import { parsePzfx } from "../lib/pzfx";
+import { convertPrism, formatReport } from "../lib/prism";
 import * as native from "../native";
 import { loadRecents, MAX_RECENTS, saveRecents } from "./recents";
 import { openProjectsOrSay, sayGone } from "../menus";
@@ -167,6 +168,17 @@ export function useDocument() {
   };
 
   const importPrismFile = async (path: string) => {
+    if (path.toLowerCase().endsWith(".prism")) {
+      let bytes: Uint8Array;
+      try {
+        bytes = await native.readPrismBytes(path);
+      } catch {
+        report();
+        return native.alert("Couldn't Import File", `“${fileName(path)}” couldn't be read.`, "error");
+      }
+      await importPrismBytes(bytes, fileTitle(path));
+      return;
+    }
     let text: string;
     try {
       text = await native.readPrismText(path);
@@ -177,7 +189,35 @@ export function useDocument() {
     await importPrismText(text, fileTitle(path));
   };
 
-  /** File ▸ Import Prism File…: pick a `.pzfx` file and import it. In the web build
+  /** Imports a Prism `.prism` file (Prism 10's ZIP format) as a new untitled
+   *  project. Tables and the analyses Helix offers come across; graphs and
+   *  layouts don't — Prism stores them in a binary format it doesn't
+   *  document — and fitted results aren't carried: Helix recomputes every
+   *  analysis from the table when the file opens. The transfer report says
+   *  exactly what came across and what didn't, in plain language. */
+  const importPrismBytes = async (data: Uint8Array, name: string) => {
+    let converted;
+    try {
+      converted = await convertPrism(data, name);
+    } catch (err) {
+      report();
+      return native.alert(
+        "Couldn't Import File",
+        err instanceof Error ? err.message : "This file couldn't be imported.",
+        "error",
+      );
+    }
+    if (!(await confirmDiscard())) return;
+    latest.current.loadProject({ ...converted.project, filePath: null, edited: true });
+    setUntitled(name);
+    await native.alert(
+      "Prism File Imported",
+      formatReport(converted.report) + "\n\nSave the project to keep it as a Helix project.",
+      converted.report.issues.length ? "warning" : "info",
+    );
+  };
+
+  /** File ▸ Import Prism File…: pick a Prism file (`.pzfx` or `.prism`) and import it. In the web build
    *  (no native shell) the pick is a file input instead. */
   const importPrism = async () => {
     if (native.isNative) {
@@ -192,30 +232,37 @@ export function useDocument() {
       await native.choosePrismFile();
       return;
     }
-    const text = await new Promise<string | null>((resolve) => {
+    const picked = await new Promise<{ name: string; data: ArrayBuffer | string } | null>((resolve) => {
       const input = document.createElement("input");
       input.type = "file";
-      input.accept = ".pzfx";
+      input.accept = ".pzfx,.prism";
       input.onchange = () => {
         const file = input.files?.[0];
         if (!file) return resolve(null);
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
+        reader.onload = () => resolve({ name: file.name, data: reader.result as ArrayBuffer | string });
         reader.onerror = () => resolve(null);
-        reader.readAsText(file);
+        // A `.prism` file is a ZIP: read bytes, not text.
+        if (file.name.toLowerCase().endsWith(".prism")) reader.readAsArrayBuffer(file);
+        else reader.readAsText(file);
       };
       input.click();
     });
-    if (text) await importPrismText(text, "Prism import");
+    if (!picked) return;
+    if (typeof picked.data !== "string") {
+      await importPrismBytes(new Uint8Array(picked.data), picked.name.replace(/\.prism$/i, ""));
+    } else {
+      await importPrismText(picked.data, "Prism import");
+    }
   };
 
   const openPaths = (paths: string[]) => {
     const projects = paths.filter(isProjectFile);
-    const prism = paths.filter((p) => p.toLowerCase().endsWith(".pzfx"));
+    const prism = paths.filter((p) => p.toLowerCase().endsWith(".pzfx") || p.toLowerCase().endsWith(".prism"));
     if (paths.length > projects.length + prism.length) {
       void native.alert(
         "Can't Open File",
-        "Helix can only open .hlx project files and import .pzfx Prism files.",
+        "Helix can only open .hlx project files and import .pzfx / .prism Prism files.",
       );
     }
     if (projects.length) openProjectsOrSay(projects);
