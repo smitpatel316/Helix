@@ -199,6 +199,43 @@ check("a file Helix had to repair or bring up to date opens to be saved; a sound
   strictEqual(read(JSON.stringify(older)).updated, true);
 });
 
+// Plan 28: a dose-response graph's radioligand concentration — the
+// homologous model's [L], which the graph carries in its own options — is
+// written to the file, and on read the graph becomes a scatter whose created
+// Nonlinear regression analysis carries [L], so the homologous curve draws
+// instead of erroring.
+check("a dose-response graph keeps its radioligand concentration", () => {
+  const doseGraph: ProjectNode = {
+    id: "g2",
+    type: "graph",
+    name: "Homologous curve",
+    parentId: "t1",
+    graphType: "dose-response",
+    graphOptions: {
+      ...newGraphOptions("dose-response"),
+      doseModel: "homologous-competition-logx",
+      doseLigandConcentration: 1,
+    },
+  };
+  const file = JSON.parse(
+    serializeProjectFile({
+      nodes: { t1: table, g2: doseGraph },
+      rootOrder: ["t1"],
+      childOrder: { t1: ["g2"] },
+      activeNodeId: "g2",
+    }),
+  );
+  strictEqual(file.project.nodes.g2.graphOptions.doseLigandConcentration, 1);
+  const { project } = read(JSON.stringify(file));
+  const fit = Object.values(project.nodes).find(
+    (n) => n.type === "analysis" && n.parentId === "t1" && n.analysisType === "nonlinear-regression",
+  );
+  strictEqual(
+    (fit?.analysisParams as { ligandConcentration?: number } | undefined)?.ligandConcentration,
+    1,
+  );
+});
+
 check("a table that doesn't hold together is put straight", () => {
   const file = JSON.parse(serializeProjectFile(payload));
   Object.assign(file.project.nodes.t1.data, {
@@ -1111,6 +1148,40 @@ check("fitting a curve asks its kind, then its model, then what to compare", () 
     y: "A",
     model: "line",
   });
+  // Binding competition (plan 28): the dose list gains the two-site and
+  // homologous models; the Fit-Ki toggle appears on competition models only,
+  // then [L] and Kd — [L] only for homologous, whose Kd is fitted.
+  ok(options({ kind: "dose" }, "model").includes("two-site-competition-logx"));
+  ok(options({ kind: "dose" }, "model").includes("homologous-competition-logx"));
+  ok(!options({ kind: "other" }, "model").includes("two-site-competition-logx"));
+  deepStrictEqual(asked({ y: "A", kind: "dose", model: "inhibitor-3pl-logx" }).map((q) => q.id), [
+    "y",
+    "kind",
+    "model",
+    "compareWith",
+    "fitKi",
+  ]);
+  deepStrictEqual(
+    asked({ y: "A", kind: "dose", model: "inhibitor-3pl-logx", fitKi: "yes" }).map((q) => q.id),
+    ["y", "kind", "model", "compareWith", "fitKi", "ligandConcentration", "ligandKd"],
+  );
+  deepStrictEqual(
+    asked({ y: "A", kind: "dose", model: "homologous-competition-logx" }).map((q) => q.id),
+    ["y", "kind", "model", "compareWith", "ligandConcentration"],
+  );
+  ok(!asked({ y: "A", kind: "dose", model: "sigmoidal-4pl-logx" }).some((q) => q.id === "fitKi"));
+  deepStrictEqual(
+    wizard.finish(
+      { y: "A", kind: "dose", model: "inhibitor-3pl-logx", fitKi: "yes", ligandConcentration: "1", ligandKd: "0.5" },
+      table,
+    ).params,
+    { y: "A", model: "inhibitor-3pl-logx", fitKi: true, ligandConcentration: 1, ligandKd: 0.5 },
+  );
+  deepStrictEqual(
+    wizard.finish({ y: "A", kind: "dose", model: "homologous-competition-logx", ligandConcentration: "1" }, table)
+      .params,
+    { y: "A", model: "homologous-competition-logx", ligandConcentration: 1 },
+  );
 });
 
 check("data sets ticked again keep the table's order", () => {

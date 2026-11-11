@@ -66,6 +66,13 @@ export const DOSE_MODELS = [
   "inhibitor-3pl-logx",
   "asymmetric-5pl-logx",
   "asymmetric-5pl-x",
+  // Binding — Competition (plan 28): the one-site Fit logIC50 is the
+  // inhibitor 3PL above; the two-site and homologous competition curves
+  // are dose-response curves too, so they live here (wizard dose list,
+  // dose-response graph, curve comparison).
+  "two-site-competition-logx",
+  "two-site-competition-x",
+  "homologous-competition-logx",
 ] as const;
 /** Curves of growth, decay and enzyme kinetics: not standard curves to interpolate. */
 export const KINETIC_MODELS = ["exponential-growth", "one-phase-decay", "michaelis-menten"] as const;
@@ -86,6 +93,10 @@ export const NONLINEAR_MODELS = [
   // already in KINETIC_MODELS).
   "allosteric-sigmoidal",
   "substrate-inhibition",
+  // Plan 28: binding competition (two-site + homologous) — already in
+  // DOSE_MODELS above, so they are covered by the spread; do NOT list them
+  // again here (a duplicate entry double-runs every NONLINEAR_MODELS sweep
+  // and doubles the model enum in project-file.ts).
 ] as const;
 /** What comparing two curves asks: is the EC50 different, or does one curve fit both. */
 export const CURVE_COMPARISONS = ["ec50", "all"] as const;
@@ -233,6 +244,19 @@ export interface NonlinearRegressionParams {
   compare?: (typeof CURVE_COMPARISONS)[number];
   /** Interpolate the unknowns: the rows holding a Y but no X get the X the curve gives them. */
   interpolate?: boolean;
+  /** Radioligand concentration [L], in the same units as X's concentrations
+   *  (plan 28 — reuses plan 16's `ligandConcentration` vocabulary). Required
+   *  for the homologous competition model ([L] is a constant of its
+   *  equation) and when `fitKi` is set; ignored otherwise. */
+  ligandConcentration?: number;
+  /** Radioligand dissociation constant Kd, in the same units as [L].
+   *  Required when `fitKi` is set (Cheng–Prusoff divisor 1 + [L]/Kd);
+   *  ignored otherwise. The homologous model fits Kd — it is not entered. */
+  ligandKd?: number;
+  /** When true on a one-site (inhibitor 3PL) or two-site competition fit,
+   *  the result also reports Ki (Cheng–Prusoff: Ki = IC50 / (1 + [L]/Kd))
+   *  alongside IC50. False/absent: today's behaviour (IC50 only). */
+  fitKi?: boolean;
 }
 
 /** Params for "correlation-matrix": Pearson (parametric) vs. Spearman
@@ -974,6 +998,11 @@ export interface AnalysisResult {
   fit?: { sets: string[]; rows: FitRow[] };
   /** A standard curve's unknowns, interpolated. */
   interpolated?: InterpolatedRow[];
+  /** The radioligand concentration [L] a homologous-competition fit used
+   *  (plan 28): the fitted-curve overlays need it to evaluate the curve
+   *  (Y = Bmax·[L]/([L] + 10^X + Kd) + Bottom), and the result alone does
+   *  not carry it. Set whenever the run supplied one. */
+  ligandConcentration?: number;
   /** Optional variance components ("mixed-effects"): one row per
    *  random-effects grouping (subject intercept + residual in v1). */
   varianceComponents?: VarianceComponent[];

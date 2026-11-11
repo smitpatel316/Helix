@@ -13,8 +13,16 @@ function coef(coefficients: RegressionCoefficient[], term: string): number {
   return coefficients.find((c) => c.term === term)?.estimate ?? NaN;
 }
 
-/** The fitted curve at `x`: the model's equation (nonlinear-regression.ts) with its coefficients. */
-export function evaluate(model: NonlinearModel, coefficients: RegressionCoefficient[], x: number): number {
+/** The fitted curve at `x`: the model's equation (nonlinear-regression.ts) with its coefficients.
+ *  The homologous model also needs the radioligand concentration [L] (its
+ *  fit carries it — see AnalysisResult.ligandConcentration); without it the
+ *  curve is undefined (NaN). */
+export function evaluate(
+  model: NonlinearModel,
+  coefficients: RegressionCoefficient[],
+  x: number,
+  ligandConcentration?: number,
+): number {
   const c = (term: string) => coef(coefficients, termLabel(term));
   const [bottom, top, hill, s] = [c("Bottom"), c("Top"), c("HillSlope"), c("S")];
   const rise = top - bottom;
@@ -59,6 +67,23 @@ export function evaluate(model: NonlinearModel, coefficients: RegressionCoeffici
       return (c("Vmax") * x ** c("HillSlope")) / (c("Khalf") ** c("HillSlope") + x ** c("HillSlope"));
     case "substrate-inhibition":
       return (c("Vmax") * x) / (c("Km") + x + x ** 2 / c("Ki"));
+    // Binding competition (plan 28): both Hill slopes fixed at −1 (Prism's
+    // built-in two-site model — see modelSpec in stats/xy/nonlinear-fit.ts).
+    case "two-site-competition-logx": {
+      const frac = c("FractionHi");
+      return (
+        bottom +
+        rise * (frac / (1 + 10 ** (x - c("LogIC50Hi"))) + (1 - frac) / (1 + 10 ** (x - c("LogIC50Lo"))))
+      );
+    }
+    case "two-site-competition-x": {
+      const frac = c("FractionHi");
+      return bottom + rise * (frac / (1 + x / c("IC50Hi")) + (1 - frac) / (1 + x / c("IC50Lo")));
+    }
+    case "homologous-competition-logx": {
+      const l = ligandConcentration ?? NaN;
+      return (c("Bmax") * l) / (l + 10 ** x + 10 ** c("LogKd")) + c("Bottom");
+    }
   }
 }
 
@@ -69,13 +94,14 @@ function fittedCurve(
   xMin: number,
   xMax: number,
   steps = 100,
+  ligandConcentration?: number,
 ): { x: number[]; y: number[] } {
   const x: number[] = [];
   const y: number[] = [];
   for (let i = 0; i <= steps; i++) {
     const x0 = xMin + ((xMax - xMin) * i) / steps;
     x.push(x0);
-    y.push(evaluate(model, coefficients, x0));
+    y.push(evaluate(model, coefficients, x0, ligandConcentration));
   }
   return { x, y };
 }
@@ -114,9 +140,12 @@ export function addFittedCurve(
 ) {
   const coefficients = fit.coefficients ?? [];
   if (!coefficients.length) return;
+  // The homologous curve needs [L], which the fit carries — without it,
+  // there is no curve to draw.
+  if (model === "homologous-competition-logx" && fit.ligandConcentration == null) return;
   const xs = pairUp(x, y).x.filter((v) => !positiveXOnly(model) || v > 0);
   if (!xs.length) return;
-  const curve = fittedCurve(model, coefficients, ...extent(xs));
+  const curve = fittedCurve(model, coefficients, ...extent(xs), 100, fit.ligandConcentration);
   fig.data = [
     {
       type: "scatter",

@@ -56,6 +56,12 @@ export const termLabel = (term: string) => TERM_LABEL[term] ?? term;
 // doubling time null (see the derived expressions) and is noted, not hidden.
 const isExponential = (model: NonlinearModel) => EXPONENTIAL_MODELS.includes(model);
 const isEnzyme = (model: NonlinearModel) => ENZYME_MODELS.includes(model);
+/** Binding competition (plan 28): the one-site Fit logIC50 (inhibitor 3PL)
+ *  and the two-site models, which the Fit-Ki toggle applies to. */
+const isTwoSiteCompetition = (model: NonlinearModel) =>
+  model === "two-site-competition-logx" || model === "two-site-competition-x";
+const isCompetition = (model: NonlinearModel) =>
+  model === "inhibitor-3pl-logx" || isTwoSiteCompetition(model) || model === "homologous-competition-logx";
 
 /** A coefficient's estimate, looked up by its equation name ("HillSlope",
  *  "S") — results store the display name ("Hill slope", "Asymmetry (S)"). */
@@ -65,7 +71,11 @@ const coefOf = (coefficients: RegressionCoefficient[], term: string) =>
 /** The fitted equation, from the fitted coefficients (4 significant figures,
  *  like the rest of Helix's display). Only the exponential models carry one —
  *  the older models keep their pinned result shape. */
-function equation(model: NonlinearModel, coefficients: RegressionCoefficient[]): string | undefined {
+function equation(
+  model: NonlinearModel,
+  coefficients: RegressionCoefficient[],
+  ligandConcentration?: number,
+): string | undefined {
   const y0 = coefOf(coefficients, "Y0");
   const plateau = coefOf(coefficients, "Plateau");
   const k = coefOf(coefficients, "K");
@@ -112,6 +122,40 @@ function equation(model: NonlinearModel, coefficients: RegressionCoefficient[]):
       if (vmax == null || km == null || ki == null) return undefined;
       return `Y = ${num(vmax)}·X / (${num(km)} + X + X²/${num(ki)})`;
     }
+    // Binding competition (plan 28).
+    case "two-site-competition-logx": {
+      const bottom = coefOf(coefficients, "Bottom");
+      const top = coefOf(coefficients, "Top");
+      const lo1 = coefOf(coefficients, "LogIC50Hi");
+      const lo2 = coefOf(coefficients, "LogIC50Lo");
+      const frac = coefOf(coefficients, "FractionHi");
+      if (bottom == null || top == null || lo1 == null || lo2 == null || frac == null) return undefined;
+      // A negative LogIC50 would render as "X − -2"; fold the sign in.
+      const sub = (v: number) => (v < 0 ? `X + ${num(-v)}` : `X − ${num(v)}`);
+      return (
+        `Y = ${num(bottom)} + (${num(top)} − ${num(bottom)})·(${num(frac)}/(1 + 10^(${sub(lo1)})) + ` +
+        `${num(1 - frac)}/(1 + 10^(${sub(lo2)})))`
+      );
+    }
+    case "two-site-competition-x": {
+      const bottom = coefOf(coefficients, "Bottom");
+      const top = coefOf(coefficients, "Top");
+      const ic1 = coefOf(coefficients, "IC50Hi");
+      const ic2 = coefOf(coefficients, "IC50Lo");
+      const frac = coefOf(coefficients, "FractionHi");
+      if (bottom == null || top == null || ic1 == null || ic2 == null || frac == null) return undefined;
+      return (
+        `Y = ${num(bottom)} + (${num(top)} − ${num(bottom)})·(${num(frac)}/(1 + X/${num(ic1)}) + ` +
+        `${num(1 - frac)}/(1 + X/${num(ic2)}))`
+      );
+    }
+    case "homologous-competition-logx": {
+      const bmax = coefOf(coefficients, "Bmax");
+      const logKd = coefOf(coefficients, "LogKd");
+      const bottom = coefOf(coefficients, "Bottom");
+      if (bmax == null || logKd == null || bottom == null || ligandConcentration == null) return undefined;
+      return `Y = ${num(bmax)}·${num(ligandConcentration)}/(${num(ligandConcentration)} + 10^X + 10^${num(logKd)}) + ${num(bottom)}`;
+    }
     default:
       return undefined;
   }
@@ -120,7 +164,12 @@ function equation(model: NonlinearModel, coefficients: RegressionCoefficient[]):
 /** The data-driven starting values the R fit used, in the same terms as
  *  modelSpec's `start` list — recomputed here from the fitted points, so the
  *  note always names what nls() actually started from. */
-function startingValues(model: NonlinearModel, xs: number[], ys: number[]): string {
+function startingValues(
+  model: NonlinearModel,
+  xs: number[],
+  ys: number[],
+  ligandConcentration?: number,
+): string {
   const minY = Math.min(...ys);
   const maxY = Math.max(...ys);
   const yAtMinX = ys[xs.indexOf(Math.min(...xs))];
@@ -149,6 +198,36 @@ function startingValues(model: NonlinearModel, xs: number[], ys: number[]): stri
       return `Starting values: Vmax = ${num(maxY * 1.1)}, Khalf = ${num(median(xs.filter((x) => x > 0)))}, Hill slope = 1.`;
     case "substrate-inhibition":
       return `Starting values: Vmax = ${num(maxY * 1.5)}, Km = ${num(median(xs.filter((x) => x > 0)))}, Ki = ${num(Math.max(...xs))}.`;
+    // Binding competition (plan 28): the two-site starts are the half-medians
+    // (high-affinity from the low-concentration half, low-affinity from the
+    // high half, fraction 0.5); the homologous Bmax start rescales the span
+    // by ([L] + Kd₀)/[L], since Bmax is the binding at infinite [L].
+    case "two-site-competition-logx": {
+      const mid = median(xs);
+      return (
+        `Starting values: Bottom = ${num(minY)}, Top = ${num(maxY)}, ` +
+        `LogIC50 (high affinity) = ${num(median(xs.filter((x) => x <= mid)))}, ` +
+        `LogIC50 (low affinity) = ${num(median(xs.filter((x) => x > mid)))}, Fraction (high affinity) = 0.5.`
+      );
+    }
+    case "two-site-competition-x": {
+      const mid = median(xs);
+      // The R start is the geometric mean of each half (see modelSpec) —
+      // concentrations are log-spaced in practice, so the geometric mean is
+      // the half's centre on the scale the curve lives on.
+      const geo = (v: number[]) => 10 ** (v.reduce((s, x) => s + Math.log10(x), 0) / v.length);
+      return (
+        `Starting values: Bottom = ${num(minY)}, Top = ${num(maxY)}, ` +
+        `IC50 (high affinity) = ${num(geo(xs.filter((x) => x <= mid)))}, ` +
+        `IC50 (low affinity) = ${num(geo(xs.filter((x) => x > mid)))}, Fraction (high affinity) = 0.5.`
+      );
+    }
+    case "homologous-competition-logx": {
+      if (ligandConcentration == null) return "";
+      const logKd = median(xs);
+      const bmax = ((maxY - minY) * (ligandConcentration + 10 ** logKd)) / ligandConcentration;
+      return `Starting values: Bmax = ${num(bmax)}, LogKd = ${num(logKd)}, Bottom = ${num(minY)}.`;
+    }
     default:
       return "";
   }
@@ -201,6 +280,20 @@ function fitWarnings(model: NonlinearModel, coefficients: RegressionCoefficient[
       if (Math.max(...xs) < km || Math.min(...positive) > km)
         out.push("The substrate range does not bracket Km — Km is imprecisely estimated.");
     }
+  }
+  if (isTwoSiteCompetition(model)) {
+    // A fraction at either edge means one site explains the data — the
+    // second LogIC50 is unidentifiable, so the one-site fit is preferred.
+    const frac = coefOf(coefficients, "FractionHi");
+    if (frac != null && (frac <= 0.02 || frac >= 0.98))
+      out.push(
+        "The high-affinity fraction is near 0 or 1 — the data are consistent with one site; prefer the one-site fit.",
+      );
+  }
+  if (model === "homologous-competition-logx") {
+    const bmax = coefOf(coefficients, "Bmax");
+    if (bmax != null && bmax <= 0)
+      out.push("Fitted Bmax ≤ 0 — the data do not support this binding model.");
   }
   return out;
 }
@@ -339,7 +432,36 @@ export async function runNonlinearRegression(
   const { x: xCol, ys: yCols } = splitXY(columns);
   const yCol = params?.y === undefined ? yCols[0] : yCols.find((c) => c.name === params.y);
   if (!xCol || !yCol) return { error: xyProblem(columns, params?.y)! };
-  const spec = modelSpec(model);
+  // Binding competition (plan 28): Fit Ki needs [L] and Kd (the
+  // Cheng–Prusoff divisor 1 + [L]/Kd); the homologous model needs [L] (a
+  // constant of its equation). Refuse before calling R — a missing constant
+  // is a user-facing error, not an R crash. `fitKi` on any other model is
+  // ignored (the wizard only offers it on competition fits).
+  const isHomologous = model === "homologous-competition-logx";
+  const wantsKi = params?.fitKi === true && (model === "inhibitor-3pl-logx" || isTwoSiteCompetition(model));
+  const ligand = params?.ligandConcentration;
+  const ligandKd = params?.ligandKd;
+  const validPositive = (v: number | undefined) => v != null && Number.isFinite(v) && v > 0;
+  if (isHomologous && !validPositive(ligand))
+    return {
+      error:
+        "Enter the radioligand concentration [L] (greater than 0, in the same units as X) to fit the homologous competition model.",
+    };
+  if (wantsKi && (!validPositive(ligand) || !validPositive(ligandKd)))
+    return {
+      error:
+        "Enter the radioligand concentration [L] and Kd (both greater than 0, in the same units as X) to calculate Ki — Ki = IC50 / (1 + [L]/Kd).",
+    };
+  const kiDivisor = wantsKi ? 1 + ligand! / ligandKd! : undefined;
+  const spec = modelSpec(model, {
+    ...(kiDivisor != null ? { kiDivisor } : {}),
+    ...(isHomologous ? { ligandConcentration: ligand } : {}),
+  });
+  // A two-site fit that does not converge says so plainly (plan 28): the
+  // likeliest cause is data with a single phase, not a numerical quirk.
+  const twoSiteError: AnalysisOutcome = {
+    error: "Two-site fit did not converge — try the one-site fit first, or check that the curve shows two clear phases.",
+  };
   const other = params?.compareWith === undefined ? undefined : yCols.find((c) => c.name === params.compareWith);
   if (params?.compareWith !== undefined && !other) return { error: xyProblem(columns, params.compareWith)! };
   if (other && !spec.dose) return { error: "Only dose-response curves can be compared." };
@@ -370,6 +492,7 @@ export async function runNonlinearRegression(
       v = await evalNamedVector(rCode);
     } catch (err) {
       // R found no best fit (nls stops on its own terms): said plainly, with the likeliest reason.
+      if (isTwoSiteCompetition(model)) return twoSiteError;
       if (String(err).includes("shared midpoint")) {
         const midpoint = spec.dose!.midpoint.replace(/^Log/, "");
         return {
@@ -403,6 +526,7 @@ export async function runNonlinearRegression(
     try {
       v = await evalNamedVector(rCode);
     } catch (err) {
+      if (isTwoSiteCompetition(model)) return twoSiteError;
       return fitError(err, model);
     }
   } else {
@@ -414,6 +538,7 @@ export async function runNonlinearRegression(
       // result from it (no second R call).
       return assembleResult(model, spec, xCol, yCol, other, sets, [fitted], [], [], titles, first, fitted.retried, params);
     } catch (err) {
+      if (isTwoSiteCompetition(model)) return twoSiteError;
       return fitError(err, model);
     }
   }
@@ -500,8 +625,28 @@ async function assembleResult(
     `95% CIs are asymptotic (from each parameter's standard error${spec.terms.includes("S") ? "; the asymmetry S's, on its log" : ""}).` +
     (other ? ` Extra sum-of-squares F test: ${question} ${answer}` : "") +
     interpolation;
-  const eq = isExponential(model) || isEnzyme(model) ? equation(model, coefficients) : undefined;
+  const eq =
+    isExponential(model) || isEnzyme(model) || isCompetition(model)
+      ? equation(model, coefficients, params?.ligandConcentration)
+      : undefined;
   const extraNotes: string[] = [];
+  if (isCompetition(model)) {
+    const starts = startingValues(model, first.xs, first.ys, params?.ligandConcentration);
+    if (starts) extraNotes.push(starts);
+    // A Ki without its [L] and Kd is uninterpretable — name both, and that
+    // the divisor is constant (so log Ki's SE is logIC50's SE).
+    if (params?.fitKi === true && (model === "inhibitor-3pl-logx" || isTwoSiteCompetition(model)))
+      extraNotes.push(
+        `Ki = IC50 / (1 + [L]/Kd), with [L] = ${num(params.ligandConcentration)} and Kd = ${num(params.ligandKd)} ` +
+          `(same units as X); the divisor is a constant, so each Ki's 95% CI comes from its logIC50's.`,
+      );
+    if (model === "homologous-competition-logx")
+      extraNotes.push(
+        `Homologous competition: [L] = ${num(params?.ligandConcentration)} (same units as X); ` +
+          `Kd = Ki, since the competitor and radioligand are the same compound.`,
+      );
+    extraNotes.push(...fitWarnings(model, coefficients, first.xs));
+  }
   if (isExponential(model) || isEnzyme(model)) {
     extraNotes.push(startingValues(model, first.xs, first.ys));
     if (isEnzyme(model)) {
@@ -534,5 +679,7 @@ async function assembleResult(
     notes: notes + (extraNotes.length ? ` ${extraNotes.join(" ")}` : ""),
     coefficients,
     ...(params?.interpolate ? { interpolated } : {}),
+    // The overlays need [L] to evaluate a homologous curve (plan 28).
+    ...(params?.ligandConcentration != null ? { ligandConcentration: params.ligandConcentration } : {}),
   };
 }

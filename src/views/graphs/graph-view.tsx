@@ -285,6 +285,11 @@ export function GraphView({ node }: { node: ProjectNode }) {
   const doseOutcome = useAnalysis(type === "dose-response" && doseY ? "nonlinear-regression" : undefined, data, {
     y: doseY,
     model: options.doseModel,
+    // The homologous model needs [L] (plan 28); the graph carries it in its
+    // own options — without it the fit errors and the graph draws points only.
+    ...(options.doseLigandConcentration != null
+      ? { ligandConcentration: options.doseLigandConcentration }
+      : {}),
   });
   const doseFit = doseOutcome && !("error" in doseOutcome) ? doseOutcome : null;
   // A dose-response graph also draws the drop-lines of a sibling

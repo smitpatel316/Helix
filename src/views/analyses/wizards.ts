@@ -950,7 +950,14 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         (m): [string, string] => [m, MODEL_LABEL[m]],
       );
       const others = yNames(table).filter((n) => n !== (a.y ?? yNames(table)[0]));
-      const midpoint = String(a.model).startsWith("inhibitor") ? "IC50" : "EC50";
+      const modelName = String(a.model ?? "");
+      const midpoint = modelName.startsWith("inhibitor")
+        ? "IC50"
+        : modelName.startsWith("two-site")
+          ? "IC50 (high affinity)"
+          : modelName === "homologous-competition-logx"
+            ? "Kd"
+            : "EC50";
       return [
         choice("y", "Which Y data set should be fitted?", names(yNames(table))),
         choice("kind", "Which kind of curve?", [
@@ -971,6 +978,40 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
             ["ec50", `Is the ${midpoint} different between the two data sets?`],
             ["all", "Does one curve fit both data sets?"],
           ]),
+        // Binding competition (plan 28): Fit Ki on the one-site (inhibitor
+        // 3PL) and two-site competition fits — Ki = IC50 / (1 + [L]/Kd).
+        dose &&
+          (modelName === "inhibitor-3pl-logx" || modelName.startsWith("two-site-competition")) &&
+          choice("fitKi", "Also report Ki (Cheng–Prusoff)?", [
+            ["no", "Report IC50 only"],
+            ["yes", "Also report Ki (Cheng–Prusoff)"],
+          ]),
+        // Fit Ki — or the homologous model, whose equation needs [L] — both
+        // values required, in the same units as X; the wizard must not
+        // proceed without them (the runner re-checks, so a bad value passed
+        // straight to runAnalysis still fails clearly).
+        dose &&
+          (a.fitKi === "yes" || modelName === "homologous-competition-logx") &&
+          {
+            id: "ligandConcentration",
+            ask: "Radioligand concentration [L], in the same units as X.",
+            kind: "text",
+            label: "Radioligand concentration [L] =",
+            initial: "",
+            placeholder: "e.g. 1",
+            parse: (text: string) => parseRequiredPositive(text, "radioligand concentration [L]"),
+          },
+        dose &&
+          a.fitKi === "yes" &&
+          {
+            id: "ligandKd",
+            ask: "Radioligand Kd, in the same units as [L] — Ki = IC50 / (1 + [L]/Kd).",
+            kind: "text",
+            label: "Radioligand Kd =",
+            initial: "",
+            placeholder: "e.g. 0.5",
+            parse: (text: string) => parseRequiredPositive(text, "radioligand Kd"),
+          },
       ];
     },
     finish: (a) => {
@@ -978,9 +1019,22 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         a.kind !== "other" && a.compareWith !== undefined && a.compareWith !== "none"
           ? { compareWith: a.compareWith as string, compare: a.compare as NonlinearRegressionParams["compare"] }
           : {};
+      const ligand = parseRequiredPositive(String(a.ligandConcentration ?? ""), "radioligand concentration [L]");
+      const kd = parseRequiredPositive(String(a.ligandKd ?? ""), "radioligand Kd");
+      const wantsKi = a.fitKi === "yes";
+      const isHomologous = a.model === "homologous-competition-logx";
       return {
         type: "nonlinear-regression",
-        params: { y: a.y as string, model: a.model as NonlinearRegressionParams["model"], ...compare },
+        params: {
+          y: a.y as string,
+          model: a.model as NonlinearRegressionParams["model"],
+          ...compare,
+          ...(wantsKi ? { fitKi: true } : {}),
+          ...((wantsKi || isHomologous) && ligand.value !== undefined
+            ? { ligandConcentration: ligand.value }
+            : {}),
+          ...(wantsKi && kd.value !== undefined ? { ligandKd: kd.value } : {}),
+        },
       };
     },
   },

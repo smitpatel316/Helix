@@ -241,6 +241,59 @@ const doseFall = table(
   ["Title", "X", "Response"],
   doseLog.rows.map(([, x, y]) => ["", x ?? "", String(100 - Number(y))]),
 );
+/** Binding — Competition (plan 28): noiseless by construction on the doseLog
+ *  X grid. Two-site: high-affinity IC50 0.01 (log −2), low-affinity IC50 10
+ *  (log 1), high-affinity fraction 0.5, Bottom 0, Top 100 — Y =
+ *  100·(0.5/(1+10^(X+2)) + 0.5/(1+10^(X−1))). The raw-concentration twin
+ *  (10^ the log grid) is the -x model's fixture. Homologous: [L] = 1,
+ *  Kd = 0.5, Bmax = 100, Bottom = 0 — Y = 100·1/(1 + 10^X + 0.5); the top
+ *  plateau (66.67) sits below Bmax, which is the point: Bmax is the binding
+ *  at infinite [L], not the curve's top. */
+const competitionTwoSite = table(
+  ["Title", "X", "Response"],
+  [
+    ["", "-3", "95.4495459545"],
+    ["", "-2.5", "87.9715399425"],
+    ["", "-2", "74.95004995"],
+    ["", "-1.5", "61.8550382084"],
+    ["", "-1", "54.0504050405"],
+    ["", "-0.5", "50"],
+    ["", "0", "45.9495949595"],
+    ["", "0.5", "38.1449617916"],
+    ["", "1", "25.04995005"],
+    ["", "1.5", "12.0284600575"],
+  ],
+);
+const competitionTwoSiteRaw = table(
+  ["Title", "X", "Response"],
+  [
+    ["", "0.001", "95.4495459545"],
+    ["", "0.0031622777", "87.9715399425"],
+    ["", "0.01", "74.95004995"],
+    ["", "0.0316227766", "61.8550382084"],
+    ["", "0.1", "54.0504050405"],
+    ["", "0.316227766", "50"],
+    ["", "1", "45.9495949595"],
+    ["", "3.1622776602", "38.1449617916"],
+    ["", "10", "25.04995005"],
+    ["", "31.6227766017", "12.0284600575"],
+  ],
+);
+const competitionHomologous = table(
+  ["Title", "X", "Response"],
+  [
+    ["", "-3", "66.6222518321"],
+    ["", "-2.5", "66.5264166658"],
+    ["", "-2", "66.2251655629"],
+    ["", "-1.5", "65.2902278078"],
+    ["", "-1", "62.5"],
+    ["", "-0.5", "55.0591736736"],
+    ["", "0", "40"],
+    ["", "0.5", "21.4487440022"],
+    ["", "1", "8.6956521739"],
+    ["", "1.5", "3.0190705689"],
+  ],
+);
 /** Three complete pairs — too few to smooth (needs ≥ 4). */
 const smoothTooFew = table(
   ["Title", "X", "Response"],
@@ -1968,6 +2021,17 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "semilog-line" }],
   ["doseLog", doseLog, "nonlinear-regression", { model: "agonist-3pl-logx" }],
   ["doseFall", doseFall, "nonlinear-regression", { model: "inhibitor-3pl-logx" }],
+  // Binding — Competition (plan 28): Fit Ki on the one-site inhibitor fit
+  // ([L] = 1, Kd = 0.5 → Ki = IC50/3), the two-site logx/x fits (with and
+  // without Fit Ki), the homologous fit ([L] = 1), and the validation
+  // errors — Ki without [L]/Kd, homologous without [L].
+  ["doseFall", doseFall, "nonlinear-regression", { model: "inhibitor-3pl-logx", fitKi: true, ligandConcentration: 1, ligandKd: 0.5 }],
+  ["competitionTwoSite", competitionTwoSite, "nonlinear-regression", { model: "two-site-competition-logx" }],
+  ["competitionTwoSite", competitionTwoSite, "nonlinear-regression", { model: "two-site-competition-logx", fitKi: true, ligandConcentration: 1, ligandKd: 0.5 }],
+  ["competitionTwoSiteRaw", competitionTwoSiteRaw, "nonlinear-regression", { model: "two-site-competition-x" }],
+  ["competitionHomologous", competitionHomologous, "nonlinear-regression", { model: "homologous-competition-logx", ligandConcentration: 1 }],
+  ["doseFall", doseFall, "nonlinear-regression", { model: "inhibitor-3pl-logx", fitKi: true }],
+  ["competitionHomologous", competitionHomologous, "nonlinear-regression", { model: "homologous-competition-logx" }],
   ["doseLog", doseLog, "nonlinear-regression", { model: "asymmetric-5pl-logx" }],
   ["doseUnknowns", doseUnknowns, "nonlinear-regression", { model: "sigmoidal-4pl-logx", interpolate: true }],
   [
@@ -2722,7 +2786,7 @@ async function disagreements(): Promise<string[]> {
   // two-phase/plateau/association models on their expX series, the enzyme
   // models on their enzymeS series — running them on doseLog's log-X (or
   // the wrong series) is a convergence/validation error, not a fit.
-  const curveData: Partial<Record<NonlinearModel, [TableData, string?]>> = {
+  const curveData: Partial<Record<NonlinearModel, [TableData, string?, { ligandConcentration?: number }?]>> = {
     "inhibitor-3pl-logx": [doseFall],
     "two-phase-decay": [expX, "B"],
     "plateau-decay": [expX, "E"],
@@ -2737,11 +2801,18 @@ async function disagreements(): Promise<string[]> {
     "exponential-growth": [growth],
     "one-phase-decay": [decay],
     "michaelis-menten": [enzyme],
+    // Plan 28: the competition models run on their own fixtures — the
+    // generic fallback (doseLog/doseRaw) is a rising one-site curve, which
+    // a falling two-site curve cannot fit, and the homologous model needs
+    // [L] supplied (it errors without it, by design).
+    "two-site-competition-logx": [competitionTwoSite],
+    "two-site-competition-x": [competitionTwoSiteRaw],
+    "homologous-competition-logx": [competitionHomologous, undefined, { ligandConcentration: 1 }],
   };
-  for (const [model, [data, y]] of NONLINEAR_MODELS.map(
+  for (const [model, [data, y, extra]] of NONLINEAR_MODELS.map(
     (m) => [m, curveData[m] ?? (m.endsWith("-x") ? [doseRaw] : [doseLog])] as const,
   )) {
-    const r = await runAnalysis("nonlinear-regression", data, y ? { y, model } : { model });
+    const r = await runAnalysis("nonlinear-regression", data, { model, ...(y ? { y } : {}), ...extra });
     if ("error" in r) {
       out.push(`${model}: ${r.error}`);
       continue;
@@ -2750,7 +2821,9 @@ async function disagreements(): Promise<string[]> {
     const pairs = pairUp(dose!, ys.find((c) => c.name === (y ?? ys[0].name))!);
     const ss = pairs.x.reduce(
       (sum, x, i) =>
-        positiveXOnly(model) && x <= 0 ? sum : sum + (pairs.y[i] - doseCurveAt(model, r.coefficients!, x)) ** 2,
+        positiveXOnly(model) && x <= 0
+          ? sum
+          : sum + (pairs.y[i] - doseCurveAt(model, r.coefficients!, x, extra?.ligandConcentration)) ** 2,
       0,
     );
     const rss = r.fit?.rows.find((row) => row.label === "Sum of squares")?.values?.[0];
@@ -5390,6 +5463,353 @@ async function disagreements(): Promise<string[]> {
     out.push(
       `Binding kinetics wizard (assoc-then-dissoc): ${JSON.stringify(kinAsked({ model: "association-then-dissociation" }))}, expected ["y", "model", "hotNM", "time0"]`,
     );
+  // Binding — Competition (plan 28): Fit Ki (Cheng–Prusoff) on the one-site
+  // inhibitor fit and the two-site fits, the two-site logx/x fits and the
+  // homologous fit on noiseless fixtures (relative tolerance 1e-4 two-site,
+  // 1e-6 homologous/one-site), the validation errors, the degenerate-fraction
+  // note, and the overlays (TS evaluator vs R).
+  // DEVIATIONS from the plan, verified in R before implementing:
+  // (1) the plan's one-site values (Bottom 1.278, Top 99.242, LogIC50
+  // −0.8420, HillSlope 0.9770) are the 4PL fit of the RISING doseLog table,
+  // not the inhibitor 3PL (fixed slope −1) on doseFall — the 3PL gives
+  // Bottom 1.0358, Top 98.4084, LogIC50 −0.84155, and has no HillSlope term.
+  // The Ki assertion still holds: IC50 0.14403 / 3 = 0.04801.
+  // (2) Prism's built-in two-site model fixes both Hill slopes at −1, so
+  // there is no HillSlope coefficient (the plan's equation is Prism's older
+  // classic form); the default Gauss-Newton nls fails on noiseless
+  // two-site/homologous data, so both fit with algorithm "port".
+  const compCoef = (r: AnalysisResult | { error: string }, term: string) =>
+    "error" in r ? null : (r.coefficients?.find((c) => c.term === term)?.estimate ?? null);
+  const compFit = (r: AnalysisResult | { error: string }, label: string) =>
+    "error" in r ? null : (r.fit?.rows.find((row) => row.label === label)?.values?.[0] ?? null);
+  const compClose = (got: number | null, want: number, tol: number) =>
+    got != null && Math.abs(got - want) <= tol;
+  const compCloseRel = (got: number | null, want: number, tol: number) =>
+    got != null && Math.abs(got - want) <= tol * Math.max(Math.abs(want), 1e-12);
+  // One-site Fit Ki on doseFall ([L] = 1, Kd = 0.5 → divisor 3).
+  const fitKi = await runAnalysis("nonlinear-regression", doseFall, {
+    model: "inhibitor-3pl-logx",
+    fitKi: true,
+    ligandConcentration: 1,
+    ligandKd: 0.5,
+  });
+  for (const [term, want] of [
+    ["Bottom", 1.0358],
+    ["Top", 98.4084],
+    ["LogIC50", -0.84155],
+  ] as const) {
+    if (!compClose(compCoef(fitKi, term), want, 0.01))
+      out.push(`Competition one-site ${term}: ${compCoef(fitKi, term)}, expected ${want}`);
+  }
+  if (!compClose(compFit(fitKi, "IC50"), 0.14403, 0.002))
+    out.push(`Competition one-site IC50: ${compFit(fitKi, "IC50")}, expected 0.14403`);
+  if (!compClose(compFit(fitKi, "Ki"), 0.04801, 0.002))
+    out.push(`Competition one-site Ki: ${compFit(fitKi, "Ki")}, expected 0.04801`);
+  if (!("error" in fitKi) && !fitKi.notes.includes("[L] = 1"))
+    out.push(`Competition Fit Ki notes do not name [L] = 1: ${fitKi.notes}`);
+  if (!("error" in fitKi) && !fitKi.notes.includes("Kd = 0.5"))
+    out.push(`Competition Fit Ki notes do not name Kd = 0.5: ${fitKi.notes}`);
+  // Without Fit Ki, the same fit reports no Ki row.
+  const fitNoKi = await runAnalysis("nonlinear-regression", doseFall, { model: "inhibitor-3pl-logx" });
+  if (!("error" in fitNoKi) && fitNoKi.fit?.rows.some((row) => row.label === "Ki"))
+    out.push(`Competition one-site without Fit Ki reports a Ki row`);
+  // Two-site logx: recovers the constructed parameters; Fit Ki divides each
+  // IC50 by the same divisor 3.
+  const twoSite = await runAnalysis("nonlinear-regression", competitionTwoSite, {
+    model: "two-site-competition-logx",
+  });
+  for (const [term, want] of [
+    ["Bottom", 0],
+    ["Top", 100],
+    ["LogIC50Hi", -2],
+    ["LogIC50Lo", 1],
+    ["FractionHi", 0.5],
+  ] as const) {
+    // Bottom's target is 0, so a relative check is meaningless (R's
+    // noiseless fit lands ~1e-7 off zero); absolute tolerance for it.
+    const ok =
+      term === "Bottom"
+        ? compClose(compCoef(twoSite, term), want, 1e-6)
+        : compCloseRel(compCoef(twoSite, term), want, 1e-4);
+    if (!ok) out.push(`Competition two-site ${term}: ${compCoef(twoSite, term)}, expected ${want}`);
+  }
+  if (!compCloseRel(compFit(twoSite, "IC50 (high affinity)"), 0.01, 1e-4))
+    out.push(`Competition two-site IC50 (high affinity): ${compFit(twoSite, "IC50 (high affinity)")}, expected 0.01`);
+  if (!compCloseRel(compFit(twoSite, "IC50 (low affinity)"), 10, 1e-4))
+    out.push(`Competition two-site IC50 (low affinity): ${compFit(twoSite, "IC50 (low affinity)")}, expected 10`);
+  if (!compCloseRel(compFit(twoSite, "R squared"), 1, 1e-9))
+    out.push(`Competition two-site R²: ${compFit(twoSite, "R squared")}, expected 1`);
+  const twoSiteKi = await runAnalysis("nonlinear-regression", competitionTwoSite, {
+    model: "two-site-competition-logx",
+    fitKi: true,
+    ligandConcentration: 1,
+    ligandKd: 0.5,
+  });
+  if (!compCloseRel(compFit(twoSiteKi, "Ki (high affinity)"), 0.01 / 3, 1e-4))
+    out.push(`Competition two-site Ki (high affinity): ${compFit(twoSiteKi, "Ki (high affinity)")}, expected ${0.01 / 3}`);
+  if (!compCloseRel(compFit(twoSiteKi, "Ki (low affinity)"), 10 / 3, 1e-4))
+    out.push(`Competition two-site Ki (low affinity): ${compFit(twoSiteKi, "Ki (low affinity)")}, expected ${10 / 3}`);
+  // Two-site -x on raw concentrations.
+  const twoSiteX = await runAnalysis("nonlinear-regression", competitionTwoSiteRaw, {
+    model: "two-site-competition-x",
+  });
+  for (const [term, want] of [
+    ["Bottom", 0],
+    ["Top", 100],
+    ["IC50Hi", 0.01],
+    ["IC50Lo", 10],
+    ["FractionHi", 0.5],
+  ] as const) {
+    const ok =
+      term === "Bottom"
+        ? compClose(compCoef(twoSiteX, term), want, 1e-6)
+        : compCloseRel(compCoef(twoSiteX, term), want, 1e-4);
+    if (!ok) out.push(`Competition two-site -x ${term}: ${compCoef(twoSiteX, term)}, expected ${want}`);
+  }
+  if (!compCloseRel(compFit(twoSiteX, "R squared"), 1, 1e-9))
+    out.push(`Competition two-site -x R²: ${compFit(twoSiteX, "R squared")}, expected 1`);
+  // Homologous ([L] = 1): Bmax 100, Kd 0.5, Bottom 0; IC50 = [L] + Kd = 1.5.
+  const homol = await runAnalysis("nonlinear-regression", competitionHomologous, {
+    model: "homologous-competition-logx",
+    ligandConcentration: 1,
+  });
+  for (const [term, want] of [
+    ["Bmax", 100],
+    ["LogKd", -0.30103],
+    ["Bottom", 0],
+  ] as const) {
+    const ok =
+      term === "Bottom"
+        ? compClose(compCoef(homol, term), want, 1e-6)
+        : compCloseRel(compCoef(homol, term), want, 1e-6);
+    if (!ok) out.push(`Competition homologous ${term}: ${compCoef(homol, term)}, expected ${want}`);
+  }
+  if (!compCloseRel(compFit(homol, "Kd"), 0.5, 1e-6))
+    out.push(`Competition homologous Kd: ${compFit(homol, "Kd")}, expected 0.5`);
+  if (!compCloseRel(compFit(homol, "IC50"), 1.5, 1e-6))
+    out.push(`Competition homologous IC50: ${compFit(homol, "IC50")}, expected 1.5`);
+  if (!compCloseRel(compFit(homol, "R squared"), 1, 1e-9))
+    out.push(`Competition homologous R²: ${compFit(homol, "R squared")}, expected 1`);
+  if (!("error" in homol) && !homol.notes.includes("Kd = Ki"))
+    out.push(`Competition homologous notes do not say Kd = Ki: ${homol.notes}`);
+  if (!("error" in homol) && homol.ligandConcentration !== 1)
+    out.push(`Competition homologous result does not carry [L] = 1`);
+  // Validation errors name the missing radioligand values.
+  const compErrCases: [string, TableData, AnalysisParams, string][] = [
+    [
+      "Fit Ki without [L]/Kd",
+      doseFall,
+      { model: "inhibitor-3pl-logx", fitKi: true },
+      "radioligand concentration",
+    ],
+    [
+      "Fit Ki without Kd",
+      doseFall,
+      { model: "inhibitor-3pl-logx", fitKi: true, ligandConcentration: 1 },
+      "radioligand concentration",
+    ],
+    [
+      "homologous without [L]",
+      competitionHomologous,
+      { model: "homologous-competition-logx" },
+      "radioligand concentration",
+    ],
+  ];
+  for (const [label, tableData, params, want] of compErrCases) {
+    const r = await runAnalysis("nonlinear-regression", tableData, params);
+    if (!("error" in r) || !r.error.includes(want))
+      out.push(`Competition ${label}: ${"error" in r ? r.error : "ran"}, expected an error naming “${want}”`);
+  }
+  // Degenerate two-site: on the noisy one-site (doseFall) data the fit
+  // converges with the high-affinity fraction dominant; on noiseless
+  // one-site data it does not converge (singular) and says so plainly, or
+  // converges onto a single site and notes it — either is the plan's
+  // handling, never a silent garbage fit.
+  const twoSiteOneSite = await runAnalysis("nonlinear-regression", doseFall, {
+    model: "two-site-competition-logx",
+  });
+  if ("error" in twoSiteOneSite)
+    out.push(`Competition two-site on one-site data errored: ${twoSiteOneSite.error}`);
+  else if (compCoef(twoSiteOneSite, "FractionHi") == null || compCoef(twoSiteOneSite, "FractionHi")! < 0.9)
+    out.push(
+      `Competition two-site on one-site data FractionHi: ${compCoef(twoSiteOneSite, "FractionHi")}, expected > 0.9`,
+    );
+  const oneSiteNoiseless = table(
+    ["Title", "X", "Response"],
+    [
+      ["", "-3", "99.0099009901"],
+      ["", "-2.5", "96.9346569968"],
+      ["", "-2", "90.9090909091"],
+      ["", "-1.5", "75.9746926648"],
+      ["", "-1", "50"],
+      ["", "-0.5", "24.0253073352"],
+      ["", "0", "9.0909090909"],
+      ["", "0.5", "3.0653430032"],
+      ["", "1", "0.9900990099"],
+      ["", "1.5", "0.3152309183"],
+    ],
+  );
+  const twoSiteSingular = await runAnalysis("nonlinear-regression", oneSiteNoiseless, {
+    model: "two-site-competition-logx",
+  });
+  if ("error" in twoSiteSingular) {
+    if (!twoSiteSingular.error.includes("did not converge"))
+      out.push(`Competition two-site singular error: ${twoSiteSingular.error}, expected the non-convergence wording`);
+  } else if (!twoSiteSingular.notes.includes("consistent with one site")) {
+    out.push(`Competition two-site on noiseless one-site data: ${twoSiteSingular.notes}`);
+  }
+  // A curve that is 99% high-affinity sites fires the one-site note.
+  const mostlyHi = table(
+    ["Title", "X", "Response"],
+    [
+      ["", "-3", "90.99990001"],
+      ["", "-2.5", "76.2146296104"],
+      ["", "-2", "50.499000999"],
+      ["", "-1.5", "24.7819019527"],
+      ["", "-1", "9.9900990099"],
+      ["", "-0.5", "4.0040361431"],
+      ["", "0", "1.8892889289"],
+      ["", "0.5", "1.0718255358"],
+      ["", "1", "0.5989010989"],
+      ["", "1.5", "0.2715497253"],
+    ],
+  );
+  const twoSiteMostlyHi = await runAnalysis("nonlinear-regression", mostlyHi, {
+    model: "two-site-competition-logx",
+  });
+  if ("error" in twoSiteMostlyHi)
+    out.push(`Competition two-site on 99%-high-affinity data errored: ${twoSiteMostlyHi.error}`);
+  else {
+    if (!compCloseRel(compCoef(twoSiteMostlyHi, "FractionHi"), 0.99, 1e-4))
+      out.push(
+        `Competition two-site 99%-high-affinity FractionHi: ${compCoef(twoSiteMostlyHi, "FractionHi")}, expected 0.99`,
+      );
+    if (!twoSiteMostlyHi.notes.includes("consistent with one site"))
+      out.push(`Competition two-site 99%-high-affinity notes: ${twoSiteMostlyHi.notes}`);
+  }
+  // Overlays: the two-site and homologous curves pass through the data's
+  // endpoints, decrease monotonically, and the TypeScript evaluator matches
+  // an independent R evaluation of the fitted formula at the data X to 1e-6.
+  const { addDoseCurve, evaluateFittedCurve } = await import("../src/views/graphs/dose-response-curve");
+  const compXs = [-3, -2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5];
+  if (!("error" in twoSite)) {
+    const opts = {
+      ...newGraphOptions("dose-response"),
+      doseModel: "two-site-competition-logx" as const,
+      doseY: "Response",
+    };
+    const cols = plotColumns(readTable(competitionTwoSite), "dose-response", opts, "xy");
+    const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 1), readTable(competitionTwoSite).titles);
+    addDoseCurve(fig, cols, opts, twoSite, paintOf(opts, 1));
+    const traces = fig.data as { mode?: string; x?: number[]; y?: number[] }[];
+    const curve = traces.find((t) => t.mode === "lines" && t.x?.length === 101);
+    if (!curve) out.push(`Competition two-site overlay draws no 101-point line`);
+    if (curve) {
+      if (curve.x?.[0] !== -3 || curve.x?.at(-1) !== 1.5)
+        out.push(`Competition two-site overlay spans [${curve.x?.[0]}, ${curve.x?.at(-1)}], expected [-3, 1.5]`);
+      if (curve.y?.[0] == null || Math.abs(curve.y[0] - 95.4495459545) > 1e-6)
+        out.push(`Competition two-site overlay start: ${curve.y?.[0]}, expected 95.4495 at X=-3`);
+      const lastY = curve.y?.at(-1);
+      if (lastY == null || Math.abs(lastY - 12.0284600575) > 1e-6)
+        out.push(`Competition two-site overlay end: ${lastY}, expected 12.0285 at X=1.5`);
+      if (curve.y?.some((v, i, a) => i > 0 && v >= a[i - 1]!))
+        out.push(`Competition two-site overlay is not monotone decreasing`);
+    }
+    const anns = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+    if (!anns.some((a) => a.text?.includes("IC50 (high affinity) = 0.01")))
+      out.push(`Competition two-site overlay note missing IC50s: ${JSON.stringify(anns.map((a) => a.text))}`);
+    const b = compCoef(twoSite, "Bottom")!;
+    const t = compCoef(twoSite, "Top")!;
+    const f = compCoef(twoSite, "FractionHi")!;
+    const l1 = compCoef(twoSite, "LogIC50Hi")!;
+    const l2 = compCoef(twoSite, "LogIC50Lo")!;
+    const rY = await evalNamedVector(
+      `x<-c(${compXs.join(",")});yv<-${b.toPrecision(15)}+(${t.toPrecision(15)}-${b.toPrecision(15)})*(${f.toPrecision(15)}/(1+10^(x-${l1.toPrecision(15)}))+(1-${f.toPrecision(15)})/(1+10^(x-${l2.toPrecision(15)})));` +
+        `c(${compXs.map((_, i) => `y${i}=yv[${i + 1}]`).join(",")})`,
+    );
+    compXs.forEach((x, i) => {
+      const ts = evaluateFittedCurve("two-site-competition-logx", twoSite.coefficients ?? [], x);
+      const rv = rY[`y${i}`];
+      if (rv == null || Math.abs(ts - rv) > 1e-6)
+        out.push(`Competition two-site overlay at X=${x}: TS ${ts}, R ${rv}`);
+    });
+  }
+  if (!("error" in homol)) {
+    const opts = {
+      ...newGraphOptions("dose-response"),
+      doseModel: "homologous-competition-logx" as const,
+      doseY: "Response",
+    };
+    const cols = plotColumns(readTable(competitionHomologous), "dose-response", opts, "xy");
+    const fig = GRAPHS["dose-response"].build(cols, opts, paintOf(opts, 1), readTable(competitionHomologous).titles);
+    addDoseCurve(fig, cols, opts, homol, paintOf(opts, 1));
+    const traces = fig.data as { mode?: string; x?: number[]; y?: number[] }[];
+    const curve = traces.find((t) => t.mode === "lines" && t.x?.length === 101);
+    if (!curve) out.push(`Competition homologous overlay draws no 101-point line`);
+    if (curve) {
+      if (curve.y?.[0] == null || Math.abs(curve.y[0] - 66.6222518321) > 1e-6)
+        out.push(`Competition homologous overlay start: ${curve.y?.[0]}, expected 66.6223 at X=-3`);
+      const lastY = curve.y?.at(-1);
+      if (lastY == null || Math.abs(lastY - 3.0190705689) > 1e-6)
+        out.push(`Competition homologous overlay end: ${lastY}, expected 3.0191 at X=1.5`);
+      if (curve.y?.some((v, i, a) => i > 0 && v >= a[i - 1]!))
+        out.push(`Competition homologous overlay is not monotone decreasing`);
+    }
+    const anns = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+    if (!anns.some((a) => a.text?.includes("Kd = 0.5")))
+      out.push(`Competition homologous overlay note missing Kd: ${JSON.stringify(anns.map((a) => a.text))}`);
+    const bmax = compCoef(homol, "Bmax")!;
+    const logKd = compCoef(homol, "LogKd")!;
+    const bottom = compCoef(homol, "Bottom")!;
+    const rY = await evalNamedVector(
+      `x<-c(${compXs.join(",")});yv<-${bmax.toPrecision(15)}*1/(1+10^x+10^${logKd.toPrecision(15)})+${bottom.toPrecision(15)};` +
+        `c(${compXs.map((_, i) => `y${i}=yv[${i + 1}]`).join(",")})`,
+    );
+    compXs.forEach((x, i) => {
+      const ts = evaluateFittedCurve("homologous-competition-logx", homol.coefficients ?? [], x, 1);
+      const rv = rY[`y${i}`];
+      if (rv == null || Math.abs(ts - rv) > 1e-6)
+        out.push(`Competition homologous overlay at X=${x}: TS ${ts}, R ${rv}`);
+    });
+  }
+  // The wizard asks the Fit-Ki toggle on competition models (not on the
+  // 4PL), then [L] and Kd; the homologous model asks [L] only.
+  const compAsked = (a: Record<string, string>) =>
+    WIZARDS["nonlinear-regression"]!.questions(a, readTable(doseFall)).flatMap((q) => (q ? [q.id] : []));
+  if (!compAsked({ kind: "dose", model: "inhibitor-3pl-logx" }).includes("fitKi"))
+    out.push(`Competition wizard offers no Fit-Ki toggle on the inhibitor 3PL`);
+  if (compAsked({ kind: "dose", model: "sigmoidal-4pl-logx" }).includes("fitKi"))
+    out.push(`Competition wizard offers Fit Ki on the 4PL`);
+  if (
+    JSON.stringify(compAsked({ kind: "dose", model: "inhibitor-3pl-logx", fitKi: "yes" }).slice(-2)) !==
+    JSON.stringify(["ligandConcentration", "ligandKd"])
+  )
+    out.push(
+      `Competition wizard Fit-Ki fields: ${JSON.stringify(compAsked({ kind: "dose", model: "inhibitor-3pl-logx", fitKi: "yes" }))}, expected […, "ligandConcentration", "ligandKd"]`,
+    );
+  if (
+    JSON.stringify(compAsked({ kind: "dose", model: "homologous-competition-logx" }).slice(-1)) !==
+    JSON.stringify(["ligandConcentration"])
+  )
+    out.push(
+      `Competition wizard homologous fields: ${JSON.stringify(compAsked({ kind: "dose", model: "homologous-competition-logx" }))}, expected […, "ligandConcentration"]`,
+    );
+  if (
+    JSON.stringify(
+      WIZARDS["nonlinear-regression"]!.finish(
+        { y: "Response", kind: "dose", model: "inhibitor-3pl-logx", fitKi: "yes", ligandConcentration: "1", ligandKd: "0.5" },
+        readTable(doseFall),
+      ).params,
+    ) !==
+    JSON.stringify({
+      y: "Response",
+      model: "inhibitor-3pl-logx",
+      fitKi: true,
+      ligandConcentration: 1,
+      ligandKd: 0.5,
+    })
+  )
+    out.push(`Competition wizard finish does not pass Fit Ki + [L] + Kd through`);
   // Enzyme kinetics — Inhibition (plan 17): noiseless fixtures must recover
   // their generating parameters (relative tolerance 1e-6; 1e-4 for the
   // mixed-on-competitive run, where Alpha is unidentifiable); every fitted

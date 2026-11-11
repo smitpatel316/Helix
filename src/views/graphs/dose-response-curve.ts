@@ -23,7 +23,12 @@ function coef(coefficients: RegressionCoefficient[], term: string): number {
  *  closed form R fitted (see modelSpec in stats/xy/nonlinear-fit.ts), so the
  *  overlay and the analysis can never disagree. Exported for the reference
  *  tests, which check it against an independent R evaluation. */
-export function evaluateFittedCurve(model: DoseModel, coefficients: RegressionCoefficient[], x: number): number {
+export function evaluateFittedCurve(
+  model: DoseModel,
+  coefficients: RegressionCoefficient[],
+  x: number,
+  ligandConcentration?: number,
+): number {
   switch (model) {
     case "sigmoidal-4pl-logx": {
       const bottom = coef(coefficients, "Bottom");
@@ -104,6 +109,39 @@ export function evaluateFittedCurve(model: DoseModel, coefficients: RegressionCo
         (coef(coefficients, "Vmax") * x) /
         (coef(coefficients, "Km") + x + (x * x) / coef(coefficients, "Ki"))
       );
+    // Binding competition (plan 28): both Hill slopes fixed at −1 (Prism's
+    // built-in two-site model — see modelSpec in stats/xy/nonlinear-fit.ts).
+    case "two-site-competition-logx": {
+      const bottom = coef(coefficients, "Bottom");
+      const top = coef(coefficients, "Top");
+      const frac = coef(coefficients, "FractionHi");
+      return (
+        bottom +
+        (top - bottom) *
+          (frac / (1 + 10 ** (x - coef(coefficients, "LogIC50Hi"))) +
+            (1 - frac) / (1 + 10 ** (x - coef(coefficients, "LogIC50Lo"))))
+      );
+    }
+    case "two-site-competition-x": {
+      const bottom = coef(coefficients, "Bottom");
+      const top = coef(coefficients, "Top");
+      const frac = coef(coefficients, "FractionHi");
+      return (
+        bottom +
+        (top - bottom) *
+          (frac / (1 + x / coef(coefficients, "IC50Hi")) +
+            (1 - frac) / (1 + x / coef(coefficients, "IC50Lo")))
+      );
+    }
+    case "homologous-competition-logx": {
+      // Y = Bmax·[L]/([L] + 10^X + Kd) + Bottom; without [L] the curve is
+      // undefined (NaN) — the caller only draws it when the fit carries one.
+      const l = ligandConcentration ?? NaN;
+      return (
+        (coef(coefficients, "Bmax") * l) / (l + 10 ** x + 10 ** coef(coefficients, "LogKd")) +
+        coef(coefficients, "Bottom")
+      );
+    }
   }
 }
 
@@ -114,13 +152,14 @@ function fittedCurve(
   xMin: number,
   xMax: number,
   steps = 100,
+  ligandConcentration?: number,
 ): { x: number[]; y: number[] } {
   const x: number[] = [];
   const y: number[] = [];
   for (let i = 0; i <= steps; i++) {
     const x0 = xMin + ((xMax - xMin) * i) / steps;
     x.push(x0);
-    y.push(evaluateFittedCurve(model, coefficients, x0));
+    y.push(evaluateFittedCurve(model, coefficients, x0, ligandConcentration));
   }
   return { x, y };
 }
@@ -159,6 +198,18 @@ function doseResponseLabel(model: DoseModel, coefficients: RegressionCoefficient
     lines.push(`Khalf = ${num(coef(coefficients, "Khalf"))}`, `Hill slope = ${num(coef(coefficients, "HillSlope"))}`);
   } else if (model === "substrate-inhibition") {
     lines.push(`Km = ${num(coef(coefficients, "Km"))}`, `Ki = ${num(coef(coefficients, "Ki"))}`);
+  } else if (model === "two-site-competition-logx") {
+    lines.push(
+      `IC50 (high affinity) = ${num(10 ** coef(coefficients, "LogIC50Hi"))}`,
+      `IC50 (low affinity) = ${num(10 ** coef(coefficients, "LogIC50Lo"))}`,
+    );
+  } else if (model === "two-site-competition-x") {
+    lines.push(
+      `IC50 (high affinity) = ${num(coef(coefficients, "IC50Hi"))}`,
+      `IC50 (low affinity) = ${num(coef(coefficients, "IC50Lo"))}`,
+    );
+  } else if (model === "homologous-competition-logx") {
+    lines.push(`Kd = ${num(10 ** coef(coefficients, "LogKd"))}`);
   } else if ((EXPONENTIAL_MODELS as readonly string[]).includes(model)) {
     lines.push(`Half-life = ${num(fitValue(fit, "Half-life"))}`);
   }
@@ -185,10 +236,13 @@ export function addDoseCurve(
   const y = ys.find((c) => c.name === options.doseY) ?? ys[0];
   const coefficients = fit.coefficients ?? [];
   if (!x || !y || !coefficients.length || !options.doseShowCurve) return;
+  // The homologous curve needs [L], which the fit carries (the runner sets
+  // it from the analysis params) — without it, there is no curve to draw.
+  if (options.doseModel === "homologous-competition-logx" && fit.ligandConcentration == null) return;
   const pairs = pairUp(x, y);
   const xs = pairs.x;
   if (!xs.length) return;
-  const curve = fittedCurve(options.doseModel, coefficients, ...extent(xs));
+  const curve = fittedCurve(options.doseModel, coefficients, ...extent(xs), 100, fit.ligandConcentration);
   fig.data = [
     {
       type: "scatter",
