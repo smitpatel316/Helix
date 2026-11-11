@@ -187,6 +187,10 @@ const PARAMS = {
   posthocTerm: THREE_WAY_TERMS,
   truth: "name", score: "name", positive: "name-or-number",
   time: "name", status: "name", covariates: "names", stratifyBy: "name", ties: ["efron", "breslow"],
+  // Normality tests (plan 23): which of the four tests, and whether to
+  // also test the log-transformed values.
+  test: ["shapiro-wilk", "dagostino-pearson", "anderson-darling", "kolmogorov-smirnov"],
+  lognormal: "yes/no",
   // Principal component analysis (plan 21): the matrix, and how many
   // components to report (0 = all).
   scale: ["correlation", "covariance"], components: "number",

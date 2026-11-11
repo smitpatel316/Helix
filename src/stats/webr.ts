@@ -125,7 +125,7 @@ export const PACKAGE_REGISTRY: PackageEntry[] = [
   { name: "lmerTest", version: "3.2-1", license: "GPL (>= 2)", plans: ["20"], uses: "Satterthwaite p-values for lmer fits (lmer wrapper)" },
   { name: "multcomp", version: "1.4-32", license: "GPL-2", plans: ["25"], uses: "Dunnett multiple comparisons (glht)" },
   { name: "mvtnorm", version: "1.2-4", license: "GPL-2", plans: ["25"], uses: "Multivariate t/normal probabilities under multcomp::glht" },
-  { name: "nortest", version: "1.0-4", license: "GPL (>= 2)", plans: ["23"], uses: "Anderson–Darling (ad.test) and D'Agostino–Pearson (pearson.test)" },
+  { name: "nortest", version: "1.0-4", license: "GPL (>= 2)", plans: ["23"], uses: "Anderson–Darling (ad.test); NOT D'Agostino–Pearson — nortest::pearson.test is a binned chi-square goodness-of-fit test, not the omnibus K2 (plan 23 implements K2 in TypeScript)" },
   { name: "outliers", version: "0.15", license: "GPL (>= 2)", plans: ["24"], uses: "Grubbs' outlier test (grubbs.test)" },
   { name: "deming", version: "1.4-1", license: "LGPL (>= 2)", plans: ["13"], uses: "Deming regression (deming); cross-check for the closed-form path" },
   { name: "MethComp", version: "1.30.2", license: "GPL (>= 2)", plans: ["13"], uses: "Deming regression alternative (Deming)" },

@@ -186,6 +186,11 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
 
 // P-06 — Anderson–Darling on a seeded normal sample. Pinned from this webR
 // (R 4.6.0, nortest 1.0-4): A 0.3090447325819383, p 0.5461174681840957.
+// Note (plan 23): `nortest::pearson.test` is NOT the D'Agostino–Pearson
+// omnibus K2 test — it is a Pearson chi-square goodness-of-fit test on
+// binned data (statistic 6.68, p 0.2455 on the plan-23 column A). The
+// omnibus K2 is implemented in TypeScript (src/stats/column/shapiro-wilk.ts)
+// and cross-checked against the same formulae in R in tests/reference.ts.
 {
   await ensurePackages(["nortest"]);
   const r = await evalNamedVector(
@@ -193,8 +198,6 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
   );
   relClose(r.A, 0.3090447325819383, 1e-6, "P-06 ad.test statistic");
   relClose(r.p, 0.5461174681840957, 1e-6, "P-06 ad.test p");
-  const hasPearson = await evalNamedVector(`c(e=as.numeric(exists("pearson.test", where=asNamespace("nortest"))))`);
-  check("nortest pearson.test exists (D'Agostino–Pearson)", hasPearson.e === 1);
 }
 
 // P-07 — lmer on a small balanced repeated-measures design, seeded so the

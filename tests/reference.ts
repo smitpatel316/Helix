@@ -25,7 +25,7 @@ import { R_MAXIMUM_T } from "../src/stats/column/anova";
 import { evaluate as doseCurveAt } from "../src/views/graphs/fitted-curve";
 import { NONLINEAR_MODELS, type NonlinearModel } from "../src/stats/types";
 import { positiveXOnly } from "../src/stats/xy/nonlinear-regression";
-import { evalNamedVector, setPackageRepo, startR } from "../src/stats/webr";
+import { ensurePackages, evalNamedVector, setPackageRepo, startR } from "../src/stats/webr";
 import { prettyBreaks } from "../src/stats/column/frequency-distribution";
 import { sampleProject } from "./sample-project";
 
@@ -1008,6 +1008,58 @@ const ksTooFew = table(
   ],
 );
 
+/** Normality tests (plan 23): n = 25 per column, so D'Agostino–Pearson is
+ *  valid. A is near-Gaussian; B is right-skewed (lognormal-ish: SW on
+ *  log(B) passes). Values pinned from SciPy 1.11 for SW/DP/AD-statistic/KS-D,
+ *  re-verified in webR — except the KS P values, where R reports the
+ *  asymptotic Kolmogorov P (A 0.8889, B 0.0215) and SciPy's `kstest`
+ *  defaults to the exact finite-n P (0.8508, 0.0166): the reference pins
+ *  R's, since Helix runs R. AD P values are nortest's (A 0.6657, B 0.00009).
+ *  DP is the TS implementation — `nortest::pearson.test` is a different
+ *  test (Pearson chi-square goodness-of-fit on binned data), so the
+ *  disagreements() cross-check below evaluates the same formulae in R. */
+const normality = table(
+  ["Title", "A", "B"],
+  [
+    ["", "12.0", "6.5"],
+    ["", "12.4", "1.3"],
+    ["", "11.7", "5.1"],
+    ["", "10.9", "7.1"],
+    ["", "11.5", "8.0"],
+    ["", "10.8", "2.5"],
+    ["", "12.1", "5.3"],
+    ["", "13.6", "3.7"],
+    ["", "11.4", "4.2"],
+    ["", "11.3", "15.5"],
+    ["", "12.6", "4.2"],
+    ["", "12.4", "7.2"],
+    ["", "12.1", "13.7"],
+    ["", "10.9", "4.9"],
+    ["", "12.0", "6.8"],
+    ["", "12.8", "8.0"],
+    ["", "10.4", "7.7"],
+    ["", "11.5", "3.1"],
+    ["", "9.7", "7.8"],
+    ["", "10.5", "19.1"],
+    ["", "9.8", "2.5"],
+    ["", "11.7", "13.5"],
+    ["", "10.5", "8.0"],
+    ["", "12.3", "4.7"],
+    ["", "12.2", "30.0"],
+  ],
+);
+
+/** Normality tests (plan 23): a non-positive value — lognormality must
+ *  refuse it with a user-facing error. */
+const normalityNonpositive = table(
+  ["Title", "A", "B"],
+  [
+    ["", "12.0", "6.5"],
+    ["", "12.4", "0"],
+    ["", "11.7", "5.1"],
+  ],
+);
+
 /** Two methods on the same subjects (Bland-Altman method comparison). */
 const blandAltman = table(
   ["Title", "Method A", "Method B"],
@@ -1802,6 +1854,21 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["matched", matched, "rm-anova", { posthoc: "tukey", sphericity: false }],
   ["matched", matched, "rm-anova", { posthoc: "bonferroni", sphericity: false }],
   ["column", column, "shapiro-wilk"],
+  // Normality tests (plan 23): all four tests on the n = 25 table (values
+  // pinned in the `normality` table comment), SW + DP with lognormality,
+  // and the edge cases — DP on the n = 8 `column` table (every column too
+  // short: NA rows + note), AD on it (only Control, n = 8, runs), KS on it,
+  // and lognormality refused on a table holding 0.
+  ["normality", normality, "shapiro-wilk", { test: "shapiro-wilk" }],
+  ["normality", normality, "shapiro-wilk", { test: "dagostino-pearson" }],
+  ["normality", normality, "shapiro-wilk", { test: "anderson-darling" }],
+  ["normality", normality, "shapiro-wilk", { test: "kolmogorov-smirnov" }],
+  ["normality", normality, "shapiro-wilk", { test: "shapiro-wilk", lognormal: true }],
+  ["normality", normality, "shapiro-wilk", { test: "dagostino-pearson", lognormal: true }],
+  ["column", column, "shapiro-wilk", { test: "dagostino-pearson" }],
+  ["column", column, "shapiro-wilk", { test: "anderson-darling" }],
+  ["column", column, "shapiro-wilk", { test: "kolmogorov-smirnov" }],
+  ["normalityNonpositive", normalityNonpositive, "shapiro-wilk", { test: "shapiro-wilk", lognormal: true }],
   // Kolmogorov-Smirnov (plan 07): separated, similar, ties (asymptotic p),
   // identical, too-few (error), the shared multi-column table (first two
   // columns + the non-numeric cell), and an explicit `sets` selection.
@@ -2712,6 +2779,73 @@ async function disagreements(): Promise<string[]> {
   ] as const) {
     if (Math.abs(tCrit95(df) - q[key]!) > 1e-9) out.push(`t critical value, df ${df}: ${tCrit95(df)}, R: ${q[key]}`);
   }
+  // Normality tests (plan 23): the TypeScript D'Agostino–Pearson must match
+  // the same formulae evaluated in R (there is no R package for the omnibus
+  // K2 — `nortest::pearson.test` is a binned chi-square goodness-of-fit
+  // test, not this test); Anderson–Darling must match `nortest::ad.test`
+  // directly; lognormality must add log rows whose B P value passes (> 0.05,
+  // B is lognormal); DP on the short `column` table must say it needs 20
+  // values; lognormality on a table holding 0 must refuse with the
+  // user-facing error.
+  const normCols = readTable(normality).columns.filter((c) => c.values.length > 0);
+  const dp = await runAnalysis("shapiro-wilk", normality, { test: "dagostino-pearson" });
+  const dpR = await evalNamedVector(
+    normCols.map((c, i) => `x${i}<-${rVec(c.values)}`).join(";") +
+      `;f<-function(x){n<-length(x);m<-mean(x);d<-x-m;m2<-mean(d^2);m3<-mean(d^3);m4<-mean(d^4);` +
+      `g1<-m3/m2^1.5;b2<-m4/m2^2;` +
+      `Y<-g1*sqrt((n+1)*(n+3)/(6*(n-2)));be<-3*(n^2+27*n-70)*(n+1)*(n+3)/((n-2)*(n+5)*(n+7)*(n+9));` +
+      `W2<--1+sqrt(2*(be-1));de<-1/sqrt(0.5*log(W2));al<-sqrt(2/(W2-1));` +
+      `Z1<-de*log(Y/al+sqrt((Y/al)^2+1));` +
+      `E<-3*(n-1)/(n+1);va<-24*n*(n-2)*(n-3)/((n+1)^2*(n+3)*(n+5));xx<-(b2-E)/sqrt(va);` +
+      `sb<-6*(n^2-5*n+2)/((n+7)*(n+9))*sqrt(6*(n+3)*(n+5)/(n*(n-2)*(n-3)));` +
+      `A<-6+8/sb*(2/sb+sqrt(1+4/sb^2));Z2<-(1-2/(9*A)-((1-2/A)/(1+xx*sqrt(2/(A-4))))^(1/3))/sqrt(2/(9*A));` +
+      `K2<-Z1^2+Z2^2;c(K2,pchisq(K2,2,lower.tail=FALSE))};` +
+      normCols.map((_, i) => `r${i}<-f(x${i})`).join(";") +
+      `;c(${normCols.map((_, i) => `k${i}=r${i}[1],p${i}=r${i}[2]`).join(",")})`,
+  );
+  const dpStat = (label: string) => ("error" in dp ? null : dp.stats.find((s) => s.label === label)?.value);
+  normCols.forEach((c, i) => {
+    const k2 = dpStat(`${c.name} — K2`);
+    const p = dpStat(`${c.name} — P value`);
+    if (k2 == null || dpR[`k${i}`] == null || Math.abs(k2 - dpR[`k${i}`]!) > 1e-9)
+      out.push(`D'Agostino–Pearson K2 of ${c.name}: TS ${k2}, R formulae ${dpR[`k${i}`]}`);
+    if (p == null || dpR[`p${i}`] == null || Math.abs(p - dpR[`p${i}`]!) > 1e-9)
+      out.push(`D'Agostino–Pearson P of ${c.name}: TS ${p}, R formulae ${dpR[`p${i}`]}`);
+  });
+  await ensurePackages(["nortest"]);
+  const ad = await runAnalysis("shapiro-wilk", normality, { test: "anderson-darling" });
+  const adR = await evalNamedVector(
+    normCols.map((c, i) => `a${i}<-nortest::ad.test(${rVec(c.values)})`).join(";") +
+      `;c(${normCols.map((_, i) => `s${i}=unname(a${i}$statistic),p${i}=a${i}$p.value`).join(",")})`,
+  );
+  const adStat = (label: string) => ("error" in ad ? null : ad.stats.find((s) => s.label === label)?.value);
+  normCols.forEach((c, i) => {
+    const a2 = adStat(`${c.name} — A²`);
+    const p = adStat(`${c.name} — P value`);
+    if (a2 == null || adR[`s${i}`] == null || Math.abs(a2 - adR[`s${i}`]!) > 1e-9)
+      out.push(`Anderson–Darling A² of ${c.name}: runner ${a2}, nortest ${adR[`s${i}`]}`);
+    if (p == null || adR[`p${i}`] == null || Math.abs(p - adR[`p${i}`]!) > 1e-9)
+      out.push(`Anderson–Darling P of ${c.name}: runner ${p}, nortest ${adR[`p${i}`]}`);
+  });
+  const logSw = await runAnalysis("shapiro-wilk", normality, { test: "shapiro-wilk", lognormal: true });
+  if ("error" in logSw) {
+    out.push(`Lognormality SW: ${logSw.error}`);
+  } else {
+    const logP = logSw.stats.find((s) => s.label === "B — log P value")?.value;
+    if (logP == null || logP <= 0.05) out.push(`Lognormality SW log P of B: ${logP}, expected > 0.05`);
+    if (!logSw.stats.some((s) => s.label === "A — log W")) out.push("Lognormality SW: no log rows for A");
+    if (!logSw.notes.includes("lognormal distribution")) out.push(`Lognormality SW notes: ${logSw.notes}`);
+  }
+  const dpShort = await runAnalysis("shapiro-wilk", column, { test: "dagostino-pearson" });
+  if ("error" in dpShort) {
+    out.push(`DP on the short table: ${dpShort.error}`);
+  } else {
+    if (dpShort.stats.some((s) => s.value != null)) out.push("DP on the short table: a column reported a value");
+    if (!dpShort.notes.includes("at least 20 values")) out.push(`DP on the short table notes: ${dpShort.notes}`);
+  }
+  const logBad = await runAnalysis("shapiro-wilk", normalityNonpositive, { test: "shapiro-wilk", lognormal: true });
+  if (!("error" in logBad) || !logBad.error.includes("all values > 0"))
+    out.push(`Lognormality on a table holding 0: ${"error" in logBad ? logBad.error : "ran without error"}`);
   // Logistic spot check: this data set is symmetric about X = 4.5, so the
   // fitted P(Y=1) there is 0.5.
   const log = await runAnalysis("simple-logistic-regression", logistic, {});
