@@ -1840,6 +1840,17 @@ const contingency3 = table(
   ],
 );
 
+/** The same counts with one empty cell (East / Outcome B): a heatmap must render
+ *  the blank, not crash (plan 33). */
+const contingencyEmpty = table(
+  ["Title", "Outcome A", "Outcome B", "Outcome C"],
+  [
+    ["North", "20", "15", "10"],
+    ["South", "12", "18", "25"],
+    ["East", "14", "", "15"],
+  ],
+);
+
 /** As the app creates them: many columns, only the first ones filled. */
 const wide = (t: TableData, width: number): TableData => ({
   ...t,
@@ -2736,6 +2747,7 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["volcanoLog", volcanoLog, "volcano", { volcanoY: "-log10 P", volcanoYIsPValue: false }],
   ["contingency2", contingency2, "grouped-stacked"],
   ["contingency3", contingency3, "heatmap", { heatmapShowValues: true }],
+  ["contingencyEmpty", contingencyEmpty, "heatmap", { heatmapShowValues: true }],
   ["xyNoX", xyNoX, "xy-scatter"],
 ];
 
