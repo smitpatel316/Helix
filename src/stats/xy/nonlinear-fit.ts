@@ -27,6 +27,10 @@ export const MODEL_LABEL: Record<NonlinearModel, string> = {
   hyperbola: "Hyperbola (X is concentration)",
   quadratic: "Second order polynomial (quadratic)",
   cubic: "Third order polynomial (cubic)",
+  // Plan 29: lines & polynomials completion.
+  "segmental-linear": "Segmental linear regression (two segments)",
+  quartic: "Fourth order polynomial (quartic)",
+  quintic: "Fifth order polynomial (quintic)",
   "exponential-growth": "Exponential growth",
   "one-phase-decay": "One-phase decay",
   "michaelis-menten": "Michaelis-Menten",
@@ -144,6 +148,60 @@ export function modelSpec(model: NonlinearModel): ModelSpec {
       return { kind: "lm", fit: "m<-lm(y~x+I(x^2))", terms: ["B0", "B1", "B2"] };
     case "cubic":
       return { kind: "lm", fit: "m<-lm(y~x+I(x^2)+I(x^3))", terms: ["B0", "B1", "B2", "B3"] };
+    case "quartic":
+      // Plan 29: 4th order polynomial — base R lm, the exact pattern of
+      // the quadratic/cubic entries.
+      return { kind: "lm", fit: "m<-lm(y~x+I(x^2)+I(x^3)+I(x^4))", terms: ["B0", "B1", "B2", "B3", "B4"] };
+    case "quintic":
+      // Plan 29: 5th order polynomial — same pattern, one degree higher.
+      return {
+        kind: "lm",
+        fit: "m<-lm(y~x+I(x^2)+I(x^3)+I(x^4)+I(x^5))",
+        terms: ["B0", "B1", "B2", "B3", "B4", "B5"],
+      };
+    case "segmental-linear":
+      // Plan 29: continuous two-segment line (hinge), Y = B0 + B1·X +
+      // B2·max(X − X0, 0): slope B1 below the breakpoint X0, B1+B2 above.
+      // DEVIATION from the plan: the plan fits this with nls() from
+      // B2 = 0, X0 = median(X) starts — that does not converge. At B2 = 0
+      // the X0 gradient is zero ("singular gradient matrix at initial
+      // parameter estimates"), and from a slope-difference B2 start (or
+      // algorithm="port", or "plinear") Gauss-Newton stalls on the flat
+      // RSS surface ("step factor reduced below 'minFactor'" / "false
+      // convergence") — verified in R on the reference data from every
+      // start (x0 = 2, 3.5, 5, 6; B2 = 0, 0.09, ±0.5). The model is
+      // linear given X0, so X0 is fitted by profiling instead: optimize()
+      // (Brent, derivative-free) minimises the conditional-lm RSS over
+      // [min X, max X], and the fit is the lm at that breakpoint. X0 is
+      // therefore a derived value with no standard error (the runner
+      // reports it as a coefficient row with no SE — the fixed-parameter
+      // precedent), and a global fit is not supported for it
+      // (formulaVariables is undefined for this multi-statement fit, so
+      // runGlobalNonlinear refuses it cleanly). The slopes' CIs are
+      // positional (cf[[2]], cf[[3]]) because lm() names the hinge term
+      // "I(pmax(x - brk, 0))", not "b2". `brk` (not `x0`) names the
+      // breakpoint variable, so it cannot collide with the curve-
+      // comparison code's x0/y0/x1/y1 vectors.
+      return {
+        kind: "lm",
+        fit: "brk<-optimize(function(v)sum(residuals(lm(y~x+I(pmax(x-v,0))))^2),c(min(x),max(x)))$minimum;m<-lm(y~x+I(pmax(x-brk,0)))",
+        terms: ["B0", "B1", "B2"],
+        derived: [
+          { label: "Breakpoint (X0)", expr: "brk" },
+          {
+            label: "Slope below X0",
+            expr: "cf[[2]]",
+            low: "cf[[2]]-q*sqrt(V[2,2])",
+            high: "cf[[2]]+q*sqrt(V[2,2])",
+          },
+          {
+            label: "Slope above X0",
+            expr: "cf[[2]]+cf[[3]]",
+            low: "cf[[2]]+cf[[3]]-q*sqrt(V[2,2]+V[3,3]+2*V[2,3])",
+            high: "cf[[2]]+cf[[3]]+q*sqrt(V[2,2]+V[3,3]+2*V[2,3])",
+          },
+        ],
+      };
     case "semilog-line":
       // Y = intercept + slope * ln(X).
       return {
@@ -918,7 +976,14 @@ export async function fitNonlinearModel(
  *  model, so a failure on an exponential curve says which one. */
 export function fitError(err: unknown, model?: NonlinearModel): AnalysisOutcome {
   const which = model ? ` ("${MODEL_LABEL[model]}")` : "";
+  // Plan 29: a segmental fit fails only on degenerate X (the breakpoint
+  // is profiled, not iterated) — say what it needs, and point curved
+  // data at the polynomials.
+  const hint =
+    model === "segmental-linear"
+      ? " It needs X values on both sides of a breakpoint; for smoothly curved data, try a polynomial instead."
+      : "";
   return {
-    error: `This curve${which} could not be fitted to these data (${err instanceof Error ? err.message : String(err)}). Try another model or Y data set.`,
+    error: `This curve${which} could not be fitted to these data (${err instanceof Error ? err.message : String(err)}).${hint} Try another model or Y data set.`,
   };
 }

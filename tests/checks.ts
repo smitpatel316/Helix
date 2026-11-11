@@ -1162,6 +1162,14 @@ check("the curve wizard asks about weighting, comparing models and global fits",
   ok(!options({ kind: "other", model: "line" }, oneY, "weights").includes("1/sd2"));
   ok(!options({ kind: "other", model: "line" }, twoY, "compareModel").includes("line"));
   ok(options({ kind: "other", model: "line" }, twoY, "compareModel").includes("quadratic"));
+  // Plan 29: the completed lines & polynomials appear in the "other
+  // curves" list, in Prism's order after cubic.
+  deepStrictEqual(
+    options({ kind: "other", model: "line" }, twoY, "model").filter((m) =>
+      ["cubic", "segmental-linear", "quartic", "quintic"].includes(m),
+    ),
+    ["cubic", "segmental-linear", "quartic", "quintic"],
+  );
   ok(!ids({ y: "A", kind: "dose", model: "sigmoidal-4pl-logx", global: "no" }, twoY).includes("globalY"));
   ok(ids({ y: "A", kind: "dose", model: "sigmoidal-4pl-logx", global: "yes" }, twoY).includes("globalY"));
   ok(
@@ -1229,6 +1237,13 @@ check("only nested model pairs get the F test", () => {
   ok(nestedPair("line", "quadratic") !== null);
   deepStrictEqual(nestedPair("line", "quadratic"), { simpler: "line", complex: "quadratic" });
   deepStrictEqual(nestedPair("quadratic", "line"), { simpler: "line", complex: "quadratic" });
+  // Plan 29: the polynomial ladder continues, but the segmental line is
+  // not nested with the line for an F test (its breakpoint is
+  // unidentified when B2 = 0).
+  deepStrictEqual(nestedPair("cubic", "quartic"), { simpler: "cubic", complex: "quartic" });
+  deepStrictEqual(nestedPair("quartic", "quintic"), { simpler: "quartic", complex: "quintic" });
+  deepStrictEqual(nestedPair("line", "quintic"), { simpler: "line", complex: "quintic" });
+  strictEqual(nestedPair("line", "segmental-linear"), null);
   strictEqual(nestedPair("line", "hyperbola"), null);
   strictEqual(nestedPair("sigmoidal-4pl-logx", "hyperbola"), null);
   strictEqual(nestedPair("sigmoidal-4pl-logx", "asymmetric-5pl-logx")?.complex, "asymmetric-5pl-logx");
@@ -1318,6 +1333,9 @@ check("closed-form inverses read unknowns off the fitted curve", async () => {
   strictEqual(invertModel("sigmoidal-4pl-logx", dose.coefficients, 0.5), null);
   // No closed form: the numeric-only models, and the method table agrees.
   strictEqual(invertMethod("quadratic"), "numeric");
+  strictEqual(invertMethod("quartic"), "numeric");
+  strictEqual(invertMethod("quintic"), "numeric");
+  strictEqual(invertMethod("segmental-linear"), "numeric");
   strictEqual(invertMethod("sigmoidal-4pl-logx"), "closed-form");
   strictEqual(invertModel("quadratic", dose.coefficients, 50), null);
 });
