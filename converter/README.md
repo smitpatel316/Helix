@@ -48,9 +48,10 @@ The field-by-field mapping is the spec in the vault:
 
 ```sh
 node --import tsx converter/tests/verify.ts          # demo file: 22 checks
-npm run verify-corpus                                # 11-file public corpus: 73 checks
+npm run verify-corpus                                # 66-file public corpus: 510 checks
 PRISM_TEST_CORPUS_PRISM10=~/workspace/helix/test-corpus-synthetic npm run verify-corpus
-                                                     # 6 synthetic edge cases: 36 checks
+                                                     # 6 synthetic edge cases: 41 checks
+npm test                                             # abstract unit suites: 326 checks
 ```
 
 `verify.ts` converts the public demo file (`prism2R-demo_dataset.prism`,
@@ -62,17 +63,23 @@ override with `PRISM_TEST_CORPUS`.
 
 `verify-corpus.ts` runs every `.prism` in a corpus directory through the
 same checks, plus a CLI check (C0: a good file converts, exit 0; a bad
-file is refused, exit 1), a source-untouched checksum (C7), and a
-values-clean check (C8: no stray carriage return or comma-decimal text
-leaks into the `.hlx`). Corpus path defaults to
+file is refused, exit 1; a write failure is a plain-language error, not a
+stack), a source-untouched checksum (C7), a values-clean check (C8: no
+stray carriage return or unconverted comma leaks into the `.hlx`), and an
+alignment check (C9: every converted table's layout accounts for each
+dataset's columns exactly once and never consumes more than the file's
+declared columns). Corpus path defaults to
 `~/workspace/helix/test-corpus-prism10`; override with
-`PRISM_TEST_CORPUS_PRISM10`.
+`PRISM_TEST_CORPUS_PRISM10`. The C3/C4 expectations come from
+`tests/layout-spec.ts` — an independent implementation of the vault spec,
+not the converter's walk — so a converter bug that shifts a column fails
+here as wrong values instead of being agreed with.
 
 ## Test corpus
 
 Public files only — Mansi's files are never test material.
 
-### Public corpus — `~/workspace/helix/test-corpus-prism10/` (66 files, 446/446 checks)
+### Public corpus — `~/workspace/helix/test-corpus-prism10/` (66 files, 510/510 checks)
 
 All 66 files are committed in this repo at `test-corpus-prism10/` — per-file sources and licenses: `test-corpus-prism10/LICENSES.md`. The source links below are the original downloads.
 
@@ -145,13 +152,13 @@ All 66 files are committed in this repo at `test-corpus-prism10/` — per-file s
 | `figure-6d-zenodo-22933325.prism` (41 KB) | Zenodo record 22933325 | 1 table, 1 analysis — **Prism 11.1.0.224**; converts cleanly |
 | `energy-system-zenodo-23184357.prism` (1.4 KB) | Zenodo record 23184357 | **Not GraphPad at all** — PRISM model-checker file, same extension; expected reject (not a ZIP) |
 
-Results (2026-11-10, round 2): **446/446 checks pass** — 9,528,251 cells compared across the
+Results (2026-11-10, round 3): **510/510 checks pass** — 9,528,251 cells compared across the
 corpus, 0 mismatches; 288 analysis nodes converted (4PL both X conventions,
 log(agonist)/log(inhibitor) variable slope, one-phase decay, Line, quadratic —
 plus survival), 375 named as unsupported; every source file's checksum unchanged.
 Prism versions in the corpus: 10.0.0–10.6.1 plus 11.1.0.224 (3 files).
 
-### Synthetic corpus — `~/workspace/helix/test-corpus-synthetic/` (6 files, 36/36 checks)
+### Synthetic corpus — `~/workspace/helix/test-corpus-synthetic/` (6 files, 41/41 checks)
 
 Committed in this repo at `test-corpus-synthetic/` (provenance: `test-corpus-synthetic/NOTICE.md` — derived from the MIT-licensed prism2R demo file).
 
@@ -222,6 +229,58 @@ never written by Prism:
 - **Prism 11 files convert.** Three files written by Prism 11.1.0.224
   (formatVersion 1-6-1) pass all checks — the converter is not
   version-gated, and the corpus proves it.
+
+## Bugs found by the review sweep, round 3 (2026-11-10 — read-only review, all fixed + regression-checked)
+
+- **A missing dataset JSON mid-table shifted every later dataset (B1).**
+  The load loop warned and dropped the missing dataset but never
+  advanced the CSV cursor past its columns. Now the layout is resolved
+  up front: a missing dataset is skipped by the table's
+  `replicatesCount` (`y_replicates`) or its `dataFormat`'s fixed shape,
+  or inferred from `content.json`'s `numberOfColumns` when it is the
+  only unknown; two or more unknowns (or an inference that doesn't fit
+  the declared width) refuses the table with a warning that says what
+  actually happened. The old warning ("its columns were left out") was
+  false and is gone.
+- **A missing X dataset JSON shifted every Y value (B2).** The fallback
+  `xCount = 1` was wrong for an error-bar X (value + error). Now the X
+  count is inferred from the declared columns, or the table is refused.
+- **A malformed `replicate ranges` silently yielded 0 subcolumns (B3).**
+  An unparseable range (`"abc"`) or a reversed one (`"2~0"`) now makes
+  the dataset's count unknown — inferred from the dims, or the table is
+  refused — with a warning naming the bad range. The unit-suite pin
+  that called "ranges bad value → 0 subcolumns" intended behaviour was
+  part of the bug and is fixed.
+- **Survival durations were wrong across DST and with mixed date forms
+  (M1).** ISO datetimes parsed as local midnight but date-only strings
+  as UTC midnight, so a 7-day span across US DST start came out 6.958
+  days under America/Los_Angeles. Every date form now parses as UTC,
+  one frame; a slash date whose first component is over 12 reads as
+  DD/MM. The unit suite runs under both UTC and
+  `TZ=America/Los_Angeles` so this class can't hide again. A survival X
+  whose `dateTimeConversion.units` isn't Days is warned about (m1).
+- **The verifier mirrored the converter (M2).** It built expectations
+  from the same filtered `sets` list and the same `xCount = 1`
+  fallback, so the 446/446 corpus result couldn't see B1/B2/B3. The
+  expectations now come from `tests/layout-spec.ts` — an independent
+  implementation of the vault spec — and a new C9 alignment check
+  verifies every dataset's columns are accounted for exactly once.
+  Proof: three probe files (mid-table missing dataset, missing
+  multi-subcolumn X, malformed range) pass under the new verifier +
+  new converter, fail under the new verifier + old converter, and pass
+  under the old verifier + old converter — the old verifier was blind
+  to all three shifts.
+- **Also fixed:** a CSV shorter than `numberOfRows` is still padded
+  with null rows, but now warns (M3); a supported analysis with zero
+  `inputDataSets` is warned about by name instead of silently dropped
+  (M4); a leading BOM is stripped in `parseCsv` (M5); the orphan /
+  unreferenced scan matches any UID shape, not just UUIDs (m3); a CLI
+  `writeFile` failure is a plain-language error, not a stack (m4);
+  whitespace-only cells are empty and lone `\n` breaks collapse like
+  `\r` (m5); commas are thousands separators file-wide when any value
+  has 2+ comma groups, else a single comma is a decimal (m6); the C0
+  probe runs with CWD = the converter dir (m7); the demo `verify.ts`
+  builder is ported to the current spec (m8).
 ## Unit tests (abstract layer)
 
 Real files only sample the input space, so the converter is also tested
@@ -230,7 +289,7 @@ memory, fed straight to `convertPrism`, with every combination of the
 dimensions below pinned:
 
 ```sh
-npm test            # tests/unit.ts + tests/unit-helpers.ts — 295 checks
+npm test            # tests/unit.ts + tests/unit-helpers.ts — 326 checks
 ```
 
 - `tests/unit.ts` — `convertPrism` over in-memory files. Dimensions:
@@ -244,18 +303,23 @@ npm test            # tests/unit.ts + tests/unit-helpers.ts — 295 checks
   G dataset presence; H analysis class × input state; I project-level
   rejects; J `content.json` shape; K orphan/unreferenced tables;
   L CSV text shape (CRLF, quoted fields, embedded line breaks in row
-  titles). Every successful conversion is also round-tripped through
+  titles, whitespace-only cells); M review regressions (B1/B2/B3/M1/
+  m1/M5/m6). Every successful conversion is also round-tripped through
   Helix's own `parseProjectFile`, so a case that converts but produces
   a `.hlx` Helix rejects still fails.
 - `tests/unit-helpers.ts` — the pure helpers directly: `plainTitle`,
-  `parsePrismDate`, `daysBetween`, `subcolumnNames`, `replicateCount`.
+  `parsePrismDate`, `daysBetween`, `subcolumnNames`, `replicateCount`,
+  `replicateRangeProblems`.
   These are exported from `src/prism.ts` for the tests only (marked in
   the source); the converter uses them internally and nothing else
   should import them. Tests go through the exported surface — no
-  test-only backdoors into production code.
+  test-only backdoors into production code. Run the suite under both
+  UTC and `TZ=America/Los_Angeles`: the DST date pins only fail on a
+  local-time parser under a non-UTC timezone.
 - `tests/build-prism.ts` — the in-memory `.prism` builder the suite
-  uses. Test UIDs are hex-only (`A0000001`, …) because the converter's
-  orphan scan matches UUID-shaped UIDs (`[0-9A-F-]+`).
+  uses. Test UIDs are hex-only (`A0000001`, …) by convention; the
+  converter's orphan scan matches any path segment, so a non-UUID test
+  UID is counted too.
 - `tests/unit.ts` has a `product2` combinatorial generator: a new
   dimension value is one list entry, not a new test file.
 
@@ -274,18 +338,37 @@ exactly the fixed behaviour. The helper tests can't run against the
 old code (the helpers weren't exported then); R3's helpers are covered
 there by the convert-level tests, which do fail on the old code.
 
+The review-sweep regressions (commit 4383421) are named `REGRESSION`
+in section M of `tests/unit.ts` (B1/B2/B3/M1/m1/M5/m6) and in the
+updated pins of sections F/G/H/J/K/L. Verified against the pre-fix
+converter (`git stash push converter/src/`, run, `git stash pop`):
+225/244 pass under UTC and 224/244 under `TZ=America/Los_Angeles` —
+the 19 failures under UTC are exactly the new/updated pins (the B1
+shifts show C reading B's values, B2 shows A reading the X-error
+column, B3 shows an X-only table where A should be, m6 shows
+`"1,234,567"` left as text and `"45,5"` → `"45.5"`), and the 20th
+failure under LA is the M1 DST case (`6.958333` instead of `7`). The
+helper DST/DD/MM pins were verified the same way against the pre-fix
+`parsePrismDate`/`daysBetween` (all 6 fail under LA: ISO/US off by
+the UTC offset, DD/MM null, DST `6.958333`/`7.041667`, mixed forms
+`0.291667`).
+
 ### Known behaviour pinned by the suite (not bugs to fix silently)
 
-- A comma in a number is always read as a decimal separator:
-  `"45,5"` → `45.5`, and `"1,234"` → `1.234` too. Prism records no
-  locale, so a thousands separator is indistinguishable from a decimal
-  comma; the rule is pinned, not changed.
+- A comma in a number reads by the file's own values: if any cell in
+  the file holds a number with two or more comma digit-groups
+  (`"1,234,567"`), commas are thousands separators file-wide and are
+  stripped (`"1,234"` → `1234`); otherwise a single comma is a decimal
+  separator (`"45,5"` → `45.5`, and `"1,234"` → `1.234`). Prism records
+  no locale, so the file's values decide; the rule is pinned, not
+  changed silently.
 - An embedded line break inside a quoted row title (Prism writes
-  multi-line titles with a bare CR) passes through byte-exact — the
-  converter never rewrites a value. The corpus verifier's C8 check
-  flags any `\r` as a possible CSV leak, so on real files with
-  multi-line titles C8 is a false positive; the value itself is exact
-  (C4 confirms it).
+  multi-line titles with a bare CR) becomes one space — Helix labels
+  are single-line, so `cleanText` collapses the break (and a lone
+  `\n` too) with surrounding whitespace. A value that is only
+  whitespace becomes empty, never a stray space. The corpus verifier's
+  C8 check flags any `\r` or `\n` surviving into the `.hlx` as a
+  possible CSV leak.
 
 ## Layout
 
@@ -294,6 +377,9 @@ there by the convert-level tests, which do fail on the old code.
 - `src/cli.ts` — command-line entry.
 - `tests/verify.ts` — headless verification against the demo file.
 - `tests/verify-corpus.ts` — multi-file verification over a corpus directory (see above).
+- `tests/layout-spec.ts` — the independent layout + expectation builder
+  the verifiers use (M2): same spec as the converter, written
+  separately from it, so the verifiers can't agree with a converter bug.
 - `tests/make-synthetic.ts` — builds the synthetic edge-case corpus from the demo file.
 - `tests/build-prism.ts` — builds minimal `.prism` buffers in memory for the unit tests.
 - `tests/unit.ts` — abstract-layer unit tests for `convertPrism` (permutation suite).
