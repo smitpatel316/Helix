@@ -27,6 +27,7 @@ export type AnalysisType =
   | "multiple-logistic-regression"
   | "poisson-regression"
   | "principal-component-analysis"
+  | "k-means"
   | "spline-lowess"
   | "binding-saturation"
   | "binding-kinetics"
@@ -315,6 +316,15 @@ export interface PoissonRegressionParams {
 export interface PrincipalComponentAnalysisParams {
   scale: "correlation" | "covariance";
   components?: number;
+}
+
+/** Params for "k-means" (Multiple Variables table): `clusters` is k, the
+ *  number of clusters (default 2); `standardise` z-scores each variable
+ *  before clustering (default true — recommended when variables are on
+ *  different scales, as Prism does by default). */
+export interface KMeansParams {
+  clusters: number;
+  standardise?: boolean;
 }
 
 /** Params for "two-way-anova" on a Grouped table's column-groups × row position:
@@ -753,6 +763,7 @@ export type AnalysisParams = DataSetsParam &
     | MultipleLogisticRegressionParams
     | PoissonRegressionParams
     | PrincipalComponentAnalysisParams
+    | KMeansParams
     | SplineLowessParams
     | CoxPHParams
     | MixedEffectsParams
@@ -944,6 +955,27 @@ export interface FrequencyBins {
   bins: FrequencyBinRow[];
 }
 
+/** One row of a K-means clustering's clusters table ("k-means"): one
+ *  cluster's centre (in the ORIGINAL units — back-transformed when the
+ *  variables were standardised), its size, and its within-cluster sum of
+ *  squares. Clusters are in canonical order: sorted by their first
+ *  centre coordinate, ascending — R numbers clusters in the order its
+ *  algorithm finds them, so without this the labels would be arbitrary. */
+export interface KMeansClusterRow {
+  cluster: string;
+  centre: (number | null)[];
+  n: number;
+  withinSs: number | null;
+}
+
+/** One row of a K-means clustering's assignments table ("k-means"): which
+ *  (canonical) cluster one complete row belongs to, in table order. `row`
+ *  is the row title, or the row number when the table has none. */
+export interface KMeansAssignmentRow {
+  row: string;
+  cluster: number;
+}
+
 /** One row of a PCA variance-explained table ("principal-component-analysis"):
  *  one component's standard deviation, eigenvalue (variance), and share of
  *  the total variance, with the running total. */
@@ -1052,6 +1084,13 @@ export interface AnalysisResult {
   pcaVariance?: PcaVarianceRow[];
   pcaLoadings?: PcaLoadingRow[];
   pcaScores?: PcaScoreRow[];
+  /** Optional K-means tables ("k-means"): one row per cluster (its centre
+   *  in original units, size and within-cluster sum of squares) and one
+   *  row per complete observation (its cluster assignment). Cluster labels
+   *  are canonicalised by the runner (sorted by first centre coordinate),
+   *  so a stored result is stable across runs. */
+  kmeansClusters?: KMeansClusterRow[];
+  kmeansAssignments?: KMeansAssignmentRow[];
   /** Optional per-point smoother output ("spline-lowess"), the shared
    *  per-point-result mechanism for later plans: `fitted` = the fitted
    *  values at the data X's, in ascending X order; `curve` = the same

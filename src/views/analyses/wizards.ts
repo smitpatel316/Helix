@@ -1840,6 +1840,32 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
     }),
   },
 
+  "k-means": {
+    questions: () => [
+      {
+        id: "clusters",
+        ask: "Number of clusters (k).",
+        kind: "number",
+        label: "Number of clusters (k)",
+        initial: 2,
+        min: 2,
+        validate: (v) =>
+          Number.isInteger(v) && v >= 2 ? undefined : "Enter a whole number of clusters (at least 2).",
+      },
+      choice("standardise", "Standardise variables first? — z-score each variable (recommended when variables are on different scales)", [
+        ["yes", "Yes — standardise each variable (recommended when variables are on different scales)"],
+        ["no", "No — cluster on the original units"],
+      ]),
+    ],
+    finish: (a) => ({
+      type: "k-means",
+      params: {
+        clusters: a.clusters as number,
+        standardise: (a.standardise as string | undefined) !== "no",
+      },
+    }),
+  },
+
   "cox-proportional-hazards": {
     questions: (a, table) => {
       const all = dataNames(table);

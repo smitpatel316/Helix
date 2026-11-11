@@ -38,6 +38,7 @@ export type GraphType =
   | "smooth-curve"
   | "scree-plot"
   | "pca-biplot"
+  | "kmeans-scatter"
   | "monte-carlo-histogram"
   | "histogram";
 
@@ -192,6 +193,11 @@ export interface GraphOptions {
   pcaAnalysisId?: string;
   pcaX: number;
   pcaY: number;
+  // K-means clustering (Multiple Variables only): the sibling
+  // "K-means clustering" analysis a cluster scatter draws its assignments
+  // and centres from (see kmeans-scatter.ts) — the graph runs the same
+  // cached runAnalysis result. It plots the first two variables.
+  kmeansAnalysisId?: string;
   // Dose-response curve (XY family only): a one-click sigmoidal 4PL fit of the
   // chosen Y series against X, run via WebR (see dose-response-curve.ts) — no
   // sibling analysis node needed, unlike the Linear-regression overlay above.
