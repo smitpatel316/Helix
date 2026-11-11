@@ -4,6 +4,7 @@ import { useProjectStore } from "../store/use-project-store";
 import { TableView } from "../views/tables/table-view";
 import { AnalysisView } from "../views/analyses/analysis-view";
 import { GraphView } from "../views/graphs/graph-view";
+import { FigureView } from "../views/figures/figure-view";
 import { GRAPHS } from "../views/graphs";
 import { ANALYSES } from "../stats";
 
@@ -32,6 +33,13 @@ export function Workspace() {
     return (
       <Shown key={node.id}>
         <GraphView node={node} />
+      </Shown>
+    );
+  }
+  if (node?.type === "figure") {
+    return (
+      <Shown key={node.id}>
+        <FigureView node={node} />
       </Shown>
     );
   }

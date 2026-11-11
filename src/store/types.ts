@@ -3,9 +3,9 @@
 
 import type { AnalysisParams, AnalysisType } from "../stats/types";
 
-export type NodeType = "table" | "analysis" | "graph";
+export type NodeType = "table" | "analysis" | "graph" | "figure";
 /** What an item is, as menus name it ("Delete Graph…"). */
-export const NODE_NAMES: Record<NodeType, string> = { table: "Table", analysis: "Analysis", graph: "Graph" };
+export const NODE_NAMES: Record<NodeType, string> = { table: "Table", analysis: "Analysis", graph: "Graph", figure: "Figure" };
 export type TableType = "column" | "xy" | "grouped" | "nested" | "multiple" | "contingency" | "survival";
 /** Tables whose first data column is X (a Survival table's is the time). */
 export const hasXColumn = (type: TableType) => type === "xy" || type === "survival";
@@ -513,4 +513,56 @@ export interface ProjectNode {
   /** Graph nodes only: which chart this node draws + its display options. */
   graphType?: GraphType;
   graphOptions?: GraphOptions;
+  /** Figure nodes only: the panels it composes (see src/lib/figure.ts). */
+  panels?: FigurePanel[];
+  grid?: FigureGrid;
+  figureSize?: FigureSize;
+  labelStyle?: FigureLabelStyle;
+  figureTitle?: string;
+  sharedLegend?: SharedLegend;
+  dpi?: Resolution;
 }
+
+/** One panel of a multi-panel figure: a reference to an existing graph node,
+ *  never a copy of it — editing the graph updates the panel automatically. */
+export interface FigurePanel {
+  graphId: string;
+  /** The graph's name when the panel was saved: a hint for the placeholder
+   *  shown when the graph is gone ("Graph 'Dose-response' is missing").
+   *  Never trusted for lookup — ids are the reference. */
+  graphName?: string;
+  label: string;
+  /** True when the label was typed by hand: it sticks to the panel when
+   *  panels move, instead of being reassigned in reading order. */
+  labelManual?: boolean;
+  title: string;
+  row: number;
+  col: number;
+  rowSpan: number;
+  colSpan: number;
+}
+
+export interface FigureGrid {
+  rows: number;
+  cols: number;
+}
+
+/** A figure's page size, in inches (papers are in inches). */
+export interface FigureSize {
+  widthIn: number;
+  heightIn: number;
+}
+
+/** Where a panel's label sits, and how it looks at export scale. */
+export type LabelPosition = "top-left" | "top-right" | "above-panel";
+export interface FigureLabelStyle {
+  position: LabelPosition;
+  fontSizePt: number;
+  bold: boolean;
+}
+
+/** Whether the figure draws one legend for all its panels, below the grid. */
+export type SharedLegend = "none" | "shared";
+
+/** An export resolution, in dots per inch (same choices as a single graph). */
+export type Resolution = "150" | "300" | "600";

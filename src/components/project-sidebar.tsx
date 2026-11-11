@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChartLineIcon, GridNineIcon, PlusCircleIcon, SidebarSimpleIcon, SigmaIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, GridNineIcon, LayoutIcon, PlusCircleIcon, SidebarSimpleIcon, SigmaIcon } from "@phosphor-icons/react";
 import { Button, IconButton } from "../ui/controls";
 import { SidePanel, SidebarItem } from "../ui/layout";
 import { popupMenu } from "../native";
@@ -59,8 +59,8 @@ export function SidebarToggle({ className }: { className?: string }) {
 
 export function ProjectSidebar() {
   // The outline, not the whole project: editing a table or a graph doesn't redraw the sidebar.
-  const { tables, activeNodeId } = useOutline();
-  const { get, setActiveNode, renameNode, removeNode, openSelector, reorderTables, reorderChildren } =
+  const { tables, figures, activeNodeId } = useOutline();
+  const { get, setActiveNode, renameNode, removeNode, openSelector, reorderTables, reorderChildren, createFigure } =
     useProjectActions();
   const { sidebar, sidebarWidth, setLayout } = useLayout();
 
@@ -175,9 +175,12 @@ export function ProjectSidebar() {
     setTimeout(() => listRef.current?.focus()); // after the view shows
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
-    const node = tables.flatMap((t) => [t, ...t.children]).find((n) => n.id === activeNodeId);
+    const node = [...tables.flatMap((t) => [t, ...t.children]), ...figures].find((n) => n.id === activeNodeId);
     if (!node || e.metaKey || e.altKey || e.ctrlKey) return;
-    const rows = tables.flatMap((t) => [t.id, ...(collapsed.has(t.id) ? [] : t.children.map((c) => c.id))]);
+    const rows = [
+      ...tables.flatMap((t) => [t.id, ...(collapsed.has(t.id) ? [] : t.children.map((c) => c.id))]),
+      ...figures.map((f) => f.id),
+    ];
     const i = rows.indexOf(node.id);
     if (e.key === "ArrowDown") select(rows[Math.min(rows.length - 1, i + 1)]);
     else if (e.key === "ArrowUp") select(rows[Math.max(0, i - 1)]);
@@ -193,6 +196,7 @@ export function ProjectSidebar() {
       { text: "New Analysis…", action: () => openSelector({ kind: "new-analysis", tableId: table.id }) },
       { text: "Simulate data…", action: () => openSelector({ kind: "simulate-data", tableId: table.id }) },
       { text: "New Graph…", action: () => openSelector({ kind: "new-graph", tableId: table.id }) },
+      { text: "New Figure…", action: () => createFigure() },
       { item: "Separator" },
       { text: "Rename", action: () => setRenaming(table.id) },
       // The last table stays: a project is never empty.
@@ -205,6 +209,9 @@ export function ProjectSidebar() {
 
   const childMenu = (child: OutlineNode) =>
     void popupMenu([
+      ...(child.type === "graph"
+        ? [{ text: "New Figure from this Graph…", action: () => createFigure([child.id]) }]
+        : []),
       { text: "Rename", action: () => setRenaming(child.id) },
       { text: `Delete ${NODE_NAMES[child.type]}…`, action: () => removeWithConfirm(child, removeNode) },
     ]);
@@ -270,6 +277,21 @@ export function ProjectSidebar() {
               />
             ))}
           </SidebarItem>
+        ))}
+        {figures.map((figure) => (
+          <SidebarItem
+            key={figure.id}
+            icon={<LayoutIcon className="size-4" />}
+            title={figure.name}
+            selected={activeNodeId === figure.id}
+            renaming={renaming === figure.id}
+            onRename={(name) => rename(figure, name)}
+            onClick={() => select(figure.id)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              childMenu(figure);
+            }}
+          />
         ))}
       </div>
     </SidePanel>

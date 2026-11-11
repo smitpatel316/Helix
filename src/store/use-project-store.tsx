@@ -14,6 +14,13 @@ import { TABLES } from "../views/tables";
 import { GRAPHS, newGraphOptions } from "../views/graphs";
 import { ANALYSES } from "../stats";
 import { followTable, type TableMove } from "./references";
+import {
+  DEFAULT_FIGURE_DPI,
+  DEFAULT_FIGURE_SIZE,
+  DEFAULT_LABEL_STYLE,
+  newFigurePanels,
+} from "../lib/figure";
+import type { FigureGrid, FigureLabelStyle, FigurePanel, FigureSize, Resolution, SharedLegend } from "./types";
 
 export type { ProjectNode } from "./types";
 
@@ -68,6 +75,20 @@ type Action =
   /** `label` names the edit in the Edit menu; `move`: what it renamed or moved. */
   | { type: "updateTable"; id: string; data: TableData; label: string; move?: TableMove }
   | { type: "updateGraph"; id: string; options: GraphOptions; at: number }
+  | {
+      type: "updateFigure";
+      id: string;
+      patch: Partial<{
+        panels: FigurePanel[];
+        grid: FigureGrid;
+        figureSize: FigureSize;
+        labelStyle: FigureLabelStyle;
+        figureTitle: string;
+        sharedLegend: SharedLegend;
+        dpi: Resolution;
+      }>;
+      at: number;
+    }
   | { type: "undo" }
   | { type: "redo" }
   | { type: "openSelector"; selector: Selector }
@@ -210,6 +231,15 @@ function applyAction(state: ProjectState, action: Action): ProjectState {
         isDirty: true,
       };
     }
+    case "updateFigure": {
+      const node = state.nodes[action.id];
+      if (!node || node.type !== "figure") return state;
+      return {
+        ...state,
+        nodes: { ...state.nodes, [action.id]: { ...node, ...action.patch } },
+        isDirty: true,
+      };
+    }
     case "openSelector":
       return { ...state, selector: action.selector };
     case "closeSelector":
@@ -278,6 +308,7 @@ const UNDOABLE = new Set<Action["type"]>([
   "remove",
   "updateTable",
   "updateGraph",
+  "updateFigure",
   "reorderRoot",
   "reorderChildren",
 ]);
@@ -296,6 +327,8 @@ function changeName(action: Action): string {
       return action.label;
     case "updateGraph":
       return "Format Change";
+    case "updateFigure":
+      return "Figure Change";
     default:
       return "Move";
   }
@@ -308,7 +341,12 @@ export function reducer(state: ProjectState, action: Action): ProjectState {
   const revision = state.revision + 1;
   if (!UNDOABLE.has(action.type)) return { ...next, revision };
 
-  const change = action.type === "updateGraph" ? { key: `graph ${action.id}`, at: action.at } : null;
+  const change =
+    action.type === "updateGraph"
+      ? { key: `graph ${action.id}`, at: action.at }
+      : action.type === "updateFigure"
+        ? { key: `figure ${action.id}`, at: action.at }
+        : null;
   const merged = change && state.lastChange?.key === change.key && change.at - state.lastChange.at < MERGE_MS;
   const before = {
     label: changeName(action),
@@ -335,6 +373,20 @@ interface ProjectActions {
   createSimulatedTable: (tableType: TableType, data: TableData) => void;
   createAnalysis: (parentId: string, analysisType: AnalysisType, analysisParams?: AnalysisParams) => void;
   createGraph: (parentId: string, graphType: GraphType) => void;
+  /** A figure at the project root; `graphIds` (in order) start as its panels. */
+  createFigure: (graphIds?: string[]) => void;
+  updateFigure: (
+    id: string,
+    patch: Partial<{
+      panels: FigurePanel[];
+      grid: FigureGrid;
+      figureSize: FigureSize;
+      labelStyle: FigureLabelStyle;
+      figureTitle: string;
+      sharedLegend: SharedLegend;
+      dpi: Resolution;
+    }>,
+  ) => void;
   setActiveNode: (id: string | null) => void;
   renameNode: (id: string, name: string) => void;
   removeNode: (id: string) => void;
@@ -376,9 +428,11 @@ interface ProjectContextValue extends ProjectActions {
 
 /** An item as the sidebar shows it. */
 export type OutlineNode = Pick<ProjectNode, "id" | "type" | "name" | "parentId">;
-/** What the sidebar shows: the tables in order, each with its analyses and graphs. */
+/** What the sidebar shows: the tables in order, each with its analyses and graphs,
+ *  then the figures (project-root items, since a figure may span tables). */
 interface Outline {
   tables: (OutlineNode & { children: OutlineNode[] })[];
+  figures: OutlineNode[];
   activeNodeId: string | null;
 }
 
@@ -453,6 +507,31 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
             graphOptions: newGraphOptions(graphType),
           },
         }),
+      createFigure: (graphIds = []) => {
+        const names: Record<string, string> = {};
+        for (const id of graphIds) {
+          const graph = latest.current.nodes[id];
+          if (graph) names[id] = graph.name;
+        }
+        const { panels, grid } = newFigurePanels(graphIds, names);
+        dispatch({
+          type: "create",
+          node: {
+            id: genId("figure"),
+            type: "figure",
+            name: "Figure",
+            parentId: null,
+            panels,
+            grid,
+            figureSize: { ...DEFAULT_FIGURE_SIZE },
+            labelStyle: { ...DEFAULT_LABEL_STYLE },
+            figureTitle: "",
+            sharedLegend: "none",
+            dpi: DEFAULT_FIGURE_DPI,
+          },
+        });
+      },
+      updateFigure: (id, patch) => dispatch({ type: "updateFigure", id, patch, at: Date.now() }),
       setActiveNode: (id) => dispatch({ type: "setActive", id }),
       renameNode: (id, name) => dispatch({ type: "rename", id, name }),
       removeNode: (id) => dispatch({ type: "remove", id }),
@@ -490,13 +569,14 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
 
   // The outline as text: editing what a table or a graph holds leaves it the same, so
   // the outline stays the same object and the sidebar doesn't redraw.
-  const outlineText = JSON.stringify(
-    state.rootOrder
-      .filter((id) => state.nodes[id])
+  const outlineText = JSON.stringify({
+    tables: state.rootOrder
+      .filter((id) => state.nodes[id]?.type === "table")
       .map((id) => ({ ...outlineNode(state.nodes[id]), children: childrenOf(state, id).map(outlineNode) })),
-  );
+    figures: state.rootOrder.filter((id) => state.nodes[id]?.type === "figure").map((id) => outlineNode(state.nodes[id])),
+  });
   const outline = React.useMemo<Outline>(
-    () => ({ tables: JSON.parse(outlineText), activeNodeId: state.activeNodeId }),
+    () => ({ ...JSON.parse(outlineText), activeNodeId: state.activeNodeId }),
     [outlineText, state.activeNodeId],
   );
 

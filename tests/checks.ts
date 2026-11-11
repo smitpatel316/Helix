@@ -93,6 +93,21 @@ import { isNewer, latestVersion } from "../src/lib/version";
 import { titleCase } from "../src/lib/format";
 import { loadRecents } from "../src/store/recents";
 import { largestAt, withDpi } from "../src/lib/image-dpi";
+import {
+  assignLabels,
+  clampPanel,
+  composeFigureSvg,
+  duplicateLabels,
+  figureExportSize,
+  figureLabel,
+  figurePixelSize,
+  missingPanels,
+  newFigurePanels,
+  panelRects,
+  sharedLegendCheck,
+  validateFigureSize,
+} from "../src/lib/figure";
+import { sampleProject } from "./sample-project";
 import { crc32 } from "node:zlib";
 import type { AnalysisOutcome, AnalysisParams, AnalysisResult, MonteCarloParams, RegressionCoefficient, SimulationSpec } from "../src/stats/types";
 import { simulationRCode, validateSimulationSpec } from "../src/stats/simulation/simulate";
@@ -2224,6 +2239,249 @@ check("an exported image stays within what a Mac can draw", () => {
   // A size that fits is taken as it is, even one not rounded (a graph resized by hand).
   const odd = { width: 341.79, height: 460 };
   deepStrictEqual(largestAt(odd, 600), odd);
+});
+
+// ── Multi-panel figures ──────────────────────────────────────────────────
+
+const figurePayload = (): ProjectFilePayload => {
+  // Its own table (the shared `table` fixture excludes its only Y value, so
+  // its series list is empty — a shared legend needs real series).
+  const ft: ProjectNode = {
+    id: "ft",
+    type: "table",
+    name: "Figure data",
+    parentId: null,
+    tableType: "column",
+    data: {
+      columns: ["Title", "Control", "Treated"],
+      rows: [
+        [null, "10", "14"],
+        [null, "12", "16"],
+        [null, "11", "15"],
+      ],
+    },
+  };
+  const g1: ProjectNode = {
+    id: "g1",
+    type: "graph",
+    name: "Plot",
+    parentId: "ft",
+    graphType: "mean-error",
+    graphOptions: {
+      ...newGraphOptions("mean-error"),
+      series: { Control: { color: "#0072B2" }, Treated: { color: "#D55E00" } },
+    },
+  };
+  const g2: ProjectNode = {
+    id: "g2",
+    type: "graph",
+    name: "Bars",
+    parentId: "ft",
+    graphType: "individual",
+    graphOptions: {
+      ...newGraphOptions("individual"),
+      series: { Control: { color: "#0072B2" }, Treated: { color: "#D55E00" } },
+    },
+  };
+  return {
+    nodes: {
+      ft,
+      g1,
+      g2,
+      f1: {
+        id: "f1",
+        type: "figure",
+        name: "Figure 1",
+        parentId: null,
+        panels: [
+          { graphId: "g1", graphName: "Plot", label: "A", title: "", row: 0, col: 0, rowSpan: 1, colSpan: 1 },
+          { graphId: "g2", graphName: "Bars", label: "B", title: "", row: 0, col: 1, rowSpan: 1, colSpan: 1 },
+        ],
+        grid: { rows: 1, cols: 2 },
+        figureSize: { widthIn: 10, heightIn: 7.5 },
+        labelStyle: { position: "top-left", fontSizePt: 12, bold: true },
+        figureTitle: "",
+        sharedLegend: "none",
+        dpi: "600",
+      },
+    },
+    rootOrder: ["ft", "f1"],
+    childOrder: { ft: ["g1", "g2"], f1: [] },
+    activeNodeId: "f1",
+  };
+};
+
+check("a figure round-trips through .hlx exactly (F-01)", () => {
+  const before = figurePayload();
+  const { project, issues } = read(serializeProjectFile(before));
+  deepStrictEqual(issues, []);
+  deepStrictEqual(project.nodes.f1, before.nodes.f1);
+  deepStrictEqual(project.rootOrder, ["ft", "f1"]);
+  // And re-saving the read-back project writes the same figure again.
+  strictEqual(read(serializeProjectFile(project)).updated, false);
+});
+
+check("a figure's export size and panel alignment are arithmetic (F-02, F-04)", () => {
+  deepStrictEqual(figurePixelSize({ widthIn: 10, heightIn: 7.5 }, 600), { width: 6000, height: 4500 });
+  const { panels, grid, figureSize } = figurePayload().nodes.f1;
+  const rects = panelRects(panels!, grid!, figureSize!, 300);
+  strictEqual(rects.length, 2);
+  deepStrictEqual([rects[0].x, rects[0].width], [0, 1500]);
+  deepStrictEqual([rects[1].x, rects[1].width], [1500, 1500]);
+});
+
+check("a figure's SVG export is one vector parent with labelled panels (F-03, F-05)", () => {
+  const { panels, grid, figureSize, labelStyle, figureTitle, sharedLegend } = figurePayload().nodes.f1;
+  const panel = () =>
+    `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200"/></svg>`;
+  const { svg, missing } = composeFigureSvg(
+    panels!.map((p) => ({ panel: p, svg: panel() })),
+    { panels: panels!, grid: grid!, figureSize: figureSize!, labelStyle: labelStyle!, figureTitle: figureTitle!, sharedLegend: sharedLegend! },
+  );
+  strictEqual(missing, 0);
+  ok(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg" width="720" height="540"'));
+  ok(svg.includes("<text") && svg.includes(">A</text>") && svg.includes(">B</text>"), svg);
+  strictEqual((svg.match(/<svg x="/g) ?? []).length, 2);
+});
+
+check("a figure holds references, not copies, of its graphs (F-07)", () => {
+  const before = figurePayload();
+  const { project } = read(serializeProjectFile(before));
+  const figure = project.nodes.f1;
+  ok(!("graphOptions" in figure), "a figure node carries no graph options");
+  // Editing the graph's title changes the graph, never the figure node.
+  const edited = { ...before, nodes: { ...before.nodes, g1: { ...before.nodes.g1, name: "Renamed Plot" } } };
+  const { project: after } = read(serializeProjectFile(edited));
+  deepStrictEqual(after.nodes.f1, before.nodes.f1);
+  strictEqual(after.nodes.g1.name, "Renamed Plot");
+});
+
+check("a deleted graph leaves a placeholder panel, and the figure still opens (F-08)", () => {
+  const before = figurePayload();
+  delete before.nodes.g2;
+  const { project, issues } = read(serializeProjectFile(before));
+  ok(project.nodes.f1, "the figure opens");
+  deepStrictEqual(missingPanels(project.nodes.f1.panels!, project.nodes).map((p) => p.graphId), ["g2"]);
+  ok(issues.some((i) => i.message.includes("Figure “Figure 1”")), JSON.stringify(issues));
+});
+
+check("an older Helix drops the figure node but keeps the data (F-09)", () => {
+  const before = figurePayload();
+  // A node type this version doesn't know, as an older Helix sees "figure".
+  const old = JSON.parse(serializeProjectFile(before)) as { project: ProjectFilePayload };
+  old.project.nodes.f1.type = "layout" as never;
+  const { project, issues } = read(JSON.stringify(old));
+  ok(!project.nodes.f1, "the unknown node is left out");
+  ok(project.nodes.ft && project.nodes.g1, "tables and graphs still open");
+  ok(issues.some((i) => i.message.includes("unreadable item")), JSON.stringify(issues));
+});
+
+check("a shared legend needs identical series in identical colours (F-10, F-11)", () => {
+  const before = figurePayload();
+  const okResult = sharedLegendCheck(before.nodes.f1.panels!, before.nodes);
+  ok(okResult.ok, JSON.stringify(okResult));
+  strictEqual(okResult.entries?.length, 2);
+  // Same series name, a different colour: refused, with the reason shown.
+  const recoloured: ProjectFilePayload = {
+    ...before,
+    nodes: {
+      ...before.nodes,
+      g2: {
+        ...before.nodes.g2,
+        graphOptions: { ...before.nodes.g2.graphOptions!, series: { Control: { color: "#0072B2" }, Treated: { color: "#009E73" } } },
+      },
+    },
+  };
+  const refused = sharedLegendCheck(recoloured.nodes.f1.panels!, recoloured.nodes);
+  ok(!refused.ok && refused.reason?.includes("different colours"), JSON.stringify(refused));
+});
+
+check("an oversize figure offers the largest fitting size, never silently (F-12)", () => {
+  const out = figureExportSize({ widthIn: 20, heightIn: 15 }, 600);
+  ok(out.capped && out.reason !== undefined, JSON.stringify(out));
+  ok(out.width * out.height <= 7500 * 5625, `${out.width} × ${out.height}`);
+  ok(!figureExportSize({ widthIn: 10, heightIn: 7.5 }, 600).capped);
+});
+
+check("figure labels run A…Z then AA, AB…; manual labels stick; duplicates are found", () => {
+  strictEqual(figureLabel(0), "A");
+  strictEqual(figureLabel(25), "Z");
+  strictEqual(figureLabel(26), "AA");
+  strictEqual(figureLabel(27), "AB");
+  const { panels } = newFigurePanels(["g1", "g2", "g3", "g4", "g5"]);
+  deepStrictEqual(panels.map((p) => p.label), ["A", "B", "C", "D", "E"]);
+  // Five panels wrap after four columns: 2 rows × 4 columns.
+  deepStrictEqual([panels[4].row, panels[4].col], [1, 0]);
+  const manual = assignLabels([
+    { graphId: "g1", label: "X", labelManual: true, title: "", row: 0, col: 1, rowSpan: 1, colSpan: 1 },
+    { graphId: "g2", label: "", title: "", row: 0, col: 0, rowSpan: 1, colSpan: 1 },
+  ]);
+  deepStrictEqual(manual.map((p) => p.label), ["A", "X"]);
+  deepStrictEqual(duplicateLabels(manual), []);
+  deepStrictEqual(
+    duplicateLabels([
+      { graphId: "g1", label: "A", title: "", row: 0, col: 0, rowSpan: 1, colSpan: 1 },
+      { graphId: "g2", label: "A", title: "", row: 0, col: 1, rowSpan: 1, colSpan: 1 },
+    ]),
+    ["A"],
+  );
+  // A panel out of range is clamped into the grid.
+  deepStrictEqual(clampPanel({ graphId: "g1", label: "A", title: "", row: 9, col: 9, rowSpan: 3, colSpan: 3 }, { rows: 1, cols: 2 }), {
+    graphId: "g1",
+    label: "A",
+    title: "",
+    row: 0,
+    col: 1,
+    rowSpan: 1,
+    colSpan: 1,
+  });
+});
+
+check("a figure's size is validated in inches, within 1–20 and 4:1", () => {
+  ok(validateFigureSize({ widthIn: 10, heightIn: 7.5 }).size !== undefined);
+  ok(validateFigureSize({ widthIn: 25, heightIn: 7.5 }).reason !== undefined);
+  ok(validateFigureSize({ widthIn: 10, heightIn: 40 }).reason !== undefined);
+  ok(validateFigureSize({ widthIn: 20, heightIn: 1 }).reason !== undefined);
+});
+
+check("figures are created, edited and undone through the store", () => {
+  let s = makeInitialState();
+  const tableId = s.rootOrder[0];
+  s = reducer(s, { type: "create", node: { id: "g9", type: "graph", name: "Plot", parentId: tableId, graphType: "xy-scatter", graphOptions: undefined } });
+  s = reducer(s, {
+    type: "create",
+    node: {
+      id: "f9",
+      type: "figure",
+      name: "Figure",
+      parentId: null,
+      panels: [{ graphId: "g9", label: "A", title: "", row: 0, col: 0, rowSpan: 1, colSpan: 1 }],
+      grid: { rows: 1, cols: 1 },
+      figureSize: { widthIn: 10, heightIn: 7.5 },
+      labelStyle: { position: "top-left", fontSizePt: 12, bold: true },
+      figureTitle: "",
+      sharedLegend: "none",
+      dpi: "600",
+    },
+  });
+  strictEqual(s.nodes.f9.type, "figure");
+  ok(s.rootOrder.includes("f9") && s.rootOrder.at(-1) === "f9");
+  s = reducer(s, { type: "updateFigure", id: "f9", patch: { figureTitle: "Dose response" }, at: Date.now() });
+  strictEqual(s.nodes.f9.figureTitle, "Dose response");
+  s = reducer(s, { type: "undo" });
+  strictEqual(s.nodes.f9.figureTitle, "");
+});
+
+check("the sample project ships a 2-panel figure", () => {
+  const figure = sampleProject.nodes["f-main"];
+  strictEqual(figure?.type, "figure");
+  deepStrictEqual(
+    figure.panels!.map((p) => p.graphId),
+    ["g-viab", "g-volume-bars"],
+  );
+  // The sample file on disk round-trips with its figure intact.
+  const { project } = read(readFileSync("samples/Helix Sample.hlx", "utf8"));
+  deepStrictEqual(project.nodes["f-main"].panels, figure.panels);
 });
 
 check("an exported image says its resolution, and none of the headers that say 72 DPI", async () => {

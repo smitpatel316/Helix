@@ -573,6 +573,29 @@ const TOP_GENES = ["CDKN1A", "GADD45A", "BAX", "PMAIP1", "TP53I3", "MYC", "CCND1
 
 // ── Output ───────────────────────────────────────────────────────────────
 
+// A 2-panel figure over the sample project (F-01's fixture): the dose-response
+// curve beside the day-21 bars, labelled A and B.
+{
+  nodes["f-main"] = {
+    id: "f-main",
+    type: "figure",
+    name: "Figure 1",
+    parentId: null,
+    panels: [
+      { graphId: "g-viab", graphName: "Dose-response curve", label: "A", title: "", row: 0, col: 0, rowSpan: 1, colSpan: 1 },
+      { graphId: "g-volume-bars", graphName: "Bars and points", label: "B", title: "", row: 0, col: 1, rowSpan: 1, colSpan: 1 },
+    ],
+    grid: { rows: 1, cols: 2 },
+    figureSize: { widthIn: 10, heightIn: 7.5 },
+    labelStyle: { position: "top-left", fontSizePt: 12, bold: true },
+    figureTitle: "",
+    sharedLegend: "none",
+    dpi: "600",
+  };
+  rootOrder.push("f-main");
+  childOrder["f-main"] = [];
+}
+
 export const sampleProject: ProjectFilePayload = { nodes, rootOrder, childOrder, activeNodeId: "g-volume-dots" };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -581,6 +604,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   writeFileSync(new URL("Helix Sample.hlx", folder), serializeProjectFile(sampleProject));
   const count = (type: string) => Object.values(nodes).filter((n) => n.type === type).length;
   console.log(
-    `samples/Helix Sample.hlx: ${count("table")} tables, ${count("analysis")} analyses, ${count("graph")} graphs.`,
+    `samples/Helix Sample.hlx: ${count("table")} tables, ${count("analysis")} analyses, ${count("graph")} graphs, ${count("figure")} figures.`,
   );
 }

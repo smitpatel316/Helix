@@ -14,6 +14,7 @@ import {
   GRAPH_CHOICES,
   GRAPH_LIMITS,
   clamp,
+  type FigurePanel,
   type Limits,
   type GraphOptions,
   type GraphPalette,
@@ -60,6 +61,14 @@ import { ANALYSES } from "../stats";
 import { isGrouped, isNested } from "./dataset";
 import { seriesKeyOf } from "./columns";
 import { regroupTable, renestTable } from "../views/tables/table-data";
+import {
+  assignLabels,
+  clampPanel,
+  DEFAULT_FIGURE_SIZE,
+  DEFAULT_LABEL_STYLE,
+  figureDpi,
+  FIGURE_SIZE_LIMITS,
+} from "./figure";
 
 export const PROJECT_FILE_EXTENSION = "hlx";
 
@@ -121,6 +130,7 @@ const PROJECT_KEYS = ["nodes", "rootOrder", "childOrder", "activeNodeId"] satisf
 const NODE_KEYS = Object.keys({
   id: 1, type: 1, name: 1, parentId: 1, tableType: 1, data: 1,
   analysisType: 1, analysisParams: 1, graphType: 1, graphOptions: 1,
+  panels: 1, grid: 1, figureSize: 1, labelStyle: 1, figureTitle: 1, sharedLegend: 1, dpi: 1,
 } satisfies Record<keyof ProjectNode, 1>);
 // prettier-ignore
 const DATA_KEYS = Object.keys({
@@ -466,7 +476,60 @@ function readParams(raw: unknown): AnalysisParams | undefined {
   return defined(Object.fromEntries(Object.entries(p).map(([k, v]) => [k, read(k, v)]))) as unknown as AnalysisParams;
 }
 
-const NODE_TYPES: NodeType[] = ["table", "analysis", "graph"];
+const NODE_TYPES: NodeType[] = ["table", "analysis", "graph", "figure"];
+
+/** A figure's fields as a file holds them, forgivingly: a missing or empty
+ *  `panels` opens as an empty figure (not an error); a panel out of range is
+ *  clamped into the grid; a `dpi` Helix doesn't offer falls back to 600; a
+ *  size outside 1–20 in is brought within, and an aspect beyond 4:1 is
+ *  reined in by shrinking the longer side. Unknown figure fields are kept
+ *  by the node's spread in `readNode` and written back on save. */
+function readFigure(raw: Obj): Pick<
+  ProjectNode,
+  "panels" | "grid" | "figureSize" | "labelStyle" | "figureTitle" | "sharedLegend" | "dpi"
+> {
+  const panels = (Array.isArray(raw.panels) ? raw.panels : [])
+    .filter((p): p is Obj => isObj(p) && typeof p.graphId === "string" && p.graphId !== "")
+    .map((p) => {
+      const n = (k: string) => (isFiniteNumber(p[k]) ? Math.floor(p[k] as number) : undefined);
+      return defined({
+        graphId: p.graphId as string,
+        graphName: typeof p.graphName === "string" ? (p.graphName as string) : undefined,
+        label: typeof p.label === "string" ? (p.label as string) : "",
+        labelManual: p.labelManual === true || undefined,
+        title: typeof p.title === "string" ? (p.title as string) : "",
+        row: n("row") ?? 0,
+        col: n("col") ?? 0,
+        rowSpan: Math.max(1, n("rowSpan") ?? 1),
+        colSpan: Math.max(1, n("colSpan") ?? 1),
+      }) as FigurePanel;
+    });
+  const gridRaw = isObj(raw.grid) ? raw.grid : {};
+  const cols = isCount(gridRaw.cols)
+    ? (gridRaw.cols as number)
+    : Math.max(1, Math.min(panels.length || 1, 4));
+  const rows = isCount(gridRaw.rows) ? (gridRaw.rows as number) : Math.max(1, Math.ceil(panels.length / cols));
+  const grid = { rows, cols };
+  const clamped = assignLabels(panels.map((p) => clampPanel(p, grid)));
+  const sizeRaw = isObj(raw.figureSize) ? raw.figureSize : {};
+  const { min, max } = FIGURE_SIZE_LIMITS;
+  let widthIn = within(sizeRaw.widthIn, { min, max }) ?? DEFAULT_FIGURE_SIZE.widthIn;
+  let heightIn = within(sizeRaw.heightIn, { min, max }) ?? DEFAULT_FIGURE_SIZE.heightIn;
+  if (widthIn / heightIn > 4) widthIn = heightIn * 4;
+  if (heightIn / widthIn > 4) heightIn = widthIn * 4;
+  const styleRaw = isObj(raw.labelStyle) ? raw.labelStyle : {};
+  const position = oneOf(["top-left", "top-right", "above-panel"] as const, styleRaw.position) ?? "top-left";
+  const fontSizePt = within(styleRaw.fontSizePt, { min: 8, max: 28 }) ?? DEFAULT_LABEL_STYLE.fontSizePt;
+  return {
+    panels: clamped,
+    grid,
+    figureSize: { widthIn, heightIn },
+    labelStyle: { position, fontSizePt, bold: styleRaw.bold !== false },
+    figureTitle: typeof raw.figureTitle === "string" ? raw.figureTitle : "",
+    sharedLegend: oneOf(["none", "shared"] as const, raw.sharedLegend) ?? "none",
+    dpi: figureDpi(raw.dpi),
+  };
+}
 
 /** `tableColors`: where a table leaves the colors it kept for its graphs. */
 function readNode(
@@ -514,6 +577,10 @@ function readNode(
     if (!isIn(ANALYSES, node.analysisType)) {
       issues.push({ severity: "error", message: `Analysis “${node.name}” uses a test this version doesn't know.` });
     }
+  } else if (type === "figure") {
+    // A figure may span tables, so it lives at the project root, never under one table.
+    node.parentId = null;
+    Object.assign(node, readFigure(n));
   } else {
     node.graphType = lower(n.graphType) as ProjectNode["graphType"];
     node.graphOptions = readOptions(n.graphOptions);
@@ -562,7 +629,9 @@ export function parseProjectFile(
   /** The item with this id: one of the file's own, never a name every object has ("constructor"). */
   const nodeOf = (id: unknown) => (isIn(nodes, id) ? nodes[id as string] : undefined);
   // Analyses and graphs belong to a table: drop those whose table didn't survive.
+  // Figures live at the project root (they may span tables), so they stay.
   for (const node of Object.values(nodes)) {
+    if (node.type === "figure") continue;
     if (node.type !== "table" && nodeOf(node.parentId)?.type !== "table") {
       delete nodes[node.id];
       skipped++;
@@ -579,9 +648,16 @@ export function parseProjectFile(
   const ids = (v: unknown) => (Array.isArray(v) ? v.filter((id): id is string => typeof id === "string") : []);
   const tables = Object.values(nodes).filter((n) => n.type === "table");
   if (tables.length === 0) return { error: "This project file has no readable data tables." };
-  // Saved order first, then anything the order missed.
+  // Saved order first, then anything the order missed: tables, then figures
+  // (figures live at the project root, after the tables, in creation order).
+  const figures = Object.values(nodes).filter((n) => n.type === "figure");
   const rootOrder = [
-    ...new Set([...ids(project.rootOrder).filter((id) => nodeOf(id)?.type === "table"), ...tables.map((t) => t.id)]),
+    ...new Set([
+      ...ids(project.rootOrder).filter((id) => nodeOf(id)?.type === "table"),
+      ...tables.map((t) => t.id),
+      ...ids(project.rootOrder).filter((id) => nodeOf(id)?.type === "figure"),
+      ...figures.map((f) => f.id),
+    ]),
   ];
   const savedChildren = isObj(project.childOrder) ? project.childOrder : {};
   const childOrder = Object.fromEntries(
@@ -599,6 +675,17 @@ export function parseProjectFile(
   const activeNodeId = nodeOf(project.activeNodeId) ? (project.activeNodeId as string) : rootOrder[0];
 
   for (const node of Object.values(nodes)) {
+    if (node.type === "figure") {
+      // A panel whose graph is gone stays as a placeholder naming the graph;
+      // the figure still opens, and export leaves that cell blank.
+      const missing = (node.panels ?? []).filter((p) => !nodeOf(p.graphId) || nodeOf(p.graphId)?.type !== "graph");
+      if (missing.length)
+        issues.push({
+          severity: "warning",
+          message: `Figure “${node.name}” refers to ${missing.length === 1 ? "a graph" : `${missing.length} graphs`} that no longer exist.`,
+        });
+      continue;
+    }
     if (node.type === "graph") {
       if (!node.graphOptions!.palette) colorsFromHelix1(node, tableColors[node.parentId!]?.series);
       pointsFromCells(node, tableColors[node.parentId!]?.cells);
