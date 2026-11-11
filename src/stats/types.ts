@@ -38,7 +38,6 @@ export type AnalysisType =
   | "survival"
   | "cox"
   | "mcnemar"
-  | "survival-log-rank"
   | "cox-proportional-hazards"
   | "mixed-effects"
   | "bland-altman"

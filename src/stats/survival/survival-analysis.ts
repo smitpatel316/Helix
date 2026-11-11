@@ -35,10 +35,10 @@ Z<-Z+N*(d-n*D/N);if(N>1)V<-V+N^2*D*(N-D)/(N-1)*(diag(n/N,k)-outer(n/N,n/N))}
 list(Z=Z,V=V)}
 quad<-function(Z,V){m<-length(Z)-1;drop(Z[1:m]%*%solve(V[1:m,1:m,drop=FALSE],Z[1:m]))}
 chi<-function(t,s,g,k,test){if(test=="gehan"){w<-gehan(t,s,g,k);return(quad(w$Z,w$V))}
-d<-survdiff(Surv(t,s)~factor(g,levels=1:k))
+d<-survival::survdiff(survival::Surv(t,s)~factor(g,levels=1:k))
 if(test=="trend"){x<-1:k;return(sum(x*(d$obs-d$exp))^2/drop(x%*%d$var%*%x))}
 d$chisq}
-hr<-function(t,s,g){d<-survdiff(Surv(t,s)~factor(g,levels=1:2));d$obs[1]/d$exp[1]/(d$obs[2]/d$exp[2])}`;
+hr<-function(t,s,g){d<-survival::survdiff(survival::Surv(t,s)~factor(g,levels=1:2));d$obs[1]/d$exp[1]/(d$obs[2]/d$exp[2])}`;
 
 export async function runSurvival(columns: Column[], params: SurvivalParams): Promise<AnalysisOutcome> {
   const groups = survivalGroups(columns);
@@ -51,12 +51,12 @@ export async function runSurvival(columns: Column[], params: SurvivalParams): Pr
   const pairTest = test === "gehan" ? "gehan" : "logrank";
   const pair = (i: number, j: number) => `{w<-g==${i + 1}|g==${j + 1};pg<-ifelse(g[w]==${i + 1},1,2)`;
   const r = await evalNamedVector(
-    `library(survival);${R_TESTS}
+    `${R_TESTS}
 t<-${rVec(groups.flatMap((g) => g.x))};s<-${rVec(groups.flatMap((g) => g.y))}
 g<-${rVec(groups.flatMap((g, i) => g.x.map(() => i + 1)))};k<-${k}
 x<-chi(t,s,g,k,"${test}");df<-${test === "trend" ? 1 : k - 1}
-q<-quantile(survfit(Surv(t,s)~factor(g,levels=1:k),conf.type="log-log"),0.5)
-d<-survdiff(Surv(t,s)~factor(g,levels=1:k));v<-d$var[1,1];L<-(d$obs[1]-d$exp[1])/v
+q<-quantile(survival::survfit(survival::Surv(t,s)~factor(g,levels=1:k),conf.type="log-log"),0.5)
+d<-survival::survdiff(survival::Surv(t,s)~factor(g,levels=1:k));v<-d$var[1,1];L<-(d$obs[1]-d$exp[1])/v
 c(chi=x,df=df,p=pchisq(x,df,lower.tail=FALSE),
 ${groups.map((_, i) => `m_${i}=unname(q$quantile[${i + 1}]),lo_${i}=unname(q$lower[${i + 1}]),hi_${i}=unname(q$upper[${i + 1}])`).join(",")},
 mh=exp(L),mhlo=exp(L-qnorm(0.975)/sqrt(v)),mhhi=exp(L+qnorm(0.975)/sqrt(v)),

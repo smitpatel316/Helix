@@ -35,11 +35,11 @@ for (const name of fixtures) {
       `rows=${table?.data?.rows.length ?? "?"} issues=${imported.issues.length} errors=${errors.length}`,
   );
   if (name === "survival" && table?.data) {
-    const out = await runAnalysis("survival-log-rank", table.data);
-    console.log(`     log-rank on imported survival table: ${JSON.stringify(out)}`);
+    const out = await runAnalysis("survival", table.data, { curveTest: "logrank", correction: "holm" });
+    console.log(`     survival analysis on imported survival table: ${JSON.stringify(out)}`);
     if ("error" in (out as object)) failures++;
   }
 }
 
-console.log(failures === 0 ? "SMOKE: all 6 fixtures parsed, log-rank ran" : `SMOKE: ${failures} failure(s)`);
+console.log(failures === 0 ? "SMOKE: all 6 fixtures parsed, survival analysis ran" : `SMOKE: ${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

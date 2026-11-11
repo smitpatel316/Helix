@@ -71,7 +71,6 @@ import { runChiSquare } from "./contingency/chi-square";
 import { runSurvival } from "./survival/survival-analysis";
 import { runCox } from "./survival/cox-regression";
 import { runMcNemar } from "./contingency/mcnemar";
-import { runLogRank } from "./survival/log-rank";
 import { runCoxPH } from "./survival/cox-ph";
 import { runMixedEffects } from "./mixed/mixed-effects";
 import { runBlandAltman } from "./column/bland-altman";
@@ -238,12 +237,17 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     run: (c, p) => runChiSquare(c, p as ChiSquareParams),
   },
   mcnemar: { label: "McNemar's test", minColumns: 2, run: (c, p) => runMcNemar(c, p as McNemarParams) },
-  survival: { label: "Survival analysis", minColumns: 3, run: (c, p) => runSurvival(c, p as SurvivalParams) },
-  cox: { label: "Cox proportional hazards regression", minColumns: 3, run: (c, p) => runCox(c, p as CoxParams) },
-  "survival-log-rank": {
-    label: "Survival analysis (log-rank test)",
+  survival: {
+    label: "Survival analysis",
     minColumns: 3,
-    run: (c) => runLogRank(c),
+    requiredPackages: ["survival"],
+    run: (c, p) => runSurvival(c, p as SurvivalParams),
+  },
+  cox: {
+    label: "Cox proportional hazards regression",
+    minColumns: 3,
+    requiredPackages: ["survival"],
+    run: (c, p) => runCox(c, p as CoxParams),
   },
   "cox-proportional-hazards": {
     label: "Cox proportional-hazards regression",

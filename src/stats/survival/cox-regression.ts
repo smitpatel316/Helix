@@ -20,10 +20,9 @@ export async function runCox(columns: Column[], params: CoxParams | undefined): 
   const ordered = [groups[ref], ...groups.filter((_, i) => i !== ref)];
   const others = ordered.slice(1);
   const r = await evalNamedVector(
-    `library(survival)
-t<-${rVec(ordered.flatMap((g) => g.x))};s<-${rVec(ordered.flatMap((g) => g.y))}
+    `t<-${rVec(ordered.flatMap((g) => g.x))};s<-${rVec(ordered.flatMap((g) => g.y))}
 g<-factor(${rVec(ordered.flatMap((g, i) => g.x.map(() => i + 1)))},levels=1:${ordered.length})
-w<-0;f<-withCallingHandlers(coxph(Surv(t,s)~g,ties="efron"),warning=function(e){w<<-1;invokeRestart("muffleWarning")});m<-summary(f);z<-cox.zph(f)$table
+w<-0;f<-withCallingHandlers(survival::coxph(survival::Surv(t,s)~g,ties="efron"),warning=function(e){w<<-1;invokeRestart("muffleWarning")});m<-summary(f);z<-survival::cox.zph(f)$table
 c(${others.map((_, i) => `hr_${i}=m$conf.int[${i + 1},1],lo_${i}=m$conf.int[${i + 1},3],hi_${i}=m$conf.int[${i + 1},4],p_${i}=m$coefficients[${i + 1},5]`).join(",")},
 lr=unname(m$logtest[1]),df=unname(m$logtest[2]),lrp=unname(m$logtest[3]),
 wald=unname(m$waldtest[1]),waldp=unname(m$waldtest[3]),score=unname(m$sctest[1]),scorep=unname(m$sctest[3]),

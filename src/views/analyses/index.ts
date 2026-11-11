@@ -57,7 +57,6 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "bland-altman",
     "interpolate",
     "roc-curve",
-    "survival-log-rank",
   ]),
   grouped: optionsFor(["two-way-anova", "mixed-effects", "three-way-anova", "multiple-t-tests"]),
   nested: optionsFor(["nested-t-test", "nested-anova"]),

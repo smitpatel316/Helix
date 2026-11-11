@@ -18,10 +18,11 @@ export function buildContingencyMatrix(columns: Column[]): ContingencyMatrix | {
   const groups = pairedGroups(columns);
   const matrix = (groups[0]?.values ?? []).map((_, r) => groups.map((g) => g.values[r]));
   if (matrix.flat().some((v) => v < 0)) return { error: "Counts can't be negative." };
+  const part = matrix.flat().find((v) => !Number.isInteger(v));
+  if (part !== undefined) return { error: `Counts must be whole numbers; the table holds ${part}.` };
   if (matrix.length < 2) {
     return { error: "A contingency table needs at least 2 rows with a count in every group column." };
   }
-  if (matrix.flat().some((v) => !Number.isInteger(v))) return { error: "Counts must be whole numbers." };
 
   const flat = matrix.flat();
   if (flat.every((v) => v === 0)) return { error: "The contingency table is empty (all counts are zero)." };

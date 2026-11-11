@@ -2076,7 +2076,6 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["freqCol", freqCol, "frequency-distribution", { binMode: "width", binWidth: 0, startAt: 2 }],
   ["freqCol", freqCol, "frequency-distribution", { binMode: "count", binCount: 1, startAt: 2 }],
   ["column", column, "frequency-distribution", { binMode: "auto" }],
-  ["survival", survivalTable, "survival-log-rank"],
   // Cox proportional-hazards regression (plan 10): the reference run (Efron
   // default), the defaults (same numbers), the single-covariate run, the
   // Breslow run (identical here — no tied event times, see disagreements()),
@@ -2364,10 +2363,7 @@ const rounded = (value: unknown): unknown =>
   JSON.parse(JSON.stringify(value, (_, v) => (typeof v === "number" ? Number(v.toPrecision(10)) : v)));
 
 async function run() {
-  await startR(
-    fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)),
-    fileURLToPath(new URL("../r-packages/", import.meta.url)),
-  );
+  await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
   const out: Record<string, unknown> = {};
   for (const [name, data, type, params] of ANALYSES) {
     // Without the bundled repo the Cox and mixed-effects cases cannot run

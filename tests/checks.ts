@@ -4,6 +4,10 @@
 // setting and following renamed columns, selected points, exports, analyses on the
 // data asked, Undo, and the app's menus, recents and update check. `npm test` runs them.
 import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { createServer } from "node:http";
+import { fileURLToPath } from "node:url";
+import { setPackageRepo, startR } from "../src/stats/webr";
 import { parseProjectFile, readPalette, serializeProjectFile, type ProjectFilePayload } from "../src/lib/project-file";
 import {
   DEFAULT_GRAPH_OPTIONS,
@@ -89,7 +93,6 @@ import { titleCase } from "../src/lib/format";
 import { loadRecents } from "../src/store/recents";
 import { largestAt, withDpi } from "../src/lib/image-dpi";
 import { crc32 } from "node:zlib";
-import { readFileSync } from "node:fs";
 import type { AnalysisOutcome, AnalysisParams } from "../src/stats/types";
 
 const checks: [string, () => void | Promise<void>][] = [];
@@ -2123,8 +2126,8 @@ check("the ROC wizard asks truth, score and positive class, defaulting to the la
     WIZARDS["roc-curve"]!.finish({ truth: "Truth", score: "Score", positive: "1" }, readTable(numeric)).params,
     { truth: "Truth", score: "Score", positive: 1 },
   );
-  // The menu offers ROC curve after Bland-Altman on column tables, and after
-  // Bland-Altman (before survival) on XY tables.
+  // The menu offers ROC curve after Bland-Altman on column tables, and ROC
+  // curve last (after Interpolate) on XY tables.
   deepStrictEqual(
     analysisOptionsForTable("column")
       .map((o) => o.value)
@@ -2135,7 +2138,7 @@ check("the ROC wizard asks truth, score and positive class, defaulting to the la
     analysisOptionsForTable("xy")
       .map((o) => o.value)
       .slice(-2),
-    ["roc-curve", "survival-log-rank"],
+    ["interpolate", "roc-curve"],
   );
 });
 
@@ -2360,25 +2363,29 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
     ).params,
     { time: "Time", status: "Status", covariates: ["Trt"], ties: "efron" },
   );
-  // The menu offers Principal component analysis after Multiple regression
-  // on Multiple Variables tables, Multiple logistic regression after that,
-  // Poisson regression after that, and Cox after that.
+  // The menu offers Descriptive statistics first on Multiple Variables
+  // tables, Principal component analysis after Multiple regression, Outliers
+  // after that, Multiple logistic regression after that, Poisson regression
+  // after that, and Cox after that.
   deepStrictEqual(
     analysisOptionsForTable("multiple").map((o) => o.value),
     [
+      "descriptive-statistics",
       "correlation-matrix",
       "multiple-regression",
       "principal-component-analysis",
+      "outliers",
       "multiple-logistic-regression",
       "poisson-regression",
       "cox-proportional-hazards",
     ],
   );
-  // Multiple Variables tables offer the forest plot, the observed-vs-fitted graph, the scree plot,
-  // the scores biplot, and survival curves.
+  // Multiple Variables tables offer the scatter plot, the forest plot, the
+  // observed-vs-fitted graph, the scree plot, the scores biplot, and
+  // survival curves.
   deepStrictEqual(
     GRAPH_OPTIONS_BY_TABLE["multiple"].map((o) => o.value),
-    ["heatmap", "volcano", "forest-plot", "observed-fitted", "scree-plot", "pca-biplot", "survival"],
+    ["xy-scatter", "heatmap", "volcano", "forest-plot", "observed-fitted", "scree-plot", "pca-biplot", "survival"],
   );
   // Renaming a column follows the Cox analysis's params.
   const renamed = followTable(
@@ -2853,7 +2860,6 @@ check("the update check still answers when GitHub refuses it", async () => {
 });
 
 import { parsePzfx } from "../src/lib/pzfx";
-import { chiSquareSF } from "../src/lib/chi-square";
 
 // ── Prism (.pzfx) import ──────────────────────────────────────────────
 // Fixtures in tests/testdata/ are GraphPad Prism files from the pypzfx project
@@ -2897,14 +2903,24 @@ check(".pzfx import reads an XY table with replicates", () => {
   ]);
 });
 
-check(".pzfx import reads a Survival table as XY (time + event codes)", () => {
+check(".pzfx import reads a Survival table (time + event codes)", () => {
   const { imported, table } = importedTable("survival");
-  strictEqual(table.tableType, "xy");
+  strictEqual(table.tableType, "survival");
   deepStrictEqual(table.data!.columns, ["Title", "Days", "Control", "Treatment A", "Treatment B"]);
   strictEqual(table.data!.rows.length, 27);
   deepStrictEqual(table.data!.rows[0], ["CO", "78", "1", null, null]);
   deepStrictEqual(table.data!.rows[26], ["OO", "351", null, null, "1"]);
-  ok(imported.issues.some((i) => i.message.includes("log-rank")), "says the log-rank analysis applies");
+  ok(imported.issues.some((i) => i.message.includes("Survival table")), "says the survival analysis applies");
+});
+
+check("the survival analysis reproduces the log-rank value on survival.pzfx", async () => {
+  const { table } = importedTable("survival");
+  const out = await runAnalysis("survival", table.data!, { curveTest: "logrank", correction: "holm" });
+  if ("error" in out) throw new Error(out.error);
+  const stat = (label: string) => out.stats.find((s) => s.label === label)?.value;
+  close(stat("Chi-square"), 4.844, 1e-3, "chi-square");
+  strictEqual(stat("df"), 2);
+  close(stat("P value"), 0.0888, 1e-3, "P value");
 });
 
 check(".pzfx import reads a Contingency table", () => {
@@ -2964,7 +2980,7 @@ const logRankTable = (columns: string[], rows: (string | null)[][]): TableData =
   rows: rows.map((row) => row.map((cell) => cell ?? null)),
 });
 
-check("the log-rank test matches the independent Python computation", async () => {
+check("the survival analysis matches the independent Python computation", async () => {
   const data = logRankTable(
     ["Title", "Days", "Treated", "Placebo"],
     [
@@ -2978,14 +2994,14 @@ check("the log-rank test matches the independent Python computation", async () =
       ["", "20", "0", ""],
     ],
   );
-  const out = await runAnalysis("survival-log-rank", data);
+  const out = await runAnalysis("survival", data, { curveTest: "logrank", correction: "holm" });
   if ("error" in out) throw new Error(out.error);
   const stat = (label: string) => out.stats.find((s) => s.label === label)?.value;
   close(stat("Chi-square"), 0.528, 1e-3, "chi-square");
   strictEqual(stat("df"), 1);
   close(stat("P value"), 0.4674, 1e-3, "P value");
   deepStrictEqual(
-    out.groups.map((g) => [g.name, g.median, g.n]),
+    out.survivalGroups!.map((g) => [g.group, g.median, g.subjects]),
     [
       ["Treated", 15, 5],
       ["Placebo", 8, 5],
@@ -2993,7 +3009,7 @@ check("the log-rank test matches the independent Python computation", async () =
   );
 });
 
-check("the log-rank test handles three groups", async () => {
+check("the survival analysis handles three groups", async () => {
   const data = logRankTable(
     ["Title", "Days", "A", "B", "C"],
     [
@@ -3014,14 +3030,14 @@ check("the log-rank test handles three groups", async () => {
       ["", "18", "", "", "1"],
     ],
   );
-  const out = await runAnalysis("survival-log-rank", data);
+  const out = await runAnalysis("survival", data, { curveTest: "logrank", correction: "holm" });
   if ("error" in out) throw new Error(out.error);
   const stat = (label: string) => out.stats.find((s) => s.label === label)?.value;
   close(stat("Chi-square"), 1.9194, 1e-3, "chi-square");
   strictEqual(stat("df"), 2);
   close(stat("P value"), 0.383, 1e-3, "P value");
   deepStrictEqual(
-    out.groups.map((g) => [g.name, g.median]),
+    out.survivalGroups!.map((g) => [g.group, g.median]),
     [
       ["A", 10],
       ["B", 7],
@@ -3030,36 +3046,19 @@ check("the log-rank test handles three groups", async () => {
   );
 });
 
-check("the log-rank test refuses bad survival data", async () => {
+check("the survival analysis refuses bad survival data", async () => {
   const cases: [TableData, string][] = [
     // A code that isn't 0 or 1.
-    [logRankTable(["Title", "Days", "A", "B"], [["", "3", "2", "1"]]), "must be 1 (event) or 0 (censored)"],
+    [logRankTable(["Title", "Days", "A", "B"], [["", "3", "2", "1"]]), "enter 1 for an event, 0 for a censored subject"],
     // Only one group with data.
-    [logRankTable(["Title", "Days", "A", "B"], [["", "3", "1", ""]]), "at least two groups"],
-    // No events at all.
-    [
-      logRankTable(
-        ["Title", "Days", "A", "B"],
-        [
-          ["", "3", "0", ""],
-          ["", "5", "", "0"],
-        ],
-      ),
-      "at least one event",
-    ],
+    [logRankTable(["Title", "Days", "A", "B"], [["", "3", "1", ""]]), "at least 2 groups holding subjects"],
   ];
   for (const [data, message] of cases) {
-    const out = await runAnalysis("survival-log-rank", data);
+    const out = await runAnalysis("survival", data, { curveTest: "logrank", correction: "holm" });
     if (!("error" in out) || !out.error.includes(message)) {
       throw new Error(`expected an error mentioning "${message}", got ${JSON.stringify(out)}`);
     }
   }
-});
-
-check("the chi-square tail matches scipy's", () => {
-  close(chiSquareSF(3.841458820694124, 1), 0.05, 1e-6, "chi2(1) 95% point");
-  close(chiSquareSF(5.991464547107979, 2), 0.05, 1e-6, "chi2(2) 95% point");
-  close(chiSquareSF(0.528, 1), 0.4674, 1e-3, "log-rank p");
 });
 
 check("frequency bins are left-closed with the last bin closed, and empty bins stay", () => {
@@ -3132,6 +3131,34 @@ check("Sturges, pretty breaks and nice widths match R's rules", () => {
 });
 
 // ── Run ──────────────────────────────────────────────────────────────────
+
+// Descriptives are computed by R since the v1.0.7 rebase, so checks that run
+// an analysis need the engine — booted from the installed webR, as
+// tests/reference.ts does. Package installs read the BUNDLED repo
+// (webr-repo/, served on localhost — the same pattern as reference.ts and
+// packages.ts), never the CDN: a survival install must not depend on the
+// egress proxy being up.
+const REPO_DIR = fileURLToPath(new URL("../webr-repo/", import.meta.url));
+if (existsSync(`${REPO_DIR}MANIFEST.json`)) {
+  const repoServer = createServer((req, res) => {
+    const path = decodeURIComponent(req.url!.split("?")[0]).replace(/^\/+/, "");
+    const file = `${REPO_DIR}${path}`;
+    if (!path || !existsSync(file) || !statSync(file).isFile()) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end(readFileSync(file));
+  });
+  await new Promise<void>((r) => repoServer.listen(0, "127.0.0.1", r));
+  setPackageRepo(`http://127.0.0.1:${(repoServer.address() as { port: number }).port}`, {
+    allowCdnFallback: false,
+  });
+} else {
+  console.log("⚠ webr-repo/ is not built — package-dependent checks will use the CDN. Run scripts/build-webr-repo.sh, then re-run npm test.");
+}
+await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
 
 let failed = 0;
 for (const [name, fn] of checks) {

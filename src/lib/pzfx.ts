@@ -14,8 +14,8 @@
 //                 subcolumns named (MEAN, SD, N…) and a warning — summary values
 //                 are not raw replicates, so they must not be analysed as if they were
 //   XY          → XY        (X, then one Y series per subcolumn)
-//   Survival    → XY        (X = time, Y = event codes 1/0 per group; the survival
-//                 graph and the log-rank analysis apply to it)
+//   Survival    → Survival  (X = time, Y = event codes 1/0 per group; the survival
+//                 graph and the survival analysis apply to it)
 //   Contingency → Contingency
 //   PartsOfWhole→ Column    (one Y column, rows named by the row titles)
 //   Nested      → NO verified marker (see below): a Prism nested table is
@@ -357,7 +357,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
       `${displayName}: the values are summaries (${yFormat === "" ? "mean and error" : yFormat}), not raw replicates — don't run group comparisons on them as if they were.`,
     );
   } else if (tableType === "XY" || tableType === "Survival") {
-    helixType = "xy";
+    helixType = tableType === "Survival" ? "survival" : "xy";
     if (xValues.length > 0 || xColumns.length > 0) {
       columns.push({ name: xName, values: xValues.map(normalizeNumber), excluded: new Set() });
       if (xErrorValues) {
@@ -370,7 +370,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
     }
     if (tableType === "Survival") {
       warnings.push(
-        `${displayName}: imported as an XY table (time in X, event codes 1 = event, 0 = censored in each group) — the survival graph and log-rank analysis apply to it.`,
+        `${displayName}: imported as a Survival table (time in X, event codes 1 = event, 0 = censored in each group) — the survival analysis and graph apply to it.`,
       );
     }
   } else {
