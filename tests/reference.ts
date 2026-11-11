@@ -2590,6 +2590,8 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["noReplicates", noReplicates, "two-way-anova", { design: "ordinary", posthoc: "tukey", posthocTarget: "groups" }],
   // prettier-ignore
   ["noReplicates", noReplicates, "two-way-anova", { design: "repeated-measures", posthoc: "none", posthocTarget: "groups" }],
+  // prettier-ignore
+  ["noReplicates", noReplicates, "two-way-anova", { design: "nonparametric", posthoc: "none", posthocTarget: "groups" }],
   ["inhibition", inhibition, "nonlinear-regression", { model: "sigmoidal-4pl-logx" }],
   ["sparse", sparse, "shapiro-wilk"],
   ["sparse", sparse, "friedman", { posthoc: "none" }],
@@ -3040,6 +3042,49 @@ async function disagreements(): Promise<string[]> {
   const a4 =
     "error" in kept ? undefined : kept.comparisons?.find((c) => c.group1 === "A (Day 4)" && c.group2 === "C (Day 4)");
   if (a4?.diff !== 5.5) out.push(`Two-way RM comparisons: A − C at Day 4 is ${a4?.diff}, not 5.5`);
+  // Two-way, one value per cell (plan 36): the additive model (no interaction
+  // row, residual df = (groups − 1) × (rows − 1) = 2) against R's own
+  // aov(v ~ g + r) on the same data, the warning note, and both error paths
+  // (repeated-measures and nonparametric must refuse, not crash).
+  const oneCell = await runAnalysis("two-way-anova", noReplicates, {
+    design: "ordinary",
+    posthoc: "none",
+    posthocTarget: "groups",
+  });
+  const aovAdd = await evalNamedVector(
+    `v<-c(1,2,4,2,5,4);g<-factor(c("A","A","A","B","B","B"));r<-factor(c("R1","R2","R3","R1","R2","R3"));` +
+      `a<-summary(aov(v~g+r))[[1]];` +
+      `c(gF=a$"F value"[1],gP=a$"Pr(>F)"[1],rF=a$"F value"[2],rP=a$"Pr(>F)"[2],dfResid=a$Df[3])`,
+  );
+  if ("error" in oneCell) out.push(`Two-way one-value-per-cell: ${oneCell.error}`);
+  else {
+    const stat = (label: string) => oneCell.stats.find((s) => s.label === label)?.value ?? null;
+    for (const [ours, theirs, what, tol] of [
+      [stat("Group F"), aovAdd.gF, "Group F", 1e-9],
+      [stat("Group P value"), aovAdd.gP, "Group P value", 1e-6],
+      [stat("Row F"), aovAdd.rF, "Row F", 1e-9],
+      [stat("Row P value"), aovAdd.rP, "Row P value", 1e-6],
+    ] as const)
+      if (ours == null || theirs == null || Math.abs(ours - theirs) > tol * Math.max(1, Math.abs(theirs)))
+        out.push(`Two-way one-value-per-cell, ${what}: ${ours}, R's aov: ${theirs}`);
+    if (stat("DFd (residual)") !== 2)
+      out.push(`Two-way one-value-per-cell: residual df ${stat("DFd (residual)")}, expected (2−1)×(3−1) = 2`);
+    if (oneCell.stats.some((s) => s.label.startsWith("Interaction")))
+      out.push(`Two-way one-value-per-cell: an Interaction row is reported`);
+    if (!oneCell.notes.includes("One value per cell (no replicates): the interaction can't be told apart"))
+      out.push(`Two-way one-value-per-cell: warning note missing: ${oneCell.notes}`);
+    if (oneCell.comparisons?.length)
+      out.push(`Two-way one-value-per-cell: ${oneCell.comparisons.length} comparisons reported without replicates`);
+  }
+  for (const design of ["repeated-measures", "nonparametric"] as const) {
+    const refused = await runAnalysis("two-way-anova", noReplicates, {
+      design,
+      posthoc: "none",
+      posthocTarget: "groups",
+    });
+    if (!("error" in refused) || refused.error !== "With one value per cell (no replicates), only the ordinary two-way ANOVA can run.")
+      out.push(`Two-way one-value-per-cell, ${design}: ${"error" in refused ? refused.error : "ran instead of erroring"}`);
+  }
   // Šídák / Holm–Šídák (plan 25) adjust R's raw P values in TypeScript: the LSD
   // run's P values equal pairwise.t.test's unadjusted ones, and the Šídák /
   // Holm–Šídák runs' equal R's own arithmetic on those raw values (m = 6 pairs).
