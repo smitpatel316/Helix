@@ -44,9 +44,11 @@ export const rmAnovaSpec: ColumnTestSpec<RmAnovaParams> = {
     // Rows: gr (effect of interest), subj (blocking factor), Residuals — in that order.
     const a = `a<-summary(aov(v~gr+subj))[[1]];mse<-a$"Mean Sq"[3];dfr<-a$Df[3];m<-tapply(v,gr,mean)`;
     // Geisser-Greenhouse: epsilon from the groups' covariance, double-centered.
+    // A zero denominator means the differences have no variance at all
+    // (sphericity holds exactly) — epsilon is 1, never 0/0.
     const gg =
       `M<-cbind(${groups.map((_, i) => `g${i}`).join(",")});H<-diag(${k})-1/${k};C<-H%*%cov(M)%*%H;` +
-      `e<-min(1,sum(diag(C))^2/(${k - 1}*sum(C*C)))`;
+      `ggd<-(${k - 1})*sum(C*C);e<-if(ggd>0)min(1,sum(diag(C))^2/ggd)else 1`;
     const main = corrected(params)
       ? `F=a$"F value"[1],dfn=e*a$Df[1],dfd=e*a$Df[3],p=pf(a$"F value"[1],e*a$Df[1],e*a$Df[3],lower.tail=FALSE),` +
         `eta2=a$"Sum Sq"[1]/sum(a$"Sum Sq"),eps=e`
