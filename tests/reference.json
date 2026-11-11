@@ -1892,6 +1892,7 @@
  },
  "shapiro-wilk column {}": {
   "testType": "shapiro-wilk",
+  "subtitle": "Shapiro–Wilk test",
   "stats": [
    {
     "label": "Control — W",
@@ -1960,7 +1961,507 @@
     "n": 4
    }
   ],
-  "notes": "Per-column normality. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality."
+  "notes": "Shapiro–Wilk test per column. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality."
+ },
+ "shapiro-wilk normality {\"test\":\"shapiro-wilk\"}": {
+  "testType": "shapiro-wilk",
+  "subtitle": "Shapiro–Wilk test",
+  "stats": [
+   {
+    "label": "A — W",
+    "value": 0.9773147245
+   },
+   {
+    "label": "A — P value",
+    "value": 0.827254485
+   },
+   {
+    "label": "B — W",
+    "value": 0.7789838027
+   },
+   {
+    "label": "B — P value",
+    "value": 0.0001034709606
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 11.564,
+    "sd": 0.9543234951,
+    "sem": 0.190864699,
+    "median": 11.7,
+    "n": 25
+   },
+   {
+    "name": "B",
+    "mean": 8.016,
+    "sd": 6.273069424,
+    "sem": 1.254613885,
+    "median": 6.8,
+    "n": 25
+   }
+  ],
+  "notes": "Shapiro–Wilk test per column. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality."
+ },
+ "shapiro-wilk normality {\"test\":\"dagostino-pearson\"}": {
+  "testType": "shapiro-wilk",
+  "subtitle": "D'Agostino–Pearson omnibus K2 test",
+  "stats": [
+   {
+    "label": "A — K2",
+    "value": 0.1565708142
+   },
+   {
+    "label": "A — P value",
+    "value": 0.9247004728
+   },
+   {
+    "label": "B — K2",
+    "value": 23.73481271
+   },
+   {
+    "label": "B — P value",
+    "value": 0.000007015375231
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 11.564,
+    "sd": 0.9543234951,
+    "sem": 0.190864699,
+    "median": 11.7,
+    "n": 25
+   },
+   {
+    "name": "B",
+    "mean": 8.016,
+    "sd": 6.273069424,
+    "sem": 1.254613885,
+    "median": 6.8,
+    "n": 25
+   }
+  ],
+  "notes": "D'Agostino–Pearson omnibus K2 test per column: it combines skewness and kurtosis into one statistic, so it can miss a distribution whose skewness and kurtosis both match a normal distribution's. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality."
+ },
+ "shapiro-wilk normality {\"test\":\"anderson-darling\"}": {
+  "testType": "shapiro-wilk",
+  "subtitle": "Anderson–Darling test",
+  "stats": [
+   {
+    "label": "A — A²",
+    "value": 0.2646991079
+   },
+   {
+    "label": "A — P value",
+    "value": 0.6657482668
+   },
+   {
+    "label": "B — A²",
+    "value": 1.808172086
+   },
+   {
+    "label": "B — P value",
+    "value": 0.00009042094248
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 11.564,
+    "sd": 0.9543234951,
+    "sem": 0.190864699,
+    "median": 11.7,
+    "n": 25
+   },
+   {
+    "name": "B",
+    "mean": 8.016,
+    "sd": 6.273069424,
+    "sem": 1.254613885,
+    "median": 6.8,
+    "n": 25
+   }
+  ],
+  "notes": "Anderson–Darling test per column: it compares the cumulative distribution with a Gaussian's, weighting the tails. Its P value is a table approximation. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. Tied values present (“A”, “B”) — the tests lose power with many ties."
+ },
+ "shapiro-wilk normality {\"test\":\"kolmogorov-smirnov\"}": {
+  "testType": "shapiro-wilk",
+  "subtitle": "Kolmogorov–Smirnov test",
+  "stats": [
+   {
+    "label": "A — D",
+    "value": 0.1161170873
+   },
+   {
+    "label": "A — P value",
+    "value": 0.8888986903
+   },
+   {
+    "label": "B — D",
+    "value": 0.3010175353
+   },
+   {
+    "label": "B — P value",
+    "value": 0.02154887004
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 11.564,
+    "sd": 0.9543234951,
+    "sem": 0.190864699,
+    "median": 11.7,
+    "n": 25
+   },
+   {
+    "name": "B",
+    "mean": 8.016,
+    "sd": 6.273069424,
+    "sem": 1.254613885,
+    "median": 6.8,
+    "n": 25
+   }
+  ],
+  "notes": "Kolmogorov–Smirnov test per column: it compares the cumulative distribution with a Gaussian's, using only the largest discrepancy, so it is the least sensitive of the four tests. The mean and SD are estimated from the same sample, which makes the P value anti-conservative (the proper test with estimated parameters is Lilliefors); Prism does the same, so Helix matches Prism. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. Tied values present (“A”, “B”) — the tests lose power with many ties, and the P value is asymptotic, not exact. KS is weak at small n — a non-significant result on a small sample is weak evidence for normality."
+ },
+ "shapiro-wilk normality {\"test\":\"shapiro-wilk\",\"lognormal\":true}": {
+  "testType": "shapiro-wilk",
+  "subtitle": "Shapiro–Wilk test",
+  "stats": [
+   {
+    "label": "A — W",
+    "value": 0.9773147245
+   },
+   {
+    "label": "A — P value",
+    "value": 0.827254485
+   },
+   {
+    "label": "A — log W",
+    "value": 0.9703391001
+   },
+   {
+    "label": "A — log P value",
+    "value": 0.6536825997
+   },
+   {
+    "label": "B — W",
+    "value": 0.7789838027
+   },
+   {
+    "label": "B — P value",
+    "value": 0.0001034709606
+   },
+   {
+    "label": "B — log W",
+    "value": 0.9791501083
+   },
+   {
+    "label": "B — log P value",
+    "value": 0.8677543693
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 11.564,
+    "sd": 0.9543234951,
+    "sem": 0.190864699,
+    "median": 11.7,
+    "n": 25
+   },
+   {
+    "name": "B",
+    "mean": 8.016,
+    "sd": 6.273069424,
+    "sem": 1.254613885,
+    "median": 6.8,
+    "n": 25
+   }
+  ],
+  "notes": "Shapiro–Wilk test per column. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. Also tested on log-transformed values: a log P value above 0.05 means the data are consistent with a lognormal distribution."
+ },
+ "shapiro-wilk normality {\"test\":\"dagostino-pearson\",\"lognormal\":true}": {
+  "testType": "shapiro-wilk",
+  "subtitle": "D'Agostino–Pearson omnibus K2 test",
+  "stats": [
+   {
+    "label": "A — K2",
+    "value": 0.1565708142
+   },
+   {
+    "label": "A — P value",
+    "value": 0.9247004728
+   },
+   {
+    "label": "A — log K2",
+    "value": 0.6887039295
+   },
+   {
+    "label": "A — log P value",
+    "value": 0.708679454
+   },
+   {
+    "label": "B — K2",
+    "value": 23.73481271
+   },
+   {
+    "label": "B — P value",
+    "value": 0.000007015375231
+   },
+   {
+    "label": "B — log K2",
+    "value": 0.633084725
+   },
+   {
+    "label": "B — log P value",
+    "value": 0.7286641429
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 11.564,
+    "sd": 0.9543234951,
+    "sem": 0.190864699,
+    "median": 11.7,
+    "n": 25
+   },
+   {
+    "name": "B",
+    "mean": 8.016,
+    "sd": 6.273069424,
+    "sem": 1.254613885,
+    "median": 6.8,
+    "n": 25
+   }
+  ],
+  "notes": "D'Agostino–Pearson omnibus K2 test per column: it combines skewness and kurtosis into one statistic, so it can miss a distribution whose skewness and kurtosis both match a normal distribution's. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. Also tested on log-transformed values: a log P value above 0.05 means the data are consistent with a lognormal distribution."
+ },
+ "shapiro-wilk column {\"test\":\"dagostino-pearson\"}": {
+  "testType": "shapiro-wilk",
+  "subtitle": "D'Agostino–Pearson omnibus K2 test",
+  "stats": [
+   {
+    "label": "Control — K2",
+    "value": null
+   },
+   {
+    "label": "Control — P value",
+    "value": null
+   },
+   {
+    "label": "Low — K2",
+    "value": null
+   },
+   {
+    "label": "Low — P value",
+    "value": null
+   },
+   {
+    "label": "High — K2",
+    "value": null
+   },
+   {
+    "label": "High — P value",
+    "value": null
+   },
+   {
+    "label": "Sparse — K2",
+    "value": null
+   },
+   {
+    "label": "Sparse — P value",
+    "value": null
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 14.3375,
+    "sd": 6.372247305,
+    "sem": 2.25292964,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Low",
+    "mean": 14.84285714,
+    "sd": 0.8443086775,
+    "sem": 0.3191186843,
+    "median": 14.9,
+    "n": 7
+   },
+   {
+    "name": "High",
+    "mean": 19.61666667,
+    "sd": 1.083358974,
+    "sem": 0.4422794491,
+    "median": 19.65,
+    "n": 6
+   },
+   {
+    "name": "Sparse",
+    "mean": 10.625,
+    "sd": 1.25,
+    "sem": 0.625,
+    "median": 10.75,
+    "n": 4
+   }
+  ],
+  "notes": "D'Agostino–Pearson omnibus K2 test per column: it combines skewness and kurtosis into one statistic, so it can miss a distribution whose skewness and kurtosis both match a normal distribution's. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. Not tested (the test needs at least 20 values that aren't all identical): “Control”, “Low”, “High”, “Sparse”."
+ },
+ "shapiro-wilk column {\"test\":\"anderson-darling\"}": {
+  "testType": "shapiro-wilk",
+  "subtitle": "Anderson–Darling test",
+  "stats": [
+   {
+    "label": "Control — A²",
+    "value": 1.78914862
+   },
+   {
+    "label": "Control — P value",
+    "value": 0.00003863503399
+   },
+   {
+    "label": "Low — A²",
+    "value": null
+   },
+   {
+    "label": "Low — P value",
+    "value": null
+   },
+   {
+    "label": "High — A²",
+    "value": null
+   },
+   {
+    "label": "High — P value",
+    "value": null
+   },
+   {
+    "label": "Sparse — A²",
+    "value": null
+   },
+   {
+    "label": "Sparse — P value",
+    "value": null
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 14.3375,
+    "sd": 6.372247305,
+    "sem": 2.25292964,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Low",
+    "mean": 14.84285714,
+    "sd": 0.8443086775,
+    "sem": 0.3191186843,
+    "median": 14.9,
+    "n": 7
+   },
+   {
+    "name": "High",
+    "mean": 19.61666667,
+    "sd": 1.083358974,
+    "sem": 0.4422794491,
+    "median": 19.65,
+    "n": 6
+   },
+   {
+    "name": "Sparse",
+    "mean": 10.625,
+    "sd": 1.25,
+    "sem": 0.625,
+    "median": 10.75,
+    "n": 4
+   }
+  ],
+  "notes": "Anderson–Darling test per column: it compares the cumulative distribution with a Gaussian's, weighting the tails. Its P value is a table approximation. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. Not tested (the test needs at least 8 values that aren't all identical): “Low”, “High”, “Sparse”."
+ },
+ "shapiro-wilk column {\"test\":\"kolmogorov-smirnov\"}": {
+  "testType": "shapiro-wilk",
+  "subtitle": "Kolmogorov–Smirnov test",
+  "stats": [
+   {
+    "label": "Control — D",
+    "value": 0.4458381578
+   },
+   {
+    "label": "Control — P value",
+    "value": 0.05733618513
+   },
+   {
+    "label": "Low — D",
+    "value": 0.1684465684
+   },
+   {
+    "label": "Low — P value",
+    "value": 0.9687644638
+   },
+   {
+    "label": "High — D",
+    "value": 0.1610802066
+   },
+   {
+    "label": "High — P value",
+    "value": 0.9898232276
+   },
+   {
+    "label": "Sparse — D",
+    "value": 0.2101721627
+   },
+   {
+    "label": "Sparse — P value",
+    "value": 0.9797920655
+   }
+  ],
+  "groups": [
+   {
+    "name": "Control",
+    "mean": 14.3375,
+    "sd": 6.372247305,
+    "sem": 2.25292964,
+    "median": 12.3,
+    "n": 8
+   },
+   {
+    "name": "Low",
+    "mean": 14.84285714,
+    "sd": 0.8443086775,
+    "sem": 0.3191186843,
+    "median": 14.9,
+    "n": 7
+   },
+   {
+    "name": "High",
+    "mean": 19.61666667,
+    "sd": 1.083358974,
+    "sem": 0.4422794491,
+    "median": 19.65,
+    "n": 6
+   },
+   {
+    "name": "Sparse",
+    "mean": 10.625,
+    "sd": 1.25,
+    "sem": 0.625,
+    "median": 10.75,
+    "n": 4
+   }
+  ],
+  "notes": "Kolmogorov–Smirnov test per column: it compares the cumulative distribution with a Gaussian's, using only the largest discrepancy, so it is the least sensitive of the four tests. The mean and SD are estimated from the same sample, which makes the P value anti-conservative (the proper test with estimated parameters is Lilliefors); Prism does the same, so Helix matches Prism. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. KS is weak at small n — a non-significant result on a small sample is weak evidence for normality."
+ },
+ "shapiro-wilk normalityNonpositive {\"test\":\"shapiro-wilk\",\"lognormal\":true}": {
+  "error": "Lognormality testing needs all values > 0 (log is undefined at or below zero) — “B” holds 0."
  },
  "kolmogorov-smirnov ksShifted {}": {
   "testType": "kolmogorov-smirnov",
@@ -18614,6 +19115,7 @@
  },
  "shapiro-wilk sparse {}": {
   "testType": "shapiro-wilk",
+  "subtitle": "Shapiro–Wilk test",
   "stats": [
    {
     "label": "A — W",
@@ -18666,7 +19168,7 @@
     "n": 4
    }
   ],
-  "notes": "Per-column normality. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. Not tested (the test needs 3 to 5000 values that aren't all identical): “B”, “C”."
+  "notes": "Shapiro–Wilk test per column. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. Not tested (the test needs 3 to 5000 values that aren't all identical): “B”, “C”."
  },
  "friedman sparse {\"posthoc\":\"none\"}": {
   "error": "This test needs at least 2 rows holding a value in every group; the table has 1."

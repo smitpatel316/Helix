@@ -60,6 +60,7 @@ import { deletePalette, keepPalette, loadMyPalettes } from "../src/store/my-pale
 import { GRAPHS, GRAPH_OPTIONS_BY_TABLE, newGraphOptions, type GraphFigure } from "../src/views/graphs";
 import { isGrouped, isNested, readTable, setColumns } from "../src/lib/dataset";
 import { incompleteRows, missingColumn } from "../src/stats/column/base";
+import { dagostinoPearson } from "../src/stats/column/shapiro-wilk";
 import { parseGroupLevels, toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
 import { addNote, movedText, paintOf, vectorTraces, visibleOutline, withCaps } from "../src/views/graphs/plot-helpers";
 import {
@@ -2142,6 +2143,89 @@ check("the ROC wizard asks truth, score and positive class, defaulting to the la
       .map((o) => o.value)
       .slice(-2),
     ["interpolate", "roc-curve"],
+  );
+});
+
+check("the normality-tests wizard asks for the test and lognormality, and D'Agostino–Pearson matches SciPy", () => {
+  const data = treatments(["A", "B"]);
+  const asked = (a: Record<string, string | string[]> = {}) =>
+    WIZARDS["shapiro-wilk"]!.questions(a, readTable(data)).flatMap((q) => (q ? [q.id] : []));
+  deepStrictEqual(asked(), ["sets", "test", "lognormal"]);
+  deepStrictEqual(
+    WIZARDS["shapiro-wilk"]!.questions({}, readTable(treatments(["A"]))).flatMap((q) => (q ? [q.id] : [])),
+    ["test", "lognormal"],
+  );
+  const testQ = WIZARDS["shapiro-wilk"]!.questions({}, readTable(data))[1];
+  ok(testQ && testQ.kind === "choice");
+  deepStrictEqual(
+    testQ.options.map((o) => o.value),
+    ["shapiro-wilk", "dagostino-pearson", "anderson-darling", "kolmogorov-smirnov"],
+  );
+  // Shapiro–Wilk is the first option, so the default; the D'Agostino–Pearson
+  // option names its n ≥ 20 floor.
+  ok(testQ.options[1].label.includes("n ≥ 20"));
+  deepStrictEqual(
+    WIZARDS["shapiro-wilk"]!.finish({ test: "anderson-darling", lognormal: "yes" }, readTable(data)),
+    { type: "shapiro-wilk", params: { test: "anderson-darling", lognormal: true } },
+  );
+  deepStrictEqual(
+    WIZARDS["shapiro-wilk"]!.finish({ test: "shapiro-wilk", lognormal: "no" }, readTable(data)).params,
+    { test: "shapiro-wilk", lognormal: false },
+  );
+  // The menu offers Normality tests between "Compare one group to a value"
+  // and the Kolmogorov-Smirnov test on column tables.
+  const columnOrder = analysisOptionsForTable("column").map((o) => o.value);
+  strictEqual(columnOrder[columnOrder.indexOf("shapiro-wilk") - 1], "one-sample-t");
+  strictEqual(columnOrder[columnOrder.indexOf("shapiro-wilk") + 1], "kolmogorov-smirnov");
+  // D'Agostino–Pearson (plan 23's A/B columns): the TS implementation
+  // matches SciPy 1.11's normaltest — A K2 0.1566 P 0.9247, B K2 23.7348
+  // P 0.000007 — to 1e-9.
+  const moments = (xs: number[]) => {
+    const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const d = xs.map((x) => x - mean);
+    return {
+      n: xs.length,
+      m2: d.reduce((a, x) => a + x * x, 0) / xs.length,
+      m3: d.reduce((a, x) => a + x ** 3, 0) / xs.length,
+      m4: d.reduce((a, x) => a + x ** 4, 0) / xs.length,
+    };
+  };
+  const A = [12.0, 12.4, 11.7, 10.9, 11.5, 10.8, 12.1, 13.6, 11.4, 11.3, 12.6, 12.4, 12.1, 10.9, 12.0, 12.8, 10.4, 11.5, 9.7, 10.5, 9.8, 11.7, 10.5, 12.3, 12.2];
+  const B = [6.5, 1.3, 5.1, 7.1, 8.0, 2.5, 5.3, 3.7, 4.2, 15.5, 4.2, 7.2, 13.7, 4.9, 6.8, 8.0, 7.7, 3.1, 7.8, 19.1, 2.5, 13.5, 8.0, 4.7, 30.0];
+  for (const [xs, k2, p] of [
+    [A, 0.15657081422370814, 0.9247004727869231],
+    [B, 23.73481271219545, 0.0000070153752305447],
+  ] as const) {
+    const { n, m2, m3, m4 } = moments(xs);
+    const got = dagostinoPearson(n, m2, m3, m4);
+    ok(got && Math.abs(got.k2 - k2) < 1e-9 && Math.abs(got.p - p) < 1e-9, `DP: ${got?.k2} / ${got?.p}`);
+  }
+  // The params survive a .hlx round-trip; a bogus test falls back (the
+  // runner takes its default).
+  const withAnalysis: ProjectFilePayload = {
+    ...payload,
+    nodes: {
+      ...payload.nodes,
+      a1: {
+        id: "a1",
+        type: "analysis",
+        name: "A",
+        parentId: "t1",
+        analysisType: "shapiro-wilk",
+        analysisParams: { test: "anderson-darling", lognormal: true },
+      },
+    },
+    childOrder: { t1: ["a1"] },
+  };
+  deepStrictEqual(read(serializeProjectFile(withAnalysis)).project.nodes.a1.analysisParams, {
+    test: "anderson-darling",
+    lognormal: true,
+  });
+  const bogus = JSON.parse(serializeProjectFile(withAnalysis));
+  bogus.project.nodes.a1.analysisParams.test = "dagostino";
+  strictEqual(
+    (read(JSON.stringify(bogus)).project.nodes.a1.analysisParams as { test?: string } | undefined)?.test,
+    undefined,
   );
 });
 

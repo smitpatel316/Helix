@@ -457,6 +457,26 @@ export interface OutliersParams {
   q: number;
 }
 
+/** The normality tests the "shapiro-wilk" analysis offers (plan 23 — the
+ *  type key stays "shapiro-wilk" for saved-project compatibility; the label
+ *  is "Normality tests"). Shapiro–Wilk is the default. */
+export const NORMALITY_TESTS = [
+  "shapiro-wilk",
+  "dagostino-pearson",
+  "anderson-darling",
+  "kolmogorov-smirnov",
+] as const;
+export type NormalityTest = (typeof NORMALITY_TESTS)[number];
+
+/** Params for "shapiro-wilk" (Normality tests): which of the four tests to
+ *  run, and whether to also run it on the log-transformed values (the
+ *  lognormality check — needs every value > 0). */
+export interface ShapiroWilkParams {
+  test: NormalityTest;
+  /** Also test log-transformed data; omitted defaults to false. */
+  lognormal?: boolean;
+}
+
 /** Params for "frequency-distribution" (Column table): how each column's values
  *  are grouped into bins. `binWidth` is required for "width", `binCount` for
  *  "count"; `startAt` is the lower edge of the first bin (width/count modes),
@@ -695,6 +715,7 @@ export type AnalysisParams = DataSetsParam &
     | ChiSquareParams
     | McNemarParams
     | OutliersParams
+    | ShapiroWilkParams
     | SurvivalParams
     | CoxParams
     | FrequencyDistributionParams

@@ -33,6 +33,7 @@ import type {
   SurvivalParams,
   CoxParams,
   PrincipalComponentAnalysisParams,
+  ShapiroWilkParams,
   SplineLowessParams,
   ThreeWayAnovaParams,
   TwoWayAnovaParams,
@@ -560,6 +561,34 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       },
     ],
     finish: (a) => ({ type: "outliers", params: withSets(a, { q: a.q as number }) }),
+  },
+
+  // Normality tests (plan 23): which of the four tests, and whether to also
+  // test the log-transformed values. Shapiro–Wilk is the default; the
+  // D'Agostino–Pearson option names its n ≥ 20 floor (the runner still
+  // reports per-column when a column is too short, since columns can
+  // differ in n).
+  "shapiro-wilk": {
+    questions: (_, table) => [
+      ...someSets(table, 1),
+      choice("test", "Which normality test?", [
+        ["shapiro-wilk", "Shapiro–Wilk (recommended)"],
+        ["dagostino-pearson", "D'Agostino–Pearson omnibus K2 (needs n ≥ 20)"],
+        ["anderson-darling", "Anderson–Darling"],
+        ["kolmogorov-smirnov", "Kolmogorov–Smirnov"],
+      ]),
+      choice("lognormal", "Should the test also run on the log-transformed values?", [
+        ["no", "Test normality only"],
+        ["yes", "Also test lognormality (test log-transformed data)"],
+      ]),
+    ],
+    finish: (a) => ({
+      type: "shapiro-wilk",
+      params: withSets(a, {
+        test: a.test as ShapiroWilkParams["test"],
+        lognormal: a.lognormal === "yes",
+      }),
+    }),
   },
 
   "frequency-distribution": {

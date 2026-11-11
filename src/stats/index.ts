@@ -28,6 +28,7 @@ import type {
   PoissonRegressionParams,
   PrincipalComponentAnalysisParams,
   RocParams,
+  ShapiroWilkParams,
   SimpleLogisticRegressionParams,
   SplineLowessParams,
   ThreeWayAnovaParams,
@@ -99,17 +100,32 @@ interface Analysis {
   minColumns: number;
   /** R packages the test needs (plan 00 registry names). `runAnalysis` installs
    *  them before the test runs and fails clearly when one is unavailable, so
-   *  no analysis can start a computation it cannot finish. Absent: none. */
-  requiredPackages?: string[];
+   *  no analysis can start a computation it cannot finish. Absent: none.
+   *  A function of params when only some variants need a package (normality
+   *  tests: only Anderson–Darling needs `nortest`). */
+  requiredPackages?: string[] | ((params: AnalysisParams | undefined) => string[]);
   run: Runner;
 }
 
+/** The packages `analysis` needs for these params, resolved. */
+const requiredPackagesOf = (analysis: Analysis | undefined, params?: AnalysisParams): string[] =>
+  !analysis
+    ? []
+    : typeof analysis.requiredPackages === "function"
+      ? analysis.requiredPackages(params)
+      : (analysis.requiredPackages ?? []);
+
 /** A column test from its spec. The params cast is confined here: each spec stays
  *  type-checked against its own params. */
-const spec = <P>(label: string, s: ColumnTestSpec<P>): Analysis => ({
+const spec = <P>(
+  label: string,
+  s: ColumnTestSpec<P>,
+  requiredPackages?: (params: P | undefined) => string[],
+): Analysis => ({
   label,
   name: s.subtitle && ((params) => s.subtitle!(params as P | undefined)),
   minColumns: s.minGroups,
+  requiredPackages: requiredPackages && ((params) => requiredPackages(params as P | undefined)),
   run: (columns, params) => runColumnTest(columns, s, params as P | undefined),
 });
 
@@ -121,7 +137,12 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
   "kruskal-wallis": spec("Kruskal-Wallis test", kruskalWallisSpec),
   "rm-anova": spec("Repeated-measures ANOVA", rmAnovaSpec),
   friedman: spec("Friedman test", friedmanSpec),
-  "shapiro-wilk": spec("Shapiro-Wilk normality", shapiroWilkSpec),
+  // Only Anderson–Darling needs a package (`nortest`); the other three
+  // normality tests are base R (or TypeScript, for D'Agostino–Pearson) —
+  // so the default Shapiro–Wilk run installs nothing.
+  "shapiro-wilk": spec("Normality tests", shapiroWilkSpec, (p) =>
+    (p as ShapiroWilkParams | undefined)?.test === "anderson-darling" ? ["nortest"] : [],
+  ),
   "kolmogorov-smirnov": spec("Kolmogorov-Smirnov test", kolmogorovSmirnovSpec),
   outliers: { label: "Identify outliers (ROUT)", minColumns: 1, run: (c, p) => runRout(c, p as OutliersParams) },
   correlation: { label: "Correlation", minColumns: 2, run: (c, p) => runXYCorrelation(c, p as XYCorrelationParams) },
@@ -280,12 +301,12 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
  *  already failed to install (the Run button stays disabled and the dialog
  *  shows `message` plus Retry); a `not-loaded` package does not block — the
  *  analysis installs it on first run. */
-export function packageGate(type: AnalysisType): {
+export function packageGate(type: AnalysisType, params?: AnalysisParams): {
   blocked: boolean;
   message: string | null;
   packages: string[];
 } {
-  const required = ANALYSES[type]?.requiredPackages ?? [];
+  const required = requiredPackagesOf(ANALYSES[type], params);
   const failed = required.filter((n) => packageStatus(n).status === "failed");
   if (!failed.length) return { blocked: false, message: null, packages: required };
   const detail = failed.map((n) => packageStatus(n).error ?? `The R package “${n}” could not be installed.`).join(" ");
@@ -338,7 +359,7 @@ export function runAnalysis(
       // A package-dependent test installs its packages first; a failure is a
       // user-facing error, never a raw R error — and the run is not cached,
       // so asking again retries the install.
-      const required = analysis.requiredPackages ?? [];
+      const required = requiredPackagesOf(analysis, params);
       if (required.length) {
         try {
           await ensurePackages(required);

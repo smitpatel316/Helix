@@ -89,7 +89,9 @@ function Steps({
   // blocks Run before it is pressed — with Retry. A package that merely
   // is not loaded yet does not block: the analysis installs it on first run.
   const finished = last ? wizard.finish({ ...answers, [q.id]: value ?? undefined }, table, tableType) : null;
-  const gate = finished ? packageGate(finished.type) : { blocked: false, message: null, packages: [] as string[] };
+  const gate = finished
+    ? packageGate(finished.type, finished.params)
+    : { blocked: false, message: null, packages: [] as string[] };
   const retry = async () => {
     setRetrying(true);
     try {
@@ -113,7 +115,7 @@ function Steps({
     if (asked(a).length > step + 1) go(step + 1, a);
     else {
       const { type, params } = wizard.finish(a, table, tableType);
-      if (packageGate(type).blocked) return; // re-checked: Run was disabled, but status can change
+      if (packageGate(type, params).blocked) return; // re-checked: Run was disabled, but status can change
       onDone(type, params);
     }
   };
