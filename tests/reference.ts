@@ -203,6 +203,21 @@ const doseUnknowns = table(doseLog.columns, [
   ["Sample 4", "", "150"],
 ]);
 
+/** Two replicate series around a line, with different spreads per row —
+ *  so 1/SD² weights differ row to row (the tripwire that weighting is
+ *  applied: the weighted intercept 1.0154 differs from the unweighted
+ *  1.0800, verified in R). R1 is deliberately off the exact line — exactly
+ *  collinear points would fit identically under any weights. */
+const xyRep = table(
+  ["Title", "X", "R1", "R2"],
+  [
+    ["", "0", "1.0", "1.2"],
+    ["", "1", "3.2", "3.6"],
+    ["", "2", "4.9", "5.1"],
+    ["", "3", "7.1", "7.8"],
+    ["", "4", "8.9", "9.05"],
+  ],
+);
 /** Two dose-response curves on one X, the second shifted right (a higher EC50). */
 const doseTwo = table(
   ["Title", "X", "Control", "Treated"],
@@ -2013,6 +2028,30 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["doseLog", doseLog, "nonlinear-regression", { model: "agonist-3pl-logx" }],
   ["doseFall", doseFall, "nonlinear-regression", { model: "inhibitor-3pl-logx" }],
   ["doseLog", doseLog, "nonlinear-regression", { model: "asymmetric-5pl-logx" }],
+  // Nonlinear regression framework (plan 26): model comparison (line vs
+  // quadratic — F = 0.6515, P = 0.4562; 4PL vs 3PL — F = 2.0124, P =
+  // 0.2058; all verified in R before building), weighting (1/Y² line:
+  // intercept 1.0840, slope 1.9730, verified in R), fixed parameters (4PL
+  // with HillSlope = 1 is the 3PL: Bottom 1.5916, Top 98.9642, LogEC50
+  // −0.8415), bounds (HillSlope in [0, 2] leaves the 4PL unchanged),
+  // the global fit on doseTwo (shared LogEC50 + HillSlope by default;
+  // shared LogEC50 only), a non-nested comparison (AICc only), and the
+  // 1/SD² weights on xyRep.
+  ["xy", xy, "nonlinear-regression", { y: "Y1", model: "line", compareModel: "quadratic" }],
+  ["xy", xy, "nonlinear-regression", { y: "Y1", model: "line", weights: "1/y2" }],
+  ["xy", xy, "linear-regression", { y: "Y1", weights: "1/y2" }],
+  ["doseLog", doseLog, "nonlinear-regression", { model: "sigmoidal-4pl-logx", compareModel: "agonist-3pl-logx" }],
+  ["doseLog", doseLog, "nonlinear-regression", { model: "sigmoidal-4pl-logx", fixed: { HillSlope: 1 } }],
+  ["doseLog", doseLog, "nonlinear-regression", { model: "sigmoidal-4pl-logx", bounds: { HillSlope: [0, 2] } }],
+  ["doseTwo", doseTwo, "nonlinear-regression", { y: "Control", model: "sigmoidal-4pl-logx", globalY: ["Treated"] }],
+  ["doseTwo", doseTwo, "nonlinear-regression", { y: "Control", model: "sigmoidal-4pl-logx", globalY: ["Treated"], sharedParams: ["LogEC50"] }],
+  ["doseRaw", doseRaw, "nonlinear-regression", { model: "sigmoidal-4pl-x", compareModel: "hyperbola" }],
+  ["xyRep", xyRep, "nonlinear-regression", { y: "R1", model: "line", weights: "1/sd2" }],
+  // Error paths: fixed parameters on a line fit, 1/Y weighting with
+  // non-positive Y, and a fixed+bounded contradiction.
+  ["xy", xy, "nonlinear-regression", { y: "Y1", model: "line", fixed: { Slope: 2 } }],
+  ["xy", xy, "nonlinear-regression", { y: "Y3", model: "line", weights: "1/y" }],
+  ["doseLog", doseLog, "nonlinear-regression", { model: "sigmoidal-4pl-logx", fixed: { HillSlope: 1 }, bounds: { HillSlope: [0, 2] } }],
   ["doseUnknowns", doseUnknowns, "nonlinear-regression", { model: "sigmoidal-4pl-logx", interpolate: true }],
   [
     "doseFar",

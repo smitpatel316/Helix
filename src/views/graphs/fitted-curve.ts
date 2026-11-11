@@ -3,7 +3,7 @@
 // no re-fitting here: an XY scatter draws the curve of a nonlinear regression of its table.
 import type { GraphOptions } from "../../store/types";
 import type { AnalysisResult, NonlinearModel, RegressionCoefficient } from "../../stats/types";
-import { positiveXOnly, termLabel } from "../../stats/xy/nonlinear-regression";
+import { positiveXOnly, coefficientsForSet, termLabel } from "../../stats/xy/nonlinear-regression";
 import { pairUp, type Column } from "../../lib/dataset";
 import type { GraphFigure } from ".";
 import { num } from "../../lib/format";
@@ -100,7 +100,9 @@ function curveLabel(fit: AnalysisResult): string {
 }
 
 /** Draws `model`'s fitted curve of `y` against `x` under the points, in `y`'s color (`ys`,
- *  the graph's Y series, places it in the palette), and its note when `note`. */
+ *  the graph's Y series, places it in the palette), and its note when `note`. A global
+ *  fit (`fit.fit.sets` with > 1 series) draws one curve per series, each in its
+ *  series' color, from that series' coefficients, and no single-curve note. */
 export function addFittedCurve(
   fig: GraphFigure,
   x: Column,
@@ -114,6 +116,28 @@ export function addFittedCurve(
 ) {
   const coefficients = fit.coefficients ?? [];
   if (!coefficients.length) return;
+  const sets = fit.fit?.sets ?? [];
+  if (sets.length > 1) {
+    for (const setName of sets) {
+      const yCol = ys.find((c) => c.name === setName) ?? y;
+      const xs = pairUp(x, yCol).x.filter((v) => !positiveXOnly(model) || v > 0);
+      if (!xs.length) continue;
+      const curve = fittedCurve(model, coefficientsForSet(coefficients, setName, sets), ...extent(xs));
+      fig.data = [
+        {
+          type: "scatter",
+          mode: "lines",
+          x: curve.x,
+          y: curve.y,
+          line: { color: paint.color(yCol.name, ys.indexOf(yCol)), width: 1.5 },
+          hoverinfo: "skip",
+          showlegend: false,
+        },
+        ...fig.data,
+      ];
+    }
+    return;
+  }
   const xs = pairUp(x, y).x.filter((v) => !positiveXOnly(model) || v > 0);
   if (!xs.length) return;
   const curve = fittedCurve(model, coefficients, ...extent(xs));

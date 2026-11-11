@@ -196,6 +196,9 @@ export interface LinearRegressionParams {
   /** Omitted defaults to the first Y data column. */
   y?: string;
   forceOrigin: boolean;
+  /** Weighting (plan 26, same schemes as nonlinear regression except 1/SD²,
+   *  which needs the replicate columns this runner never sees). */
+  weights?: Exclude<NonlinearWeightScheme, "1/sd2">;
 }
 
 /** Params for "deming-regression" (XY table): which Y series to compare with X,
@@ -228,6 +231,7 @@ export interface AreaUnderCurveParams {
 export type NonlinearModel = (typeof NONLINEAR_MODELS)[number];
 
 /** Params for "nonlinear-regression" (XY table): which Y data set to fit, and which curve. */
+export type NonlinearWeightScheme = "none" | "1/y" | "1/y2" | "1/x" | "1/x2" | "1/sd2";
 export interface NonlinearRegressionParams {
   /** Omitted defaults to the first Y data column. */
   y?: string;
@@ -237,6 +241,25 @@ export interface NonlinearRegressionParams {
   compare?: (typeof CURVE_COMPARISONS)[number];
   /** Interpolate the unknowns: the rows holding a Y but no X get the X the curve gives them. */
   interpolate?: boolean;
+  /** Weighting (plan 26): "none" (default) or a scheme — 1/Y, 1/Y², 1/X, 1/X²,
+   *  or 1/SD² (replicate SDs across the table's Y columns, per row). */
+  weights?: NonlinearWeightScheme;
+  /** Parameter name -> fixed value (the parameter is held constant, not fitted). nls models only. */
+  fixed?: Record<string, number>;
+  /** Parameter name -> [lower, upper] bounds (nls models only, via algorithm="port").
+   *  A parameter cannot be both fixed and bounded. */
+  bounds?: Record<string, [number, number]>;
+  /** A second MODEL fitted to the same data and compared (extra-sum-of-squares
+   *  F test when the pair is nested, AICc always). NOTE: the plan's `compareWith`
+   *  name is already taken (the other Y data set's column), so the model
+   *  comparison uses this field instead. */
+  compareModel?: NonlinearModel;
+  /** Extra Y series for a shared-parameter (global) fit. nls models only. */
+  globalY?: string[];
+  /** Which parameters are shared across the global fit's series (omitted:
+   *  the model default — the dose midpoint + HillSlope when the model has
+   *  them, else none shared). An explicit [] shares nothing. */
+  sharedParams?: string[];
 }
 
 /** Params for "correlation-matrix": Pearson (parametric) vs. Spearman

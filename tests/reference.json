@@ -7496,6 +7496,1208 @@
    }
   ]
  },
+ "nonlinear-regression xy {\"y\":\"Y1\",\"model\":\"line\",\"compareModel\":\"quadratic\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Line",
+  "stats": [
+   {
+    "label": "F",
+    "value": 0.651496493
+   },
+   {
+    "label": "DFn",
+    "value": 1
+   },
+   {
+    "label": "DFd",
+    "value": 5
+   },
+   {
+    "label": "P value",
+    "value": 0.4562416448,
+    "p": true
+   },
+   {
+    "label": "AICc",
+    "value": -19.57336666
+   },
+   {
+    "label": "ΔAICc (primary − comparison)",
+    "value": -4.620140291
+   },
+   {
+    "label": "Sum of squares (comparison model)",
+    "value": 0.2753501401
+   }
+  ],
+  "fit": {
+   "sets": [
+    "Y1"
+   ],
+   "rows": [
+    {
+     "label": "R squared",
+     "values": [
+      0.9984613141
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      0.2277528156
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      0.3112280702
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      6
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      8
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": 3.625,
+    "sd": 2.669269563,
+    "sem": 0.9437293044,
+    "median": 3.5,
+    "n": 8
+   },
+   {
+    "name": "Y1",
+    "mean": 9.033333333,
+    "sd": 5.503635162,
+    "sem": 1.834545054,
+    "median": 9.1,
+    "n": 9
+   }
+  ],
+  "notes": "Least-squares fit (\"Line\") of “Y1” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Compared with “Second order polynomial (quadratic)”. Extra sum-of-squares F test: the extra parameters of the “Second order polynomial (quadratic)” model are not justified (F = 0.6515, P = 0.4562). AICc prefers “Line” (ΔAICc = -4.62).",
+  "coefficients": [
+   {
+    "term": "Intercept",
+    "estimate": 0.9929824561,
+    "stdError": 0.1419525361,
+    "t": 6.995172354,
+    "p": 0.0004250712706,
+    "low": 0.6456371133,
+    "high": 1.340327799
+   },
+   {
+    "term": "Slope",
+    "estimate": 2.012280702,
+    "stdError": 0.03224944911,
+    "t": 62.39736669,
+    "p": 1.139070697e-9,
+    "low": 1.933369143,
+    "high": 2.091192261
+   }
+  ]
+ },
+ "nonlinear-regression xy {\"y\":\"Y1\",\"model\":\"line\",\"weights\":\"1/y2\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Line",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Y1"
+   ],
+   "rows": [
+    {
+     "label": "R squared",
+     "values": [
+      0.9984727461
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      0.03346517052
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      0.006719505829
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      6
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      8
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": 3.625,
+    "sd": 2.669269563,
+    "sem": 0.9437293044,
+    "median": 3.5,
+    "n": 8
+   },
+   {
+    "name": "Y1",
+    "mean": 9.033333333,
+    "sd": 5.503635162,
+    "sem": 1.834545054,
+    "median": 9.1,
+    "n": 9
+   }
+  ],
+  "notes": "Least-squares fit (\"Line\") of “Y1” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Weighted by 1/Y²; R² and the sum of squares are weighted.",
+  "coefficients": [
+   {
+    "term": "Intercept",
+    "estimate": 1.084012396,
+    "stdError": 0.03520810282,
+    "t": 30.78871933,
+    "p": 7.794000787e-8,
+    "low": 0.9978612718,
+    "high": 1.17016352
+   },
+   {
+    "term": "Slope",
+    "estimate": 1.973010478,
+    "stdError": 0.03150222919,
+    "t": 62.63082101,
+    "p": 1.113865302e-9,
+    "low": 1.8959273,
+    "high": 2.050093656
+   }
+  ]
+ },
+ "linear-regression xy {\"y\":\"Y1\",\"weights\":\"1/y2\"}": {
+  "testType": "linear-regression",
+  "subtitle": "Simple linear regression",
+  "equation": "Y = 1.973*X + 1.084",
+  "stats": [
+   {
+    "label": "Slope",
+    "value": 1.973010478
+   },
+   {
+    "label": "Slope 95% CI lower",
+    "value": 1.8959273
+   },
+   {
+    "label": "Slope 95% CI upper",
+    "value": 2.050093656
+   },
+   {
+    "label": "Y-intercept",
+    "value": 1.084012396
+   },
+   {
+    "label": "Intercept 95% CI lower",
+    "value": 0.9978612718
+   },
+   {
+    "label": "Intercept 95% CI upper",
+    "value": 1.17016352
+   },
+   {
+    "label": "R squared",
+    "value": 0.9984727461
+   },
+   {
+    "label": "P value (slope ≠ 0)",
+    "value": 1.113865302e-9,
+    "p": true
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 3.625,
+    "sd": 2.669269563,
+    "sem": 0.9437293044,
+    "median": 3.5,
+    "n": 8
+   },
+   {
+    "name": "Y1",
+    "mean": 8.2875,
+    "sd": 5.375456791,
+    "sem": 1.900510975,
+    "median": 7.95,
+    "n": 8
+   }
+  ],
+  "notes": "Ordinary least-squares linear regression of “Y1” on “X”. Weighted by 1/Y²; R² is weighted."
+ },
+ "nonlinear-regression doseLog {\"model\":\"sigmoidal-4pl-logx\",\"compareModel\":\"agonist-3pl-logx\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Sigmoidal, 4PL, X is log(concentration)",
+  "stats": [
+   {
+    "label": "F",
+    "value": 2.0124314
+   },
+   {
+    "label": "DFn",
+    "value": 1
+   },
+   {
+    "label": "DFd",
+    "value": 6
+   },
+   {
+    "label": "P value",
+    "value": 0.2058073031,
+    "p": true
+   },
+   {
+    "label": "AICc",
+    "value": -5.191034659
+   },
+   {
+    "label": "ΔAICc (primary − comparison)",
+    "value": 3.107652086
+   },
+   {
+    "label": "Sum of squares (comparison model)",
+    "value": 1.604346355
+   }
+  ],
+  "fit": {
+   "sets": [
+    "Response"
+   ],
+   "rows": [
+    {
+     "label": "EC50",
+     "values": [
+      0.1438862706
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.137793742,
+       0.1502481795
+      ]
+     ]
+    },
+    {
+     "label": "Span",
+     "values": [
+      97.96387721
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       96.62588276,
+       99.30187167
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      0.9999224337
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      0.4474730704
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      1.201392892
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      6
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      10
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": -0.75,
+    "sd": 1.513825177,
+    "sem": 0.4787135539,
+    "median": -0.75,
+    "n": 10
+   },
+   {
+    "name": "Response",
+    "mean": 52.05,
+    "sd": 41.48438126,
+    "sem": 13.11851321,
+    "median": 55.05,
+    "n": 10
+   }
+  ],
+  "notes": "Least-squares fit (\"Sigmoidal, 4PL, X is log(concentration)\") of “Response” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Compared with “log(agonist) vs. response, standard slope (3PL)”. Extra sum-of-squares F test: the extra parameters of the “Sigmoidal, 4PL, X is log(concentration)” model are not justified (F = 2.012, P = 0.2058). AICc prefers “log(agonist) vs. response, standard slope (3PL)” (ΔAICc = 3.108).",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": 1.278310063,
+    "stdError": 0.3572701809,
+    "t": 3.577992598,
+    "p": 0.01167127022,
+    "low": 0.404101423,
+    "high": 2.152518702
+   },
+   {
+    "term": "Top",
+    "estimate": 99.24218728,
+    "stdError": 0.3272161451,
+    "t": 303.2924529,
+    "p": 8.670812482e-14,
+    "low": 98.44151821,
+    "high": 100.0428563
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -0.8419806437,
+    "stdError": 0.007679010652,
+    "t": -109.6470212,
+    "p": 3.879305116e-11,
+    "low": -0.8607705059,
+    "high": -0.8231907816
+   },
+   {
+    "term": "Hill slope",
+    "estimate": 0.9769513568,
+    "stdError": 0.01584450365,
+    "t": 61.65869113,
+    "p": 1.223320237e-9,
+    "low": 0.9381812531,
+    "high": 1.015721461
+   }
+  ]
+ },
+ "nonlinear-regression doseLog {\"model\":\"sigmoidal-4pl-logx\",\"fixed\":{\"HillSlope\":1}}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Sigmoidal, 4PL, X is log(concentration)",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Response"
+   ],
+   "rows": [
+    {
+     "label": "EC50",
+     "values": [
+      0.1440302722
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.1378420825,
+       0.1504962703
+      ]
+     ]
+    },
+    {
+     "label": "Span",
+     "values": [
+      97.37261752
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       96.48596855,
+       98.25926648
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      0.9998964175
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      0.4787403644
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      1.604346355
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      7
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      10
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": -0.75,
+    "sd": 1.513825177,
+    "sem": 0.4787135539,
+    "median": -0.75,
+    "n": 10
+   },
+   {
+    "name": "Response",
+    "mean": 52.05,
+    "sd": 41.48438126,
+    "sem": 13.11851321,
+    "median": 55.05,
+    "n": 10
+   }
+  ],
+  "notes": "Least-squares fit (\"Sigmoidal, 4PL, X is log(concentration)\") of “Response” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Fixed parameters: Hill slope = 1.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": 1.591601431,
+    "stdError": 0.296247916,
+    "t": 5.372532074,
+    "p": 0.001038678856,
+    "low": 0.891086424,
+    "high": 2.292116437
+   },
+   {
+    "term": "Top",
+    "estimate": 98.96421895,
+    "stdError": 0.2782111995,
+    "t": 355.7161578,
+    "p": 3.664167413e-16,
+    "low": 98.306354,
+    "high": 99.6220839
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -0.8415462186,
+    "stdError": 0.008065533263,
+    "t": -104.3385714,
+    "p": 1.957908964e-12,
+    "low": -0.8606181741,
+    "high": -0.822474263
+   },
+   {
+    "term": "Hill slope",
+    "estimate": 1,
+    "stdError": null,
+    "t": null,
+    "p": null,
+    "low": null,
+    "high": null
+   }
+  ]
+ },
+ "nonlinear-regression doseLog {\"model\":\"sigmoidal-4pl-logx\",\"bounds\":{\"HillSlope\":[0,2]}}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Sigmoidal, 4PL, X is log(concentration)",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Response"
+   ],
+   "rows": [
+    {
+     "label": "EC50",
+     "values": [
+      0.1438862663
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.1377937375,
+       0.1502481754
+      ]
+     ]
+    },
+    {
+     "label": "Span",
+     "values": [
+      97.96387074
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       96.62587683,
+       99.30186466
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      0.9999224337
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      0.4474730703
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      1.201392892
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      6
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      10
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": -0.75,
+    "sd": 1.513825177,
+    "sem": 0.4787135539,
+    "median": -0.75,
+    "n": 10
+   },
+   {
+    "name": "Response",
+    "mean": 52.05,
+    "sd": 41.48438126,
+    "sem": 13.11851321,
+    "median": 55.05,
+    "n": 10
+   }
+  ],
+  "notes": "Least-squares fit (\"Sigmoidal, 4PL, X is log(concentration)\") of “Response” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Bounded parameters: Hill slope in [0, 2].",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": 1.278313179,
+    "stdError": 0.3572701409,
+    "t": 3.57800172,
+    "p": 0.01167114203,
+    "low": 0.404104637,
+    "high": 2.15252172
+   },
+   {
+    "term": "Top",
+    "estimate": 99.24218392,
+    "stdError": 0.3272160411,
+    "t": 303.292539,
+    "p": 8.670797705e-14,
+    "low": 98.44151511,
+    "high": 100.0428527
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -0.8419806566,
+    "stdError": 0.007679011139,
+    "t": -109.6470159,
+    "p": 3.879306236e-11,
+    "low": -0.86077052,
+    "high": -0.8231907933
+   },
+   {
+    "term": "Hill slope",
+    "estimate": 0.9769515998,
+    "stdError": 0.01584450812,
+    "t": 61.65868907,
+    "p": 1.223320482e-9,
+    "low": 0.9381814851,
+    "high": 1.015721714
+   }
+  ]
+ },
+ "nonlinear-regression doseTwo {\"y\":\"Control\",\"model\":\"sigmoidal-4pl-logx\",\"globalY\":[\"Treated\"]}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Sigmoidal, 4PL, X is log(concentration)",
+  "stats": [
+   {
+    "label": "R squared (all series)",
+    "value": 0.9890377899
+   },
+   {
+    "label": "Sum of squares",
+    "value": 338.6191845
+   },
+   {
+    "label": "Sy.x",
+    "value": 4.918036662
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 14
+   }
+  ],
+  "fit": {
+   "sets": [
+    "Control",
+    "Treated"
+   ],
+   "rows": [
+    {
+     "label": "EC50",
+     "values": [
+      0.2420626754,
+      0.2420626754
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.1762103532,
+       0.3325249497
+      ],
+      [
+       0.1762103532,
+       0.3325249497
+      ]
+     ]
+    },
+    {
+     "label": "Span",
+     "values": [
+      99.64620025,
+      98.06291581
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      0.9892240593,
+      0.9885602339
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      10,
+      10
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": -0.75,
+    "sd": 1.513825177,
+    "sem": 0.4787135539,
+    "median": -0.75,
+    "n": 10
+   },
+   {
+    "name": "Control",
+    "mean": 52.05,
+    "sd": 41.48438126,
+    "sem": 13.11851321,
+    "median": 55.05,
+    "n": 10
+   },
+   {
+    "name": "Treated",
+    "mean": 43.21,
+    "sd": 40.83893703,
+    "sem": 12.91440582,
+    "median": 32.6,
+    "n": 10
+   }
+  ],
+  "notes": "Global (shared-parameter) fit (“Sigmoidal, 4PL, X is log(concentration)”) of “Control”, “Treated” on “X”. Shared across data sets: LogEC50, Hill slope; fitted separately per data set: Bottom, Top. 95% CIs are asymptotic (from each parameter's standard error). R² is per data set; the sum of squares, Sy.x and degrees of freedom are for all series together.",
+  "coefficients": [
+   {
+    "term": "Bottom (Control)",
+    "estimate": 4.867783908,
+    "stdError": 3.182860693,
+    "t": 1.529373849,
+    "p": 0.1484484945,
+    "low": -1.958773336,
+    "high": 11.69434115
+   },
+   {
+    "term": "Bottom (Treated)",
+    "estimate": -3.222535144,
+    "stdError": 3.162003983,
+    "t": -1.019143291,
+    "p": 0.3254244536,
+    "low": -10.00435919,
+    "high": 3.559288906
+   },
+   {
+    "term": "Top (Control)",
+    "estimate": 104.5139842,
+    "stdError": 3.577474879,
+    "t": 29.21445648,
+    "p": 6.015620412e-14,
+    "low": 96.84106366,
+    "high": 112.1869047
+   },
+   {
+    "term": "Top (Treated)",
+    "estimate": 94.84038067,
+    "stdError": 3.550786407,
+    "t": 26.70968338,
+    "p": 2.066661155e-13,
+    "low": 87.22470125,
+    "high": 102.4560601
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -0.616072171,
+    "stdError": 0.06429376316,
+    "t": -9.582145152,
+    "p": 1.58081374e-7,
+    "low": -0.7539685783,
+    "high": -0.4781757636
+   },
+   {
+    "term": "Hill slope",
+    "estimate": 0.9044872729,
+    "stdError": 0.1159909269,
+    "t": 7.797913999,
+    "p": 0.00000184220757,
+    "low": 0.6557114769,
+    "high": 1.153263069
+   }
+  ]
+ },
+ "nonlinear-regression doseTwo {\"y\":\"Control\",\"model\":\"sigmoidal-4pl-logx\",\"globalY\":[\"Treated\"],\"sharedParams\":[\"LogEC50\"]}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Sigmoidal, 4PL, X is log(concentration)",
+  "stats": [
+   {
+    "label": "R squared (all series)",
+    "value": 0.9890639843
+   },
+   {
+    "label": "Sum of squares",
+    "value": 337.8100476
+   },
+   {
+    "label": "Sy.x",
+    "value": 5.097586515
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 13
+   }
+  ],
+  "fit": {
+   "sets": [
+    "Control",
+    "Treated"
+   ],
+   "rows": [
+    {
+     "label": "EC50",
+     "values": [
+      0.2450033054,
+      0.2450033054
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.1757734695,
+       0.3414998853
+      ],
+      [
+       0.1757734695,
+       0.3414998853
+      ]
+     ]
+    },
+    {
+     "label": "Span",
+     "values": [
+      100.4490592,
+      97.44035644
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      0.9887774167,
+      0.9890750112
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      10,
+      10
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": -0.75,
+    "sd": 1.513825177,
+    "sem": 0.4787135539,
+    "median": -0.75,
+    "n": 10
+   },
+   {
+    "name": "Control",
+    "mean": 52.05,
+    "sd": 41.48438126,
+    "sem": 13.11851321,
+    "median": 55.05,
+    "n": 10
+   },
+   {
+    "name": "Treated",
+    "mean": 43.21,
+    "sd": 40.83893703,
+    "sem": 12.91440582,
+    "median": 32.6,
+    "n": 10
+   }
+  ],
+  "notes": "Global (shared-parameter) fit (“Sigmoidal, 4PL, X is log(concentration)”) of “Control”, “Treated” on “X”. Shared across data sets: LogEC50; fitted separately per data set: Bottom, Top, Hill slope. 95% CIs are asymptotic (from each parameter's standard error). R² is per data set; the sum of squares, Sy.x and degrees of freedom are for all series together.",
+  "coefficients": [
+   {
+    "term": "Bottom (Control)",
+    "estimate": 4.587351379,
+    "stdError": 3.844312678,
+    "t": 1.193282587,
+    "p": 0.2540818402,
+    "low": -3.717781237,
+    "high": 12.89248399
+   },
+   {
+    "term": "Bottom (Treated)",
+    "estimate": -2.82326386,
+    "stdError": 3.6750568,
+    "t": -0.7682231904,
+    "p": 0.4560836673,
+    "low": -10.76274138,
+    "high": 5.116213662
+   },
+   {
+    "term": "Top (Control)",
+    "estimate": 105.0364105,
+    "stdError": 4.309872892,
+    "t": 24.37111562,
+    "p": 3.096181595e-12,
+    "low": 95.72549623,
+    "high": 114.3473248
+   },
+   {
+    "term": "Top (Treated)",
+    "estimate": 94.61709258,
+    "stdError": 4.115122004,
+    "t": 22.99253643,
+    "p": 6.495540649e-12,
+    "low": 85.72691199,
+    "high": 103.5072732
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -0.6108280564,
+    "stdError": 0.06675648533,
+    "t": -9.150093109,
+    "p": 4.991380198e-7,
+    "low": -0.7550466749,
+    "high": -0.4666094379
+   },
+   {
+    "term": "Hill slope (Control)",
+    "estimate": 0.880065129,
+    "stdError": 0.1643484171,
+    "t": 5.354874384,
+    "p": 0.0001308923456,
+    "low": 0.5250119599,
+    "high": 1.235118298
+   },
+   {
+    "term": "Hill slope (Treated)",
+    "estimate": 0.9262721879,
+    "stdError": 0.1749299612,
+    "t": 5.295103147,
+    "p": 0.0001450887054,
+    "low": 0.5483589827,
+    "high": 1.304185393
+   }
+  ]
+ },
+ "nonlinear-regression doseRaw {\"model\":\"sigmoidal-4pl-x\",\"compareModel\":\"hyperbola\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Sigmoidal, 4PL, X is concentration",
+  "stats": [
+   {
+    "label": "AICc",
+    "value": 6.141071246
+   },
+   {
+    "label": "ΔAICc (primary − comparison)",
+    "value": 1.791237073
+   },
+   {
+    "label": "Sum of squares (comparison model)",
+    "value": 4.793759802
+   }
+  ],
+  "fit": {
+   "sets": [
+    "Response"
+   ],
+   "rows": [
+    {
+     "label": "Span",
+     "values": [
+      98.41239654
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       95.30660712,
+       101.518186
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      0.9999599898
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      0.3205544508
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      0.3082654679
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      3
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      7
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": 18.05,
+    "sd": 34.64860335,
+    "sem": 12.25013119,
+    "median": 2,
+    "n": 8
+   },
+   {
+    "name": "Response",
+    "mean": 54.2375,
+    "sd": 39.53985105,
+    "sem": 13.9794484,
+    "median": 59.5,
+    "n": 8
+   }
+  ],
+  "notes": "Least-squares fit (\"Sigmoidal, 4PL, X is concentration\") of “Response” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Compared with “Hyperbola (X is concentration)”. The models are not nested, so no F test applies — the AICc comparison is the valid one. AICc prefers “Hyperbola (X is concentration)” (ΔAICc = 1.791).",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": 0.9712190483,
+    "stdError": 0.760423366,
+    "t": 1.277208318,
+    "p": 0.2914099531,
+    "low": -1.448787483,
+    "high": 3.39122558
+   },
+   {
+    "term": "Top",
+    "estimate": 99.38361559,
+    "stdError": 0.3347186826,
+    "t": 296.9168461,
+    "p": 8.424584591e-8,
+    "low": 98.31839135,
+    "high": 100.4488398
+   },
+   {
+    "term": "EC50",
+    "estimate": 1.13316317,
+    "stdError": 0.02392382471,
+    "t": 47.36546868,
+    "p": 0.00002071995365,
+    "low": 1.057026883,
+    "high": 1.209299458
+   },
+   {
+    "term": "Hill slope",
+    "estimate": 0.9565525395,
+    "stdError": 0.01825043187,
+    "t": 52.41259748,
+    "p": 0.00001529659803,
+    "low": 0.89847152,
+    "high": 1.014633559
+   }
+  ]
+ },
+ "nonlinear-regression xyRep {\"y\":\"R1\",\"model\":\"line\",\"weights\":\"1/sd2\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Line",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "R1"
+   ],
+   "rows": [
+    {
+     "label": "R squared",
+     "values": [
+      0.99959336
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      0.5375216574
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      0.8667885964
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      3
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      5
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": 2,
+    "sd": 1.58113883,
+    "sem": 0.7071067812,
+    "median": 2,
+    "n": 5
+   },
+   {
+    "name": "R1",
+    "mean": 5.02,
+    "sd": 3.117210291,
+    "sem": 1.394058822,
+    "median": 4.9,
+    "n": 5
+   }
+  ],
+  "notes": "Least-squares fit (\"Line\") of “R1” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Weighted by 1/SD²; R² and the sum of squares are weighted.",
+  "coefficients": [
+   {
+    "term": "Intercept",
+    "estimate": 1.015412173,
+    "stdError": 0.06544731528,
+    "t": 15.51495533,
+    "p": 0.0005817841897,
+    "low": 0.8071296062,
+    "high": 1.22369474
+   },
+   {
+    "term": "Slope",
+    "estimate": 1.970544536,
+    "stdError": 0.02294663483,
+    "t": 85.87509892,
+    "p": 0.000003480623336,
+    "low": 1.897518103,
+    "high": 2.043570969
+   }
+  ]
+ },
+ "nonlinear-regression xy {\"y\":\"Y1\",\"model\":\"line\",\"fixed\":{\"Slope\":2}}": {
+  "error": "Fixing or bounding parameters is only supported for nonlinear (nls) curves, not for line/polynomial fits."
+ },
+ "nonlinear-regression xy {\"y\":\"Y3\",\"model\":\"line\",\"weights\":\"1/y\"}": {
+  "error": "Weighting by 1/Y needs all Y > 0 — some fitted Y are ≤ 0."
+ },
+ "nonlinear-regression doseLog {\"model\":\"sigmoidal-4pl-logx\",\"fixed\":{\"HillSlope\":1},\"bounds\":{\"HillSlope\":[0,2]}}": {
+  "error": "“HillSlope” cannot be both fixed and bounded — fix it or bound it, not both."
+ },
  "nonlinear-regression doseUnknowns {\"model\":\"sigmoidal-4pl-logx\",\"interpolate\":true}": {
   "testType": "nonlinear-regression",
   "subtitle": "Sigmoidal, 4PL, X is log(concentration)",

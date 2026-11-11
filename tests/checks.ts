@@ -58,7 +58,7 @@ import {
 } from "../src/lib/palettes";
 import { deletePalette, keepPalette, loadMyPalettes } from "../src/store/my-palettes";
 import { GRAPHS, GRAPH_OPTIONS_BY_TABLE, newGraphOptions, type GraphFigure } from "../src/views/graphs";
-import { isGrouped, isNested, readTable, setColumns } from "../src/lib/dataset";
+import { isGrouped, isNested, readTable, setColumns, type Dataset } from "../src/lib/dataset";
 import { adjustComparisonRows, adjustPValues, incompleteRows, missingColumn } from "../src/stats/column/base";
 import { dagostinoPearson } from "../src/stats/column/shapiro-wilk";
 import { parseGroupLevels, toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
@@ -94,8 +94,9 @@ import { titleCase } from "../src/lib/format";
 import { loadRecents } from "../src/store/recents";
 import { largestAt, withDpi } from "../src/lib/image-dpi";
 import { crc32 } from "node:zlib";
-import type { AnalysisOutcome, AnalysisParams, AnalysisResult, MonteCarloParams, SimulationSpec } from "../src/stats/types";
+import type { AnalysisOutcome, AnalysisParams, AnalysisResult, MonteCarloParams, RegressionCoefficient, SimulationSpec } from "../src/stats/types";
 import { simulationRCode, validateSimulationSpec } from "../src/stats/simulation/simulate";
+import { aicc, coefficientsForSet, invertMethod, invertModel, nestedPair } from "../src/stats/xy/nonlinear-regression";
 import { monteCarloRCode, percentile } from "../src/stats/simulation/monte-carlo";
 import { addMonteCarloHistogram } from "../src/views/graphs/monte-carlo-histogram";
 
@@ -1132,6 +1133,193 @@ check("fitting a curve asks its kind, then its model, then what to compare", () 
     y: "A",
     model: "line",
   });
+});
+
+// Plan 26: the nonlinear wizard's framework questions — weighting (1/SD²
+// only when the table has replicates), the model comparison (never the
+// model itself), the global fit (opt-in, then which series and which
+// parameters), and the advanced fix/bounds fields — and what finish makes
+// of them.
+check("the curve wizard asks about weighting, comparing models and global fits", () => {
+  const wizard = WIZARDS["nonlinear-regression"]!;
+  const oneY = readTable({ columns: ["Title", "X", "A"], rows: [["", "1", "2"]] });
+  const twoY = readTable({ columns: ["Title", "X", "A", "B"], rows: [["", "1", "2", "3"]] });
+  const asked = (a: Record<string, string | string[]>, table: Dataset) =>
+    wizard.questions(a, table).flatMap((q) => (q ? [q] : []));
+  const options = (a: Record<string, string | string[]>, table: Dataset, id: string) => {
+    const q = asked(a, table).find((q) => q.id === id);
+    return q?.kind === "choice" ? q.options.map((o) => o.value) : [];
+  };
+  const ids = (a: Record<string, string | string[]>, table: Dataset) => asked(a, table).map((q) => q.id);
+  deepStrictEqual(options({ kind: "other", model: "line" }, twoY, "weights"), [
+    "none",
+    "1/y",
+    "1/y2",
+    "1/x",
+    "1/x2",
+    "1/sd2",
+  ]);
+  ok(!options({ kind: "other", model: "line" }, oneY, "weights").includes("1/sd2"));
+  ok(!options({ kind: "other", model: "line" }, twoY, "compareModel").includes("line"));
+  ok(options({ kind: "other", model: "line" }, twoY, "compareModel").includes("quadratic"));
+  ok(!ids({ y: "A", kind: "dose", model: "sigmoidal-4pl-logx", global: "no" }, twoY).includes("globalY"));
+  ok(ids({ y: "A", kind: "dose", model: "sigmoidal-4pl-logx", global: "yes" }, twoY).includes("globalY"));
+  ok(
+    ids({ y: "A", kind: "dose", model: "sigmoidal-4pl-logx", global: "yes", globalY: ["B"], shared: "custom" }, twoY).includes(
+      "sharedParams",
+    ),
+  );
+  ok(
+    !ids(
+      { y: "A", kind: "dose", model: "sigmoidal-4pl-logx", global: "yes", globalY: ["B"], shared: "default" },
+      twoY,
+    ).includes("sharedParams"),
+  );
+  ok(!ids({ y: "A", kind: "other", model: "line", constrain: "no" }, twoY).includes("fix_Slope"));
+  ok(ids({ y: "A", kind: "other", model: "line", constrain: "yes" }, twoY).includes("fix_Slope"));
+  ok(ids({ y: "A", kind: "other", model: "line", constrain: "yes" }, twoY).includes("bound_Slope"));
+  deepStrictEqual(
+    wizard.finish(
+      {
+        y: "A",
+        kind: "dose",
+        model: "sigmoidal-4pl-logx",
+        weights: "1/y2",
+        compareModel: "agonist-3pl-logx",
+        global: "yes",
+        globalY: ["B"],
+        shared: "default",
+        constrain: "yes",
+        fix_HillSlope: "1",
+        bound_Top: "",
+      },
+      twoY,
+    ),
+    {
+      type: "nonlinear-regression",
+      params: {
+        y: "A",
+        model: "sigmoidal-4pl-logx",
+        weights: "1/y2",
+        compareModel: "agonist-3pl-logx",
+        globalY: ["B"],
+        fixed: { HillSlope: 1 },
+      },
+    },
+  );
+  // Sharing every parameter passes the full list; sharing the usual ones
+  // leaves sharedParams out (the runner's default).
+  deepStrictEqual(
+    wizard.finish(
+      { y: "A", kind: "dose", model: "sigmoidal-4pl-logx", global: "yes", globalY: ["B"], shared: "all" },
+      twoY,
+    ).params,
+    {
+      y: "A",
+      model: "sigmoidal-4pl-logx",
+      globalY: ["B"],
+      sharedParams: ["Bottom", "Top", "LogEC50", "HillSlope"],
+    },
+  );
+});
+
+// Plan 26: only nested model pairs get the F test, and AICc matches R
+// (line AICc −19.5734 for RSS 0.3112, n = 8, k = 2 — verified in R).
+check("only nested model pairs get the F test", () => {
+  ok(nestedPair("line", "quadratic") !== null);
+  deepStrictEqual(nestedPair("line", "quadratic"), { simpler: "line", complex: "quadratic" });
+  deepStrictEqual(nestedPair("quadratic", "line"), { simpler: "line", complex: "quadratic" });
+  strictEqual(nestedPair("line", "hyperbola"), null);
+  strictEqual(nestedPair("sigmoidal-4pl-logx", "hyperbola"), null);
+  strictEqual(nestedPair("sigmoidal-4pl-logx", "asymmetric-5pl-logx")?.complex, "asymmetric-5pl-logx");
+  ok(Math.abs((aicc(0.3112, 8, 2) ?? 0) - -19.5734) < 0.001);
+  strictEqual(aicc(1, 4, 3), null);
+});
+
+// Plan 26: a global fit's coefficients split per series for the overlay —
+// shared parameters as fitted, per-series ones with their suffix stripped,
+// other series' dropped (a display term ending in a parenthesis, like
+// "Asymmetry (S)", is not a series suffix).
+check("a global fit's coefficients split per series for the overlay", () => {
+  const row = (term: string, estimate: number): RegressionCoefficient => ({
+    term,
+    estimate,
+    stdError: null,
+    t: null,
+    p: null,
+    low: null,
+    high: null,
+  });
+  const coefs = [
+    row("LogEC50", -0.6),
+    row("Bottom (Control)", 4.9),
+    row("Bottom (Treated)", -3.2),
+    row("Asymmetry (S)", 1.2),
+  ];
+  deepStrictEqual(
+    coefficientsForSet(coefs, "Control", ["Control", "Treated"]).map((c) => c.term),
+    ["LogEC50", "Bottom", "Asymmetry (S)"],
+  );
+  deepStrictEqual(
+    coefficientsForSet(coefs, "Treated", ["Control", "Treated"]).map((c) => c.term),
+    ["LogEC50", "Bottom", "Asymmetry (S)"],
+  );
+});
+
+// Plan 26: the closed-form inverses agree with R — the plan's pinned
+// values (line Y = 10 → X = 4.4760; 4PL Y = 50 → X = −0.8467, both
+// verified in R) and the interpolation path's own uniroot X for the same
+// fitted curve.
+check("closed-form inverses read unknowns off the fitted curve", async () => {
+  const xy: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "0", "1.1"],
+      ["", "1", "2.9"],
+      ["", "2", "5.2"],
+      ["", "3", "6.8"],
+      ["", "4", "9.1"],
+      ["", "5", "11.2"],
+      ["", "6", "12.7"],
+      ["", "", "15"],
+      ["", "8", "17.3"],
+    ],
+  };
+  const line = await runAnalysis("nonlinear-regression", xy, { y: "Y1", model: "line" });
+  ok(!("error" in line) && line.coefficients);
+  const lineX = invertModel("line", line.coefficients, 10);
+  ok(lineX != null && Math.abs(lineX - 4.476) < 0.002);
+  const interp = await runAnalysis("nonlinear-regression", xy, { y: "Y1", model: "line", interpolate: true });
+  ok(!("error" in interp) && interp.interpolated?.length === 1);
+  const interpX = interp.interpolated[0].x;
+  const lineX15 = invertModel("line", line.coefficients, 15);
+  ok(interpX != null && lineX15 != null && Math.abs(interpX - lineX15) < 1e-4);
+  const doseLog: TableData = {
+    columns: ["Title", "X", "Response"],
+    rows: [
+      ["", "-3", "2.1"],
+      ["", "-2.5", "3.4"],
+      ["", "-2", "8.2"],
+      ["", "-1.5", "19.5"],
+      ["", "-1", "41.2"],
+      ["", "-0.5", "68.9"],
+      ["", "0", "86.1"],
+      ["", "0.5", "94.2"],
+      ["", "1", "97.8"],
+      ["", "1.5", "99.1"],
+    ],
+  };
+  const dose = await runAnalysis("nonlinear-regression", doseLog, { model: "sigmoidal-4pl-logx" });
+  ok(!("error" in dose) && dose.coefficients);
+  const doseX = invertModel("sigmoidal-4pl-logx", dose.coefficients, 50);
+  ok(doseX != null && Math.abs(doseX - -0.8467) < 0.002);
+  // Outside the asymptotes the curve never reaches the Y.
+  strictEqual(invertModel("sigmoidal-4pl-logx", dose.coefficients, 150), null);
+  strictEqual(invertModel("sigmoidal-4pl-logx", dose.coefficients, 0.5), null);
+  // No closed form: the numeric-only models, and the method table agrees.
+  strictEqual(invertMethod("quadratic"), "numeric");
+  strictEqual(invertMethod("sigmoidal-4pl-logx"), "closed-form");
+  strictEqual(invertModel("quadratic", dose.coefficients, 50), null);
 });
 
 check("data sets ticked again keep the table's order", () => {

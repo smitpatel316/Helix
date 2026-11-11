@@ -164,6 +164,7 @@ type ParamKind =
   | "name-or-number"
   | "name-and-names"
   | "numbers-by-name"
+  | "number-pairs-by-name"
   | readonly string[]
   | Limits;
 // prettier-ignore
@@ -178,6 +179,14 @@ const PARAMS = {
   // sanitizes, each runner validates its own.
   method: [...CORRELATION_METHODS, "spline", "lowess", "rout", "grubbs"],
   mode: CORRELATION_MODES, design: TWO_WAY_DESIGNS, posthocTarget: POSTHOC_TARGETS, correction: CORRECTIONS, curveTest: CURVE_TESTS, compare: CURVE_COMPARISONS,
+  // Nonlinear regression framework (plan 26): weighting, model comparison,
+  // global fitting, fixed parameters and bounds.
+  weights: ["none", "1/y", "1/y2", "1/x", "1/x2", "1/sd2"],
+  compareModel: [...NONLINEAR_MODELS],
+  globalY: "names",
+  sharedParams: "names",
+  fixed: "numbers-by-name",
+  bounds: "number-pairs-by-name",
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q, lambda: "number",
   alpha: { min: 0.001, max: 0.5 }, iterate: "yes/no",
   f: "number", spar: "number", df: "number",
@@ -429,6 +438,11 @@ function readParam(kind: ParamKind, v: unknown): unknown {
   if (kind === "name-or-names")
     return typeof v === "string" ? v : Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
   if (kind === "numbers-by-name") return isObj(v) && Object.values(v).every(isFiniteNumber) ? v : undefined;
+  if (kind === "number-pairs-by-name")
+    return isObj(v) &&
+      Object.values(v).every((p) => Array.isArray(p) && p.length === 2 && p.every(isFiniteNumber))
+      ? v
+      : undefined;
   if (kind === "name-and-names")
     return isObj(v) &&
       typeof v.name === "string" &&
