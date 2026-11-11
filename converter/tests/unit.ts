@@ -15,20 +15,25 @@
 //   C  title shape × title location          (6 × 4 = 24) + map titles (4)
 //   D  X shape                               (10)
 //   E  Y cell value shape                    (10)
-//   F  subcolumn source × data format        (14 × 2 = 28)
+//   F  subcolumn source × data format        (13 × 2 = 26)
 //   G  dataset presence                      (6)
-//   H  analysis class × input state          (12)
+//   H  analysis class × input state          (14)
 //   I  project-level rejects                 (8)
 //   J  content.json shape                    (4)
-//   K  orphan / unreferenced tables          (2)
-//   L  CSV text shape                        (2)
+//   K  orphan / unreferenced tables          (3)
+//   L  CSV text shape                        (5)
+//   M  review regressions (B1/B2/B3/M1/m1/M5/m6) (12)
 //
 // Every successful conversion is also round-tripped through Helix's own
 // parseProjectFile, so a case that converts but produces a .hlx Helix
 // itself rejects still fails here. The four regression tests from the
 // 2026-11-10 corpus bugs (commit 13c75c2) are named REGRESSION R1–R4;
 // they were run against the pre-fix converter and fail there (see the
-// README's "Regression verification" note).
+// README's "Regression verification" note). Section M holds the
+// regression tests from the 2026-11-10 read-only review sweep (B1/B2/B3
+// blockers, M1/M3/M4/M5, m1/m6) — same rule: each was run against the
+// pre-fix converter and fails there (the M1 DST cases only under a
+// non-UTC timezone; run the suite with TZ=America/Los_Angeles).
 //
 // Real-file coverage lives in tests/verify.ts (demo) and
 // tests/verify-corpus.ts (11 public + 6 synthetic files).
@@ -556,7 +561,6 @@ section("F. subcolumn source × data format");
     ["ranges 0", { replicateRanges: ["0"] }, undefined, 1],
     ["ranges 1~3", { replicateRanges: ["1~3"] }, undefined, 3],
     ["ranges 0~0 + 2", { replicateRanges: ["0~0", "2"] }, undefined, 2],
-    ["ranges bad value", { replicateRanges: ["abc"] }, undefined, 0],
     ["ranges empty", { replicateRanges: [] }, undefined, 0],
     ["table fallback 0", {}, 0, 0],
     ["table fallback 3", {}, 3, 3],
@@ -642,7 +646,9 @@ section("G. dataset presence");
     const ok =
       eq(node?.data?.columns, ["Title", "X", "A_1", "A_2"]) &&
       eq(node?.data?.rows, [[null, "0", "10", "20"], [null, "1", "11", "21"]]) &&
-      result.report.issues.some((i) => i.message.includes("is missing; its columns were left out"));
+      result.report.issues.some((i) =>
+        i.message.includes("is missing; its 2 column(s) were skipped (inferred from the file's 5 declared columns)"),
+      );
     check("dataset one JSON missing", ok, ok ? "A converts, B warned about" : JSON.stringify(node?.data));
   }
   // All dataset JSONs missing: the table is left out; the project refuses.
@@ -778,11 +784,13 @@ section("H. analysis class × input state");
     check("analysis 4PL two datasets", ok, `${nodes.length} nodes: ${nodes.map((n) => n.name).join(", ")}`);
   }
   // Unknown equation, missing params, unknown classes: named, never faked.
+  // ("One phase decay" is a MAPPED equation — it converts; the unknown
+  // one here is "Two phase decay".)
   for (const [label, analysis, want] of [
     [
       "4PL unknown equation",
-      fit("Fit", { params: { analysisClass: "NONLINEAR_REGRESSION", content: { model: { equation: { name: "One phase decay" } } } } }),
-      "nonlinear model “One phase decay”",
+      fit("Fit", { params: { analysisClass: "NONLINEAR_REGRESSION", content: { model: { equation: { name: "Two phase decay" } } } } }),
+      "nonlinear model “Two phase decay”",
     ],
     ["4PL missing params", fit("Fit", { params: undefined }), "nonlinear model “”"],
     ["unknown class", { title: "Mystery", analysisClass: "SOMETHING_NEW" } as AnalysisSpec, "SOMETHING_NEW"],
@@ -803,6 +811,20 @@ section("H. analysis class × input state");
     const nodes = Object.values(result.project.nodes).filter((n) => n.type === "analysis");
     const ok = nodes.length === 1 && nodes[0].analysisType === "survival-log-rank" && nodes[0].name === "Survival";
     check("analysis survival", ok, ok ? "1 survival-log-rank node" : JSON.stringify(nodes.map((n) => n.name)));
+  }
+  // A supported analysis with zero input datasets is warned about by
+  // name and left out — never silently dropped (M4). Both shapes: an
+  // empty list and a missing field.
+  for (const [label, extra] of [
+    ["empty inputDataSets", { inputDataSets: [] }],
+    ["missing inputDataSets", { inputDataSets: undefined }],
+  ] as [string, Partial<AnalysisSpec>][]) {
+    const result = await convertSpec({ tables: [baseTable()], analyses: [fit("Fit", extra)] });
+    const converted = Object.values(result.project.nodes).some((n) => n.type === "analysis");
+    const warned = result.report.issues.some(
+      (i) => i.message.includes("“Fit”") && i.message.includes("has no input datasets"),
+    );
+    check(`analysis zero inputs (${label})`, !converted && warned, `converted=${converted}, warned=${warned}`);
   }
   // Input table missing / no inputs / sheet missing: warned, left out.
   for (const [label, analysis] of [
@@ -950,19 +972,24 @@ section("J. content.json shape");
       ["1", "11"],
     ],
   });
-  // More rows declared than the CSV holds: padded with null rows.
+  // More rows declared than the CSV holds: padded with null rows, and
+  // warned about — the padding is kept behaviour, the silence was the bug.
   {
     const t = table();
     t.rows = 4;
     const result = await convertSpec({ tables: [t] });
     const node = tableOf(result, "T");
-    const ok = eq(node?.data?.rows, [
-      [null, "0", "10"],
-      [null, "1", "11"],
-      [null, null, null],
-      [null, null, null],
-    ]);
-    check("content rows > CSV rows pads nulls", ok, ok ? "4 rows, last two all null" : JSON.stringify(node?.data?.rows));
+    const ok =
+      eq(node?.data?.rows, [
+        [null, "0", "10"],
+        [null, "1", "11"],
+        [null, null, null],
+        [null, null, null],
+      ]) &&
+      result.report.issues.some((i) =>
+        i.message.includes("the file holds 2 rows but content.json declares 4; the missing rows were left empty"),
+      );
+    check("content rows > CSV rows pads nulls", ok, ok ? "4 rows, last two all null, warned" : JSON.stringify(node?.data?.rows));
   }
   // Fewer rows declared: the CSV is truncated.
   {
@@ -1026,6 +1053,30 @@ section("K. orphan / unreferenced tables");
     const ok = result.report.orphanSheetsIgnored === 0 && result.report.unreferencedTablesIgnored === 0;
     check("no orphans in a clean file", ok, `orphans=${result.report.orphanSheetsIgnored} unreferenced=${result.report.unreferencedTablesIgnored}`);
   }
+  // Orphan UIDs need not be UUID-shaped: the scan matches any path
+  // segment, so a sheet/table with a plain-name UID is still counted.
+  {
+    const orphan: TableSpec = {
+      sheetUid: "not-a-uuid-sheet",
+      tableUid: "not-a-uuid-table",
+      sheetTitle: "T",
+      format: "column",
+      dataFormat: "y_replicates",
+      sets: [{ title: "A", replicates: [1] }],
+      csv: [["10"]],
+    };
+    const result = await convertSpec({
+      tables: [table()],
+      orphanSheets: [orphan],
+      extraTables: [{ uid: "also-not-a-uuid", csv: [["1"]] }],
+    });
+    const ok = result.report.orphanSheetsIgnored === 1 && result.report.unreferencedTablesIgnored === 1;
+    check(
+      "non-UUID orphans counted",
+      ok,
+      `orphans=${result.report.orphanSheetsIgnored} unreferenced=${result.report.unreferencedTablesIgnored}`,
+    );
+  }
 }
 
 // ── L. CSV text shape ────────────────────────────────────────────────────
@@ -1065,15 +1116,18 @@ section("L. CSV text shape");
     check("CSV quoted commas and quotes", ok, ok ? "titles and values exact" : JSON.stringify(node?.data?.rows));
   }
   // Embedded line breaks inside a quoted row title: Prism writes
-  // multi-line titles with a bare CR (or CRLF) inside the quoted field.
-  // The value is real data, not a CSV parsing leak, so it comes through
-  // byte-exact — the converter never rewrites a value. (The corpus
-  // verifier's C8 check flags any \r as a possible leak; on real files
-  // with multi-line titles that is a false positive — see README.)
-  for (const [label, title] of [
-    ["bare CR", "BACE-I\r& DOX"],
-    ["CRLF", "WT\r(3 weeks)"],
-  ] as [string, string][]) {
+  // multi-line titles with a bare CR (or CRLF, or a lone LF) inside the
+  // quoted field. The field survives as ONE cell — the parser never
+  // splits the row on it — and cleanText collapses the break to one
+  // space, because Helix labels are single-line. (An earlier pin here
+  // expected the break byte-exact; that contradicted cleanText, which
+  // has collapsed breaks since the round-2 corpus fix — the pin was
+  // wrong, not the converter.)
+  for (const [label, title, want] of [
+    ["bare CR", "BACE-I\r& DOX", "BACE-I & DOX"],
+    ["CRLF", "WT\r(3 weeks)", "WT (3 weeks)"],
+    ["lone LF", "Line1\nLine2", "Line1 Line2"],
+  ] as [string, string, string][]) {
     const table: TableSpec = {
       sheetTitle: "T",
       format: "column",
@@ -1085,7 +1139,309 @@ section("L. CSV text shape");
     const result = await convertSpec({ tables: [table] });
     const node = tableOf(result, "T");
     const got = node?.data?.rows[0]?.[0];
-    check(`CSV row title with embedded ${label}`, got === title, `got ${JSON.stringify(got)}, want ${JSON.stringify(title)}`);
+    check(`CSV row title with embedded ${label}`, got === want, `got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+  }
+  // A cell that is only whitespace — spaces, a lone CR, a lone LF — is
+  // empty, never a stray space in the .hlx.
+  {
+    const table: TableSpec = {
+      sheetTitle: "T",
+      format: "column",
+      dataFormat: "y_replicates",
+      rowTitles: true,
+      sets: [{ title: "A", replicates: [1] }],
+      csv: [
+        [" ", "10"],
+        ["\r", "11"],
+        ["\n", "12"],
+      ],
+    };
+    const result = await convertSpec({ tables: [table] });
+    const node = tableOf(result, "T");
+    const ok = eq(node?.data?.rows, [
+      [null, "10"],
+      [null, "11"],
+      [null, "12"],
+    ]);
+    check("CSV whitespace-only cells are empty", ok, ok ? "titles null, values kept" : JSON.stringify(node?.data?.rows));
+  }
+}
+
+// ── M. Review regression tests (2026-11-10 read-only sweep) ─────────────
+// Each case was run against the pre-fix converter and fails there (see
+// the README's "Regression verification" note); the DST survival cases
+// only fail on the old code under a non-UTC timezone, so run the suite
+// with TZ=America/Los_Angeles for those.
+section("M. review regressions (B1/B2/B3/M1/M3/M4/M5/m6)");
+{
+  // B1: a dataset JSON missing MID-table shifts every later dataset.
+  {
+    const table: TableSpec = {
+      sheetTitle: "T",
+      format: "column",
+      dataFormat: "y_replicates",
+      x: { title: "X", replicates: [1] },
+      sets: [
+        { title: "A", replicates: [1, 2] },
+        { title: "B", replicates: [1, 2], missing: true },
+        { title: "C", replicates: [1, 2] },
+      ],
+      csv: [
+        ["0", "10", "20", "30", "40", "50", "60"],
+        ["1", "11", "21", "31", "41", "51", "61"],
+      ],
+    };
+    const result = await convertSpec({ tables: [table] });
+    const node = tableOf(result, "T");
+    const ok =
+      eq(node?.data?.columns, ["Title", "X", "A_1", "A_2", "C_1", "C_2"]) &&
+      eq(node?.data?.rows, [[null, "0", "10", "20", "50", "60"], [null, "1", "11", "21", "51", "61"]]) &&
+      result.report.issues.some((i) =>
+        i.message.includes("is missing; its 2 column(s) were skipped (inferred from the file's 7 declared columns)"),
+      );
+    const rt = roundTripOk(result);
+    check("REGRESSION B1 missing mid-table dataset", ok && rt.ok, ok ? "C reads its own values, B skipped" : JSON.stringify(node?.data));
+  }
+  // B1: two unknowns can't be laid out — refuse, never guess.
+  {
+    const table: TableSpec = {
+      sheetTitle: "T",
+      format: "column",
+      dataFormat: "y_replicates",
+      x: { title: "X", replicates: [1] },
+      sets: [
+        { title: "A", replicates: [1, 2], missing: true },
+        { title: "B", replicates: [1, 2], missing: true },
+        { title: "C", replicates: [1, 2] },
+      ],
+      csv: [
+        ["0", "10", "20", "30", "40", "50", "60"],
+        ["1", "11", "21", "31", "41", "51", "61"],
+      ],
+    };
+    try {
+      await convertSpec({ tables: [table] });
+      check("REGRESSION B1 two unknowns refuse", false, "converted but should have been refused");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      check("REGRESSION B1 two unknowns refuse", msg.includes("has no data tables Helix can use"), `refused: ${msg}`);
+    }
+  }
+  // B1: a missing dataset's skip count from the table's replicatesCount.
+  {
+    const table: TableSpec = {
+      sheetTitle: "T",
+      format: "column",
+      dataFormat: "y_replicates",
+      replicatesCount: 3,
+      x: { title: "X", replicates: [1] },
+      sets: [
+        { title: "A", replicates: [1, 2] },
+        { title: "B", replicates: [1, 2], missing: true },
+        { title: "C", replicates: [1, 2] },
+      ],
+      csv: [
+        ["0", "10", "20", "30", "40", "50", "60", "70"],
+        ["1", "11", "21", "31", "41", "51", "61", "71"],
+      ],
+    };
+    const result = await convertSpec({ tables: [table] });
+    const node = tableOf(result, "T");
+    const ok =
+      eq(node?.data?.columns, ["Title", "X", "A_1", "A_2", "C_1", "C_2"]) &&
+      eq(node?.data?.rows, [[null, "0", "10", "20", "60", "70"], [null, "1", "11", "21", "61", "71"]]) &&
+      result.report.issues.some((i) => i.message.includes("is missing; its 3 column(s) were skipped (the table's replicatesCount)"));
+    check("REGRESSION B1 missing skipped by replicatesCount", ok, ok ? "C reads cols 6–7" : JSON.stringify(node?.data));
+  }
+  // B1: a missing dataset's skip count from the dataFormat's fixed shape.
+  {
+    const table: TableSpec = {
+      sheetTitle: "T",
+      format: "column",
+      dataFormat: "y_sd_n",
+      x: { title: "X", replicates: [1] },
+      sets: [
+        { title: "A", replicates: [1, 2, 3] },
+        { title: "B", replicates: [1, 2, 3], missing: true },
+        { title: "C", replicates: [1, 2, 3] },
+      ],
+      csv: [
+        ["0", "10", "20", "30", "40", "50", "60", "70", "80", "90"],
+        ["1", "11", "21", "31", "41", "51", "61", "71", "81", "91"],
+      ],
+    };
+    const result = await convertSpec({ tables: [table] });
+    const node = tableOf(result, "T");
+    const ok =
+      eq(node?.data?.columns, ["Title", "X", "A_MEAN", "A_SD", "A_N", "C_MEAN", "C_SD", "C_N"]) &&
+      eq(node?.data?.rows, [[null, "0", "10", "20", "30", "70", "80", "90"], [null, "1", "11", "21", "31", "71", "81", "91"]]) &&
+      result.report.issues.some((i) => i.message.includes("is missing; its 3 column(s) were skipped (the table's y_sd_n shape)"));
+    check("REGRESSION B1 missing skipped by dataFormat shape", ok, ok ? "C reads cols 7–9" : JSON.stringify(node?.data));
+  }
+  // B1, grouped: the same skip, through the grouped emission loop.
+  {
+    const table: TableSpec = {
+      sheetTitle: "T",
+      format: "grouped",
+      dataFormat: "y_replicates",
+      replicatesCount: 2,
+      sets: [
+        { title: "A", replicates: [1, 2] },
+        { title: "B", replicates: [1, 2], missing: true },
+        { title: "C", replicates: [1, 2] },
+      ],
+      csv: [
+        ["10", "20", "30", "40", "50", "60"],
+        ["11", "21", "31", "41", "51", "61"],
+      ],
+    };
+    const result = await convertSpec({ tables: [table] });
+    const node = tableOf(result, "T");
+    const ok =
+      eq(node?.data?.columns, ["Title", "A:Y1", "A:Y2", "C:Y1", "C:Y2"]) &&
+      eq(node?.data?.rows, [[null, "10", "20", "50", "60"], [null, "11", "21", "51", "61"]]) &&
+      node?.data?.groups === 2 &&
+      node?.data?.replicates === 2;
+    check("REGRESSION B1 missing mid-table, grouped", ok, ok ? "C reads cols 4–5, groups=2" : JSON.stringify(node?.data));
+  }
+  // B2: a missing X dataset whose real X had 2 subcolumns (value + error).
+  {
+    const table: TableSpec = {
+      sheetTitle: "T",
+      format: "column",
+      dataFormat: "y_replicates",
+      x: { title: "X", replicates: [1, 2], missing: true },
+      sets: [{ title: "A", replicates: [1, 2] }],
+      csv: [
+        ["5", "0.5", "10", "20"],
+        ["6", "0.6", "11", "21"],
+      ],
+    };
+    const result = await convertSpec({ tables: [table] });
+    const node = tableOf(result, "T");
+    const ok =
+      eq(node?.data?.columns, ["Title", "X", "A_1", "A_2"]) &&
+      eq(node?.data?.rows, [[null, "5", "10", "20"], [null, "6", "11", "21"]]) &&
+      result.report.issues.some((i) => i.message.includes("the X dataset") && i.message.includes("is missing; 2 column(s) were read as X"));
+    check("REGRESSION B2 missing multi-subcolumn X", ok, ok ? "A reads cols 2–3, X is the value" : JSON.stringify(node?.data));
+  }
+  // B2: a missing X plus a missing dataset is two unknowns — refuse.
+  {
+    const table: TableSpec = {
+      sheetTitle: "T",
+      format: "column",
+      dataFormat: "y_replicates",
+      x: { title: "X", replicates: [1, 2], missing: true },
+      sets: [
+        { title: "A", replicates: [1, 2], missing: true },
+        { title: "B", replicates: [1, 2] },
+      ],
+      csv: [
+        ["5", "0.5", "10", "20", "30", "40"],
+        ["6", "0.6", "11", "21", "31", "41"],
+      ],
+    };
+    try {
+      await convertSpec({ tables: [table] });
+      check("REGRESSION B2 missing X + missing dataset refuse", false, "converted but should have been refused");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      check("REGRESSION B2 missing X + missing dataset refuse", msg.includes("has no data tables Helix can use"), `refused: ${msg}`);
+    }
+  }
+  // B3: a malformed replicate range is unknown, never 0 — inferred here.
+  for (const [label, ranges, problem] of [
+    ["unparseable", ["abc"], "“abc” isn't a replicate range"],
+    ["reversed", ["2~0"], "“2~0” is reversed (start after end)"],
+  ] as [string, string[], string][]) {
+    const table: TableSpec = {
+      sheetTitle: "T",
+      format: "column",
+      dataFormat: "y_replicates",
+      x: { title: "X", replicates: [1] },
+      sets: [
+        { title: "A", replicateRanges: ranges },
+        { title: "B", replicates: [1, 2] },
+      ],
+      csv: [
+        ["0", "10", "20", "30", "40", "50"],
+        ["1", "11", "21", "31", "41", "51"],
+      ],
+    };
+    const result = await convertSpec({ tables: [table] });
+    const node = tableOf(result, "T");
+    const ok =
+      eq(node?.data?.columns, ["Title", "X", "A_1", "A_2", "A_3", "B_1", "B_2"]) &&
+      eq(node?.data?.rows, [[null, "0", "10", "20", "30", "40", "50"], [null, "1", "11", "21", "31", "41", "51"]]) &&
+      result.report.issues.some((i) => i.message.includes("has malformed replicate ranges") && i.message.includes(problem));
+    check(`REGRESSION B3 malformed range (${label})`, ok, ok ? "A inferred 3 subcolumns, B reads its own" : JSON.stringify(node?.data));
+  }
+  // M1: survival durations across US DST — exactly 7 and 1 days, and a
+  // mixed date-only/datetime pair is 0, not −0.29. Only fails on the old
+  // code under a non-UTC timezone (run with TZ=America/Los_Angeles).
+  {
+    const survival = (units: string): TableSpec => ({
+      sheetTitle: "Survival",
+      format: "survival",
+      dataFormat: "y_single",
+      x: {
+        title: "Time",
+        format: "date_se",
+        replicates: [1, 2],
+        dateTimeConversion: { units, zeroDate: "2024-03-09 00:00:00" },
+      },
+      sets: [{ title: "Control", replicates: [1] }],
+      csv: [
+        ["2024-03-09 00:00:00", "2024-03-16 00:00:00", "1"],
+        ["2024-03-09 00:00:00", "2024-03-10 00:00:00", "0"],
+        ["2024-09-06", "2024-09-06 00:00:00", "1"],
+      ],
+    });
+    const result = await convertSpec({ tables: [survival("Days")] });
+    const node = tableOf(result, "Survival");
+    const ok =
+      eq(node?.data?.columns, ["Title", "Time", "Control"]) &&
+      eq(node?.data?.rows, [[null, "7", "1"], [null, "1", "0"], [null, "0", "1"]]);
+    check("REGRESSION M1 survival durations across DST", ok, ok ? "7 / 1 / 0 days" : JSON.stringify(node?.data?.rows));
+    // m1: units that aren't Days are warned about, not silently reported
+    // in days.
+    const hours = await convertSpec({ tables: [survival("Hours")] });
+    const warned = hours.report.issues.some((i) => i.message.includes("the X dates use “Hours” units"));
+    check("REGRESSION m1 non-Days units warned", warned, warned ? "Hours named in a warning" : hours.report.issues.map((i) => i.message).join(" | "));
+  }
+  // M5: a leading byte-order mark is file encoding, not the first cell.
+  {
+    const table: TableSpec = {
+      sheetTitle: "T",
+      format: "column",
+      dataFormat: "y_replicates",
+      sets: [{ title: "A", replicates: [1] }],
+      csv: [["10"], ["11"]],
+      bom: true,
+    };
+    const result = await convertSpec({ tables: [table] });
+    const node = tableOf(result, "T");
+    const ok = eq(node?.data?.rows, [[null, "10"], [null, "11"]]);
+    check("REGRESSION M5 BOM stripped", ok, ok ? "first cell is 10, not \\uFEFF10" : JSON.stringify(node?.data?.rows));
+  }
+  // m6: a file with a multi-comma number reads commas as thousands
+  // separators file-wide — "1,234" becomes 1234, and a lone comma
+  // decimal like "45,5" stays text (in a thousands-locale file that
+  // comma is not a decimal point the file means).
+  {
+    const table: TableSpec = {
+      sheetTitle: "T",
+      format: "column",
+      dataFormat: "y_replicates",
+      sets: [{ title: "A", replicates: [1] }],
+      csv: [["1,234,567"], ["45,5"], ["1,234"]],
+    };
+    const result = await convertSpec({ tables: [table] });
+    const node = tableOf(result, "T");
+    const ok =
+      eq(node?.data?.rows, [[null, "1234567"], [null, "45,5"], [null, "1234"]]) &&
+      result.report.issues.some((i) => i.message.includes("thousands separators"));
+    check("REGRESSION m6 thousands mode file-wide", ok, ok ? "1234567 / 45,5 / 1234, warned" : JSON.stringify(node?.data?.rows));
   }
 }
 

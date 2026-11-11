@@ -3,8 +3,11 @@
 // contain commas, so a naive split would break. No dependency.
 
 /** Parse CSV text into rows of cell strings. A trailing empty line is dropped;
- *  an empty field is "" (the caller turns "" into null). */
+ *  an empty field is "" (the caller turns "" into null). A leading byte-order
+ *  mark is file encoding, not data — it is stripped, so the first cell of
+ *  the first row never carries a stray "\uFEFF". */
 export function parseCsv(text: string): string[][] {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";

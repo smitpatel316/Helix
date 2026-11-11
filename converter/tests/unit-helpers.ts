@@ -13,6 +13,7 @@ import {
   parsePrismDate,
   plainTitle,
   replicateCount,
+  replicateRangeProblems,
   subcolumnNames,
 } from "../src/prism";
 
@@ -52,19 +53,27 @@ for (const [label, input, want] of [
 
 // ── parsePrismDate ───────────────────────────────────────────────────────
 // ISO ("2024-09-06 00:00:00") or US ("12/17/2024"). Anything else is null.
-const ISO = Date.parse("2024-09-06T00:00:00");
-const US = Date.parse("2024-12-17T00:00:00");
+// Every shape reads as UTC — one frame, whatever the machine's timezone
+// (the old code read ISO datetimes as local time but date-only strings as
+// UTC, so a DST-spanning gap came out short under America/Los_Angeles).
+// A slash date whose first component is over 12 reads as DD/MM.
+const ISO = Date.parse("2024-09-06T00:00:00Z");
+const US = Date.parse("2024-12-17T00:00:00Z");
 for (const [label, input, want] of [
   ["ISO with space", "2024-09-06 00:00:00", ISO],
   ["ISO with T", "2024-09-06T00:00:00", ISO],
+  ["ISO date only", "2024-09-06", ISO],
   ["US month/day/year", "12/17/2024", US],
-  ["US single digits", "1/2/2024", Date.parse("2024-01-02T00:00:00")],
+  ["US single digits", "1/2/2024", Date.parse("2024-01-02T00:00:00Z")],
   ["US with surrounding spaces", " 12/17/2024 ", US],
+  ["DD/MM unambiguous", "13/02/2024", Date.parse("2024-02-13T00:00:00Z")],
+  ["DD/MM end of year", "31/12/2024", Date.parse("2024-12-31T00:00:00Z")],
+  ["DD/MM impossible stays null", "13/13/2024", null],
   ["empty string", "", null],
   ["null", null, null],
   ["garbage", "not-a-date", null],
   ["impossible date", "2024-13-40", null],
-  ["year only", "2024", Date.parse("2024-01-01T00:00:00")],
+  ["year only", "2024", Date.parse("2024-01-01T00:00:00Z")],
 ] as [string, string | null, number | null][]) {
   const got = parsePrismDate(input);
   check(`parsePrismDate ${label}`, got === want, `got ${got}, want ${want}`);
@@ -72,12 +81,19 @@ for (const [label, input, want] of [
 
 // ── daysBetween ──────────────────────────────────────────────────────────
 // Whole days as a plain integer string; fractions to 6 decimal places.
+// The DST cases are the point: a 7-day span across a US clock change is
+// exactly 7 only when both ends are read in the same frame (UTC). Under
+// the old local-time parsing they came out 6.958333 / 7.041667 under
+// America/Los_Angeles — so run this suite under a non-UTC TZ too.
 for (const [label, start, end, want] of [
   ["ten days", "2024-01-01", "2024-01-11", "10"],
   ["one day", "2024-01-01", "2024-01-02", "1"],
   ["same day", "2024-01-01", "2024-01-01", "0"],
   ["negative gap", "2024-01-11", "2024-01-01", "-10"],
   ["half a day", "2024-01-01 00:00:00", "2024-01-01 12:00:00", "0.5"],
+  ["DST spring forward", "2024-03-09 00:00:00", "2024-03-16 00:00:00", "7"],
+  ["DST fall back", "2024-11-02 00:00:00", "2024-11-09 00:00:00", "7"],
+  ["mixed forms same instant", "2024-09-06", "2024-09-06 00:00:00", "0"],
   ["null start", null, "2024-01-01", null],
   ["null end", "2024-01-01", null, null],
   ["unparseable start", "not-a-date", "2024-01-01", null],
@@ -116,7 +132,11 @@ for (const [label, title, dataFormat, count, want] of [
 // `replicates` array wins; else the span of "replicate ranges"; else the
 // table's replicatesCount; else 0. The arguments are object literals —
 // they are assignable to the converter's own PrismDataSet / table shapes
-// structurally, so no cast is needed.
+// structurally, so no cast is needed. Note the "bad value" pin: the
+// helper skips a bad range (count 0 for it). The converter never relies
+// on that 0 for layout — it checks `replicateRangeProblems` first and
+// treats a dataset with problems as unknown (see below). A helper that
+// silently counts 0 is fine; a converter that lays out on it is not.
 const repCases: [string, number][] = [
   ["replicates array", replicateCount({ replicates: [1, 2, 3] }, {})],
   ["replicates empty", replicateCount({ replicates: [] }, {})],
@@ -141,6 +161,28 @@ const repWant = [3, 0, 3, 1, 3, 2, 0, 0, 4, 0, 0, 1];
 repCases.forEach(([label, got], i) => {
   check(`replicateCount ${label}`, got === repWant[i], `got ${got}, want ${repWant[i]}`);
 });
+
+// ── replicateRangeProblems ───────────────────────────────────────────────
+// A dataset's "replicate ranges" are either clean or the dataset's count
+// is unknown. Unparseable strings and reversed ranges are problems;
+// anything well-formed is not, even across several ranges.
+for (const [label, set, want] of [
+  ["good ranges", { "replicate ranges": [{ range: "0~2" }] }, []],
+  ["good single", { "replicate ranges": [{ range: "0" }] }, []],
+  ["no ranges field", {}, []],
+  ["empty ranges", { "replicate ranges": [] }, []],
+  ["bad value", { "replicate ranges": [{ range: "abc" }] }, ["“abc” isn't a replicate range"]],
+  ["reversed", { "replicate ranges": [{ range: "2~0" }] }, ["“2~0” is reversed (start after end)"]],
+  [
+    "mixed good and bad",
+    { "replicate ranges": [{ range: "0~1" }, { range: "xx" }, { range: "5~3" }] },
+    ["“xx” isn't a replicate range", "“5~3” is reversed (start after end)"],
+  ],
+  ["empty string range", { "replicate ranges": [{ range: "" }] }, ["“” isn't a replicate range"]],
+] as [string, { "replicate ranges"?: { range: string }[] }, string[]][]) {
+  const got = replicateRangeProblems(set);
+  check(`replicateRangeProblems ${label}`, eq(got, want), `got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+}
 
 console.log(`\n${checks - failures}/${checks} checks passed.`);
 process.exit(failures ? 1 : 0);

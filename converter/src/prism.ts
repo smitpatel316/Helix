@@ -116,6 +116,50 @@ export function replicateCount(set: PrismDataSet, table: PrismDataSheet["table"]
   return table?.replicatesCount ?? 0;
 }
 
+/**
+ * Problems with a dataset's "replicate ranges": strings that don't parse
+ * as a range, and reversed ranges ("2~0"). A dataset with problems has an
+ * UNKNOWN subcolumn count — the layout step infers it from the file's
+ * dims or refuses the table; it must never silently count 0 and shift
+ * the next dataset. `replicateCount` above still skips bad ranges when
+ * called directly (its unit pin says so), but the converter never calls
+ * it on a dataset with problems — it checks this first.
+ */
+export function replicateRangeProblems(set: PrismDataSet): string[] {
+  const problems: string[] = [];
+  const ranges = set["replicate ranges"];
+  if (!Array.isArray(ranges)) return problems;
+  for (const r of ranges) {
+    const raw = r.range ?? "";
+    const m = /^(\d+)(?:~(\d+))?$/.exec(raw);
+    if (!m) {
+      problems.push(`“${raw}” isn't a replicate range`);
+      continue;
+    }
+    if (m[2] !== undefined && Number(m[2]) < Number(m[1])) {
+      problems.push(`“${raw}” is reversed (start after end)`);
+    }
+  }
+  return problems;
+}
+
+/** Subcolumns a Prism dataFormat spans when its shape is fixed — the
+ *  count a MISSING dataset is skipped by (its JSON is gone, so no
+ *  replicates/ranges can be read). `y_replicates` isn't here: its count
+ *  varies, so it uses the table's replicatesCount instead; anything
+ *  else is unknown and goes to the dims inference. */
+const DATAFORMAT_SUBCOLUMNS: Record<string, number> = {
+  y_single: 1,
+  y_sd_n: 3,
+  y_se_n: 3,
+  y_cv_n: 3,
+  y_sd: 2,
+  y_se: 2,
+  y_cv: 2,
+  y_plus_minus: 3,
+  y_high_low: 3,
+};
+
 interface PrismAnalysisSheet {
   /** Sheet title — a plain string, or a rich-text object (see PrismDataSet). */
   title?: string | { string?: string };
@@ -197,22 +241,64 @@ export function plainTitle(value: unknown): string {
 /**
  * Prism writes multi-line labels with a carriage return as the line break
  * — inside a quoted CSV field ("BACE-I \r& DOX") or in a JSON title
- * string. Helix labels and cell values are single-line: the break becomes
- * one space, with surrounding whitespace collapsed ("BACE-I & DOX",
- * "WT (3 weeks)"). A bare \r anywhere else would be a CSV line-ending
- * leak, and the verifier's C8 check confirms none survives.
+ * string — and sometimes with a lone newline. Helix labels and cell
+ * values are single-line: the break becomes one space, with surrounding
+ * whitespace collapsed ("BACE-I & DOX", "WT (3 weeks)"). A value that is
+ * only whitespace (a lone break, spaces) becomes "" — the caller turns
+ * that into an empty cell, never a stray space. A bare \r anywhere else
+ * would be a CSV line-ending leak, and the verifier's C8 check confirms
+ * none survives.
  */
-const cleanText = (value: string): string => value.replace(/\s*\r\n?\s*/g, " ");
+const cleanText = (value: string): string => {
+  const collapsed = value.replace(/\s*(\r\n|\r|\n)\s*/g, " ");
+  return collapsed.trim() === "" ? "" : collapsed;
+};
 
-/** Parse a Prism date cell: ISO ("2024-09-06 00:00:00") or US ("12/17/2024"). */
+/**
+ * Parse a Prism date cell as UTC — one frame for every shape, so a
+ * duration never depends on the machine's timezone. Prism writes naive
+ * datetimes (no zone); reading them as UTC is the only reading that is
+ * the same everywhere. The old code parsed ISO datetimes as local time
+ * but date-only strings as UTC, so a 7-day span across a US DST change
+ * came out 6.958 days under America/Los_Angeles.
+ *
+ * Shapes: ISO datetime ("2024-09-06 00:00:00", "2024-09-06T00:00:00",
+ * optional seconds/fraction/trailing Z), date-only ("2024-09-06"), bare
+ * year ("2024"), US "MM/DD/YYYY" ("12/17/2024"). A slash date whose
+ * first component is over 12 can't be month-first, so it reads as
+ * DD/MM ("13/02/2024" = 13 Feb); anything ambiguous stays month-first.
+ * Anything else — including impossible dates like 2024-13-40 — is null.
+ */
 export function parsePrismDate(value: string | null): number | null {
   if (value === null || value === "") return null;
-  let ms = Date.parse(value.replace(" ", "T"));
-  if (!Number.isNaN(ms)) return ms;
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value.trim());
-  if (m) {
-    ms = Date.parse(`${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}T00:00:00`);
-    if (!Number.isNaN(ms)) return ms;
+  const s = value.trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)?(?:[Zz])?$/.exec(s);
+  if (iso) {
+    const y = Number(iso[1]);
+    const mo = Number(iso[2]);
+    const d = Number(iso[3]);
+    const h = iso[4] === undefined ? 0 : Number(iso[4]);
+    const mi = iso[5] === undefined ? 0 : Number(iso[5]);
+    const sec = iso[6] === undefined ? 0 : Number(iso[6]);
+    if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || sec > 59) return null;
+    const ms = Date.UTC(y, mo - 1, d, h, mi, sec);
+    const back = new Date(ms);
+    if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return null;
+    return ms;
+  }
+  const yearOnly = /^(\d{4})$/.exec(s);
+  if (yearOnly) return Date.UTC(Number(yearOnly[1]), 0, 1);
+  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  if (slash) {
+    const a = Number(slash[1]);
+    const b = Number(slash[2]);
+    const y = Number(slash[3]);
+    const [mo, d] = a > 12 ? [b, a] : [a, b];
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    const ms = Date.UTC(y, mo - 1, d);
+    const back = new Date(ms);
+    if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return null;
+    return ms;
   }
   return null;
 }
@@ -226,9 +312,22 @@ export function daysBetween(start: string | null, end: string | null): string | 
   return Number.isInteger(days) ? String(days) : String(Number(days.toFixed(6)));
 }
 
-/** `1,5` (comma decimal) → `1.5`; anything else stays as typed. */
-const normalizeNumber = (value: string | null): string | null =>
-  value !== null && /^-?\d+,\d+$/.test(value) ? value.replace(",", ".") : value;
+/**
+ * Number text → Helix text. Which rule applies is decided once per file
+ * (see the thousands-mode pre-pass in convertPrism): decimal mode reads
+ * a single comma as a decimal point (`1,5` → `1.5`); thousands mode
+ * strips commas from grouped numbers (`1,234,567` → `1234567`) and
+ * leaves anything else — including a lone comma decimal like `45,5` —
+ * as typed text, because in a thousands-locale file that comma is not a
+ * decimal point the file means.
+ */
+const normalizeNumber = (value: string | null, thousandsMode = false): string | null => {
+  if (value === null) return null;
+  if (thousandsMode) {
+    return /^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(value) ? value.replace(/,/g, "") : value;
+  }
+  return /^-?\d+,\d+$/.test(value) ? value.replace(",", ".") : value;
+};
 
 export function subcolumnNames(title: string, dataFormat: string, count: number): string[] {
   const base = title === "" ? "Y" : title;
@@ -311,6 +410,40 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
     issues,
   };
 
+  // ── File-level comma rule (m6) ──
+  // Prism records no locale, so the file's own values decide: if any
+  // data.csv cell holds a number with two or more comma digit-groups
+  // ("1,234,567"), commas are thousands separators file-wide and are
+  // stripped; otherwise a single comma is a decimal separator ("45,5"
+  // → "45.5"). The scan runs on PARSED cells — raw CSV text can't tell
+  // a field separator from a thousands separator ("0,100,100" as text
+  // is three cells, not one number).
+  let thousandsMode = false;
+  let thousandsExample = "";
+  for (const path of Object.keys(zip.files)) {
+    if (!/^data\/tables\/[^/]+\/data\.csv$/.test(path)) continue;
+    const csvFile = zip.file(path);
+    if (!csvFile) continue;
+    const rows = parseCsv(await csvFile.async("string"));
+    for (const row of rows) {
+      for (const cell of row) {
+        if (/^-?\d{1,3}(,\d{3}){2,}(\.\d+)?$/.test(cell)) {
+          thousandsMode = true;
+          thousandsExample = cell;
+          break;
+        }
+      }
+      if (thousandsMode) break;
+    }
+    if (thousandsMode) break;
+  }
+  if (thousandsMode) {
+    issues.push({
+      severity: "warning",
+      message: `Commas look like thousands separators in this file (e.g. “${thousandsExample}”), so commas were stripped from numbers rather than read as decimal points.`,
+    });
+  }
+
   // ── Data tables ──
   for (const sheetUid of sheets.data ?? []) {
     const sheet = await readJson<PrismDataSheet>(`data/sheets/${sheetUid}/sheet.json`);
@@ -334,50 +467,144 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
     let csv = parseCsv(csvText);
     if (typeof content?.numberOfRows === "number") {
       if (csv.length > content.numberOfRows) csv = csv.slice(0, content.numberOfRows);
+      // A CSV shorter than the declared rows is padded with empty rows
+      // (kept behaviour) — but say so, instead of inventing rows silently.
+      if (csv.length < content.numberOfRows) {
+        issues.push({
+          severity: "warning",
+          message: `${displayName}: the file holds ${csv.length} rows but content.json declares ${content.numberOfRows}; the missing rows were left empty.`,
+        });
+      }
       while (csv.length < content.numberOfRows) csv.push([]);
     }
 
     const format = table.format ?? "";
     const dataFormat = table.dataFormat ?? "";
     const setUids = table.dataSets ?? [];
-    const sets: PrismDataSet[] = [];
-    for (const setUid of setUids) {
-      const set = await readJson<PrismDataSet>(`data/sets/${setUid}.json`);
-      if (set) sets.push(set);
-      else issues.push({ severity: "warning", message: `${displayName}: dataset “${setUid}” is missing; its columns were left out.` });
-    }
-    if (sets.length === 0) {
-      issues.push({ severity: "warning", message: `${displayName} holds no data columns. It was left out.` });
-      continue;
-    }
+    // ── Layout: resolve every dataset's subcolumn count BEFORE reading
+    // any values (B1/B2/B3). A count is known from the dataset JSON
+    // (replicates / replicate ranges / table replicatesCount); a missing
+    // dataset is skipped by the table's replicatesCount (y_replicates)
+    // or its dataFormat's fixed shape; anything still unknown is
+    // inferred from content.json's numberOfColumns when it is the ONLY
+    // unknown. Two or more unknowns, or an inference that doesn't fit
+    // the declared width, refuses the table — never silently shift.
+    const declaredCols =
+      typeof content?.numberOfColumns === "number" ? content.numberOfColumns : (csv[0]?.length ?? 0);
     // The CSV's first column holds row titles only when the table has a
     // row-titles dataset. Never assume it from the format: column tables
     // usually have none, and XY tables sometimes have one (empty titles).
     const hasTitleCol = table.rowTitlesDataSet != null;
-    // An X dataset can hold more than one subcolumn (an error-bar X has
-    // value + error; a survival date X has start + end dates). All of
-    // them sit in the CSV and must be consumed, or every dataset after
-    // them shifts by one.
+    const titleCols = hasTitleCol ? 1 : 0;
+
+    const xSet = table.xDataSet
+      ? await readJson<PrismDataSet>(`data/sets/${table.xDataSet}.json`)
+      : null;
+    const setJsons: (PrismDataSet | null)[] = [];
+    for (const setUid of setUids) {
+      setJsons.push(await readJson<PrismDataSet>(`data/sets/${setUid}.json`));
+    }
+    if (setJsons.every((s) => s === null)) {
+      issues.push({ severity: "warning", message: `${displayName} holds no data columns. It was left out.` });
+      continue;
+    }
+    // A present dataset's count is known unless its replicate ranges are
+    // malformed — then it is unknown, never 0.
+    const knownCount = (set: PrismDataSet): number | null =>
+      replicateRangeProblems(set).length > 0 ? null : replicateCount(set, table);
+    // A missing dataset's skip count, when the table itself determines it.
+    const missingCount = (): number | null => {
+      if (dataFormat === "y_replicates" && typeof table.replicatesCount === "number") {
+        return table.replicatesCount;
+      }
+      return DATAFORMAT_SUBCOLUMNS[dataFormat] ?? null;
+    };
+
     let xTitle: string | null = null;
-    let xCount = 0;
+    let xCount: number | null = 0;
     let xFormat = "";
     if (table.xDataSet) {
-      const xSet = await readJson<PrismDataSet>(`data/sets/${table.xDataSet}.json`);
       if (xSet) {
         const t = plainTitle(xSet.title);
         xTitle = t !== "" ? t : "X";
-        xCount = replicateCount(xSet, table);
+        xCount = knownCount(xSet);
         xFormat = xSet.format ?? "";
       } else {
-        issues.push({
-          severity: "warning",
-          message: `${displayName}: the X dataset “${table.xDataSet}” is missing; one column was read as X.`,
-        });
+        // A missing X is always unknown: its count comes only from the
+        // dims inference below, never from a 1-column guess.
         xTitle = "X";
-        xCount = 1;
+        xCount = null;
       }
     }
-    const hasXCol = xTitle !== null;
+    const counts: (number | null)[] = setJsons.map((s) => (s === null ? missingCount() : knownCount(s)));
+    const knownSum = titleCols + (xCount ?? 0) + counts.reduce<number>((n, c) => n + (c ?? 0), 0);
+    const unknownCount = (xCount === null ? 1 : 0) + counts.filter((c) => c === null).length;
+    if (unknownCount >= 2) {
+      issues.push({
+        severity: "warning",
+        message: `${displayName}: ${unknownCount} datasets have unknown column counts (missing JSON or malformed replicate ranges), so the table can't be laid out without guessing; it was left out.`,
+      });
+      continue;
+    }
+    if (unknownCount === 1) {
+      const inferred = declaredCols - knownSum;
+      if (inferred < 0) {
+        issues.push({
+          severity: "warning",
+          message: `${displayName}: the known datasets already span ${knownSum} columns but the file declares only ${declaredCols}; the table was left out rather than guessing.`,
+        });
+        continue;
+      }
+      if (xCount === null) {
+        xCount = inferred;
+        issues.push({
+          severity: "warning",
+          message:
+            inferred === 0
+              ? `${displayName}: the X dataset “${table.xDataSet}” is missing; it spans no columns, so the table has no X column.`
+              : `${displayName}: the X dataset “${table.xDataSet}” is missing; ${inferred} column(s) were read as X (inferred from the file's ${declaredCols} declared columns).`,
+        });
+      } else {
+        const idx = counts.indexOf(null);
+        counts[idx] = inferred;
+        if (setJsons[idx] === null) {
+          issues.push({
+            severity: "warning",
+            message:
+              inferred === 0
+                ? `${displayName}: dataset “${setUids[idx]}” is missing; it spans no columns, so nothing was skipped.`
+                : `${displayName}: dataset “${setUids[idx]}” is missing; its ${inferred} column(s) were skipped (inferred from the file's ${declaredCols} declared columns).`,
+          });
+        } else {
+          const problems = replicateRangeProblems(setJsons[idx] as PrismDataSet);
+          issues.push({
+            severity: "warning",
+            message: `${displayName}: dataset “${setUids[idx]}” has malformed replicate ranges (${problems.join("; ")}); its column count was inferred from the file's ${declaredCols} declared columns (${inferred} column(s)).`,
+          });
+        }
+      }
+    } else {
+      // No unknowns: warn about each missing dataset whose skip count
+      // the table itself determined, so the skip is visible.
+      setUids.forEach((uid, i) => {
+        if (setJsons[i] !== null) return;
+        const c = counts[i] as number;
+        issues.push({
+          severity: "warning",
+          message: `${displayName}: dataset “${uid}” is missing; its ${c} column(s) were skipped (${dataFormat === "y_replicates" ? "the table's replicatesCount" : `the table's ${dataFormat} shape`}).`,
+        });
+      });
+    }
+    if (xCount === 0) xTitle = null;
+    const hasXCol = xTitle !== null && (xCount as number) > 0;
+    // Ordered layout entries (present or missing), each with its resolved
+    // count — the emission loops walk this, advancing the CSV cursor by
+    // every entry's count whether or not it becomes a Helix column.
+    interface LayoutSet {
+      set: PrismDataSet | null;
+      count: number;
+    }
+    const layoutSets: LayoutSet[] = setUids.map((_, i) => ({ set: setJsons[i], count: counts[i] as number }));
 
     // Helix columns: [Title, ...data]. Each entry: name + values per row.
     interface ImportColumn {
@@ -387,22 +614,25 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
     const columns: ImportColumn[] = [];
     // CSV column cursor: title col, then X subcolumns, then each dataset's
     // subcolumns. An empty CSV field is an empty cell (null in .hlx), not "".
+    // A field that is only whitespace (or only a line break) is empty too.
     let cursor = 0;
     const csvCol = (i: number) =>
       csv.map((r) => {
         const v = r[i];
-        return v === "" || v === undefined ? null : normalizeNumber(cleanText(v));
+        if (v === "" || v === undefined) return null;
+        const cleaned = cleanText(v);
+        return cleaned === "" ? null : normalizeNumber(cleaned, thousandsMode);
       });
     if (hasTitleCol) cursor++; // row titles are read separately below
     if (hasXCol) {
       const xCols: (string | null)[][] = [];
-      for (let i = 0; i < xCount; i++) {
+      for (let i = 0; i < (xCount as number); i++) {
         xCols.push(csvCol(cursor));
         cursor++;
       }
-      if (xCount === 1) {
+      if ((xCount as number) === 1) {
         columns.push({ name: xTitle as string, values: xCols[0] });
-      } else if (format === "survival" && xFormat.startsWith("date") && xCount >= 2) {
+      } else if (format === "survival" && xFormat.startsWith("date") && (xCount as number) >= 2) {
         // A survival table's X is time. With dates Prism stores start and
         // end dates; time is the gap between them, in days — exactly what
         // Prism's own survival analysis uses.
@@ -416,6 +646,15 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
           message: `${displayName}: the X dates were converted to durations in days (end − start), which is what the survival analysis uses as time.` +
             (unparsed > 0 ? ` ${unparsed} row(s) had a date that couldn't be read, so their time is empty.` : ""),
         });
+        // The durations are days only when the file says Days — anything
+        // else (Hours, Weeks, …) is a different time scale, so say so.
+        const xUnits = xSet?.dateTimeConversion?.units;
+        if (xUnits !== undefined && xUnits !== "Days") {
+          issues.push({
+            severity: "warning",
+            message: `${displayName}: the X dates use “${xUnits}” units, but the durations were converted to days; check the time scale before using them.`,
+          });
+        }
       } else {
         // Helix tables hold one X column: keep the first subcolumn (the
         // value; for an error-bar X the second is the error) and say so.
@@ -429,28 +668,34 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
     let groups: number | undefined;
     let replicates: number | undefined;
     if (format === "grouped") {
-      groups = sets.length;
-      replicates = table.replicatesCount ?? Math.max(...sets.map((s) => replicateCount(s, table)));
-      sets.forEach((set) => {
-        const group = plainTitle(set.title) || "Group";
-        const count = replicateCount(set, table);
-        for (let i = 0; i < count; i++) {
+      groups = layoutSets.filter((e) => e.set !== null).length;
+      replicates = table.replicatesCount ?? Math.max(...layoutSets.filter((e) => e.set !== null).map((e) => e.count));
+      for (const entry of layoutSets) {
+        if (entry.set === null) {
+          cursor += entry.count;
+          continue;
+        }
+        const group = plainTitle(entry.set.title) || "Group";
+        for (let i = 0; i < entry.count; i++) {
           columns.push({ name: `${group}:Y${i + 1}`, values: csvCol(cursor) });
           cursor++;
         }
-      });
+      }
     } else {
-      for (const set of sets) {
-        const count = replicateCount(set, table);
-        const names = subcolumnNames(plainTitle(set.title), dataFormat, count);
-        for (let i = 0; i < count; i++) {
+      for (const entry of layoutSets) {
+        if (entry.set === null) {
+          cursor += entry.count;
+          continue;
+        }
+        const names = subcolumnNames(plainTitle(entry.set.title), dataFormat, entry.count);
+        for (let i = 0; i < entry.count; i++) {
           columns.push({ name: names[i], values: csvCol(cursor) });
           cursor++;
         }
       }
     }
 
-    const rowTitles = hasTitleCol ? csv.map((r) => (r[0] === "" || r[0] === undefined ? null : cleanText(r[0]))) : [];
+    const rowTitles = hasTitleCol ? csv.map((r) => (r[0] === "" || r[0] === undefined ? null : cleanText(r[0]) || null)) : [];
     const hasRowTitles = rowTitles.some((v) => v !== null && v !== "");
     const rowCount = Math.max(0, ...columns.map((c) => c.values.length), rowTitles.length);
     if (rowCount === 0 || columns.length === 0) {
@@ -458,10 +703,10 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
       continue;
     }
     // CSV columns the converter consumed: title + every X subcolumn + every
-    // dataset subcolumn. (Helix holds fewer columns when X subcolumns
-    // collapse into one X — that is expected, not a leftover.)
-    const datasetCols = columns.length - (hasXCol ? 1 : 0);
-    const consumedCols = (hasTitleCol ? 1 : 0) + xCount + datasetCols;
+    // dataset subcolumn — from the layout, not from the Helix columns
+    // (missing datasets consume CSV columns without becoming Helix ones,
+    // and multi-subcolumn X collapses into one Helix column).
+    const consumedCols = titleCols + (xCount as number) + layoutSets.reduce((n, e) => n + e.count, 0);
     if (typeof content?.numberOfColumns === "number" && content.numberOfColumns > consumedCols) {
       issues.push({
         severity: "warning",
@@ -552,7 +797,15 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
         report.analysesUnsupported.push(`${name} (nonlinear model “${equation}” — not yet supported in Helix)`);
         continue;
       }
-      for (const ds of sheet.inputDataSets ?? []) {
+      const inputs = sheet.inputDataSets ?? [];
+      if (inputs.length === 0) {
+        issues.push({
+          severity: "warning",
+          message: `Analysis “${name}” (nonlinear model “${equation}”) has no input datasets; it was left out.`,
+        });
+        continue;
+      }
+      for (const ds of inputs) {
         const y = plainTitle(ds.title);
         const node: ProjectNode = {
           id: genId("analysis"),
@@ -591,21 +844,21 @@ export async function convertPrism(buffer: Buffer, sourceName: string): Promise<
     ...(sheets.info ?? []),
   ]);
   for (const path of Object.keys(zip.files)) {
-    const m = /^data\/sheets\/([0-9A-F-]+)\/sheet\.json$/i.exec(path);
+    const m = /^data\/sheets\/([^/]+)\/sheet\.json$/i.exec(path);
     if (m && !listedSheets.has(m[1].toUpperCase()) && !listedSheets.has(m[1])) report.orphanSheetsIgnored++;
   }
   // Tables referenced by ANY sheet in the zip (listed or orphan) count as
   // referenced; only tables no sheet points at are unreferenced.
   const referencedTables = new Set<string>();
   for (const path of Object.keys(zip.files)) {
-    const m = /^data\/sheets\/([0-9A-F-]+)\/sheet\.json$/i.exec(path);
+    const m = /^data\/sheets\/([^/]+)\/sheet\.json$/i.exec(path);
     if (!m) continue;
     const sheet = await readJson<PrismDataSheet>(path);
     const uid = (sheet?.table as { uid?: string } | undefined)?.uid;
     if (uid) referencedTables.add(uid.toUpperCase());
   }
   for (const path of Object.keys(zip.files)) {
-    const m = /^data\/tables\/([0-9A-F-]+)\/content\.json$/i.exec(path);
+    const m = /^data\/tables\/([^/]+)\/content\.json$/i.exec(path);
     if (m && !referencedTables.has(m[1].toUpperCase())) report.unreferencedTablesIgnored++;
   }
 

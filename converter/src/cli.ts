@@ -60,6 +60,11 @@ if (before !== after) {
   console.error(`“${basename(input)}” changed while converting — the output was not written. Try again.`);
   process.exit(1);
 }
-await writeFile(output, serializeProjectFile(result.project));
+try {
+  await writeFile(output, serializeProjectFile(result.project));
+} catch {
+  console.error(`Can't write “${output}” — check the folder exists and is writable.`);
+  process.exit(1);
+}
 if (asJson) console.log(JSON.stringify(result.report, null, 2));
 else console.log(formatReport(result.report) + `\nWrote “${output}”.`);

@@ -56,6 +56,8 @@ export interface TableSpec {
   sets: DataSetSpec[];
   /** Raw CSV rows; `null` is an empty cell. */
   csv: (string | null)[][];
+  /** Prefix the CSV with a byte-order mark (a file-encoding artifact). */
+  bom?: boolean;
   /** CRLF line endings instead of LF. */
   crlf?: boolean;
   /** content.json overrides; default is the CSV's own shape. */
@@ -118,14 +120,15 @@ function setJson(zip: JSZip, path: string, value: unknown): void {
   zip.file(path, JSON.stringify(value, null, 2));
 }
 
-/** 7 hex digits: UIDs stay UUID-shaped ([0-9A-F-]+) for the converter's
- *  orphan scan. */
+/** 7 hex digits: UIDs stay hex-shaped (A0000001, …) by convention — the
+ *  converter's orphan scan matches any path segment, so a test UID with
+ *  other characters would still be counted. */
 const hex = (v: number): string => v.toString(16).toUpperCase().padStart(7, "0");
 
 function writeTable(zip: JSZip, spec: TableSpec, n: number): { sheetUid: string; tableUid: string } {
-  // UIDs are hex-only (A–F, 0–9): the converter's orphan scan matches
-  // UUID-shaped UIDs ([0-9A-F-]+), and a test UID with other letters
-  // would silently never be counted as an orphan.
+  // UIDs are hex-only (A–F, 0–9) by convention; a test can pass any
+  // other shape via spec.sheetUid / spec.tableUid / set uid — the
+  // converter's orphan scan matches any path segment.
   const sheetUid = spec.sheetUid ?? `A${hex(n)}`;
   const tableUid = spec.tableUid ?? `B${hex(n)}`;
   const setUids: string[] = [];
@@ -181,7 +184,7 @@ function writeTable(zip: JSZip, spec: TableSpec, n: number): { sheetUid: string;
     });
   }
   if (!spec.csvMissing) {
-    zip.file(`data/tables/${tableUid}/data.csv`, csvEncode(spec.csv, spec.crlf ?? false));
+    zip.file(`data/tables/${tableUid}/data.csv`, (spec.bom ? "\uFEFF" : "") + csvEncode(spec.csv, spec.crlf ?? false));
   }
   return { sheetUid, tableUid };
 }
