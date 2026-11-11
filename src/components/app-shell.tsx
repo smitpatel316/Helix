@@ -7,6 +7,7 @@ import { useProjectStore } from "../store/use-project-store";
 import { useLayout } from "../store/use-layout";
 import { onFullscreenChange } from "../native";
 import { UniversalModal } from "./universal-modal";
+import { ConverterDialog } from "./converter-dialog";
 import { TABLE_TYPE_OPTIONS } from "../views/tables";
 import { TableDetail } from "../views/tables/table-detail";
 import { analysisOptionsForTable } from "../views/analyses";
@@ -75,6 +76,8 @@ export function AppShell() {
       <AnalysisWizard />
 
       <SimulateDataDialog />
+
+      <ConverterDialog />
 
       <UniversalModal
         open={selector?.kind === "new-graph"}
