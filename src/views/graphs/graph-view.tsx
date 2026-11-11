@@ -42,6 +42,7 @@ import { addDeming } from "./deming-overlay";
 import { addObservedFitted } from "./observed-fitted";
 import { addScreePlot } from "./scree-plot";
 import { addPcaBiplot } from "./pca-biplot";
+import { addKmeansScatter } from "./kmeans-scatter";
 import { addMonteCarloHistogram } from "./monte-carlo-histogram";
 import { addSignificance, deriveComparisons } from "./significance-overlay";
 import {
@@ -392,6 +393,17 @@ export function GraphView({ node }: { node: ProjectNode }) {
     pcaAnalysis?.analysisParams,
   );
   const pcaResult = pcaOutcome && !("error" in pcaOutcome) ? pcaOutcome : null;
+  // A cluster scatter draws a sibling K-means clustering's assignments and
+  // centres — the same cached runAnalysis result (no extra R call). Without
+  // one it draws only its axes, and the Format panel says to run the
+  // analysis first — exactly like the scree plot.
+  const kmeansAnalysis = options.kmeansAnalysisId ? nodes[options.kmeansAnalysisId] : undefined;
+  const kmeansOutcome = useAnalysis(
+    type === "kmeans-scatter" && kmeansAnalysis?.analysisType === "k-means" ? "k-means" : undefined,
+    data,
+    kmeansAnalysis?.analysisParams,
+  );
+  const kmeansResult = kmeansOutcome && !("error" in kmeansOutcome) ? kmeansOutcome : null;
   // A smooth-curve graph draws a sibling Spline and Lowess analysis's fitted
   // curve — the same cached runAnalysis result (no extra R call). Without one
   // it draws only the points, and the Format panel prompts for one.
@@ -492,7 +504,16 @@ export function GraphView({ node }: { node: ProjectNode }) {
     let current = true;
     void loadPlotly().then(async (Plotly) => {
       if (!current) return;
-      const paint = paintOf(options, seriesNames.length);
+      // The cluster scatter's series are its clusters (graphSeries has no
+      // fixed list for them), so the paint is sized by the linked result's
+      // cluster count — otherwise a gradient palette would colour every
+      // cluster the same.
+      const paint = paintOf(
+        options,
+        type === "kmeans-scatter" && kmeansResult?.kmeansClusters
+          ? kmeansResult.kmeansClusters.length
+          : seriesNames.length,
+      );
       const fig = GRAPHS[type].build(coxSurvivalCols ?? volcanoColumns, buildOptions, paint, dataset?.titles);
       fig.data = withCaps(fig.data, options);
       if (family === "column" && options.sigAnalysisId) addSignificance(fig, columns, type, options, comparisons ?? []);
@@ -535,6 +556,11 @@ export function GraphView({ node }: { node: ProjectNode }) {
       if (type === "pca-biplot") {
         if (pcaResult) addPcaBiplot(fig, pcaResult, options, paint);
         else addNote(fig, "Run a Principal component analysis on this table to draw the scores biplot.", options);
+      }
+      if (type === "kmeans-scatter") {
+        if (kmeansResult)
+          addKmeansScatter(fig, columns, kmeansResult, options, paint, dataset?.titles);
+        else addNote(fig, "Run a K-means clustering on this table to draw the cluster scatter.", options);
       }
       // The points' names are part of the figure (the volcano places its own, among the
       // genes it names); the selection ring only of the view.
@@ -589,6 +615,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
     poissonResult,
     poissonParams,
     pcaResult,
+    kmeansResult,
     mcResult,
     seriesNames.length,
     selected,

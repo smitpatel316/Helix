@@ -66,7 +66,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
   ]),
   grouped: optionsFor(["two-way-anova", "mixed-effects", "three-way-anova", "multiple-t-tests"]),
   nested: optionsFor(["nested-t-test", "nested-anova"]),
-  multiple: optionsFor(["descriptive-statistics", "correlation-matrix", "multiple-regression", "principal-component-analysis", "outliers", "multiple-logistic-regression", "poisson-regression", "cox-proportional-hazards"]),
+  multiple: optionsFor(["descriptive-statistics", "correlation-matrix", "multiple-regression", "principal-component-analysis", "k-means", "outliers", "multiple-logistic-regression", "poisson-regression", "cox-proportional-hazards"]),
   survival: optionsFor(["survival", "cox"]),
   contingency: [...optionsFor(["chi-square"]), { value: "mcnemar", label: "McNemar's test (paired proportions)" }],
 };

@@ -205,6 +205,17 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
     }
     return <PcaControls analyses={sources} options={options} set={set} components={graphType === "pca-biplot"} />;
   }
+  if (graphType === "kmeans-scatter") {
+    const sources = c.analyses.filter((a) => a.analysisType === "k-means");
+    if (!sources.length) {
+      return (
+        <NoAnalysis test="k-means" onNewAnalysis={c.onNewAnalysis}>
+          Plot the rows of a K-means clustering of this table, coloured by cluster, with the centres marked.
+        </NoAnalysis>
+      );
+    }
+    return <KmeansControls analyses={sources} options={options} set={set} />;
+  }
   if (graphType === "dose-response") {
     const exponential = (EXPONENTIAL_MODELS as readonly string[]).includes(options.doseModel);
     const summaryLabel =
@@ -414,6 +425,25 @@ function MonteCarloControls({
       analyses={analyses}
       value={options.monteCarloAnalysisId}
       onChange={(monteCarloAnalysisId) => set({ monteCarloAnalysisId })}
+    />
+  );
+}
+
+/** Pick a K-means clustering: the cluster scatter draws its assignments and centres. */
+function KmeansControls({
+  analyses,
+  options,
+  set,
+}: {
+  analyses: ProjectNode[];
+  options: GraphOptions;
+  set: SetOptions;
+}) {
+  return (
+    <AnalysisRow
+      analyses={analyses}
+      value={options.kmeansAnalysisId}
+      onChange={(kmeansAnalysisId) => set({ kmeansAnalysisId })}
     />
   );
 }

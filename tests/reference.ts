@@ -1716,6 +1716,47 @@ const pcaCollinear = table(
   ],
 );
 
+/** K-means clustering (plan 30): the plan's 6×2 set — two well-separated
+ *  groups of three. */
+const kmeans = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "1", "1"],
+    ["", "1", "2"],
+    ["", "2", "1"],
+    ["", "8", "8"],
+    ["", "9", "8"],
+    ["", "8", "9"],
+  ],
+);
+
+/** A constant variable: standardised clustering cannot z-score it (the
+ *  runner must name it), while the raw run works with it contributing
+ *  nothing to the distances. */
+const kmeansConstant = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "1", "5"],
+    ["", "1", "5"],
+    ["", "2", "5"],
+    ["", "8", "5"],
+    ["", "9", "5"],
+    ["", "8", "5"],
+  ],
+);
+
+/** Identical rows: fewer distinct points than clusters, so R refuses
+ *  (the runner must surface that as a user-facing error). */
+const kmeansIdentical = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "1", "1"],
+    ["", "1", "1"],
+    ["", "1", "1"],
+    ["", "1", "1"],
+  ],
+);
+
 /** Well-behaved counts (Poisson regression, plan 12, Case A): dispersion
  *  ≈ 0.17, so no overdispersion warning is expected. */
 const poissonCounts = table(
@@ -2492,6 +2533,22 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["pcaConstant", pcaConstant, "principal-component-analysis", { scale: "covariance" }],
   ["pcaFewRows", pcaFewRows, "principal-component-analysis", { scale: "correlation" }],
   ["pcaCollinear", pcaCollinear, "principal-component-analysis", { scale: "correlation" }],
+  // K-means clustering (plan 30): the raw k = 2 run (the plan's values),
+  // the standardised k = 2 run (same partition; centres back-transformed),
+  // the no-params run (defaults: k = 2, standardised), the k = 3 runs
+  // (raw and standardised — R splits one group; see the block below), and
+  // the edge cases (constant variable, too few clusters, k >= n, fewer
+  // distinct points than clusters).
+  ["kmeans", kmeans, "k-means", { clusters: 2, standardise: false }],
+  ["kmeans", kmeans, "k-means", { clusters: 2, standardise: true }],
+  ["kmeans", kmeans, "k-means", {}],
+  ["kmeans", kmeans, "k-means", { clusters: 3, standardise: false }],
+  ["kmeans", kmeans, "k-means", { clusters: 3, standardise: true }],
+  ["kmeansConstant", kmeansConstant, "k-means", { clusters: 2, standardise: true }],
+  ["kmeansConstant", kmeansConstant, "k-means", { clusters: 2, standardise: false }],
+  ["kmeans", kmeans, "k-means", { clusters: 1, standardise: false }],
+  ["kmeans", kmeans, "k-means", { clusters: 6, standardise: false }],
+  ["kmeansIdentical", kmeansIdentical, "k-means", { clusters: 2, standardise: false }],
   ["contingency2", contingency2, "chi-square"],
   ["contingency3", contingency3, "chi-square"],
   ["contingencyWide", contingencyWide, "chi-square"],
@@ -2668,6 +2725,7 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["poissonCounts", poissonCounts, "observed-fitted"],
   ["pca", pca, "scree-plot"],
   ["pca", pca, "pca-biplot"],
+  ["kmeans", kmeans, "kmeans-scatter"],
   ["volcano", volcanoTable, "volcano", volcano],
   ["volcanoXY", volcanoXY, "volcano", { volcanoY: "P" }],
   ["volcanoLog", volcanoLog, "volcano", { volcanoY: "-log10 P", volcanoYIsPValue: false }],
@@ -4728,6 +4786,187 @@ async function disagreements(): Promise<string[]> {
         out.push(
           `Biplot same-component fallback: ${xaxis22.title?.text} vs ${yaxis22.title?.text}, expected PC2 (2.1%) vs PC1 (97.4%)`,
         );
+    }
+  }
+  // K-means clustering (plan 30). The plan's raw k = 2 values, confirmed
+  // in R (kmeans, set.seed(1), nstart = 25) and by an independent NumPy
+  // Lloyd implementation (exhaustive inits, same partition and sums).
+  // The k = 3 split is one of two tied optima (within-SS 1.8333 either
+  // way: R's seed-1 pick splits the low group into {(1,1),(1,2)} + a (2,1)
+  // singleton; the other split is {(1,1),(2,1)} + a (1,2) singleton) — the
+  // pinned split is R's, and the canonical labels sort clusters by their
+  // first centre coordinate.
+  {
+    const kmStat = (r: AnalysisResult, label: string) => r.stats.find((s) => s.label === label)?.value;
+    const close = (got: number | null | undefined, want: number, tol: number, label: string) => {
+      if (got == null || Math.abs(got - want) > tol) out.push(`KMeans ${label}: ${got}, expected ${want} ± ${tol}`);
+    };
+    const closeAll = (
+      got: (number | null | undefined)[],
+      want: number[],
+      tol: number,
+      label: string,
+    ) => {
+      if (got.length !== want.length) {
+        out.push(`KMeans ${label}: ${got.length} values, expected ${want.length}`);
+        return;
+      }
+      got.forEach((g, i) => close(g, want[i], tol, `${label}[${i}]`));
+    };
+    const kmRaw = await runAnalysis("k-means", kmeans, { clusters: 2, standardise: false });
+    if ("error" in kmRaw) {
+      out.push(`KMeans raw: ${kmRaw.error}`);
+    } else {
+      close(kmStat(kmRaw, "Total sum of squares"), 149.6667, 1e-3, "raw total SS");
+      close(kmStat(kmRaw, "Within-cluster sum of squares"), 2.6667, 1e-3, "raw within SS");
+      close(kmStat(kmRaw, "Between-cluster sum of squares"), 147, 1e-3, "raw between SS");
+      close(kmStat(kmRaw, "Number of clusters (k)"), 2, 0, "raw k");
+      close(kmStat(kmRaw, "Complete rows (n)"), 6, 0, "raw n");
+      close(kmStat(kmRaw, "Variables (p)"), 2, 0, "raw p");
+      if (JSON.stringify(kmRaw.kmeansClusters?.map((c) => c.cluster)) !== JSON.stringify(["Cluster 1", "Cluster 2"]))
+        out.push(`KMeans raw cluster names: ${JSON.stringify(kmRaw.kmeansClusters?.map((c) => c.cluster))}`);
+      closeAll(kmRaw.kmeansClusters?.flatMap((c) => c.centre) ?? [], [1.3333, 1.3333, 8.3333, 8.3333], 1e-3, "raw centres");
+      closeAll(kmRaw.kmeansClusters?.map((c) => c.n) ?? [], [3, 3], 0, "raw cluster sizes");
+      closeAll(kmRaw.kmeansClusters?.map((c) => c.withinSs) ?? [], [1.3333, 1.3333], 1e-3, "raw within per cluster");
+      if (JSON.stringify(kmRaw.kmeansAssignments?.map((a) => a.cluster)) !== JSON.stringify([1, 1, 1, 2, 2, 2]))
+        out.push(`KMeans raw assignments: ${JSON.stringify(kmRaw.kmeansAssignments?.map((a) => a.cluster))}, expected [1,1,1,2,2,2]`);
+      if (kmRaw.kmeansAssignments?.map((a) => a.row).join(",") !== "Row 1,Row 2,Row 3,Row 4,Row 5,Row 6")
+        out.push(`KMeans assignment rows: ${kmRaw.kmeansAssignments?.map((a) => a.row).join(",")}, expected Row 1..Row 6`);
+      if (!kmRaw.notes.includes("original units")) out.push(`KMeans raw notes: original units missing`);
+      if (!kmRaw.notes.includes("Seed 1, 25 random starts")) out.push(`KMeans raw notes: seed/nstart missing`);
+      if (!kmRaw.notes.includes("Uses 6 complete rows")) out.push(`KMeans raw notes: ${kmRaw.notes}`);
+    }
+    // Standardised: the same partition, the centres back-transformed to
+    // the raw case's centres, and the sums of squares on the z-scale
+    // (tot 10, within 0.1782, between 9.8218 — R's values).
+    const kmStd = await runAnalysis("k-means", kmeans, { clusters: 2, standardise: true });
+    if ("error" in kmStd) {
+      out.push(`KMeans standardised: ${kmStd.error}`);
+    } else {
+      if (JSON.stringify(kmStd.kmeansAssignments?.map((a) => a.cluster)) !== JSON.stringify([1, 1, 1, 2, 2, 2]))
+        out.push(`KMeans standardised assignments: ${JSON.stringify(kmStd.kmeansAssignments?.map((a) => a.cluster))}, expected [1,1,1,2,2,2]`);
+      closeAll(kmStd.kmeansClusters?.flatMap((c) => c.centre) ?? [], [1.3333, 1.3333, 8.3333, 8.3333], 1e-3, "standardised centres (back-transformed)");
+      close(kmStat(kmStd, "Total sum of squares"), 10, 1e-3, "standardised total SS");
+      close(kmStat(kmStd, "Within-cluster sum of squares"), 0.1782, 1e-3, "standardised within SS");
+      close(kmStat(kmStd, "Between-cluster sum of squares"), 9.8218, 1e-3, "standardised between SS");
+      if (!kmStd.notes.includes("standardised")) out.push(`KMeans standardised notes: standardised missing`);
+      if (!kmStd.notes.includes("back-transformed")) out.push(`KMeans standardised notes: back-transformed missing`);
+      if (!kmStd.notes.includes("standardised scale")) out.push(`KMeans standardised notes: scale missing`);
+    }
+    // The defaults (no params) give the same numbers as the explicit
+    // standardised run.
+    const kmDef = await runAnalysis("k-means", kmeans, {});
+    if ("error" in kmDef) {
+      out.push(`KMeans defaults: ${kmDef.error}`);
+    } else if (!("error" in kmStd)) {
+      for (const s of kmStd.stats) {
+        const got = kmStat(kmDef, s.label);
+        if (got !== s.value) out.push(`KMeans defaults ${s.label}: ${got}, explicit run: ${s.value}`);
+      }
+    }
+    // k = 3: R splits the low group (see the note above); the canonical
+    // labels sort by first centre coordinate, so the singleton (2, 1) is
+    // Cluster 2 and the high group Cluster 3.
+    const km3 = await runAnalysis("k-means", kmeans, { clusters: 3, standardise: false });
+    if ("error" in km3) {
+      out.push(`KMeans k=3: ${km3.error}`);
+    } else {
+      if (JSON.stringify(km3.kmeansAssignments?.map((a) => a.cluster)) !== JSON.stringify([1, 1, 2, 3, 3, 3]))
+        out.push(`KMeans k=3 assignments: ${JSON.stringify(km3.kmeansAssignments?.map((a) => a.cluster))}, expected [1,1,2,3,3,3]`);
+      closeAll(km3.kmeansClusters?.flatMap((c) => c.centre) ?? [], [1, 1.5, 2, 1, 8.3333, 8.3333], 1e-3, "k=3 centres");
+      closeAll(km3.kmeansClusters?.map((c) => c.n) ?? [], [2, 1, 3], 0, "k=3 cluster sizes");
+      closeAll(km3.kmeansClusters?.map((c) => c.withinSs) ?? [], [0.5, 0, 1.3333], 1e-3, "k=3 within per cluster");
+      close(kmStat(km3, "Total sum of squares"), 149.6667, 1e-3, "k=3 total SS");
+      close(kmStat(km3, "Within-cluster sum of squares"), 1.8333, 1e-3, "k=3 within SS");
+      close(kmStat(km3, "Between-cluster sum of squares"), 147.8333, 1e-3, "k=3 between SS");
+    }
+    const km3Std = await runAnalysis("k-means", kmeans, { clusters: 3, standardise: true });
+    if ("error" in km3Std) {
+      out.push(`KMeans k=3 standardised: ${km3Std.error}`);
+    } else {
+      if (JSON.stringify(km3Std.kmeansAssignments?.map((a) => a.cluster)) !== JSON.stringify([1, 1, 2, 3, 3, 3]))
+        out.push(`KMeans k=3 standardised assignments: ${JSON.stringify(km3Std.kmeansAssignments?.map((a) => a.cluster))}, expected [1,1,2,3,3,3]`);
+      closeAll(km3Std.kmeansClusters?.flatMap((c) => c.centre) ?? [], [1, 1.5, 2, 1, 8.3333, 8.3333], 1e-3, "k=3 standardised centres (back-transformed)");
+      close(kmStat(km3Std, "Total sum of squares"), 10, 1e-3, "k=3 standardised total SS");
+      close(kmStat(km3Std, "Within-cluster sum of squares"), 0.1225, 1e-3, "k=3 standardised within SS");
+      close(kmStat(km3Std, "Between-cluster sum of squares"), 9.8775, 1e-3, "k=3 standardised between SS");
+    }
+    // Edge cases: a constant variable names itself when standardising but
+    // runs raw; k < 2 and k >= n are user-facing errors naming the problem.
+    const kmConstStd = await runAnalysis("k-means", kmeansConstant, { clusters: 2, standardise: true });
+    if (!("error" in kmConstStd) || !kmConstStd.error.includes("Y"))
+      out.push(
+        `KMeans constant (standardised): ${"error" in kmConstStd ? kmConstStd.error : "ran without error"}, expected an error naming Y`,
+      );
+    const kmConstRaw = await runAnalysis("k-means", kmeansConstant, { clusters: 2, standardise: false });
+    if ("error" in kmConstRaw) {
+      out.push(`KMeans constant (raw): ${kmConstRaw.error}`);
+    } else if (kmConstRaw.kmeansClusters?.length !== 2) {
+      out.push(`KMeans constant (raw): ${kmConstRaw.kmeansClusters?.length} clusters, expected 2`);
+    }
+    const kmOne = await runAnalysis("k-means", kmeans, { clusters: 1, standardise: false });
+    if (!("error" in kmOne) || !kmOne.error.includes("at least 2 clusters"))
+      out.push(`KMeans k=1: ${"error" in kmOne ? kmOne.error : "ran without error"}, expected an error`);
+    const kmSix = await runAnalysis("k-means", kmeans, { clusters: 6, standardise: false });
+    if (!("error" in kmSix) || !kmSix.error.includes("fewer clusters than observations") || !kmSix.error.includes("k = 6"))
+      out.push(`KMeans k=6: ${"error" in kmSix ? kmSix.error : "ran without error"}, expected an error naming k and n`);
+    const kmIdent = await runAnalysis("k-means", kmeansIdentical, { clusters: 2, standardise: false });
+    if (!("error" in kmIdent) || !kmIdent.error.includes("distinct"))
+      out.push(`KMeans identical rows: ${"error" in kmIdent ? kmIdent.error : "ran without error"}, expected an error about distinct points`);
+    // The wizard asks for the cluster count then the standardisation, and
+    // finish makes the params (standardise defaults to yes).
+    const kmWizard = WIZARDS["k-means"]!;
+    const kmAsked = kmWizard.questions({}, readTable(kmeans)).flatMap((q) => (q ? [q.id] : []));
+    if (kmAsked.join(",") !== "clusters,standardise")
+      out.push(`KMeans wizard questions: ${kmAsked.join(",")}, expected clusters,standardise`);
+    if (
+      JSON.stringify(kmWizard.finish({ clusters: 3, standardise: "no" }, readTable(kmeans))) !==
+      JSON.stringify({ type: "k-means", params: { clusters: 3, standardise: false } })
+    )
+      out.push(`KMeans wizard finish: ${JSON.stringify(kmWizard.finish({ clusters: 3, standardise: "no" }, readTable(kmeans)))}`);
+    if (
+      JSON.stringify(kmWizard.finish({ clusters: 2, standardise: "yes" }, readTable(kmeans))) !==
+      JSON.stringify({ type: "k-means", params: { clusters: 2, standardise: true } })
+    )
+      out.push(`KMeans wizard finish (yes): ${JSON.stringify(kmWizard.finish({ clusters: 2, standardise: "yes" }, readTable(kmeans)))}`);
+    // The cluster scatter for the raw k = 2 run: one trace per cluster
+    // (the rows, labelled, in table order) plus the centres marked ×.
+    if (!("error" in kmRaw)) {
+      const { addKmeansScatter } = await import("../src/views/graphs/kmeans-scatter");
+      const kmOpts = newGraphOptions("kmeans-scatter");
+      const kmCols = plotColumns(readTable(kmeans), "kmeans-scatter", kmOpts, "multiple");
+      const kmFig = GRAPHS["kmeans-scatter"].build(kmCols, kmOpts, paintOf(kmOpts, 2), readTable(kmeans).titles);
+      addKmeansScatter(kmFig, kmCols, kmRaw, kmOpts, paintOf(kmOpts, 2), readTable(kmeans).titles);
+      const traces = kmFig.data as {
+        type?: string;
+        mode?: string;
+        name?: string;
+        x?: number[];
+        y?: number[];
+        text?: string[];
+        marker?: { symbol?: string };
+      }[];
+      if (traces.length !== 3) out.push(`KMeans scatter traces: ${traces.length}, expected 3`);
+      const c1 = traces.find((t) => t.name === "Cluster 1");
+      const c2 = traces.find((t) => t.name === "Cluster 2");
+      const centres = traces.find((t) => t.name === "Cluster centres");
+      closeAll(c1?.x ?? [], [1, 1, 2], 0, "scatter Cluster 1 x");
+      closeAll(c1?.y ?? [], [1, 2, 1], 0, "scatter Cluster 1 y");
+      if (JSON.stringify(c1?.text) !== JSON.stringify(["Row 1", "Row 2", "Row 3"]))
+        out.push(`Scatter Cluster 1 labels: ${JSON.stringify(c1?.text)}, expected Row 1..Row 3`);
+      closeAll(c2?.x ?? [], [8, 9, 8], 0, "scatter Cluster 2 x");
+      closeAll(c2?.y ?? [], [8, 8, 9], 0, "scatter Cluster 2 y");
+      if (JSON.stringify(c2?.text) !== JSON.stringify(["Row 4", "Row 5", "Row 6"]))
+        out.push(`Scatter Cluster 2 labels: ${JSON.stringify(c2?.text)}, expected Row 4..Row 6`);
+      closeAll(centres?.x ?? [], [1.3333, 8.3333], 1e-3, "scatter centres x");
+      closeAll(centres?.y ?? [], [1.3333, 8.3333], 1e-3, "scatter centres y");
+      if (centres?.marker?.symbol !== "x") out.push(`Scatter centres marker: ${centres?.marker?.symbol}, expected "x"`);
+      if (centres?.mode !== "markers") out.push(`Scatter centres mode: ${centres?.mode}, expected "markers"`);
+      const xaxis = kmFig.layout.xaxis as { title?: { text?: string } };
+      const yaxis = kmFig.layout.yaxis as { title?: { text?: string } };
+      if (xaxis.title?.text !== "X") out.push(`Scatter x title: ${xaxis.title?.text}, expected "X"`);
+      if (yaxis.title?.text !== "Y") out.push(`Scatter y title: ${yaxis.title?.text}, expected "Y"`);
+      if (kmFig.layout.showlegend !== true) out.push(`Scatter legend: ${kmFig.layout.showlegend}, expected true`);
     }
   }
   // Kolmogorov-Smirnov: the plan's values, computed independently in Python

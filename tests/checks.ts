@@ -2811,9 +2811,9 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
     { time: "Time", status: "Status", covariates: ["Trt"], ties: "efron" },
   );
   // The menu offers Descriptive statistics first on Multiple Variables
-  // tables, Principal component analysis after Multiple regression, Outliers
-  // after that, Multiple logistic regression after that, Poisson regression
-  // after that, and Cox after that.
+  // tables, Principal component analysis after Multiple regression,
+  // K-means clustering after that, Outliers after that, Multiple logistic
+  // regression after that, Poisson regression after that, and Cox after that.
   deepStrictEqual(
     analysisOptionsForTable("multiple").map((o) => o.value),
     [
@@ -2821,6 +2821,7 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
       "correlation-matrix",
       "multiple-regression",
       "principal-component-analysis",
+      "k-means",
       "outliers",
       "multiple-logistic-regression",
       "poisson-regression",
@@ -2828,11 +2829,11 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
     ],
   );
   // Multiple Variables tables offer the scatter plot, the forest plot, the
-  // observed-vs-fitted graph, the scree plot, the scores biplot, and
-  // survival curves.
+  // observed-vs-fitted graph, the scree plot, the scores biplot, the
+  // cluster scatter, and survival curves.
   deepStrictEqual(
     GRAPH_OPTIONS_BY_TABLE["multiple"].map((o) => o.value),
-    ["xy-scatter", "heatmap", "volcano", "forest-plot", "observed-fitted", "scree-plot", "pca-biplot", "survival"],
+    ["xy-scatter", "heatmap", "volcano", "forest-plot", "observed-fitted", "scree-plot", "pca-biplot", "kmeans-scatter", "survival"],
   );
   // Renaming a column follows the Cox analysis's params.
   const renamed = followTable(
@@ -2892,6 +2893,46 @@ check("the PCA wizard asks scale then components, defaulting to the correlation 
   deepStrictEqual(WIZARDS["principal-component-analysis"]!.finish({}, readTable(data)), {
     type: "principal-component-analysis",
     params: { scale: "correlation", components: undefined },
+  });
+});
+
+check("the K-means wizard asks clusters then standardisation, defaulting to 2 clusters, standardised", () => {
+  const data: TableData = {
+    columns: ["Title", "X", "Y"],
+    rows: [
+      [null, "1", "1"],
+      [null, "8", "8"],
+    ],
+  };
+  const qs = WIZARDS["k-means"]!.questions({}, readTable(data)).filter(
+    (q): q is Question => q !== false,
+  );
+  deepStrictEqual(
+    qs.map((q) => q.id),
+    ["clusters", "standardise"],
+  );
+  const clusters = qs.find((q) => q.id === "clusters");
+  ok(clusters && clusters.kind === "number");
+  if (clusters?.kind === "number") {
+    strictEqual(clusters.initial, 2);
+    strictEqual(clusters.validate?.(1), "Enter a whole number of clusters (at least 2).");
+    strictEqual(clusters.validate?.(2.5), "Enter a whole number of clusters (at least 2).");
+    strictEqual(clusters.validate?.(3), undefined);
+  }
+  const standardise = qs.find((q) => q.id === "standardise");
+  ok(standardise && standardise.kind === "choice");
+  deepStrictEqual(
+    standardise.kind === "choice" ? standardise.options.map((o) => o.value) : [],
+    ["yes", "no"],
+  );
+  deepStrictEqual(WIZARDS["k-means"]!.finish({ clusters: 3, standardise: "no" }, readTable(data)), {
+    type: "k-means",
+    params: { clusters: 3, standardise: false },
+  });
+  // No answers: 2 clusters (the initial), standardised (the default).
+  deepStrictEqual(WIZARDS["k-means"]!.finish({ clusters: 2 }, readTable(data)), {
+    type: "k-means",
+    params: { clusters: 2, standardise: true },
   });
 });
 

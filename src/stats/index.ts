@@ -15,6 +15,7 @@ import type {
   DoseResponseSpecialParams,
   EnzymeInhibitionParams,
   FrequencyDistributionParams,
+  KMeansParams,
   McNemarParams,
   MixedEffectsParams,
   MultipleRegressionParams,
@@ -66,6 +67,7 @@ import { runMultipleRegression } from "./multiple/multiple-regression";
 import { runMultipleLogisticRegression } from "./multiple/multiple-logistic-regression";
 import { runPoissonRegression } from "./multiple/poisson-regression";
 import { runPrincipalComponentAnalysis } from "./multiple/principal-component-analysis";
+import { runKMeans } from "./multiple/k-means";
 import { runChiSquare } from "./contingency/chi-square";
 import { runSurvival } from "./survival/survival-analysis";
 import { runCox } from "./survival/cox-regression";
@@ -246,6 +248,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Principal component analysis",
     minColumns: 2,
     run: (c, p, t) => runPrincipalComponentAnalysis(c, p as PrincipalComponentAnalysisParams, t),
+  },
+  "k-means": {
+    label: "K-means clustering",
+    minColumns: 2,
+    run: (c, p, t) => runKMeans(c, p as KMeansParams, t),
   },
   "chi-square": {
     label: "Chi-square or Fisher's exact test",

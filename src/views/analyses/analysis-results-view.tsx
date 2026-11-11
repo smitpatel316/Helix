@@ -371,6 +371,32 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
+      {result.kmeansClusters && result.kmeansClusters.length > 0 && (
+        <Table
+          title="Clusters"
+          columns={[
+            { label: "Cluster" },
+            ...groups.map((g) => ({ label: g.name, numeric: true })),
+            { label: "n", numeric: true },
+            { label: "Within-cluster SS", numeric: true },
+          ]}
+          rows={result.kmeansClusters.map((row) => [
+            row.cluster,
+            ...row.centre.map((c) => num(c)),
+            row.n,
+            num(row.withinSs),
+          ])}
+        />
+      )}
+
+      {result.kmeansAssignments && result.kmeansAssignments.length > 0 && (
+        <Table
+          title="Cluster assignments"
+          columns={[{ label: "Row" }, { label: "Cluster", numeric: true }]}
+          rows={result.kmeansAssignments.map((row) => [row.row, row.cluster])}
+        />
+      )}
+
       {result.fitted && result.fitted.length > 0 && (
         <Table
           title="Fitted values and residuals"

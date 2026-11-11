@@ -135,7 +135,7 @@ type OptionalOption = {
 // prettier-ignore
 const OPTIONAL_OPTIONS = {
   yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number",
-  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", pcaAnalysisId: "text", monteCarloAnalysisId: "text", doseY: "text", doseLigandConcentration: "number", xVariable: "text", yVariable: "text",
+  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", pcaAnalysisId: "text", kmeansAnalysisId: "text", monteCarloAnalysisId: "text", doseY: "text", doseLigandConcentration: "number", xVariable: "text", yVariable: "text",
   volcanoX: "text", volcanoY: "text", volcanoLabel: "text", volcanoGroupA: "text", volcanoGroupB: "text",
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",
@@ -207,6 +207,9 @@ const PARAMS = {
   // Principal component analysis (plan 21): the matrix, and how many
   // components to report (0 = all).
   scale: ["correlation", "covariance"], components: "number",
+  // K-means clustering (plan 30): how many clusters, and whether to
+  // standardise the variables first.
+  clusters: "number", standardise: "yes/no",
   // Mixed-effects model (plan 20): the random structure and the subject
   // identity are choices; `subjectFactor` is one name + its per-row levels.
   randomStructure: ["intercept", "slope"], subjectId: ["row", "replicate"], interaction: "yes/no",
