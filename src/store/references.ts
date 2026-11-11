@@ -45,7 +45,18 @@ export function followTable(node: ProjectNode, { renamed = {}, rows }: TableMove
   };
 
   if (node.analysisParams) {
-    return { ...node, analysisParams: withNames<AnalysisParams>(node.analysisParams, PARAM_NAMES) };
+    const params = withNames<AnalysisParams>(node.analysisParams, PARAM_NAMES);
+    // Monte Carlo's per-column simulated means/SDs are keyed BY column name,
+    // so a rename must rename the keys (not the values, which are numbers).
+    for (const key of ["groupMeans", "groupSds"] as const) {
+      const map = (params as Record<string, unknown>)[key];
+      if (map && typeof map === "object" && !Array.isArray(map)) {
+        (params as Record<string, unknown>)[key] = Object.fromEntries(
+          Object.entries(map as Record<string, number>).map(([name, v]) => [to(name), v]),
+        );
+      }
+    }
+    return { ...node, analysisParams: params };
   }
   if (node.graphOptions) {
     const options = withNames<GraphOptions>(node.graphOptions, OPTION_NAMES);

@@ -38,6 +38,7 @@ export type GraphType =
   | "smooth-curve"
   | "scree-plot"
   | "pca-biplot"
+  | "monte-carlo-histogram"
   | "histogram";
 
 /** The choices of a graph's options, one list each: the types come from them, and a
@@ -209,6 +210,11 @@ export interface GraphOptions {
   // analysis it draws the points only.
   smoothAnalysisId?: string;
   smoothShowCurve: boolean;
+  // Monte Carlo histogram (Column and XY family): the simulated-statistic
+  // distribution of a sibling "Monte Carlo simulation" analysis (see
+  // monte-carlo-histogram.ts) — the graph runs the same cached runAnalysis
+  // result, no extra R call. Without a linked analysis it draws only its axes.
+  monteCarloAnalysisId?: string;
   // Heatmap: each cell's value colored along the graph's gradient palette (a Grouped
   // table's cells, each group's center on its row).
   heatmapShowValues: boolean;
@@ -471,6 +477,9 @@ export interface TableData {
   widths?: Record<string, number>;
   /** Keep column 0 (the row titles) visible while scrolling right. */
   freezeTitle?: boolean;
+  /** Provenance note (e.g. a simulated table's distribution + seed) — kept
+   *  with the table in the .hlx file so the data's origin stays auditable. */
+  notes?: string;
 }
 
 export interface ProjectNode {

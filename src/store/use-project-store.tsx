@@ -22,7 +22,8 @@ type Selector =
   | { kind: "new-table" }
   | { kind: "new-analysis"; tableId: string }
   | { kind: "analysis-params"; tableId: string; testType: AnalysisPickerValue }
-  | { kind: "new-graph"; tableId: string };
+  | { kind: "new-graph"; tableId: string }
+  | { kind: "simulate-data"; tableId: string };
 
 /** The project's content: what a file holds, and what Undo brings back. */
 interface Content {
@@ -328,6 +329,10 @@ interface ProjectActions {
   /** The project as it is now, for an action to look at (never to draw from). */
   get: () => ProjectState;
   createTable: (tableType: TableType) => void;
+  /** A table of simulated values (plan 22): created with its data already
+   *  filled, not from a type's defaults — the reducer's "create" names it
+   *  among the tables ("Simulated data", "Simulated data 2"…). */
+  createSimulatedTable: (tableType: TableType, data: TableData) => void;
   createAnalysis: (parentId: string, analysisType: AnalysisType, analysisParams?: AnalysisParams) => void;
   createGraph: (parentId: string, graphType: GraphType) => void;
   setActiveNode: (id: string | null) => void;
@@ -407,6 +412,18 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
             parentId: null,
             tableType,
             data: TABLES[tableType].defaultData(),
+          },
+        }),
+      createSimulatedTable: (tableType, data) =>
+        dispatch({
+          type: "create",
+          node: {
+            id: genId("table"),
+            type: "table",
+            name: "Simulated data",
+            parentId: null,
+            tableType,
+            data,
           },
         }),
       // Named for the test it runs, as in Prism.

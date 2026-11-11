@@ -94,6 +94,17 @@ const ERROR_ITEMS = [
 
 export function statisticsControls(c: SectionContext): React.ReactNode {
   const { graphType, options, set } = c;
+  if (graphType === "monte-carlo-histogram") {
+    const sources = c.analyses.filter((a) => a.analysisType === "monte-carlo");
+    if (!sources.length) {
+      return (
+        <NoAnalysis test="monte-carlo" onNewAnalysis={c.onNewAnalysis}>
+          Draw the simulated distribution of a Monte Carlo simulation of this table.
+        </NoAnalysis>
+      );
+    }
+    return <MonteCarloControls analyses={sources} options={options} set={set} />;
+  }
   if (GRAPHS[graphType].family === "column") {
     const sources = c.analyses.filter((a) => SIGNIFICANCE_SOURCES.has(a.analysisType));
     if (!sources.length) {
@@ -368,6 +379,26 @@ function PoissonControls({
       analyses={analyses}
       value={options.poissonAnalysisId}
       onChange={(poissonAnalysisId) => set({ poissonAnalysisId })}
+    />
+  );
+}
+
+/** Pick a Monte Carlo simulation: the histogram draws its simulated-statistic
+ *  distribution, with the observed value marked. */
+function MonteCarloControls({
+  analyses,
+  options,
+  set,
+}: {
+  analyses: ProjectNode[];
+  options: GraphOptions;
+  set: SetOptions;
+}) {
+  return (
+    <AnalysisRow
+      analyses={analyses}
+      value={options.monteCarloAnalysisId}
+      onChange={(monteCarloAnalysisId) => set({ monteCarloAnalysisId })}
     />
   );
 }

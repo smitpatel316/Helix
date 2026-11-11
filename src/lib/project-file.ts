@@ -43,6 +43,8 @@ import {
   DOSE_MODELS,
   DOSE_RESPONSE_SPECIAL_MODELS,
   ENZYME_INHIBITION_MODELS,
+  MONTE_CARLO_STATISTICS,
+  MONTE_CARLO_TARGETS,
   NONLINEAR_MODELS,
   POSTHOC_TARGETS,
   RANK_POSTHOCS,
@@ -123,7 +125,7 @@ const NODE_KEYS = Object.keys({
 // prettier-ignore
 const DATA_KEYS = Object.keys({
   columns: 1, rows: 1, groups: 1, replicates: 1, subgroups: 1, rowGroups: 1, excluded: 1,
-  widths: 1, freezeTitle: 1,
+  widths: 1, freezeTitle: 1, notes: 1,
 } satisfies Record<keyof TableData, 1>);
 
 // Graph options without a default, by the kind of value they hold.
@@ -133,7 +135,7 @@ type OptionalOption = {
 // prettier-ignore
 const OPTIONAL_OPTIONS = {
   yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number",
-  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", pcaAnalysisId: "text", doseY: "text", xVariable: "text", yVariable: "text",
+  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", pcaAnalysisId: "text", monteCarloAnalysisId: "text", doseY: "text", xVariable: "text", yVariable: "text",
   volcanoX: "text", volcanoY: "text", volcanoLabel: "text", volcanoGroupA: "text", volcanoGroupB: "text",
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",
@@ -194,6 +196,16 @@ const PARAMS = {
   // identity are choices; `subjectFactor` is one name + its per-row levels.
   randomStructure: ["intercept", "slope"], subjectId: ["row", "replicate"], interaction: "yes/no",
   fixedFactors: "names", slopeVariable: "name", subjectFactor: "name-and-names",
+  // Monte Carlo simulation (plan 22): the target analysis + statistic are
+  // choices; repeats/seed are numbers; the per-column simulated means/SDs
+  // are numbers-by-name (the target's own options — equalVariance,
+  // hypotheticalValue, y, method — already have entries above).
+  targetAnalysis: MONTE_CARLO_TARGETS,
+  summaryStatistic: MONTE_CARLO_STATISTICS,
+  repeats: "number",
+  seed: "number",
+  groupMeans: "numbers-by-name",
+  groupSds: "numbers-by-name",
 } satisfies Record<ParamKey, ParamKind>;
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);

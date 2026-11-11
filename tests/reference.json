@@ -19390,6 +19390,289 @@
    "label": "Correlation matrix (r)"
   }
  },
+ "descriptive-statistics simulated {}": {
+  "testType": "descriptive-statistics",
+  "stats": [],
+  "groups": [
+   {
+    "name": "Simulated 1",
+    "mean": 102.8788003,
+    "sd": 19.68942634,
+    "sem": 4.402689573,
+    "median": 102.2531074,
+    "n": 20,
+    "ciLow": 93.66386511,
+    "ciHigh": 112.0937355,
+    "min": 60.15316869,
+    "max": 134.2996809,
+    "range": 74.14651221
+   }
+  ],
+  "notes": "Per-column summary. Range is Max − Min. 95% CI is the t-based confidence interval of the mean; columns with fewer than 2 values have no SD, SEM, or CI."
+ },
+ "monte-carlo mcPower {\"targetAnalysis\":\"compare-two-groups\",\"summaryStatistic\":\"P value\",\"repeats\":5000,\"seed\":42,\"groupMeans\":{\"A\":0,\"B\":0.5},\"groupSds\":{\"A\":1,\"B\":1},\"equalVariance\":true}": {
+  "testType": "monte-carlo",
+  "subtitle": "Monte Carlo simulation — P value",
+  "stats": [
+   {
+    "label": "Repeats completed",
+    "value": 5000
+   },
+   {
+    "label": "Mean of P value",
+    "value": 0.04542989345
+   },
+   {
+    "label": "SD of P value",
+    "value": 0.1100545052
+   },
+   {
+    "label": "2.5th percentile",
+    "value": 0.000003920372577
+   },
+   {
+    "label": "97.5th percentile",
+    "value": 0.3744457091
+   },
+   {
+    "label": "Power (% P < 0.05)",
+    "value": 79.54
+   },
+   {
+    "label": "Observed (real data)",
+    "value": 0.003254726442
+   },
+   {
+    "label": "Seed",
+    "value": 42
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 0,
+    "sd": 0.9428090416,
+    "sem": 0.1178511302,
+    "median": 0,
+    "n": 64
+   },
+   {
+    "name": "B",
+    "mean": 0.5,
+    "sd": 0.9428090416,
+    "sem": 0.1178511302,
+    "median": 0.5,
+    "n": 64
+   }
+  ],
+  "notes": "Repeated “Compare two groups” 5000 times on simulated data (seed 42), summarising the P value. Each repeat drew “A”: n = 64, simulated mean 0, SD 1; “B”: n = 64, simulated mean 0.5, SD 1. The 95% interval is the 2.5th–97.5th percentiles of the 5000 simulated P values. Power is the share of repeats with P < 0.05 — the chance this design detects the simulated effect. The observed P value on the real data is 0.003254726441554271. Tails are two-sided; the simulation is Gaussian (each group's mean/SD as simulated, or its observed mean/SD when not set).",
+  "monteCarlo": {
+   "repeats": 5000,
+   "statistic": "P value",
+   "mean": 0.04542989345,
+   "sd": 0.1100545052,
+   "ciLow": 0.000003920372577,
+   "ciHigh": 0.3744457091,
+   "proportionSignificant": 0.7954,
+   "observed": 0.003254726442,
+   "bins": {
+    "edges": [
+     0,
+     0.1,
+     0.2,
+     0.3,
+     0.4,
+     0.5,
+     0.6,
+     0.7,
+     0.8,
+     0.9,
+     1
+    ],
+    "counts": [
+     4386,
+     300,
+     131,
+     75,
+     33,
+     22,
+     22,
+     9,
+     13,
+     9
+    ]
+   }
+  }
+ },
+ "monte-carlo mcPower {\"targetAnalysis\":\"one-sample-t\",\"summaryStatistic\":\"P value\",\"repeats\":200,\"seed\":42,\"groupMeans\":{\"A\":0},\"groupSds\":{\"A\":1},\"hypotheticalValue\":0}": {
+  "testType": "monte-carlo",
+  "subtitle": "Monte Carlo simulation — P value",
+  "stats": [
+   {
+    "label": "Repeats completed",
+    "value": 200
+   },
+   {
+    "label": "Mean of P value",
+    "value": 0.5065204443
+   },
+   {
+    "label": "SD of P value",
+    "value": 0.2756904624
+   },
+   {
+    "label": "2.5th percentile",
+    "value": 0.04360938073
+   },
+   {
+    "label": "97.5th percentile",
+    "value": 0.9945340767
+   },
+   {
+    "label": "Power (% P < 0.05)",
+    "value": 3
+   },
+   {
+    "label": "Observed (real data)",
+    "value": 1
+   },
+   {
+    "label": "Seed",
+    "value": 42
+   }
+  ],
+  "groups": [
+   {
+    "name": "A",
+    "mean": 0,
+    "sd": 0.9428090416,
+    "sem": 0.1178511302,
+    "median": 0,
+    "n": 64
+   }
+  ],
+  "notes": "Repeated “Compare one group to a value” 200 times on simulated data (seed 42), summarising the P value. Each repeat drew “A”: n = 64, simulated mean 0, SD 1. The 95% interval is the 2.5th–97.5th percentiles of the 200 simulated P values. Power is the share of repeats with P < 0.05 — the chance this design detects the simulated effect. The observed P value on the real data is 1. Tails are two-sided; the simulation is Gaussian (each group's mean/SD as simulated, or its observed mean/SD when not set).",
+  "monteCarlo": {
+   "repeats": 200,
+   "statistic": "P value",
+   "mean": 0.5065204443,
+   "sd": 0.2756904624,
+   "ciLow": 0.04360938073,
+   "ciHigh": 0.9945340767,
+   "proportionSignificant": 0.03,
+   "observed": 1,
+   "bins": {
+    "edges": [
+     0,
+     0.1,
+     0.2,
+     0.3,
+     0.4,
+     0.5,
+     0.6,
+     0.7,
+     0.8,
+     0.9,
+     1
+    ],
+    "counts": [
+     21,
+     16,
+     13,
+     19,
+     30,
+     25,
+     24,
+     15,
+     16,
+     21
+    ]
+   }
+  }
+ },
+ "monte-carlo xy {\"targetAnalysis\":\"linear-regression\",\"summaryStatistic\":\"Slope\",\"repeats\":200,\"seed\":42,\"groupMeans\":{\"Y1\":5},\"groupSds\":{\"Y1\":2},\"y\":\"Y1\"}": {
+  "testType": "monte-carlo",
+  "subtitle": "Monte Carlo simulation — Slope",
+  "stats": [
+   {
+    "label": "Repeats completed",
+    "value": 200
+   },
+   {
+    "label": "Mean of Slope",
+    "value": 0.001034430706
+   },
+   {
+    "label": "SD of Slope",
+    "value": 0.2901956015
+   },
+   {
+    "label": "2.5th percentile",
+    "value": -0.5175545782
+   },
+   {
+    "label": "97.5th percentile",
+    "value": 0.6010423556
+   },
+   {
+    "label": "Observed (real data)",
+    "value": 2.012280702
+   },
+   {
+    "label": "Seed",
+    "value": 42
+   }
+  ],
+  "groups": [
+   {
+    "name": "Y1",
+    "mean": 8.2875,
+    "sd": 5.375456791,
+    "sem": 1.900510975,
+    "median": 7.95,
+    "n": 8
+   }
+  ],
+  "notes": "Repeated “Linear regression” 200 times on simulated data (seed 42), summarising the Slope. Each repeat drew “Y1”: n = 8, simulated mean 5, SD 2. The 95% interval is the 2.5th–97.5th percentiles of the 200 simulated Slopes. The observed Slope on the real data is 2.012280701754386. Tails are two-sided; the simulation is Gaussian (each group's mean/SD as simulated, or its observed mean/SD when not set).",
+  "monteCarlo": {
+   "repeats": 200,
+   "statistic": "Slope",
+   "mean": 0.001034430706,
+   "sd": 0.2901956015,
+   "ciLow": -0.5175545782,
+   "ciHigh": 0.6010423556,
+   "observed": 2.012280702,
+   "bins": {
+    "edges": [
+     -1.2,
+     -1,
+     -0.8,
+     -0.6,
+     -0.4,
+     -0.2,
+     0,
+     0.2,
+     0.4,
+     0.6,
+     0.8,
+     1
+    ],
+    "counts": [
+     1,
+     1,
+     1,
+     6,
+     44,
+     46,
+     54,
+     33,
+     8,
+     5,
+     1
+    ]
+   }
+  }
+ },
  "graph individual column": {
   "data": [
    {

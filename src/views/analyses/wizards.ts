@@ -2,7 +2,8 @@
 // step, each answer choosing the next question. A wizard only declares its questions
 // and how the answers make the test's params; analysis-wizard.tsx asks them.
 // A test without an entry here runs as soon as it is picked.
-import { DOSE_MODELS, NONLINEAR_MODELS, ROUT_Q } from "../../stats/types";
+import { DOSE_MODELS, MONTE_CARLO_REPEATS, MONTE_CARLO_TARGET_STATISTICS, NONLINEAR_MODELS, ROUT_Q, type MonteCarloStatistic, type MonteCarloTarget } from "../../stats/types";
+import type { TableType } from "../../store/types";
 import { MODEL_LABEL } from "../../stats/xy/nonlinear-regression";
 import { dataGroups, pairedGroups } from "../../stats/column/base";
 import { distinctTruthValues } from "../../stats/column/roc-curve";
@@ -167,10 +168,13 @@ export function parseGroupLevels(text: string, rowCount: number): { values: stri
 }
 
 export interface Wizard {
-  /** Every question, given the answers so far (false: not asked with these answers). */
-  questions: (a: Answers, table: Dataset) => (Question | false)[];
+  /** Every question, given the answers so far (false: not asked with these answers).
+   *  `tableType` scopes the questions to the table's kind (the Monte Carlo
+   *  wizard offers different targets for Column and XY tables); wizards that
+   *  don't need it ignore it, and callers without a table pass none. */
+  questions: (a: Answers, table: Dataset, tableType?: TableType) => (Question | false)[];
   /** The test to create, once every question is answered. */
-  finish: (a: Answers, table: Dataset) => { type: AnalysisType; params?: AnalysisParams };
+  finish: (a: Answers, table: Dataset, tableType?: TableType) => { type: AnalysisType; params?: AnalysisParams };
 }
 
 const choice = (id: string, ask: string, options: [string, string][], normality = false): Question => ({
@@ -212,6 +216,20 @@ const someSets = (table: Dataset, min: number): Question[] => {
  *  the table's, whatever order they were clicked in. */
 export const toggled = (options: string[], ticked: string[], name: string, on: boolean) =>
   options.filter((n) => (n === name ? on : ticked.includes(n)));
+
+/** A column's observed mean and (sample, n − 1) SD — a Monte Carlo wizard's
+ *  starting values for the simulated mean/SD. */
+const meanSd = (values: number[]) => {
+  const mean = values.length ? values.reduce((s, v) => s + v, 0) / values.length : 0;
+  const sd =
+    values.length > 1
+      ? Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / (values.length - 1))
+      : 0;
+  return { mean, sd };
+};
+
+/** 6 significant digits — a readable starting value for a simulated mean/SD. */
+const round6 = (v: number) => Number(v.toPrecision(6));
 
 /** Whether a grouped table holds replicates: a group with 2 values or more at a row. */
 const replicated = (table: Dataset) =>
@@ -655,6 +673,169 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           score: a.score as string,
           positive: a.positive === undefined ? undefined : numeric ? Number(a.positive) : (a.positive as string),
         },
+      };
+    },
+  },
+
+  // Monte Carlo (plan 22, sub-task b): repeat a chosen analysis on simulated
+  // data. v1 repeats only the five targets below — each one's per-repeat
+  // statistic has a one-call in-R `replicate()` form, so 10,000 repeats take
+  // seconds, not minutes (a per-repeat round-trip would take ~5 min). The
+  // simulation is Gaussian per data set, with each set's mean/SD defaulting
+  // to its observed mean/SD (a parametric bootstrap) — set the means to the
+  // effect you want to test (e.g. two groups 0 and 0.5 apart, SD 1) and the
+  // "% P < 0.05" row reads the power. Tails are two-sided in v1; Grouped
+  // tables have no v1 target (two-way ANOVA is a follow-on), so the picker
+  // does not offer Monte Carlo there.
+  "monte-carlo": {
+    questions: (a, table, tableType) => {
+      const isXY = tableType === "xy";
+      const targets: [string, string][] = isXY
+        ? [
+            ["linear-regression", "Linear regression (repeat its slope)"],
+            ["correlation", "Correlation (repeat its r)"],
+          ]
+        : [
+            ["compare-two-groups", "Compare two groups (repeat its t test)"],
+            ["one-sample-t", "Compare one group to a value (repeat its t test)"],
+            ["descriptive-statistics", "Descriptive statistics (repeat its mean)"],
+          ];
+      const target = (a.target as MonteCarloTarget | undefined) ?? (targets[0][0] as MonteCarloTarget);
+      const statistics = MONTE_CARLO_TARGET_STATISTICS[target];
+      // The data sets the repeats simulate: compare-two-groups takes the two
+      // chosen (or first two) columns; one-sample-t / descriptive-statistics
+      // the one chosen column; the XY targets the chosen Y series.
+      const dataCols = dataNames(table);
+      const yCols = yNames(table);
+      const groupNames: string[] =
+        target === "compare-two-groups"
+          ? (chosenSets(a) ?? dataCols.slice(0, 2))
+          : target === "one-sample-t" || target === "descriptive-statistics"
+            ? [(a.group as string | undefined) ?? dataCols[0]].filter((n): n is string => n !== undefined)
+            : [(a.y as string | undefined) ?? yCols[0]].filter((n): n is string => n !== undefined);
+      const simQuestions = groupNames.flatMap((name): (Question | false)[] => {
+        const column = table.numeric.find((c) => c.name === name);
+        const { mean, sd } = meanSd(column?.values ?? []);
+        const observed = column ? ` (observed ${round6(mean)} ± ${round6(sd)})` : "";
+        return [
+          {
+            id: `mean:${name}`,
+            ask: `Mean to simulate for “${name}”${observed}? Set it to the effect you want to test.`,
+            kind: "number",
+            label: `Mean for “${name}”`,
+            initial: round6(mean),
+          },
+          {
+            id: `sd:${name}`,
+            ask: `SD to simulate for “${name}”${observed}?`,
+            kind: "number",
+            label: `SD for “${name}”`,
+            initial: round6(sd),
+            validate: (v) => (v > 0 ? undefined : "The SD must be greater than 0."),
+          },
+        ];
+      });
+      return [
+        choice(
+          "target",
+          "Which analysis should be repeated? Each repeat draws new Gaussian data for the data sets below and runs the analysis on it.",
+          targets,
+        ),
+        statistics.length > 1 &&
+          choice(
+            "statistic",
+            "Which result should be summarised across the repeats?",
+            statistics.map((s): [string, string] => [s, s]),
+          ),
+        ...(target === "compare-two-groups"
+          ? [
+              ...twoSets(a, table),
+              choice("equalVariance", "Assume the two groups have equal variances?", [
+                ["yes", "Yes — Student's t test"],
+                ["no", "No — Welch's t test"],
+              ]),
+            ]
+          : []),
+        (target === "one-sample-t" || target === "descriptive-statistics") &&
+          dataCols.length > 1 &&
+          choice("group", "Which data set should be repeated?", names(dataCols)),
+        target === "one-sample-t" && {
+          id: "hypotheticalValue",
+          ask: "Which hypothetical value should each repeat be tested against?",
+          kind: "number",
+          label: "Hypothetical value",
+          initial: 0,
+        },
+        (target === "linear-regression" || target === "correlation") &&
+          choice("y", "Which Y data set should be simulated?", names(yCols)),
+        target === "correlation" &&
+          choice("method", "Which correlation coefficient should be repeated?", [
+            ["pearson", "Pearson (parametric)"],
+            ["spearman", "Spearman (non-parametric)"],
+          ]),
+        ...simQuestions,
+        {
+          id: "repeats",
+          ask: "How many times should the analysis be repeated? More repeats give a steadier power estimate; 1,000 is usually enough, 10,000 takes ~15–25 seconds.",
+          kind: "number",
+          label: "Repeats",
+          initial: 1000,
+          min: MONTE_CARLO_REPEATS.min,
+          max: MONTE_CARLO_REPEATS.max,
+          validate: (v) =>
+            !Number.isInteger(v)
+              ? "Repeats must be a whole number."
+              : v < MONTE_CARLO_REPEATS.min || v > MONTE_CARLO_REPEATS.max
+                ? `Repeats must be from ${MONTE_CARLO_REPEATS.min} to ${MONTE_CARLO_REPEATS.max}.`
+                : undefined,
+        },
+        {
+          id: "seed",
+          ask: "Seed for the simulation — the same seed + same settings reproduce the same repeats.",
+          kind: "number",
+          label: "Seed",
+          initial: 42,
+          validate: (v) => (Number.isInteger(v) ? undefined : "The seed must be a whole number."),
+        },
+      ];
+    },
+    finish: (a, table, tableType) => {
+      const isXY = tableType === "xy";
+      const target = (a.target as MonteCarloTarget | undefined) ??
+        (isXY ? "linear-regression" : "compare-two-groups");
+      const statistics = MONTE_CARLO_TARGET_STATISTICS[target];
+      const statistic = (a.statistic as MonteCarloStatistic | undefined) ?? statistics[0];
+      const dataCols = dataNames(table);
+      const yCols = yNames(table);
+      const groupNames: string[] =
+        target === "compare-two-groups"
+          ? (chosenSets(a) ?? dataCols.slice(0, 2))
+          : target === "one-sample-t" || target === "descriptive-statistics"
+            ? [(a.group as string | undefined) ?? dataCols[0]]
+            : [(a.y as string | undefined) ?? yCols[0]];
+      const groupMeans: Record<string, number> = {};
+      const groupSds: Record<string, number> = {};
+      for (const name of groupNames) {
+        if (typeof a[`mean:${name}`] === "number") groupMeans[name] = a[`mean:${name}`] as number;
+        if (typeof a[`sd:${name}`] === "number") groupSds[name] = a[`sd:${name}`] as number;
+      }
+      return {
+        type: "monte-carlo",
+        params: withSets(a, {
+          targetAnalysis: target,
+          summaryStatistic: statistic,
+          repeats: a.repeats as number,
+          seed: a.seed as number,
+          groupMeans,
+          groupSds,
+          ...(target === "compare-two-groups" ? { equalVariance: a.equalVariance !== "no" } : {}),
+          ...(target === "one-sample-t" ? { hypotheticalValue: a.hypotheticalValue as number } : {}),
+          ...(target === "one-sample-t" || target === "descriptive-statistics"
+            ? { sets: groupNames }
+            : {}),
+          ...(target === "linear-regression" || target === "correlation" ? { y: groupNames[0] } : {}),
+          ...(target === "correlation" ? { method: (a.method as "pearson" | "spearman" | undefined) ?? "pearson" } : {}),
+        }),
       };
     },
   },

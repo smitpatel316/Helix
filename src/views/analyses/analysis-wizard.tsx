@@ -6,7 +6,7 @@ import { Button, Checkbox, Field, Input, NumberInput, RadioList } from "../../ui
 import { Dialog } from "../../ui/dialog";
 import { readTable } from "../../lib/dataset";
 import type { AnalysisParams, AnalysisType } from "../../stats/types";
-import type { TableData } from "../../store/types";
+import type { TableData, TableType } from "../../store/types";
 import { useProjectStore } from "../../store/use-project-store";
 import { checkNormality } from "./normality-check";
 import { useAnalysisLauncher } from "./use-analysis-launcher";
@@ -29,6 +29,7 @@ export function AnalysisWizard() {
       title={analysisLabel(selector.testType)}
       wizard={wizard}
       data={data}
+      tableType={nodes[selector.tableId]?.tableType}
       onClose={closeSelector}
       onDone={(type, params) => {
         launch(selector.tableId, type, params);
@@ -50,12 +51,14 @@ function Steps({
   title,
   wizard,
   data,
+  tableType,
   onDone,
   onClose,
 }: {
   title: string;
   wizard: Wizard;
   data: TableData;
+  tableType?: TableType;
   onDone: (type: AnalysisType, params?: AnalysisParams) => void;
   onClose: () => void;
 }) {
@@ -70,7 +73,7 @@ function Steps({
     const input = (selector: string) => field.current?.querySelector<HTMLInputElement>(selector);
     (input("input:checked") ?? input("input"))?.focus();
   }, [step]);
-  const asked = (a: Answers) => wizard.questions(a, table).filter((q): q is Question => q !== false);
+  const asked = (a: Answers) => wizard.questions(a, table, tableType).filter((q): q is Question => q !== false);
   const q = asked(answers)[step];
   const [value, setValue] = React.useState<Answer | null>(() => initialAnswer(q, undefined));
 
@@ -85,7 +88,7 @@ function Steps({
   // pure mapping), so a required package that already failed to install
   // blocks Run before it is pressed — with Retry. A package that merely
   // is not loaded yet does not block: the analysis installs it on first run.
-  const finished = last ? wizard.finish({ ...answers, [q.id]: value ?? undefined }, table) : null;
+  const finished = last ? wizard.finish({ ...answers, [q.id]: value ?? undefined }, table, tableType) : null;
   const gate = finished ? packageGate(finished.type) : { blocked: false, message: null, packages: [] as string[] };
   const retry = async () => {
     setRetrying(true);
@@ -109,7 +112,7 @@ function Steps({
     const a = { ...answers, [q.id]: answer };
     if (asked(a).length > step + 1) go(step + 1, a);
     else {
-      const { type, params } = wizard.finish(a, table);
+      const { type, params } = wizard.finish(a, table, tableType);
       if (packageGate(type).blocked) return; // re-checked: Run was disabled, but status can change
       onDone(type, params);
     }

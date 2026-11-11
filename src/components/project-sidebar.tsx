@@ -191,6 +191,7 @@ export function ProjectSidebar() {
   const tableMenu = (table: OutlineNode) =>
     void popupMenu([
       { text: "New Analysis…", action: () => openSelector({ kind: "new-analysis", tableId: table.id }) },
+      { text: "Simulate data…", action: () => openSelector({ kind: "simulate-data", tableId: table.id }) },
       { text: "New Graph…", action: () => openSelector({ kind: "new-graph", tableId: table.id }) },
       { item: "Separator" },
       { text: "Rename", action: () => setRenaming(table.id) },

@@ -208,6 +208,13 @@ export function useAppMenu(doc: DocumentActions) {
             enabled: hasTable,
             action: run((l, id) => l.store.openSelector({ kind: "new-analysis", tableId: id })),
           },
+          {
+            // Creates data, not a result — so it sits next to New Analysis…,
+            // not inside the picker (see plan 22).
+            text: "Simulate data…",
+            enabled: hasTable,
+            action: run((l, id) => l.store.openSelector({ kind: "simulate-data", tableId: id })),
+          },
           sep,
           ...(tableType
             ? analysisOptionsForTable(tableType, activeTableId ? nodes[activeTableId]?.data : undefined)

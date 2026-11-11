@@ -42,6 +42,7 @@ import { addDeming } from "./deming-overlay";
 import { addObservedFitted } from "./observed-fitted";
 import { addScreePlot } from "./scree-plot";
 import { addPcaBiplot } from "./pca-biplot";
+import { addMonteCarloHistogram } from "./monte-carlo-histogram";
 import { addSignificance, deriveComparisons } from "./significance-overlay";
 import {
   drawnKeys,
@@ -396,6 +397,17 @@ export function GraphView({ node }: { node: ProjectNode }) {
     smoothAnalysis?.analysisParams,
   );
   const smoothResult = smoothOutcome && !("error" in smoothOutcome) ? smoothOutcome : null;
+  // A Monte Carlo histogram draws a sibling Monte Carlo simulation's
+  // statistic distribution — the same cached runAnalysis result (no extra R
+  // call). Without one it draws only its axes, and the Format panel says to
+  // run the analysis first — exactly like the scree plot.
+  const mcAnalysis = options.monteCarloAnalysisId ? nodes[options.monteCarloAnalysisId] : undefined;
+  const mcOutcome = useAnalysis(
+    type === "monte-carlo-histogram" && mcAnalysis?.analysisType === "monte-carlo" ? "monte-carlo" : undefined,
+    data,
+    mcAnalysis?.analysisParams,
+  );
+  const mcResult = mcOutcome && !("error" in mcOutcome) ? mcOutcome : null;
   // A survival curve on a Multiple Variables table plots the Cox analysis's
   // time/status columns, stratified by its binary covariate (or one curve for
   // all subjects); without a Cox analysis it draws nothing — the Format panel
@@ -510,6 +522,11 @@ export function GraphView({ node }: { node: ProjectNode }) {
         if (pcaResult) addScreePlot(fig, pcaResult, paint);
         else addNote(fig, "Run a Principal component analysis on this table to draw the scree plot.", options);
       }
+      if (type === "monte-carlo-histogram") {
+        if (mcResult) addMonteCarloHistogram(fig, mcResult, paint);
+        else
+          addNote(fig, "Run a Monte Carlo simulation on this table to draw the histogram.", options);
+      }
       if (type === "pca-biplot") {
         if (pcaResult) addPcaBiplot(fig, pcaResult, options, paint);
         else addNote(fig, "Run a Principal component analysis on this table to draw the scores biplot.", options);
@@ -567,6 +584,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
     poissonResult,
     poissonParams,
     pcaResult,
+    mcResult,
     seriesNames.length,
     selected,
     glRatio,

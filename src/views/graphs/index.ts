@@ -41,6 +41,7 @@ import { observedFitted, OBSERVED_FITTED_SERIES } from "./observed-fitted";
 import { screePlot, SCREE_SERIES } from "./scree-plot";
 import { pcaBiplot, PCA_BIPLOT_SERIES } from "./pca-biplot";
 import { histogram } from "./histogram";
+import { monteCarloHistogram, MONTE_CARLO_HISTOGRAM_SERIES } from "./monte-carlo-histogram";
 
 /** A Plotly figure (untyped traces/layout — built as plain objects per module). */
 export interface GraphFigure {
@@ -106,6 +107,7 @@ export const GRAPHS: Record<GraphType, GraphModule> = {
   "scree-plot": screePlot,
   "pca-biplot": pcaBiplot,
   histogram,
+  "monte-carlo-histogram": monteCarloHistogram,
 };
 
 /** The two variables a scatter of a Multiple Variables table plots, X then Y: the ones
@@ -151,6 +153,7 @@ export function plotColumns(
 export function graphSeries(type: GraphType, data: TableData, tableType: TableType, options: GraphOptions): string[] {
   const { family } = GRAPHS[type];
   if (type === "observed-fitted") return [OBSERVED_FITTED_SERIES];
+  if (type === "monte-carlo-histogram") return [MONTE_CARLO_HISTOGRAM_SERIES];
   // The PCA graphs draw one series each (the scree bars, the score points),
   // not the table's variables — the Series section styles that series.
   if (type === "scree-plot") return [SCREE_SERIES];
@@ -192,6 +195,7 @@ export const GRAPH_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<GraphType>
     "donut",
     "bland-altman",
     "roc-curve",
+    "monte-carlo-histogram",
   ]),
   xy: optionsFor([
     "xy-scatter",
@@ -205,6 +209,7 @@ export const GRAPH_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<GraphType>
     "volcano",
     "bland-altman",
     "roc-curve",
+    "monte-carlo-histogram",
   ]),
   grouped: optionsFor([
     "grouped-scatter",

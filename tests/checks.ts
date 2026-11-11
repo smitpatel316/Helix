@@ -93,7 +93,10 @@ import { titleCase } from "../src/lib/format";
 import { loadRecents } from "../src/store/recents";
 import { largestAt, withDpi } from "../src/lib/image-dpi";
 import { crc32 } from "node:zlib";
-import type { AnalysisOutcome, AnalysisParams } from "../src/stats/types";
+import type { AnalysisOutcome, AnalysisParams, AnalysisResult, MonteCarloParams, SimulationSpec } from "../src/stats/types";
+import { simulationRCode, validateSimulationSpec } from "../src/stats/simulation/simulate";
+import { monteCarloRCode, percentile } from "../src/stats/simulation/monte-carlo";
+import { addMonteCarloHistogram } from "../src/views/graphs/monte-carlo-histogram";
 
 const checks: [string, () => void | Promise<void>][] = [];
 const check = (name: string, fn: () => void | Promise<void>) => checks.push([name, fn]);
@@ -3128,6 +3131,340 @@ check("Sturges, pretty breaks and nice widths match R's rules", () => {
   strictEqual(niceWidthUp(2), 2);
   strictEqual(niceWidthUp(2.01), 5);
   strictEqual(niceWidthUp(0.06), 0.1);
+});
+
+// ── Simulate data + Monte Carlo (plan 22) ───────────────────────────────
+
+check("simulationRCode draws each distribution from the right R call", () => {
+  const code = (spec: SimulationSpec) => simulationRCode(spec);
+  strictEqual(code({ distribution: "gaussian", mean: 0, sd: 1, n: 20, datasets: 1, seed: 42, tableType: "column" }), "set.seed(42);rnorm(20,0,1)");
+  strictEqual(code({ distribution: "uniform", min: 0, max: 1, n: 20, datasets: 1, seed: 42, tableType: "column" }), "set.seed(42);runif(20,0,1)");
+  strictEqual(code({ distribution: "exponential", rate: 2, n: 20, datasets: 1, seed: 42, tableType: "column" }), "set.seed(42);rexp(20,2)");
+  strictEqual(
+    code({ distribution: "binomial", size: 10, prob: 0.5, n: 20, datasets: 1, seed: 42, tableType: "column" }),
+    "set.seed(42);rbinom(20,10,0.5)",
+  );
+  strictEqual(code({ distribution: "poisson", lambda: 3, n: 20, datasets: 1, seed: 42, tableType: "column" }), "set.seed(42);rpois(20,3)");
+  strictEqual(
+    code({ distribution: "lognormal", meanlog: 0, sdlog: 0.5, n: 20, datasets: 1, seed: 42, tableType: "column" }),
+    "set.seed(42);rlnorm(20,0,0.5)",
+  );
+  // Two datasets are one draw of n × datasets values, in dataset order.
+  strictEqual(code({ distribution: "gaussian", mean: 0, sd: 1, n: 3, datasets: 2, seed: 7, tableType: "column" }), "set.seed(7);rnorm(6,0,1)");
+});
+
+check("validateSimulationSpec rejects a bad spec, and accepts a good one", () => {
+  const good: SimulationSpec = { distribution: "gaussian", mean: 0, sd: 1, n: 20, datasets: 1, seed: 42, tableType: "column" };
+  strictEqual(validateSimulationSpec(good), undefined);
+  for (const [spec, message] of [
+    [{ ...good, sd: 0 }, "greater than 0"],
+    [{ ...good, sd: -1 }, "greater than 0"],
+    [{ ...good, n: 1 }, "at least 2"],
+    [{ ...good, n: 2.5 }, "whole number"],
+    [{ ...good, datasets: 0 }, "at least 1"],
+    [{ ...good, seed: 1.5 }, "whole number"],
+    [{ ...good, distribution: "uniform", min: 2, max: 1 }, "less than the maximum"],
+    [{ ...good, distribution: "binomial", size: 0, prob: 0.5 }, "number of trials"],
+    [{ ...good, distribution: "binomial", size: 10, prob: 1.5 }, "between 0 and 1"],
+    [{ ...good, distribution: "poisson", lambda: 0 }, "greater than 0"],
+    [{ ...good, distribution: "lognormal", meanlog: 0, sdlog: 0 }, "greater than 0"],
+    [{ ...good, n: 200_000, datasets: 1 }, "at most 100000"],
+  ] as const) {
+    const error = validateSimulationSpec(spec as SimulationSpec);
+    if (!error || !error.includes(message))
+      throw new Error(`expected an error mentioning "${message}", got ${JSON.stringify(error)}`);
+  }
+});
+
+check("monteCarloRCode repeats the target inside R and returns the observed value first", () => {
+  const twoGroups = {
+    target: "compare-two-groups" as const,
+    statistic: "P value" as const,
+    repeats: 1000,
+    seed: 42,
+    groups: [
+      { n: 3, mean: 0, sd: 1, observed: [1, 2, 3] },
+      { n: 3, mean: 0.5, sd: 1, observed: [4, 5, 6] },
+    ],
+    equalVariance: true,
+  };
+  strictEqual(
+    monteCarloRCode(twoGroups),
+    "set.seed(42);v<-replicate(1000,t.test(rnorm(3,0,1),rnorm(3,0.5,1),var.equal=TRUE)$p.value);o<-t.test(c(1,2,3),c(4,5,6),var.equal=TRUE)$p.value;c(o,v)",
+  );
+  strictEqual(
+    monteCarloRCode({ ...twoGroups, statistic: "Mean difference" }),
+    "set.seed(42);v<-replicate(1000,mean(rnorm(3,0,1))-mean(rnorm(3,0.5,1)));o<-mean(c(1,2,3))-mean(c(4,5,6));c(o,v)",
+  );
+  strictEqual(
+    monteCarloRCode({
+      target: "one-sample-t",
+      statistic: "P value",
+      repeats: 1000,
+      seed: 42,
+      groups: [{ n: 3, mean: 5, sd: 2, observed: [1, 2, 3] }],
+      hypotheticalValue: 0,
+    }),
+    "set.seed(42);v<-replicate(1000,t.test(rnorm(3,5,2),mu=0)$p.value);o<-t.test(c(1,2,3),mu=0)$p.value;c(o,v)",
+  );
+  strictEqual(
+    monteCarloRCode({
+      target: "descriptive-statistics",
+      statistic: "Mean",
+      repeats: 1000,
+      seed: 42,
+      groups: [{ n: 3, mean: 5, sd: 2, observed: [1, 2, 3] }],
+    }),
+    "set.seed(42);v<-replicate(1000,mean(rnorm(3,5,2)));o<-mean(c(1,2,3));c(o,v)",
+  );
+  strictEqual(
+    monteCarloRCode({
+      target: "linear-regression",
+      statistic: "Slope",
+      repeats: 100,
+      seed: 42,
+      groups: [{ n: 4, mean: 5, sd: 2, observed: [2, 4, 6, 8] }],
+      x: [1, 2, 3, 4],
+    }),
+    "set.seed(42);x<-c(1,2,3,4);v<-replicate(100,coef(lm(rnorm(4,5,2)~x))[2]);o<-coef(lm(c(2,4,6,8)~x))[2];c(o,v)",
+  );
+  strictEqual(
+    monteCarloRCode({
+      target: "correlation",
+      statistic: "r",
+      repeats: 100,
+      seed: 42,
+      groups: [{ n: 4, mean: 5, sd: 2, observed: [2, 4, 6, 8] }],
+      x: [1, 2, 3, 4],
+      method: "spearman",
+    }),
+    'set.seed(42);x<-c(1,2,3,4);v<-replicate(100,cor(x,rnorm(4,5,2),method="spearman"));o<-cor(x,c(2,4,6,8),method="spearman");c(o,v)',
+  );
+});
+
+check("percentile interpolates R-style (type 7)", () => {
+  strictEqual(percentile([0, 10], 0.5), 5);
+  strictEqual(percentile([0, 10], 0.025), 0.25);
+  strictEqual(percentile([0, 10], 0.975), 9.75);
+  strictEqual(percentile([5], 0.5), 5);
+  strictEqual(percentile([1, 2, 3], 0.5), 2); // input must already be sorted
+});
+
+check("the Monte Carlo wizard asks for the target, the simulation and the repeats", () => {
+  const table = readTable({
+    columns: ["Title", "A", "B"],
+    rows: [
+      ["", "1", "4"],
+      ["", "2", "5"],
+      ["", "3", "6"],
+    ],
+  });
+  const wizard = WIZARDS["monte-carlo"]!;
+  deepStrictEqual(
+    wizard.questions({}, table, "column").filter(Boolean).map((q) => (q as Question).id),
+    ["target", "statistic", "equalVariance", "mean:A", "sd:A", "mean:B", "sd:B", "repeats", "seed"],
+  );
+  deepStrictEqual(
+    wizard
+      .questions({ target: "compare-two-groups" }, table, "column")
+      .filter(Boolean)
+      .map((q) => (q as Question).id),
+    ["target", "statistic", "equalVariance", "mean:A", "sd:A", "mean:B", "sd:B", "repeats", "seed"],
+  );
+  deepStrictEqual(
+    wizard
+      .questions({ target: "descriptive-statistics" }, table, "column")
+      .filter(Boolean)
+      .map((q) => (q as Question).id),
+    ["target", "group", "mean:A", "sd:A", "repeats", "seed"],
+  );
+  deepStrictEqual(
+    wizard.finish(
+      {
+        target: "compare-two-groups",
+        statistic: "P value",
+        equalVariance: "yes",
+        "mean:A": 0,
+        "sd:A": 1,
+        "mean:B": 0.5,
+        "sd:B": 1,
+        repeats: 1000,
+        seed: 42,
+      },
+      table,
+      "column",
+    ),
+    {
+      type: "monte-carlo",
+      params: {
+        targetAnalysis: "compare-two-groups",
+        summaryStatistic: "P value",
+        repeats: 1000,
+        seed: 42,
+        groupMeans: { A: 0, B: 0.5 },
+        groupSds: { A: 1, B: 1 },
+        equalVariance: true,
+      },
+    },
+  );
+  // An XY table offers only the XY targets, and the finish carries the Y name.
+  const xy = readTable({
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "1", "2"],
+      ["", "2", "4"],
+      ["", "3", "6"],
+      ["", "4", "8"],
+    ],
+  });
+  deepStrictEqual(
+    wizard.questions({}, xy, "xy").filter(Boolean).map((q) => (q as Question).id),
+    ["target", "statistic", "y", "mean:Y1", "sd:Y1", "repeats", "seed"],
+  );
+  deepStrictEqual(
+    wizard.finish(
+      { target: "linear-regression", statistic: "Slope", y: "Y1", "mean:Y1": 5, "sd:Y1": 2, repeats: 100, seed: 7 },
+      xy,
+      "xy",
+    ),
+    {
+      type: "monte-carlo",
+      params: {
+        targetAnalysis: "linear-regression",
+        summaryStatistic: "Slope",
+        repeats: 100,
+        seed: 7,
+        groupMeans: { Y1: 5 },
+        groupSds: { Y1: 2 },
+        y: "Y1",
+      },
+    },
+  );
+});
+
+check("Monte Carlo is offered on column and XY tables only, with its histogram graph", () => {
+  const two: TableData = {
+    columns: ["Title", "A", "B"],
+    rows: [["", "1", "4"]],
+  };
+  ok(analysisOptionsForTable("column", two).some((o) => o.value === "monte-carlo"));
+  ok(analysisOptionsForTable("xy", two).some((o) => o.value === "monte-carlo"));
+  ok(!analysisOptionsForTable("grouped", two).some((o) => o.value === "monte-carlo"));
+  for (const tableType of ["column", "xy"] as const)
+    ok(GRAPH_OPTIONS_BY_TABLE[tableType].some((o) => o.value === "monte-carlo-histogram"));
+  ok(!GRAPH_OPTIONS_BY_TABLE.grouped.some((o) => o.value === "monte-carlo-histogram"));
+});
+
+check("a Monte Carlo analysis, its histogram and a simulated table survive a file round-trip", () => {
+  const mcPayload: ProjectFilePayload = {
+    nodes: {
+      t1: {
+        id: "t1",
+        type: "table",
+        name: "Table 1",
+        parentId: null,
+        tableType: "column",
+        data: {
+          columns: ["Title", "A", "B"],
+          rows: [["r1", "1", "2"]],
+          notes: "Simulated data: Gaussian (mean 0, SD 1), n = 20 × 1 dataset, seed 42. Same seed + same settings reproduce this table exactly.",
+        },
+      },
+      a1: {
+        id: "a1",
+        type: "analysis",
+        name: "Monte Carlo simulation",
+        parentId: "t1",
+        analysisType: "monte-carlo",
+        analysisParams: {
+          targetAnalysis: "compare-two-groups",
+          summaryStatistic: "P value",
+          repeats: 1000,
+          seed: 42,
+          groupMeans: { A: 0, B: 0.5 },
+          groupSds: { A: 1, B: 1 },
+          equalVariance: true,
+        },
+      },
+      g1: {
+        id: "g1",
+        type: "graph",
+        name: "Monte Carlo histogram",
+        parentId: "t1",
+        graphType: "monte-carlo-histogram",
+        graphOptions: { ...newGraphOptions("monte-carlo-histogram"), monteCarloAnalysisId: "a1" },
+      },
+    },
+    rootOrder: ["t1"],
+    childOrder: { t1: ["a1", "g1"] },
+    activeNodeId: "t1",
+  };
+  const { project, issues } = read(serializeProjectFile(mcPayload));
+  deepStrictEqual(project, mcPayload);
+  deepStrictEqual(issues, []);
+});
+
+check("renaming a column renames its Monte Carlo group means and SDs", () => {
+  const params: MonteCarloParams = {
+    targetAnalysis: "compare-two-groups",
+    summaryStatistic: "P value",
+    repeats: 1000,
+    seed: 42,
+    groupMeans: { A: 0, B: 0.5 },
+    groupSds: { A: 1, B: 1 },
+    equalVariance: true,
+  };
+  const mc = { ...analysis, analysisType: "monte-carlo" as const, analysisParams: params };
+  deepStrictEqual(
+    followTable(mc, { renamed: { A: "Control", B: "Treated" } }, []).analysisParams,
+    {
+      ...params,
+      groupMeans: { Control: 0, Treated: 0.5 },
+      groupSds: { Control: 1, Treated: 1 },
+    },
+  );
+  // A key the rename doesn't mention is left alone.
+  deepStrictEqual(
+    (followTable(mc, { renamed: { A: "Control" } }, []).analysisParams as typeof params).groupMeans,
+    { Control: 0, B: 0.5 },
+  );
+});
+
+check("the Monte Carlo histogram draws the bins, shades P < 0.05 and marks the observed value", () => {
+  const fake = (statistic: string, observed: number): AnalysisResult => ({
+    testType: "monte-carlo",
+    stats: [],
+    groups: [],
+    notes: "",
+    monteCarlo: {
+      repeats: 100,
+      statistic,
+      mean: 0.5,
+      sd: 0.2,
+      ciLow: 0.1,
+      ciHigh: 0.9,
+      proportionSignificant: 0.8,
+      observed,
+      bins: { edges: [0, 0.25, 0.5, 0.75, 1], counts: [10, 30, 40, 20] },
+    },
+  });
+  const options = newGraphOptions("monte-carlo-histogram");
+  const paint = paintOf(options, 1);
+  const fig = GRAPHS["monte-carlo-histogram"].build([], options, paint);
+  addMonteCarloHistogram(fig, fake("P value", 0.03), paint);
+  const [bars] = fig.data as { type: string; y: number[] }[];
+  deepStrictEqual([bars.type, bars.y], ["bar", [10, 30, 40, 20]]);
+  const shapes = fig.layout.shapes as { type: string }[];
+  deepStrictEqual(
+    shapes.map((s) => s.type),
+    ["rect", "line"],
+  );
+  const annotations = fig.layout.annotations as { text: string }[];
+  ok(annotations.some((a) => a.text === "Observed 0.03"));
+  // A non-P statistic has no shaded region, only the observed line.
+  const fig2 = GRAPHS["monte-carlo-histogram"].build([], options, paint);
+  addMonteCarloHistogram(fig2, fake("Slope", 0.03), paint);
+  deepStrictEqual((fig2.layout.shapes as { type: string }[]).map((s) => s.type), ["line"]);
 });
 
 // ── Run ──────────────────────────────────────────────────────────────────

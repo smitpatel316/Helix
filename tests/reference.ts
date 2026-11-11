@@ -27,6 +27,8 @@ import { NONLINEAR_MODELS, type NonlinearModel } from "../src/stats/types";
 import { positiveXOnly } from "../src/stats/xy/nonlinear-regression";
 import { evalNamedVector, setPackageRepo, startR } from "../src/stats/webr";
 import { prettyBreaks } from "../src/stats/column/frequency-distribution";
+import { simulateTableData } from "../src/stats/simulation/simulate";
+import { addMonteCarloHistogram } from "../src/views/graphs/monte-carlo-histogram";
 import { sampleProject } from "./sample-project";
 
 // ── R package repo (plan 00) ────────────────────────────────────────────
@@ -95,6 +97,44 @@ const xy = table(
     ["", "", "15", "15", "15"],
     ["", "8", "17.3", "18.1", "-0.8"],
   ],
+);
+
+/** The literal simulated table (plan 22): Gaussian(100, SD 15), n = 20,
+ *  seed 42 — the values `simulateTableData` must reproduce exactly, and the
+ *  descriptives case below pins their mean (≈ 100) and SD (≈ 15). */
+const simulated = table(
+  ["Title", "Simulated 1"],
+  [
+    "120.5643767",
+    "91.52952743",
+    "105.4469262",
+    "109.4929391",
+    "106.0640248",
+    "98.40813226",
+    "122.67283",
+    "98.58011442",
+    "130.2763557",
+    "99.05928851",
+    "119.5730448",
+    "134.2996809",
+    "79.16708948",
+    "95.8181685",
+    "98.00017995",
+    "109.539256",
+    "95.73620618",
+    "60.15316869",
+    "63.39299607",
+    "119.8017002",
+  ].map((v) => ["", v]),
+);
+
+/** The Monte Carlo power fixture (plan 22): two groups of 64, the same
+ *  pattern in both, B shifted +0.5 — so the simulated effect is d = 0.5 and
+ *  the analytic power (power.t.test, n = 64, delta = 0.5, sd = 1) is 0.8015. */
+const mcPattern = ["-1.5", "-1", "-0.5", "0", "0.5", "1", "1.5", "0"];
+const mcPower = table(
+  ["Title", "A", "B"],
+  Array.from({ length: 64 }, (_, i) => ["", mcPattern[i % 8], String(Number(mcPattern[i % 8]) + 0.5)]),
 );
 
 /** log10 concentrations and a noisy sigmoid. */
@@ -2303,6 +2343,55 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
     { paired: false, gaussian: true, pooledSd: false, correction: "holm", sets: ["C", "A"] },
   ],
   ["multiple", multiple, "correlation-matrix", { method: "pearson", sets: ["Age", "Weight"] }],
+  // Simulate data + Monte Carlo (plan 22): the literal simulated table's
+  // descriptives; the power case (5,000 repeats — the plan's 10,000-repeat
+  // case at ~29 ms per-repeat round-trip would take ~5 minutes, so the
+  // in-R loop runs it in ~21 s; the power is checked against the analytic
+  // 0.8015 in disagreements() below); a small one-sample-t case; and a
+  // 200-repeat linear-regression slope case on the XY table.
+  ["simulated", simulated, "descriptive-statistics"],
+  [
+    "mcPower",
+    mcPower,
+    "monte-carlo",
+    {
+      targetAnalysis: "compare-two-groups",
+      summaryStatistic: "P value",
+      repeats: 5000,
+      seed: 42,
+      groupMeans: { A: 0, B: 0.5 },
+      groupSds: { A: 1, B: 1 },
+      equalVariance: true,
+    },
+  ],
+  [
+    "mcPower",
+    mcPower,
+    "monte-carlo",
+    {
+      targetAnalysis: "one-sample-t",
+      summaryStatistic: "P value",
+      repeats: 200,
+      seed: 42,
+      groupMeans: { A: 0 },
+      groupSds: { A: 1 },
+      hypotheticalValue: 0,
+    },
+  ],
+  [
+    "xy",
+    xy,
+    "monte-carlo",
+    {
+      targetAnalysis: "linear-regression",
+      summaryStatistic: "Slope",
+      repeats: 200,
+      seed: 42,
+      groupMeans: { Y1: 5 },
+      groupSds: { Y1: 2 },
+      y: "Y1",
+    },
+  ],
 ];
 
 const volcano: Partial<GraphOptions> = { volcanoX: "Log2 FC", volcanoY: "P", volcanoLabel: "Gene" };
@@ -5773,6 +5862,88 @@ async function disagreements(): Promise<string[]> {
     })
   )
     out.push(`Dose-response — Special wizard finish (operational): ${JSON.stringify(specialOperFinished)}`);
+  // ── Simulate data + Monte Carlo (plan 22) ─────────────────────────────
+  // Determinism: the same seed + spec reproduces the same table, and it is
+  // the literal fixture above.
+  const simSpec = {
+    distribution: "gaussian" as const,
+    mean: 100,
+    sd: 15,
+    n: 20,
+    datasets: 1,
+    seed: 42,
+    tableType: "column" as const,
+  };
+  const simA = await simulateTableData(simSpec);
+  const simB = await simulateTableData(simSpec);
+  if (JSON.stringify(simA) !== JSON.stringify(simB))
+    out.push("Simulate data is not deterministic: the same seed + spec gave different tables.");
+  if (JSON.stringify(simA.rows.map((r) => r[1])) !== JSON.stringify(simulated.rows.map((r) => r[1])))
+    out.push(`Simulated Gaussian(100,15) values differ from the literal fixture: ${JSON.stringify(simA.rows.map((r) => r[1]))}`);
+  // Distribution sanity at n = 10,000, seed 42: Gaussian(10,2) mean 10 ± 0.1,
+  // SD 2 ± 0.1; Uniform(0,1) mean 0.5 ± 0.02.
+  const gauss = await simulateTableData({ ...simSpec, mean: 10, sd: 2, n: 10_000 });
+  const gVals = gauss.rows.map((r) => Number(r[1]));
+  const gMean = gVals.reduce((s, v) => s + v, 0) / gVals.length;
+  const gSd = Math.sqrt(gVals.reduce((s, v) => s + (v - gMean) ** 2, 0) / (gVals.length - 1));
+  if (Math.abs(gMean - 10) > 0.1 || Math.abs(gSd - 2) > 0.1)
+    out.push(`Gaussian(10,2) sanity: mean ${gMean}, SD ${gSd}`);
+  const uni = await simulateTableData({
+    distribution: "uniform" as const,
+    min: 0,
+    max: 1,
+    n: 10_000,
+    datasets: 1,
+    seed: 42,
+    tableType: "column" as const,
+  });
+  const uMean = uni.rows.reduce((s, r) => s + Number(r[1]), 0) / uni.rows.length;
+  if (Math.abs(uMean - 0.5) > 0.02) out.push(`Uniform(0,1) sanity: mean ${uMean}`);
+  // Power: the 5,000-repeat case against the analytic 0.8015 (± 0.02).
+  const mcPowerRun = await runAnalysis("monte-carlo", mcPower, {
+    targetAnalysis: "compare-two-groups",
+    summaryStatistic: "P value",
+    repeats: 5000,
+    seed: 42,
+    groupMeans: { A: 0, B: 0.5 },
+    groupSds: { A: 1, B: 1 },
+    equalVariance: true,
+  });
+  const powerPct = demStat(mcPowerRun, "Power (% P < 0.05)");
+  if (powerPct == null || Math.abs(powerPct / 100 - 0.8015) > 0.02)
+    out.push(`Monte Carlo power: ${powerPct}% vs analytic 80.15%`);
+  // The observed P from a Monte Carlo run is the same t test on the same data.
+  const mcObs = await runAnalysis("monte-carlo", column, {
+    targetAnalysis: "compare-two-groups",
+    summaryStatistic: "P value",
+    repeats: 100,
+    seed: 42,
+    equalVariance: false,
+  });
+  const obsP = demStat(mcObs, "Observed (real data)");
+  const ttest = await runAnalysis("compare-two-groups", column, {
+    paired: false,
+    gaussian: true,
+    equalVariance: false,
+    ratio: false,
+    tails: "two-sided",
+  });
+  const tP = demStat(ttest, "P value");
+  if (obsP == null || tP == null || Math.abs(obsP - tP) > 1e-9)
+    out.push(`Monte Carlo observed P ${obsP} != compare-two-groups P ${tP}`);
+  // The histogram overlay draws every repeat and marks the observed value.
+  if (!("error" in mcObs) && mcObs.monteCarlo) {
+    const mcOpts = newGraphOptions("monte-carlo-histogram");
+    const mcFig = GRAPHS["monte-carlo-histogram"].build([], mcOpts, paintOf(mcOpts, 1));
+    addMonteCarloHistogram(mcFig, mcObs, paintOf(mcOpts, 1));
+    const bars = (mcFig.data as { y?: number[] }[])[0]?.y ?? [];
+    const total = bars.reduce((s, v) => s + v, 0);
+    const shapes = (mcFig.layout.shapes as { type: string }[]) ?? [];
+    if (total !== 100 || !shapes.some((s) => s.type === "rect") || !shapes.some((s) => s.type === "line"))
+      out.push(
+        `Monte Carlo histogram: ${total} values in bins, shapes ${JSON.stringify(shapes.map((s) => s.type))}`,
+      );
+  }
   return out;
 }
 

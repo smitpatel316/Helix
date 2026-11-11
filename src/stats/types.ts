@@ -41,7 +41,8 @@ export type AnalysisType =
   | "mixed-effects"
   | "bland-altman"
   | "roc-curve"
-  | "frequency-distribution";
+  | "frequency-distribution"
+  | "monte-carlo";
 
 /** What the New Analysis picker offers: a test, or "Compare more than two groups",
  *  which its wizard resolves to one-way ANOVA, Kruskal-Wallis, repeated-measures ANOVA
@@ -523,6 +524,128 @@ export interface RocParams {
   positive?: string | number;
 }
 
+/** The distributions "Simulate data" can draw from (plan 22, sub-task a):
+ *  all base R `stats` — no package needed. */
+export type SimulationDistribution =
+  | "gaussian"
+  | "lognormal"
+  | "uniform"
+  | "binomial"
+  | "poisson"
+  | "exponential";
+export const SIMULATION_DISTRIBUTIONS: SimulationDistribution[] = [
+  "gaussian",
+  "lognormal",
+  "uniform",
+  "binomial",
+  "poisson",
+  "exponential",
+];
+/** A distribution's plain-language name, as the dialog and the created table show it. */
+export const SIMULATION_DISTRIBUTION_LABELS: Record<SimulationDistribution, string> = {
+  gaussian: "Gaussian (normal)",
+  lognormal: "Lognormal",
+  uniform: "Uniform",
+  binomial: "Binomial",
+  poisson: "Poisson",
+  exponential: "Exponential",
+};
+
+/** What "Simulate data" draws (plan 22, sub-task a) — shared with the Monte
+ *  Carlo runner (sub-task b), which simulates from the same distributions.
+ *  Only the fields its distribution needs are read; the rest are ignored.
+ *  `n` is values per dataset/column, `datasets` how many columns/groups to
+ *  simulate, `seed` the R seed (same seed + same spec = the identical table).
+ *  `tableType` is the new table's shape: Column (one column per dataset),
+ *  Grouped (one group per dataset, one replicate each), or XY (X evenly
+ *  spaced 1..n, Y simulated — model-based simulation around a fitted curve
+ *  is a follow-on, see simulate.ts). */
+export interface SimulationSpec {
+  distribution: SimulationDistribution;
+  /** Gaussian mean. */
+  mean?: number;
+  /** Gaussian SD. */
+  sd?: number;
+  /** Lognormal meanlog — the mean of the LOGGED values (not the arithmetic mean). */
+  meanlog?: number;
+  /** Lognormal sdlog — the SD of the LOGGED values. */
+  sdlog?: number;
+  /** Uniform minimum. */
+  min?: number;
+  /** Uniform maximum. */
+  max?: number;
+  /** Binomial number of trials. */
+  size?: number;
+  /** Binomial probability of success, 0–1. */
+  prob?: number;
+  /** Poisson mean (lambda). */
+  lambda?: number;
+  /** Exponential rate (mean = 1/rate). */
+  rate?: number;
+  n: number;
+  datasets: number;
+  seed: number;
+  tableType: "column" | "grouped" | "xy";
+}
+
+/** Repeats: at least 10 (a distribution needs repeats to summarise), at most
+ *  10,000 (the wizard's max; a 10,000-repeat t-test power run is ~15–25 s). */
+export const MONTE_CARLO_REPEATS = { min: 10, max: 10_000 };
+
+/** The analyses a Monte Carlo run can repeat in v1 (plan 22, sub-task b):
+ *  the ones whose per-repeat statistic has a one-call in-R `replicate()`
+ *  form (see simulation/monte-carlo.ts). Grouped-table targets (two-way
+ *  ANOVA…) are a follow-on — the wizard offers only these. */
+export const MONTE_CARLO_TARGETS = [
+  "compare-two-groups",
+  "one-sample-t",
+  "descriptive-statistics",
+  "linear-regression",
+  "correlation",
+] as const;
+export type MonteCarloTarget = (typeof MONTE_CARLO_TARGETS)[number];
+
+/** The statistics a Monte Carlo run can summarise, per target: "P value" and
+ *  "Mean difference" (compare-two-groups), "P value" and "Mean"
+ *  (one-sample-t), "Mean" (descriptive-statistics), "Slope" and
+ *  "Y-intercept" (linear-regression), "r" (correlation). */
+export const MONTE_CARLO_STATISTICS = ["P value", "Mean difference", "Mean", "Slope", "Y-intercept", "r"] as const;
+export type MonteCarloStatistic = (typeof MONTE_CARLO_STATISTICS)[number];
+/** Which statistic each target offers, in wizard order. */
+export const MONTE_CARLO_TARGET_STATISTICS: Record<MonteCarloTarget, MonteCarloStatistic[]> = {
+  "compare-two-groups": ["P value", "Mean difference"],
+  "one-sample-t": ["P value", "Mean"],
+  "descriptive-statistics": ["Mean"],
+  "linear-regression": ["Slope", "Y-intercept"],
+  correlation: ["r"],
+};
+
+/** Params for "monte-carlo" (plan 22, sub-task b): repeat `targetAnalysis`
+ *  `repeats` times on simulated data and summarise `summaryStatistic`.
+ *  The simulation is Gaussian per data column, with each column's mean/SD
+ *  taken from `groupMeans`/`groupSds` when given, else from the column's
+ *  observed mean/SD (a parametric bootstrap). The target's own options are
+ *  flattened here (not nested as `targetParams`) so the .hlx reader already
+ *  knows every key: `equalVariance` (compare-two-groups: Student vs Welch),
+ *  `hypotheticalValue` (one-sample-t), `y` (descriptive-statistics /
+ *  linear-regression: which column), `method` (correlation: Pearson /
+ *  Spearman). Tails are two-sided in v1. */
+export interface MonteCarloParams {
+  targetAnalysis: MonteCarloTarget;
+  summaryStatistic?: MonteCarloStatistic;
+  repeats: number;
+  seed: number;
+  /** Per-column simulated means, keyed by column name. */
+  groupMeans?: Record<string, number>;
+  /** Per-column simulated SDs, keyed by column name. */
+  groupSds?: Record<string, number>;
+  equalVariance?: boolean;
+  hypotheticalValue?: number;
+  /** Which column (descriptive-statistics / linear-regression). */
+  y?: string;
+  method?: (typeof CORRELATION_METHODS)[number];
+}
+
 /** One ROC point: at this threshold (a score value), predict positive iff
  *  score ≥ threshold. The (0,0) and (1,1) endpoints have no score threshold —
  *  the graph adds them when it draws the curve. */
@@ -576,6 +699,7 @@ export type AnalysisParams = DataSetsParam &
     | CoxParams
     | FrequencyDistributionParams
     | RocParams
+    | MonteCarloParams
   );
 
 /** Params for "survival" (Survival table): the test comparing the curves — log-rank,
@@ -787,6 +911,27 @@ export interface FittedPoint {
   observed?: number;
 }
 
+/** A Monte Carlo run's summary ("monte-carlo", plan 22): the empirical
+ *  distribution of the chosen statistic across `repeats` simulated repeats.
+ *  `proportionSignificant` is the share of repeats with P < 0.05 — the
+ *  estimated power — and is only set when the statistic is a P value.
+ *  `observed` is the same statistic on the real (source) data, for the
+ *  histogram's reference line. `bins` is the distribution binned for the
+ *  histogram graph (Sturges + R pretty() breaks, via computeFrequencyBins):
+ *  the raw repeat values are NOT stored — they are reproducible from the
+ *  seed + params, and 10,000 of them would bloat the result (and the
+ *  reference file). */
+export interface MonteCarloResult {
+  repeats: number;
+  statistic: string;
+  mean: number | null;
+  sd: number | null;
+  ciLow: number | null;
+  ciHigh: number | null;
+  proportionSignificant?: number | null;
+  observed: number | null;
+  bins: { edges: number[]; counts: number[] };
+}
 /** Unified result shape returned by every analysis module. */
 export interface AnalysisResult {
   testType: AnalysisType;
@@ -845,6 +990,11 @@ export interface AnalysisResult {
    *  smoother on a dense grid (100 points across the X range) for drawing. */
   fitted?: FittedPoint[];
   curve?: { x: number; y: number }[];
+  /** Optional Monte Carlo summary ("monte-carlo"): the statistic's
+   *  distribution across repeats, its 95% percentile interval, the
+   *  estimated power (when the statistic is a P value), the observed
+   *  value on the real data, and the bins the histogram graph draws. */
+  monteCarlo?: MonteCarloResult;
 }
 
 /** A test returns either a result or a user-facing error message. */
