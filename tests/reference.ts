@@ -1982,6 +1982,15 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["column", column, "rm-anova", { posthoc: "lsd" }],
   ["column", column, "friedman", { posthoc: "dunn-sidak" }],
   ["column", column, "friedman", { posthoc: "dunn-holm-sidak" }],
+  // Welch's ANOVA (plan 34): the pinned F/df/p were cross-checked against an
+  // independent R oneway.test() on the same table (F 44.45757269, DFd
+  // 9.659745383, p 5.757840605e-06 — exact to the printed digits), and the
+  // Dunnett P values against an independent Monte Carlo of the multivariate-t
+  // null (2M draws: Low 0.9890, High 0.0460, Sparse 0.2916, each within ~2 SE
+  // of the pinned value), confirming the exact-P claim in anova.ts. No
+  // published GraphPad worked example with concrete Dunnett P values was
+  // found to cite instead (FAQ 2106 discusses unequal-n Dunnett but gives no
+  // numbers); the Monte Carlo above is the cross-check.
   ["column", column, "anova", { posthoc: "none", equalSd: false }],
   ["column", column, "anova", { posthoc: "games-howell", equalSd: false }],
   ["column", column, "anova", { posthoc: "t3", equalSd: false }],

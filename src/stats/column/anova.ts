@@ -91,7 +91,12 @@ export const anovaSpec: ColumnTestSpec<AnovaParams> = {
     if (p.posthoc === "dunnett" && !groups.some((g) => g.name === p.control)) {
       return `The control group${p.control ? ` “${p.control}”` : ""} holds no data. Create this analysis again to choose another.`;
     }
-    if (!welch(p) && p.posthoc !== "games-howell" && p.posthoc !== "t3") return undefined;
+    // Games-Howell and Dunnett's T3 assume unequal SDs: a saved analysis
+    // forcing them onto the ordinary ANOVA must error, not silently run.
+    if (!welch(p) && (p.posthoc === "games-howell" || p.posthoc === "t3")) {
+      return `${p.posthoc === "games-howell" ? "Games-Howell" : "Dunnett's T3"} assumes unequal SDs (Welch's ANOVA). Create this analysis again to choose another.`;
+    }
+    if (!welch(p)) return undefined;
     for (const g of groups) {
       if (g.values.length < 2)
         return `“${g.name}” holds ${g.values.length} value; this test needs at least 2 in each group.`;
