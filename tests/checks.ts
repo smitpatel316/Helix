@@ -1159,6 +1159,42 @@ check("comparing groups asks equal SDs, then offers the comparisons that fit and
   });
 });
 
+// Welch's ANOVA + unequal-SD post-hocs (plan 34): Games-Howell and
+// Dunnett's T3 assume unequal SDs, so a saved analysis forcing them onto the
+// ordinary ANOVA must error rather than silently run; Welch's ANOVA needs at
+// least 2 values in each group; Dunnett with a missing control errors naming it.
+check("Games-Howell and Dunnett's T3 need Welch's ANOVA, and Welch needs two values a group", async () => {
+  const table: TableData = {
+    columns: ["Title", "A", "B", "C"],
+    rows: [
+      ["", "12.1", "14.3", "18.2"],
+      ["", "11.4", "15.1", "19.9"],
+      ["", "13.2", "13.8", "17.5"],
+      ["", "12.8", "16.2", "21.3"],
+      ["", "10.9", "14.9", "18.8"],
+    ],
+  };
+  for (const posthoc of ["games-howell", "t3"] as const) {
+    for (const params of [{ posthoc }, { posthoc, equalSd: true }] as const) {
+      const out = await runAnalysis("anova", table, params as AnalysisParams);
+      if (!("error" in out) || !out.error.includes(posthoc === "games-howell" ? "Games-Howell" : "Dunnett's T3"))
+        throw new Error(`expected the unequal-SDs error for ${JSON.stringify(params)}, got ${JSON.stringify(out)}`);
+    }
+    const welch = await runAnalysis("anova", table, { posthoc, equalSd: false } as AnalysisParams);
+    if ("error" in welch) throw new Error(`Welch ${posthoc} should run, got ${welch.error}`);
+  }
+  const one = await runAnalysis(
+    "anova",
+    { columns: ["Title", "A", "B", "C"], rows: [["", "12.1", "14.3", "18.2"]] },
+    { equalSd: false } as AnalysisParams,
+  );
+  if (!("error" in one) || !one.error.includes("holds 1 value"))
+    throw new Error(`expected the too-few-values error, got ${JSON.stringify(one)}`);
+  const missing = await runAnalysis("anova", table, { posthoc: "dunnett", control: "Missing" } as AnalysisParams);
+  if (!("error" in missing) || !missing.error.includes("Missing"))
+    throw new Error(`expected the missing-control error, got ${JSON.stringify(missing)}`);
+});
+
 check("a two-way ANOVA of one value per cell asks nothing and runs the ordinary one", () => {
   const wizard = WIZARDS["two-way-anova"]!;
   const single = readTable({
