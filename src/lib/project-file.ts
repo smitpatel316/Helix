@@ -174,10 +174,12 @@ const PARAMS = {
   // the reader only sanitizes, each runner validates its own.
   model: [...NONLINEAR_MODELS, ...BINDING_SATURATION_MODELS, ...BINDING_KINETICS_MODELS, ...ENZYME_INHIBITION_MODELS, ...DOSE_RESPONSE_SPECIAL_MODELS],
   // `method` is shared by correlation ("pearson"/"spearman") and Spline/Lowess
-  // ("spline"/"lowess"): the reader only sanitizes, each runner validates its own.
-  method: [...CORRELATION_METHODS, "spline", "lowess"],
+  // ("spline"/"lowess") — and now outliers ("rout"/"grubbs"): the reader only
+  // sanitizes, each runner validates its own.
+  method: [...CORRELATION_METHODS, "spline", "lowess", "rout", "grubbs"],
   mode: CORRELATION_MODES, design: TWO_WAY_DESIGNS, posthocTarget: POSTHOC_TARGETS, correction: CORRECTIONS, curveTest: CURVE_TESTS, compare: CURVE_COMPARISONS,
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q, lambda: "number",
+  alpha: { min: 0.001, max: 0.5 }, iterate: "yes/no",
   f: "number", spar: "number", df: "number",
   y: "name-or-names", y2: "name", ys: "names", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names",
   ligandConcentration: "number", koff: "number", hotNM: "number", time0: "number",

@@ -452,9 +452,21 @@ export interface McNemarParams {
 /** Params for "outliers" (Column table): ROUT-style outlier detection — each
  *  column is fit independently to a robust mean, and residuals are flagged
  *  outliers when their FDR-adjusted P falls below Q (Prism's "Q%", the
- *  maximum desired false discovery rate — smaller Q is more conservative). */
+ *  maximum desired false discovery rate — smaller Q is more conservative) —
+ *  or Grubbs' test (the single most extreme value per column, tested against
+ *  the t distribution at significance level `alpha`, optionally iterating
+ *  after each removal). A missing `method` is ROUT, so old saved analyses
+ *  (params `{q}` only, or none) keep running as ROUT. */
 export interface OutliersParams {
-  q: number;
+  /** Q (%) for ROUT; omitted for Grubbs (the runner defaults it to 1). */
+  q?: number;
+  /** Which method identifies the outliers: "rout" (default) or "grubbs". */
+  method?: "rout" | "grubbs";
+  /** Grubbs' test significance level (default 0.05); ignored for ROUT. */
+  alpha?: number;
+  /** Grubbs' test: re-test after removing each outlier (default true);
+   *  ignored for ROUT. */
+  iterate?: boolean;
 }
 
 /** The normality tests the "shapiro-wilk" analysis offers (plan 23 — the
@@ -867,13 +879,16 @@ export interface AreaUnderCurveRow {
   n: number;
 }
 
-/** One row of "outliers" results: one column's outlier count + robust mean. */
+/** One row of "outliers" results: one column's outlier count + robust mean
+ *  (ROUT), or the mean after removing flagged outliers (`mean`, Grubbs). */
 interface OutlierGroupRow {
   group: string;
   points: number;
   outliers: number;
   percent: number;
   robustMean: number | null;
+  /** Mean after removing flagged outliers ("grubbs" only). */
+  mean?: number | null;
 }
 
 /** One bin of a frequency distribution: left-closed `[lower, upper)`, except

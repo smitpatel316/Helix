@@ -2834,7 +2834,7 @@ check("menus and pickers name things in title case, as macOS does", () => {
     [
       "Compare one group to a value",
       "Multiple t tests",
-      "Identify outliers (ROUT)",
+      "Identify outliers",
       "Chi-square or Fisher's exact test",
       "Two-way ANOVA",
       "Area under the curve",
@@ -2844,7 +2844,7 @@ check("menus and pickers name things in title case, as macOS does", () => {
     [
       "Compare One Group to a Value",
       "Multiple t Tests",
-      "Identify Outliers (ROUT)",
+      "Identify Outliers",
       "Chi-Square or Fisher's Exact Test",
       "Two-Way ANOVA",
       "Area Under the Curve",
