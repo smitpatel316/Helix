@@ -2,9 +2,10 @@
 // step, each answer choosing the next question. A wizard only declares its questions
 // and how the answers make the test's params; analysis-wizard.tsx asks them.
 // A test without an entry here runs as soon as it is picked.
-import { DOSE_MODELS, MONTE_CARLO_REPEATS, MONTE_CARLO_TARGET_STATISTICS, NONLINEAR_MODELS, ROUT_Q, type MonteCarloStatistic, type MonteCarloTarget } from "../../stats/types";
+import { DOSE_MODELS, MONTE_CARLO_REPEATS, MONTE_CARLO_TARGET_STATISTICS, NONLINEAR_MODELS, ROUT_Q, type LinearRegressionParams, type MonteCarloStatistic, type MonteCarloTarget, type NonlinearModel } from "../../stats/types";
 import type { TableType } from "../../store/types";
-import { MODEL_LABEL } from "../../stats/xy/nonlinear-regression";
+import { MODEL_LABEL, termLabel } from "../../stats/xy/nonlinear-regression";
+import { modelSpec } from "../../stats/xy/nonlinear-fit";
 import { dataGroups, pairedGroups } from "../../stats/column/base";
 import { distinctTruthValues } from "../../stats/column/roc-curve";
 
@@ -115,6 +116,34 @@ export function parseOptionalPositive(text: string, label: string): { value?: nu
   if (!Number.isFinite(v)) return { error: `“${t}” is not a number — enter a ${label}, or leave it blank.` };
   if (v <= 0) return { error: `The ${label} must be greater than 0.` };
   return { value: v };
+}
+
+/** Parse an optional number (a fixed parameter, plan 26): blank = fit it,
+ *  otherwise a finite number. `value` is undefined when blank; `error` is
+ *  set (and `value` undefined) when the text is neither — the runner
+ *  re-checks, so a bad value passed straight to `runAnalysis` still fails
+ *  clearly. */
+export function parseOptionalNumber(text: string, label: string): { value?: number; error?: string } {
+  const t = text.trim();
+  if (t === "") return {};
+  const v = Number(t);
+  if (!Number.isFinite(v)) return { error: `“${t}” is not a number — enter a ${label}, or leave it blank to fit it.` };
+  return { value: v };
+}
+
+/** Parse optional bounds "lower, upper" (plan 26): blank = unbounded,
+ *  otherwise two numbers with lower < upper. */
+export function parseOptionalBounds(text: string, label: string): { value?: [number, number]; error?: string } {
+  const t = text.trim();
+  if (t === "") return {};
+  const parts = t.split(",").map((p) => p.trim());
+  if (parts.length !== 2)
+    return { error: `Enter ${label} bounds as “lower, upper” (e.g. “0, 2”), or leave it blank for unbounded.` };
+  const [lo, hi] = parts.map(Number);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi))
+    return { error: `“${t}” is not two numbers — enter bounds as “lower, upper”, or leave it blank.` };
+  if (lo >= hi) return { error: `The lower bound (${lo}) must be below the upper bound (${hi}).` };
+  return { value: [lo, hi] };
 }
 
 /** Parse a required positive number (association-then-dissociation's
@@ -904,8 +933,26 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         ["no", "No — fit both slope and Y-intercept (recommended)"],
         ["yes", "Yes — assume Y = 0 when X = 0"],
       ]),
+      // Plan 26: weighting (1/SD² needs the replicate columns this runner
+      // never sees, so it is not offered here).
+      choice("weights", "Weight the points?", [
+        ["none", "No weighting (recommended unless scatter grows with Y)"],
+        ["1/y", "Weight by 1/Y"],
+        ["1/y2", "Weight by 1/Y²"],
+        ["1/x", "Weight by 1/X"],
+        ["1/x2", "Weight by 1/X²"],
+      ]),
     ],
-    finish: (a) => ({ type: "linear-regression", params: { y: a.y as string, forceOrigin: a.origin === "yes" } }),
+    finish: (a) => ({
+      type: "linear-regression",
+      params: {
+        y: a.y as string,
+        forceOrigin: a.origin === "yes",
+        ...(a.weights !== undefined && a.weights !== "none"
+          ? { weights: a.weights as LinearRegressionParams["weights"] }
+          : {}),
+      },
+    }),
   },
 
   "deming-regression": {
@@ -951,6 +998,18 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       );
       const others = yNames(table).filter((n) => n !== (a.y ?? yNames(table)[0]));
       const midpoint = String(a.model).startsWith("inhibitor") ? "IC50" : "EC50";
+      // Plan 26: the weighting options (1/SD² only when the table has
+      // replicates to take an SD over), the model comparison, the global
+      // fit, and the parameter constraints.
+      const weightOptions: [string, string][] = [
+        ["none", "No weighting (recommended unless scatter grows with Y)"],
+        ["1/y", "Weight by 1/Y"],
+        ["1/y2", "Weight by 1/Y²"],
+        ["1/x", "Weight by 1/X"],
+        ["1/x2", "Weight by 1/X²"],
+        ...(yNames(table).length > 1 ? [["1/sd2", "Weight by 1/SD² (needs replicates)"] as [string, string]] : []),
+      ];
+      const terms = a.model ? modelSpec(a.model as NonlinearModel).terms : [];
       return [
         choice("y", "Which Y data set should be fitted?", names(yNames(table))),
         choice("kind", "Which kind of curve?", [
@@ -958,6 +1017,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           ["other", "Another curve (line, polynomial, exponential, Michaelis-Menten…)"],
         ]),
         choice("model", "Which curve should be fitted to X and Y?", models),
+        choice("weights", "Weight the points?", weightOptions),
         dose &&
           others.length > 0 &&
           choice("compareWith", "Compare this curve with another data set's?", [
@@ -971,6 +1031,64 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
             ["ec50", `Is the ${midpoint} different between the two data sets?`],
             ["all", "Does one curve fit both data sets?"],
           ]),
+        choice("compareModel", "Also fit another model to the same data and compare (F test + AICc)?", [
+          ["none", "No comparison — fit this model only"],
+          ...models
+            .filter(([m]) => m !== a.model)
+            .map(([m, label]): [string, string] => [m, `Also fit ${label}`]),
+        ]),
+        others.length > 0 &&
+          choice("global", "Fit additional Y data sets together with shared parameters (a global fit)?", [
+            ["no", "No — fit this data set alone"],
+            ["yes", "Yes — fit them together"],
+          ]),
+        a.global === "yes" &&
+          others.length > 0 && {
+            id: "globalY",
+            ask: "Which additional Y data sets should be fitted together?",
+            kind: "names",
+            options: others,
+            min: 1,
+          },
+        a.global === "yes" &&
+          ((a.globalY as string[] | undefined)?.length ?? 0) > 0 &&
+          choice("shared", "Which parameters should be shared across the data sets?", [
+            ["default", `The usual ones — the curve's midpoint and Hill slope (recommended)`],
+            ["all", "Every parameter (one curve for all data sets)"],
+            ["custom", "Choose…"],
+          ]),
+        a.global === "yes" &&
+          a.shared === "custom" && {
+            id: "sharedParams",
+            ask: "Which parameters should be shared across the data sets?",
+            kind: "names",
+            options: terms,
+            min: 1,
+          },
+        choice("constrain", "Fix or bound any parameters? (Advanced — leave the fit free unless you have a reason.)", [
+          ["no", "No — fit every parameter freely"],
+          ["yes", "Yes — fix parameters to constants or bound them"],
+        ]),
+        ...(a.constrain === "yes"
+          ? terms.flatMap((term): Question[] => [
+              {
+                id: `fix_${term}`,
+                ask: `Fix ${termLabel(term)} to a constant? Leave blank to fit it. (A fixed parameter is held at the value you enter, not fitted.)`,
+                kind: "text",
+                label: `Fix ${termLabel(term)} =`,
+                initial: "",
+                parse: (text: string) => parseOptionalNumber(text, termLabel(term)),
+              },
+              {
+                id: `bound_${term}`,
+                ask: `Bound ${termLabel(term)}? Leave blank for unbounded, or enter “lower, upper”. (A bounded parameter is fitted within the bounds.)`,
+                kind: "text",
+                label: `${termLabel(term)} bounds [lower, upper] =`,
+                initial: "",
+                parse: (text: string) => parseOptionalBounds(text, termLabel(term)),
+              },
+            ])
+          : []),
       ];
     },
     finish: (a) => {
@@ -978,9 +1096,47 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         a.kind !== "other" && a.compareWith !== undefined && a.compareWith !== "none"
           ? { compareWith: a.compareWith as string, compare: a.compare as NonlinearRegressionParams["compare"] }
           : {};
+      const weights =
+        a.weights !== undefined && a.weights !== "none"
+          ? { weights: a.weights as NonlinearRegressionParams["weights"] }
+          : {};
+      const compareModel =
+        a.compareModel !== undefined && a.compareModel !== "none"
+          ? { compareModel: a.compareModel as NonlinearModel }
+          : {};
+      const globalY = a.global === "yes" ? ((a.globalY as string[] | undefined) ?? []) : [];
+      const global = globalY.length ? { globalY } : {};
+      const terms = modelSpec(a.model as NonlinearModel).terms;
+      const sharedParams =
+        globalY.length && a.shared === "all"
+          ? { sharedParams: terms }
+          : globalY.length && a.shared === "custom"
+            ? { sharedParams: (a.sharedParams as string[] | undefined) ?? [] }
+            : {};
+      // Fixed/bounded parameters from the advanced section (blank = fit it /
+      // unbounded). A parameter fixed AND bounded is refused by the runner —
+      // the wizard has no cross-question validation to refuse it here.
+      const fixed: Record<string, number> = {};
+      const bounds: Record<string, [number, number]> = {};
+      for (const term of terms) {
+        const f = parseOptionalNumber(String(a[`fix_${term}`] ?? ""), termLabel(term));
+        if (f.value !== undefined) fixed[term] = f.value;
+        const b = parseOptionalBounds(String(a[`bound_${term}`] ?? ""), termLabel(term));
+        if (b.value !== undefined) bounds[term] = b.value;
+      }
       return {
         type: "nonlinear-regression",
-        params: { y: a.y as string, model: a.model as NonlinearRegressionParams["model"], ...compare },
+        params: {
+          y: a.y as string,
+          model: a.model as NonlinearModel,
+          ...compare,
+          ...weights,
+          ...compareModel,
+          ...global,
+          ...sharedParams,
+          ...(Object.keys(fixed).length ? { fixed } : {}),
+          ...(Object.keys(bounds).length ? { bounds } : {}),
+        },
       };
     },
   },

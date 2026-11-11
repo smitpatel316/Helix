@@ -102,6 +102,7 @@ const overK = (label: string, c: string, k = "K"): Derived => {
   };
 };
 
+/** R that assigns `m<-lm(...)` or `m<-nls(...,start=...)`; `x`/`y` are in scope. */
 export interface ModelSpec {
   /** Which R fitter to use — lm() (linear in params) or nls() (nonlinear). */
   kind: "lm" | "nls";
@@ -372,20 +373,315 @@ export function modelSpec(model: NonlinearModel): ModelSpec {
   }
 }
 
+/** The formula's right-hand side: the `EXPR` of `m<-nls(y~EXPR,start=...)`
+ *  (lm specs have no nls formula — `undefined`). Plan 26 needs it for the
+ *  global fit's stacked formula; the first `,start=` after `y~` delimits it
+ *  (no formula contains that sequence; the 5PL's inner nls comes later). */
+export function formulaExpr(spec: ModelSpec): string | undefined {
+  const fit = spec.fit;
+  const yAt = fit.indexOf("y~");
+  if (yAt < 0) return undefined;
+  const startAt = fit.indexOf(",start=", yAt);
+  if (startAt < 0) return undefined;
+  return fit.slice(yAt + 2, startAt);
+}
+
+/** Index of the `)` matching the `(` at `open` (-1 when unbalanced). */
+function matchParen(s: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < s.length; i++) {
+    if (s[i] === "(") depth++;
+    else if (s[i] === ")") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** Split a comma list at depth 0 (parentheses respected). */
+function splitTopLevel(s: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of s) {
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+    if (ch === "," && depth === 0) {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur.trim() !== "") out.push(cur);
+  return out;
+}
+
+/** The R variable name of each term, in terms order, read off the fit's
+ *  start list (`list(Bottom=...,Top=...)` or the 5PL's
+ *  `c(as.list(coef(<inner nls>)),S=1)` — the inner fit's start list, then
+ *  the plain entries). Usually identical to the terms; the exception is the
+ *  allosteric sigmoidal, whose Hill slope is the variable `h`. `undefined`
+ *  when the start list cannot be parsed — the caller must refuse to rewrite
+ *  the fit rather than guess. */
+export function formulaVariables(spec: ModelSpec): string[] | undefined {
+  const startAt = spec.fit.indexOf(",start=");
+  if (startAt < 0) return undefined;
+  return startVariables(spec.fit.slice(startAt + 7));
+}
+
+/** Variable names of one start expression (`list(...)` / `c(...)`). */
+function startVariables(expr: string): string[] | undefined {
+  const s = expr.trim();
+  if (s.startsWith("list(")) {
+    const close = matchParen(s, 4);
+    if (close < 0) return undefined;
+    const names: string[] = [];
+    for (const e of splitTopLevel(s.slice(5, close))) {
+      const m = e.trim().match(/^([A-Za-z][A-Za-z0-9_]*)\s*=/);
+      if (!m) return undefined;
+      names.push(m[1]);
+    }
+    return names;
+  }
+  if (s.startsWith("c(")) {
+    const close = matchParen(s, 1);
+    if (close < 0) return undefined;
+    const out: string[] = [];
+    for (const e of splitTopLevel(s.slice(2, close))) {
+      const t = e.trim();
+      if (t.startsWith("as.list(coef(")) {
+        const innerStart = t.indexOf(",start=");
+        if (innerStart < 0) return undefined;
+        const inner = startVariables(t.slice(innerStart + 7));
+        if (!inner) return undefined;
+        out.push(...inner);
+      } else {
+        const m = t.match(/^([A-Za-z][A-Za-z0-9_]*)\s*=/);
+        if (!m) return undefined;
+        out.push(m[1]);
+      }
+    }
+    return out;
+  }
+  return undefined;
+}
+
+// ── Fit options (plan 26): weighting, fixed parameters, bounds ──────────
+// A fixed parameter is substituted as a constant into the formula (and the
+// derived expressions, the curve function and the dose expression) and
+// dropped from the start list — nls() ERRORS on a start value for a
+// parameter the formula no longer has ("singular gradient matrix at initial
+// parameter estimates", verified in R), so the drop is not optional, and
+// the 5PL's inner nls (which only supplies starts) is rewritten the same
+// way. Bounds switch the fit to algorithm="port" with lower/upper vectors
+// aligned with the remaining parameters' start order (±Inf where unbounded);
+// a start outside its bounds makes nls fail with "initial par violates
+// constraints", surfaced as the usual fit error. Weights add `weights=w`
+// (the vector is assigned before the fit) and the summary quantities become
+// the weighted ones — summary(lm)'s R² is the weighted one, so the weighted
+// SS/SST definitions below match it (verified in R: 0.998473 either way).
+
+/** Per-point weights (same order as xs/ys), parameters held constant, and
+ *  parameter bounds — all optional; absent means the historical fit. */
+export interface FitOptions {
+  weights?: number[];
+  fixed?: Record<string, number>;
+  bounds?: Record<string, [number, number]>;
+}
+
+export interface AppliedFitOptions {
+  /** The spec to fit (terms/derived/curveFn/dose rewritten when parameters
+   *  are fixed; fit rewritten for weights/bounds). */
+  spec: ModelSpec;
+  /** R run before the fit (the weights vector, when weighted). */
+  extraAssignments: string;
+}
+
+const rNum = (v: number): string => {
+  if (!Number.isFinite(v)) throw new Error(`Not a finite number: ${v}`);
+  return String(v);
+};
+
+/** Substitute fixed parameters as constants in a formula (bare names). */
+function substituteFormula(expr: string, fixedByVar: Record<string, number>): string {
+  let out = expr;
+  for (const [name, value] of Object.entries(fixedByVar))
+    out = out.replace(new RegExp(`\\b${name}\\b`, "g"), `(${rNum(value)})`);
+  return out;
+}
+
+/** Substitute fixed parameters in a curve function (`p[["Name"]]`). */
+function substituteCurveFn(fn: string, fixedByVar: Record<string, number>): string {
+  let out = fn;
+  for (const [name, value] of Object.entries(fixedByVar))
+    out = out.replaceAll(`p[["${name}"]]`, `(${rNum(value)})`);
+  return out;
+}
+
+/** Substitute fixed parameters in a derived expression: `cf[["P"]]` becomes
+ *  the constant, `pci("P")` its degenerate CI, and any covariance with P
+ *  becomes 0 (a fixed parameter has no variance). */
+function substituteDerived(expr: string, fixedByVar: Record<string, number>): string {
+  let out = expr;
+  for (const [name, value] of Object.entries(fixedByVar)) {
+    const v = rNum(value);
+    out = out.replaceAll(`pci("${name}")`, `c(${v},${v})`);
+    out = out.replaceAll(`cf[["${name}"]]`, `(${v})`);
+    out = out.replace(new RegExp(`V\\["${name}","[^"]+"\\]`, "g"), "0");
+    out = out.replace(new RegExp(`V\\["[^"]+","${name}"\\]`, "g"), "0");
+  }
+  return out;
+}
+
+/** Rewrite one nls call's start list, dropping the fixed variables and
+ *  rewriting any inner nls the same way (the 5PL's start supplier). */
+function transformStart(start: string, fixedByVar: Record<string, number>): string {
+  const s = start.trim();
+  if (s.startsWith("list(")) {
+    const close = matchParen(s, 4);
+    if (close < 0) throw new Error("Cannot parse the fit's start list.");
+    const kept = splitTopLevel(s.slice(5, close)).filter((e) => {
+      const m = e.trim().match(/^([A-Za-z][A-Za-z0-9_]*)\s*=/);
+      return !m || !Object.hasOwn(fixedByVar, m[1]);
+    });
+    return `list(${kept.join(",")})`;
+  }
+  if (s.startsWith("c(")) {
+    const close = matchParen(s, 1);
+    if (close < 0) throw new Error("Cannot parse the fit's start list.");
+    const kept = splitTopLevel(s.slice(2, close))
+      .map((e) => {
+        const t = e.trim();
+        if (!t.startsWith("as.list(coef(")) return t;
+        // The inner nls supplies starts: rewrite it the same way, so a
+        // fixed parameter leaves its coefficient list too. The inner call
+        // is the `nls(...)` ending at its own matching paren (the trailing
+        // `))` closes coef(/as.list(), not the call).
+        const nlsAt = t.indexOf("nls(");
+        const callClose = matchParen(t, nlsAt + 3);
+        if (callClose < 0) throw new Error("Cannot parse the fit's start list.");
+        const inner = transformNlsCall(t.slice(nlsAt, callClose + 1), fixedByVar, {});
+        return t.slice(0, nlsAt) + inner + t.slice(callClose + 1);
+      })
+      .filter((e) => {
+        const m = e.trim().match(/^([A-Za-z][A-Za-z0-9_]*)\s*=/);
+        return !m || !Object.hasOwn(fixedByVar, m[1]);
+      });
+    return `c(${kept.join(",")})`;
+  }
+  throw new Error("Cannot parse the fit's start list.");
+}
+
+/** Rewrite one `nls(y~EXPR,start=START,...)` call (with or without an
+ *  `m<-` assignment): fixed variables substituted into the formula and
+ *  dropped from the start list, bounds (when given, aligned with
+ *  `remainingVars`) switching the call to algorithm="port". `bounds` is
+ *  keyed by variable name. */
+function transformNlsCall(
+  call: string,
+  fixedByVar: Record<string, number>,
+  boundsByVar: Record<string, [number, number]>,
+  remainingVars?: string[],
+): string {
+  const yAt = call.indexOf("y~");
+  const startAt = call.indexOf(",start=", yAt);
+  if (yAt < 0 || startAt < 0) throw new Error("Cannot parse the fit's formula.");
+  const head = call.slice(0, yAt + 2);
+  const expr = substituteFormula(call.slice(yAt + 2, startAt), fixedByVar);
+  const rest = call.slice(startAt + 7);
+  // The start list ends where the outer call's trailing arguments begin:
+  // `,control=nls.control(maxiter=200))` or `,algorithm="port")`.
+  const suffixes = [",control=nls.control(maxiter=200))", ',algorithm="port")'];
+  const suffix = suffixes.find((s) => rest.endsWith(s));
+  if (!suffix) throw new Error("Cannot parse the fit's trailing arguments.");
+  const start = transformStart(rest.slice(0, rest.length - suffix.length), fixedByVar);
+  const hasControl = suffix.startsWith(",control=");
+  const hadPort = suffix.startsWith(',algorithm=');
+  const boundNames = Object.keys(boundsByVar);
+  let args = "";
+  // The "port" algorithm must survive the rewrite (the exponential/enzyme
+  // fits use it even unbounded); bounds switch a Gauss-Newton fit to it.
+  if (boundNames.length || hadPort) args += `,algorithm="port"`;
+  if (boundNames.length) {
+    if (!remainingVars) throw new Error("Bounds need the parameter order.");
+    const lower = remainingVars.map((v) => (boundsByVar[v] ? rNum(boundsByVar[v][0]) : "-Inf"));
+    const upper = remainingVars.map((v) => (boundsByVar[v] ? rNum(boundsByVar[v][1]) : "Inf"));
+    args += `,lower=c(${lower.join(",")}),upper=c(${upper.join(",")})`;
+  }
+  if (hasControl) args += ",control=nls.control(maxiter=200)";
+  return `${head}${expr},start=${start}${args})`;
+}
+
+/** Apply weighting / fixed parameters / bounds to a spec, returning the spec
+ *  to fit and any R to run before it. Throws when the spec cannot be
+ *  rewritten (lm models cannot fix or bound parameters — `lm()` has no such
+ *  arguments). The default (no options) returns the spec untouched. */
+export function applyFitOptions(spec: ModelSpec, opts: FitOptions): AppliedFitOptions {
+  const fixed = opts.fixed ?? {};
+  const bounds = opts.bounds ?? {};
+  const fixedNames = Object.keys(fixed);
+  const boundNames = Object.keys(bounds);
+  const extraAssignments = opts.weights ? `w<-${rVec(opts.weights)};` : "";
+  if (!fixedNames.length && !boundNames.length && !opts.weights) return { spec, extraAssignments: "" };
+  if (spec.kind === "lm") {
+    if (fixedNames.length || boundNames.length)
+      throw new Error("Fixing or bounding parameters is only supported for nonlinear (nls) curves, not for line/polynomial fits.");
+    // Weights only: `lm(y~x)` -> `lm(y~x,weights=w)`.
+    if (!spec.fit.endsWith(")")) throw new Error("Cannot parse the fit's formula.");
+    return { spec: { ...spec, fit: `${spec.fit.slice(0, -1)},weights=w)` }, extraAssignments };
+  }
+  const vars = formulaVariables(spec);
+  if (!vars || vars.length !== spec.terms.length)
+    throw new Error(`Cannot rewrite the "${spec.terms.join(", ")}" fit for fixed/bounded parameters.`);
+  const fixedByVar: Record<string, number> = {};
+  const boundsByVar: Record<string, [number, number]> = {};
+  spec.terms.forEach((term, i) => {
+    if (Object.hasOwn(fixed, term)) fixedByVar[vars[i]] = fixed[term]!;
+    if (Object.hasOwn(bounds, term)) boundsByVar[vars[i]] = bounds[term]!;
+  });
+  const remainingTerms = spec.terms.filter((t) => !Object.hasOwn(fixed, t));
+  const remainingVars = spec.terms.map((_, i) => vars[i]).filter((_, i) => !Object.hasOwn(fixed, spec.terms[i]));
+  let fit = transformNlsCall(spec.fit, fixedByVar, boundsByVar, remainingVars);
+  if (opts.weights) fit = `${fit.slice(0, -1)},weights=w)`;
+  const out: ModelSpec = {
+    ...spec,
+    fit,
+    terms: remainingTerms,
+    derived: spec.derived?.map((d) => ({
+      ...d,
+      expr: substituteDerived(d.expr, fixedByVar),
+      ...(d.low !== undefined ? { low: substituteDerived(d.low, fixedByVar) } : {}),
+      ...(d.high !== undefined ? { high: substituteDerived(d.high, fixedByVar) } : {}),
+    })),
+    ...(spec.curveFn ? { curveFn: substituteCurveFn(spec.curveFn, fixedByVar) } : {}),
+    ...(spec.dose ? { dose: { ...spec.dose, expr: substituteFormula(spec.dose.expr, fixedByVar) } } : {}),
+    ...(spec.retryFit
+      ? { retryFit: transformNlsCall(spec.retryFit, fixedByVar, boundsByVar, remainingVars) }
+      : {}),
+  };
+  if (opts.weights && out.retryFit) out.retryFit = `${out.retryFit.slice(0, -1)},weights=w)`;
+  return { spec: out, extraAssignments };
+}
+
 /** The X/Y columns and the points to fit: the `positiveX` X > 0 drop rule and
  *  the `nParams + 1` minimum-points rule, shared by both runners. */
 export function prepareFit(
   columns: Column[],
   yName: string | undefined,
   model: NonlinearModel,
-): { xCol: Column; yCol: Column; xs: number[]; ys: number[] } | { error: string } {
+  /** Parameters held fixed (plan 26): they are not fitted, so they do not
+   *  count toward the minimum-points rule. */
+  fixedCount = 0,
+): { xCol: Column; yCol: Column; xs: number[]; ys: number[]; rows: number[] } | { error: string } {
   const { x: xCol, ys: yCols } = splitXY(columns);
   const yCol = yName === undefined ? yCols[0] : yCols.find((c) => c.name === yName);
   if (!xCol || !yCol) return { error: xyProblem(columns, yName)! };
 
   const complete = pairUp(xCol, yCol);
   const spec = modelSpec(model);
-  const nParams = spec.terms.length;
+  const nParams = spec.terms.length - fixedCount;
 
   // Curves that need X > 0 (log/ratio forms) commonly get a X=0 vehicle/control
   // point in real dose-response data — drop it from the fit rather than
@@ -433,19 +729,27 @@ export function prepareFit(
       return { error: "Plateau-followed-by-decay needs data on both sides of the breakpoint." };
     }
   }
-  return { xCol, yCol, xs, ys };
+  // The fitted points' rows, in fit order (plan 26: 1/SD² weights need the
+  // row's replicate values, not just the fitted pair).
+  const rows = complete.rows.filter((_, i) => !spec.positiveX || complete.x[i] > 0);
+  return { xCol, yCol, xs, ys, rows };
 }
 
 /** R statements that, after `m` is fitted, compute the summary quantities
  *  (`s`, `co`, `cf`, `df`, `ss`, `sst`, `r2`, `syx`) plus the covariance
  *  (`V`), the t critical value (`q`) and a coefficient's 95% CI (`pci`) —
- *  everything the fit entries and the derived CIs need. */
-export function fitSummaryStatements(spec: ModelSpec): string {
+ *  everything the fit entries and the derived CIs need. Weighted fits use
+ *  the weighted sums of squares (summary(lm)'s R² is the weighted one, so
+ *  this matches it — verified in R). */
+export function fitSummaryStatements(spec: ModelSpec, weighted = false): string {
   // R² for lm comes from summary(); for nls we compute it from residual/total SS.
-  const r2 = spec.kind === "lm" ? "s$r.squared" : "1-ss/sst";
+  // (A weighted lm's R² is 1 − weighted SS / weighted SST, like an nls's.)
+  const r2 = spec.kind === "lm" && !weighted ? "s$r.squared" : "1-ss/sst";
+  const ss = weighted ? "sum(w*residuals(m)^2)" : "sum(residuals(m)^2)";
+  const sst = weighted ? "sum(w*(y-sum(w*y)/sum(w))^2)" : "sum((y-mean(y))^2)";
   return (
     `s<-summary(m);co<-s$coefficients;cf<-coef(m);` +
-    `df<-df.residual(m);ss<-sum(residuals(m)^2);sst<-sum((y-mean(y))^2);r2<-${r2};syx<-sqrt(ss/df);` +
+    `df<-df.residual(m);ss<-${ss};sst<-${sst};r2<-${r2};syx<-sqrt(ss/df);` +
     `V<-vcov(m);q<-qt(0.975,df);pci<-function(p)cf[[p]]+c(-1,1)*q*sqrt(V[p,p]);`
   );
 }
@@ -464,10 +768,11 @@ export function fitStatementsForSpec(
   spec: ModelSpec,
   fitOverride?: string,
   extraAssignments = "",
+  weighted = false,
 ): string {
   return (
     `x<-${rVec(xs)};y<-${rVec(ys)};${extraAssignments}${fitOverride ?? spec.fit};` +
-    fitSummaryStatements(spec)
+    fitSummaryStatements(spec, weighted)
   );
 }
 
@@ -577,17 +882,22 @@ export async function fitModelSpec(
   spec: ModelSpec,
   extraAssignments = "",
   labelTerm: (term: string) => string = (t) => t,
+  options?: FitOptions,
 ): Promise<NonlinearFit> {
+  const applied = applyFitOptions(spec, options ?? {});
+  const eff = applied.spec;
+  const extra = extraAssignments + applied.extraAssignments;
+  const weighted = !!(options?.weights);
   try {
-    const rCode = `${fitStatementsForSpec(xs, ys, spec, undefined, extraAssignments)}c(${fitEntries(spec)})`;
+    const rCode = `${fitStatementsForSpec(xs, ys, eff, undefined, extra, weighted)}c(${fitEntries(eff)})`;
     const v = await evalNamedVector(rCode);
-    const { coefficients, derived, stats } = parseFit(v, spec, xs.length, labelTerm);
+    const { coefficients, derived, stats } = parseFit(v, eff, xs.length, labelTerm);
     return { coefficients, derived, stats, rCode };
   } catch (err) {
-    if (!spec.retryFit) throw err;
-    const rCode = `${fitStatementsForSpec(xs, ys, spec, spec.retryFit, extraAssignments)}c(${fitEntries(spec)})`;
+    if (!eff.retryFit) throw err;
+    const rCode = `${fitStatementsForSpec(xs, ys, eff, eff.retryFit, extra, weighted)}c(${fitEntries(eff)})`;
     const v = await evalNamedVector(rCode);
-    const { coefficients, derived, stats } = parseFit(v, spec, xs.length, labelTerm);
+    const { coefficients, derived, stats } = parseFit(v, eff, xs.length, labelTerm);
     return { coefficients, derived, stats, rCode, retried: true };
   }
 }

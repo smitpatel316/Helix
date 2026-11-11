@@ -16,6 +16,7 @@ import type {
   InterpolatedRow,
   NonlinearModel,
   NonlinearRegressionParams,
+  NonlinearWeightScheme,
   RegressionCoefficient,
   StatRow,
 } from "../types";
@@ -27,18 +28,29 @@ import { rowName } from "../grouped/base";
 import {
   ENZYME_MODELS,
   EXPONENTIAL_MODELS,
+  applyFitOptions,
   fitEntries,
   fitError,
   fitModelSpec,
   fitStatementsForSpec,
   fitSummaryStatements,
+  formulaExpr,
+  formulaVariables,
   MODEL_LABEL,
   modelSpec,
   parseFit,
   prepareFit,
   type DerivedRow,
+  type FitOptions,
   type ModelSpec,
 } from "./nonlinear-fit";
+import { runGlobalFit, type GlobalModelDef, type GlobalParamDef } from "./global-fit";
+// The overlay's closed-form evaluator, reused for a global fit's per-series
+// R² (the fit and the overlay can never disagree). This closes an import
+// cycle with fitted-curve.ts (it imports termLabel/positiveXOnly from here),
+// which is safe: both sides only call across it inside function bodies,
+// never at module top level.
+import { evaluate as evaluateCurve } from "../../views/graphs/fitted-curve";
 
 // Re-exported for upstream importers (wizards.ts, fitted-curve.ts): the labels
 // live in nonlinear-fit.ts now; positiveXOnly matches upstream's helper.
@@ -48,6 +60,277 @@ export const positiveXOnly = (model: NonlinearModel) => modelSpec(model).positiv
 /** A parameter as results name it (its name in the equations otherwise). */
 const TERM_LABEL: Record<string, string> = { HillSlope: "Hill slope", S: "Asymmetry (S)" };
 export const termLabel = (term: string) => TERM_LABEL[term] ?? term;
+
+// ── Plan 26: closed-form inverses ────────────────────────────────────────
+// The per-model invertibility table + closed-form inverse functions, exported
+// for plan 02's standard-curve-interpolation runner (the contract this plan
+// defines — plan 02 does not exist yet). `invertModel` solves the fitted
+// curve for X at a given Y from its coefficients (display terms, as results
+// store them); `null` means the model has no closed-form inverse (quadratic,
+// cubic, two-phase decay, plateau-decay, substrate inhibition — invert those
+// numerically, e.g. with the R `uniroot` search the interpolation path
+// already uses) or the Y is outside the curve's range. The CI of an
+// interpolated X is plan 02's band inversion, not a delta method on the
+// inverse — this module owns only the point estimate.
+export type InvertMethod = "closed-form" | "numeric";
+export const invertMethod = (model: NonlinearModel): InvertMethod =>
+  model === "quadratic" ||
+  model === "cubic" ||
+  model === "two-phase-decay" ||
+  model === "plateau-decay" ||
+  model === "substrate-inhibition"
+    ? "numeric"
+    : "closed-form";
+
+/** The fitted curve's X at Y, from its coefficients (display terms) — the
+ *  closed form where one exists, `null` otherwise. All forms assume the
+ *  fitted coefficients; a Y outside the curve's range (between the
+ *  asymptotes, below the plateau, above the maximum…) returns `null`. */
+export function invertModel(
+  model: NonlinearModel,
+  coefficients: RegressionCoefficient[],
+  y: number,
+): number | null {
+  const c = (term: string) => coefOf(coefficients, term);
+  // The sigmoidal ratio (Top − Y)/(Y − Bottom), positive exactly when Y
+  // lies strictly between the asymptotes.
+  const ratio = () => {
+    const bottom = c("Bottom");
+    const top = c("Top");
+    if (bottom == null || top == null || top === bottom) return null;
+    const r = (top - y) / (y - bottom);
+    return r > 0 ? r : null;
+  };
+  switch (model) {
+    case "line": {
+      const b = c("Intercept");
+      const s = c("Slope");
+      if (b == null || s == null || s === 0) return null;
+      return (y - b) / s;
+    }
+    case "semilog-line": {
+      const b = c("Intercept");
+      const s = c("Slope");
+      if (b == null || s == null || s === 0) return null;
+      const x = Math.exp((y - b) / s);
+      return x > 0 ? x : null;
+    }
+    case "sigmoidal-4pl-logx": {
+      const r = ratio();
+      const mid = c("LogEC50");
+      const h = c("HillSlope");
+      if (r == null || mid == null || h == null || h === 0) return null;
+      return mid - Math.log10(r) / h;
+    }
+    case "sigmoidal-4pl-x": {
+      const r = ratio();
+      const ec50 = c("EC50");
+      const h = c("HillSlope");
+      if (r == null || ec50 == null || h == null || h === 0) return null;
+      const x = ec50 / r ** (1 / h);
+      return x > 0 ? x : null;
+    }
+    case "agonist-3pl-logx": {
+      const r = ratio();
+      const mid = c("LogEC50");
+      if (r == null || mid == null) return null;
+      return mid - Math.log10(r);
+    }
+    case "inhibitor-3pl-logx": {
+      const r = ratio();
+      const mid = c("LogIC50");
+      if (r == null || mid == null) return null;
+      return mid + Math.log10(r);
+    }
+    case "asymmetric-5pl-logx": {
+      const r = ratio();
+      const mid = c("LogEC50");
+      const h = c("HillSlope");
+      const s = c("S");
+      if (r == null || mid == null || h == null || h === 0 || s == null || s === 0) return null;
+      const u = (1 + r) ** (1 / s) - 1;
+      if (u <= 0) return null;
+      return mid + Math.log10(2 ** (1 / s) - 1) / h - Math.log10(u) / h;
+    }
+    case "asymmetric-5pl-x": {
+      const r = ratio();
+      const ec50 = c("EC50");
+      const h = c("HillSlope");
+      const s = c("S");
+      if (r == null || ec50 == null || h == null || h === 0 || s == null || s === 0) return null;
+      const u = (1 + r) ** (1 / s) - 1;
+      if (u <= 0) return null;
+      const x = (ec50 * (2 ** (1 / s) - 1) ** (1 / h)) / u ** (1 / h);
+      return x > 0 ? x : null;
+    }
+    case "hyperbola": {
+      const bmax = c("Bmax");
+      const kd = c("Kd");
+      if (bmax == null || kd == null || bmax === y) return null;
+      const x = (y * kd) / (bmax - y);
+      return x > 0 ? x : null;
+    }
+    case "one-phase-decay": {
+      const y0 = c("Y0");
+      const p = c("Plateau");
+      const k = c("K");
+      if (y0 == null || p == null || k == null || k === 0 || y0 === p) return null;
+      const q = (y - p) / (y0 - p);
+      if (q <= 0) return null;
+      return -Math.log(q) / k;
+    }
+    case "one-phase-association": {
+      const y0 = c("Y0");
+      const p = c("Plateau");
+      const k = c("K");
+      if (y0 == null || p == null || k == null || k === 0 || p === y0) return null;
+      const q = (y - y0) / (p - y0);
+      if (q <= 0 || q >= 1) return null;
+      return -Math.log(1 - q) / k;
+    }
+    case "exponential-growth": {
+      const y0 = c("Y0");
+      const k = c("K");
+      if (y0 == null || k == null || k === 0) return null;
+      const q = y / y0;
+      if (q <= 0) return null;
+      return Math.log(q) / k;
+    }
+    case "michaelis-menten": {
+      const vmax = c("Vmax");
+      const km = c("Km");
+      if (vmax == null || km == null || vmax === y) return null;
+      const x = (y * km) / (vmax - y);
+      return x > 0 ? x : null;
+    }
+    case "allosteric-sigmoidal": {
+      const vmax = c("Vmax");
+      const khalf = c("Khalf");
+      const h = c("HillSlope");
+      if (vmax == null || khalf == null || h == null || h === 0 || vmax === y) return null;
+      const q = y / (vmax - y);
+      if (q <= 0) return null;
+      const x = khalf * q ** (1 / h);
+      return x > 0 ? x : null;
+    }
+    default:
+      return null;
+  }
+}
+
+// ── Plan 26: comparing models ────────────────────────────────────────────
+/** Nested model pairs (the simpler model is the complex one with parameters
+ *  fixed): line ⊂ quadratic ⊂ cubic; the 3PLs ⊂ 4PL (HillSlope = ±1);
+ *  4PL ⊂ 5PL (S = 1); 3PL ⊂ 5PL. Anything else (line vs hyperbola, 4PL vs
+ *  hyperbola…) is not nested — the extra-sum-of-squares F test is invalid
+ *  there, and only the AICc comparison is reported. */
+const NESTED_PAIRS: [NonlinearModel, NonlinearModel][] = [
+  ["line", "quadratic"],
+  ["line", "cubic"],
+  ["quadratic", "cubic"],
+  ["agonist-3pl-logx", "sigmoidal-4pl-logx"],
+  ["inhibitor-3pl-logx", "sigmoidal-4pl-logx"],
+  ["sigmoidal-4pl-logx", "asymmetric-5pl-logx"],
+  ["agonist-3pl-logx", "asymmetric-5pl-logx"],
+  ["inhibitor-3pl-logx", "asymmetric-5pl-logx"],
+  ["sigmoidal-4pl-x", "asymmetric-5pl-x"],
+];
+export function nestedPair(
+  a: NonlinearModel,
+  b: NonlinearModel,
+): { simpler: NonlinearModel; complex: NonlinearModel } | null {
+  for (const [s, c] of NESTED_PAIRS) {
+    if ((a === s && b === c) || (a === c && b === s)) return { simpler: s, complex: c };
+  }
+  return null;
+}
+
+/** AICc (the small-sample-corrected AIC) from a fit's residual sum of
+ *  squares, point count and parameter count; `null` when n − k − 1 ≤ 0. */
+export function aicc(ss: number, n: number, k: number): number | null {
+  if (!Number.isFinite(ss) || n - k - 1 <= 0) return null;
+  return n * Math.log(ss / n) + 2 * k + (2 * k * (k + 1)) / (n - k - 1);
+}
+
+// ── Plan 26: weighting ───────────────────────────────────────────────────
+const WEIGHT_LABEL: Record<Exclude<NonlinearWeightScheme, "none">, string> = {
+  "1/y": "1/Y",
+  "1/y2": "1/Y²",
+  "1/x": "1/X",
+  "1/x2": "1/X²",
+  "1/sd2": "1/SD²",
+};
+
+/** The per-point weights for a scheme, from the fitted points. 1/SD² takes
+ *  each fitted row's replicate SD — the SD across the table's Y columns on
+ *  that row (so the table needs ≥ 2 Y columns, and every fitted row needs ≥
+ *  2 values with a nonzero SD). 1/Y needs Y > 0; 1/X needs X > 0; 1/Y² and
+ *  1/X² need Y ≠ 0 / X ≠ 0 (they are fine for negative values arithmetically
+ *  but, as a variance model, assume scatter grows with |Y| / |X|). */
+function computeWeights(
+  scheme: NonlinearWeightScheme,
+  first: { xs: number[]; ys: number[]; rows: number[] },
+  yCols: Column[],
+): { weights?: number[] } | { error: string } {
+  switch (scheme) {
+    case "none":
+      return {};
+    case "1/y":
+      if (first.ys.some((y) => y <= 0))
+        return { error: "Weighting by 1/Y needs all Y > 0 — some fitted Y are ≤ 0." };
+      return { weights: first.ys.map((y) => 1 / y) };
+    case "1/y2":
+      if (first.ys.some((y) => y === 0))
+        return { error: "Weighting by 1/Y² needs Y ≠ 0 — some fitted Y are 0." };
+      return { weights: first.ys.map((y) => 1 / (y * y)) };
+    case "1/x":
+      if (first.xs.some((x) => x <= 0))
+        return { error: "Weighting by 1/X needs all X > 0 — some fitted X are ≤ 0." };
+      return { weights: first.xs.map((x) => 1 / x) };
+    case "1/x2":
+      if (first.xs.some((x) => x === 0))
+        return { error: "Weighting by 1/X² needs X ≠ 0 — some fitted X are 0." };
+      return { weights: first.xs.map((x) => 1 / (x * x)) };
+    case "1/sd2": {
+      if (yCols.length < 2)
+        return { error: "Weighting by 1/SD² needs replicates — at least two Y data sets measuring the same thing." };
+      const weights: number[] = [];
+      for (const r of first.rows) {
+        const values = yCols.map((c) => c.byRow[r]).filter((v): v is number => v != null);
+        if (values.length < 2)
+          return { error: "Weighting by 1/SD² needs at least two Y values on every fitted row — some rows have fewer." };
+        const mean = values.reduce((s, v) => s + v, 0) / values.length;
+        const sd = Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / (values.length - 1));
+        if (sd === 0) return { error: "Weighting by 1/SD² needs a nonzero replicate SD — some rows' replicates agree exactly." };
+        weights.push(1 / (sd * sd));
+      }
+      return { weights };
+    }
+  }
+}
+
+/** A global fit's coefficients for one series: shared parameters as fitted,
+ *  per-series parameters with their ` (Series)` suffix stripped, other
+ *  series' parameters dropped. The overlays draw one curve per series from
+ *  these. `sets` is the fit's series list (a display term like "Asymmetry
+ *  (S)" ends in a parenthesis too, so only a suffix naming a series counts). */
+export function coefficientsForSet(
+  coefficients: RegressionCoefficient[],
+  setName: string,
+  sets: string[],
+): RegressionCoefficient[] {
+  const out: RegressionCoefficient[] = [];
+  for (const c of coefficients) {
+    const own = ` (${setName})`;
+    if (c.term.endsWith(own)) {
+      out.push({ ...c, term: c.term.slice(0, -own.length) });
+      continue;
+    }
+    if (sets.some((s) => s !== setName && c.term.endsWith(` (${s})`))) continue;
+    out.push(c);
+  }
+  return out;
+}
 //
 // Plan 08 adds Prism's "Exponential" family (one/two-phase decay, plateau
 // followed by decay, one-phase association, exponential growth) to the same
@@ -328,6 +611,301 @@ function comparisonRCode(
   );
 }
 
+/** R fitting two models to the same points and comparing them: each fit's
+ *  entries (prefixed `a_`/`b_`), then the extra-sum-of-squares F test (only
+ *  when the pair is nested — `nested` says which fit is simpler and by how
+ *  many parameters) and both AICc values. */
+function compareModelsRCode(
+  xs: number[],
+  ys: number[],
+  specA: ModelSpec,
+  specB: ModelSpec,
+  weights: number[] | undefined,
+  nested: { simplerIsA: boolean; dfn: number } | null,
+): string {
+  const wAssign = weights ? `w<-${rVec(weights)};` : "";
+  const weighted = !!weights;
+  const codeA = fitStatementsForSpec(xs, ys, specA, undefined, wAssign, weighted);
+  const codeB = fitStatementsForSpec(xs, ys, specB, undefined, wAssign, weighted);
+  const fTest = nested
+    ? `ssS<-ss${nested.simplerIsA ? "A" : "B"};ssC<-ss${nested.simplerIsA ? "B" : "A"};dfC<-df${nested.simplerIsA ? "B" : "A"};` +
+      `Fc<-((ssS-ssC)/${nested.dfn})/(ssC/dfC);p<-pf(Fc,${nested.dfn},dfC,lower.tail=FALSE);`
+    : `Fc<-NA_real_;p<-NA_real_;dfC<-NA_real_;`;
+  return (
+    `${codeA}ssA<-ss;dfA<-df;vA<-c(${fitEntries(specA, "a_")});` +
+    `${codeB}ssB<-ss;dfB<-df;vB<-c(${fitEntries(specB, "b_")});` +
+    `n<-length(x);` +
+    `aicc<-function(ss,n,k) if(n-k-1>0) n*log(ss/n)+2*k+2*k*(k+1)/(n-k-1) else NA_real_;` +
+    `aiccA<-aicc(ssA,n,${specA.terms.length});aiccB<-aicc(ssB,n,${specB.terms.length});` +
+    fTest +
+    `c(vA,vB,F=Fc,dfn=${nested ? nested.dfn : 0},dfd=dfC,p=p,aiccA=aiccA,aiccB=aiccB,ssA=ssA,ssB=ssB)`
+  );
+}
+
+/** Two models fitted to the same data and compared (plan 26): the
+ *  coefficients table reports the primary model; the comparison model's
+ *  sum of squares, the F test (nested pairs only) and both AICc values are
+ *  stats rows. */
+async function compareModels(
+  params: NonlinearRegressionParams,
+  model: NonlinearModel,
+  spec: ModelSpec,
+  first: { xCol: Column; yCol: Column; xs: number[]; ys: number[]; rows: number[] },
+  xCol: Column,
+  weights: number[] | undefined,
+  titles: (string | null)[],
+): Promise<AnalysisOutcome> {
+  const otherModel = params.compareModel!;
+  const specB = modelSpec(otherModel);
+  const nested = nestedPair(model, otherModel);
+  const dfn = nested ? Math.abs(spec.terms.length - specB.terms.length) : 0;
+  const nestedValid = nested !== null && dfn > 0;
+  let v: RVector;
+  try {
+    v = await evalNamedVector(
+      compareModelsRCode(
+        first.xs,
+        first.ys,
+        spec,
+        specB,
+        weights,
+        nestedValid ? { simplerIsA: nested!.simpler === model, dfn } : null,
+      ),
+    );
+  } catch (err) {
+    return fitError(err, model);
+  }
+  const parsedA = parseFit(v, spec, first.xs.length, termLabel, "a_");
+  const aiccA = v.aiccA ?? null;
+  const aiccB = v.aiccB ?? null;
+  const delta = aiccA != null && aiccB != null ? aiccA - aiccB : null;
+  const stats: StatRow[] = [
+    ...(nestedValid
+      ? [
+          { label: "F", value: v.F ?? null },
+          { label: "DFn", value: v.dfn ?? null },
+          { label: "DFd", value: v.dfd ?? null },
+          pRow("P value", v.p ?? null),
+        ]
+      : []),
+    { label: "AICc", value: aiccA },
+    { label: "ΔAICc (primary − comparison)", value: delta },
+    { label: "Sum of squares (comparison model)", value: v.ssB ?? null },
+  ];
+  const complex = nestedValid ? nested!.complex : null;
+  const fSentence =
+    nestedValid && v.p != null
+      ? v.p < 0.05
+        ? `the extra parameters of the “${MODEL_LABEL[complex!]}” model are justified (F = ${num(v.F)}, P = ${num(v.p)}).`
+        : `the extra parameters of the “${MODEL_LABEL[complex!]}” model are not justified (F = ${num(v.F)}, P = ${num(v.p)}).`
+      : "";
+  const preferred = delta == null ? null : delta < 0 ? model : delta > 0 ? otherModel : null;
+  const extraNotes =
+    `Compared with “${MODEL_LABEL[otherModel]}”. ` +
+    (nestedValid
+      ? `Extra sum-of-squares F test: ${fSentence} `
+      : `The models are not nested, so no F test applies — the AICc comparison is the valid one. `) +
+    (preferred
+      ? `AICc prefers “${MODEL_LABEL[preferred]}” (ΔAICc = ${num(delta)}).`
+      : delta === 0
+        ? "AICc ties the two models."
+        : "AICc could not be computed (too few points for the correction).");
+  const sets = [{ name: first.yCol.name, xs: first.xs, ys: first.ys }];
+  return assembleResult(model, spec, xCol, first.yCol, undefined, sets, [parsedA], [], [], titles, first, undefined, params, stats, extraNotes);
+}
+
+/** The default shared parameters for a global fit (plan 26): the dose
+ *  midpoint + HillSlope when the model has them (Prism's typical 4PL
+ *  default: share LogEC50 + HillSlope, fit Bottom/Top per curve); models
+ *  without a midpoint share nothing by default. */
+function defaultSharedParams(spec: ModelSpec): string[] {
+  const out: string[] = [];
+  if (spec.dose) out.push(spec.dose.midpoint);
+  if (spec.terms.includes("HillSlope")) out.push("HillSlope");
+  return out;
+}
+
+/** A global (shared-parameter) fit (plan 26): several Y series fitted in one
+ *  stacked nls() call through runGlobalFit. Single-series fits supply the
+ *  starts (a shared start is their mean); the stacked formula shares the
+ *  chosen parameters, indexes the rest by `g`, and substitutes fixed ones. */
+async function runGlobalNonlinear(
+  columns: Column[],
+  params: NonlinearRegressionParams | undefined,
+  model: NonlinearModel,
+  spec: ModelSpec,
+  first: { xCol: Column; yCol: Column; xs: number[]; ys: number[]; rows: number[] },
+  xCol: Column,
+): Promise<AnalysisOutcome> {
+  const fixed = params?.fixed ?? {};
+  const bounds = params?.bounds ?? {};
+  const extraNames = params!.globalY!;
+  const series: { name: string; xs: number[]; ys: number[] }[] = [
+    { name: first.yCol.name, xs: first.xs, ys: first.ys },
+  ];
+  const yCols: Column[] = [first.yCol];
+  for (const name of extraNames) {
+    const p = prepareFit(columns, name, model, Object.keys(fixed).length);
+    if ("error" in p) return p;
+    series.push({ name, xs: p.xs, ys: p.ys });
+    yCols.push(p.yCol);
+  }
+  // A series that will not fit alone will not fit globally either.
+  const singles: { coefficients: RegressionCoefficient[] }[] = [];
+  for (const s of series) {
+    try {
+      singles.push(await fitModelSpec(s.xs, s.ys, spec, "", termLabel));
+    } catch (err) {
+      return {
+        error: `The “${s.name}” curve could not be fitted on its own (${err instanceof Error ? err.message : String(err)}). Fit each data set separately first.`,
+      };
+    }
+  }
+  const vars = formulaVariables(spec);
+  const expr = formulaExpr(spec);
+  if (!vars || vars.length !== spec.terms.length || expr === undefined)
+    return { error: `Global fitting isn't supported for “${MODEL_LABEL[model]}” yet.` };
+  const shared = params!.sharedParams ?? defaultSharedParams(spec);
+  const varOfTerm = new Map(spec.terms.map((t, i) => [t, vars[i]!]));
+  const termOfVar = new Map(vars.map((v, i) => [v, spec.terms[i]!]));
+  // One regex pass (longest names first), so a replacement never matches
+  // inside another (`K` inside `K1`, a shared name inside `Name[g]`).
+  const replacement = new Map<string, string>();
+  for (const term of spec.terms) {
+    const v = varOfTerm.get(term)!;
+    if (Object.hasOwn(fixed, term)) replacement.set(v, `(${fixed[term]})`);
+    else if (shared.includes(term)) replacement.set(v, v);
+    else replacement.set(v, `${v}[g]`);
+  }
+  const alt = [...replacement.keys()].sort((a, b) => b.length - a.length).join("|");
+  const formula = expr.replace(new RegExp(`\\b(${alt})\\b`, "g"), (m) => replacement.get(m)!);
+  const estOf = (seriesIdx: number, term: string) =>
+    singles[seriesIdx].coefficients.find((c) => c.term === termLabel(term))?.estimate ?? null;
+  const defs: GlobalParamDef[] = spec.terms
+    .filter((t) => !Object.hasOwn(fixed, t))
+    .map((term) => {
+      const v = varOfTerm.get(term)!;
+      const isShared = shared.includes(term);
+      return {
+        name: v,
+        shared: isShared,
+        start: () => {
+          const ests = series.map((_, i) => estOf(i, term));
+          if (ests.some((e) => e == null || !Number.isFinite(e)))
+            throw new Error(`Parameter “${term}” has no fitted start value.`);
+          const nums = ests as number[];
+          return isShared ? nums.reduce((s, e) => s + e, 0) / nums.length : nums;
+        },
+        ...(Object.hasOwn(bounds, term) ? { lower: bounds[term]![0], upper: bounds[term]![1] } : {}),
+      } satisfies GlobalParamDef;
+    });
+  const def: GlobalModelDef = {
+    formula,
+    params: defs,
+    maxiter: 200,
+    evaluate: (coefficients, series, _seriesIndex, x) => {
+      // The raw coefficients name variables (`Top[Control]`, `h`); rename
+      // them to this series' display terms before evaluating.
+      const perSeries: RegressionCoefficient[] = [];
+      for (const c of coefficients) {
+        const m = c.term.match(/^([^\[]+)\[(.*)\]$/);
+        if (m) {
+          if (m[2] === series.name)
+            perSeries.push({ ...c, term: termLabel(termOfVar.get(m[1]) ?? m[1]) });
+        } else perSeries.push({ ...c, term: termLabel(termOfVar.get(c.term) ?? c.term) });
+      }
+      return evaluateCurve(model, perSeries, x);
+    },
+  };
+  let result;
+  try {
+    result = await runGlobalFit(
+      series.map((s) => ({ name: s.name, x: s.xs, y: s.ys, covariate: 0 })),
+      def,
+    );
+  } catch (err) {
+    return {
+      error: `The global fit could not be fitted (${err instanceof Error ? err.message : String(err)}). A shared parameter may be unidentifiable from one data set — try sharing fewer parameters, or fit each data set separately.`,
+    };
+  }
+  // Rename the coefficients to display terms: shared plain, per-series as
+  // "Top (Treated)".
+  const coefficients = result.coefficients.map((c) => {
+    const m = c.term.match(/^([^\[]+)\[(.*)\]$/);
+    if (m) return { ...c, term: `${termLabel(termOfVar.get(m[1]) ?? m[1])} (${m[2]})` };
+    return { ...c, term: termLabel(termOfVar.get(c.term) ?? c.term) };
+  });
+  const sets = series.map((s) => s.name);
+  const coefFor = (term: string, setName: string): number | null => {
+    const suffixed = coefficients.find((c) => c.term === `${termLabel(term)} (${setName})`)?.estimate ?? null;
+    if (suffixed != null) return suffixed;
+    return coefficients.find((c) => c.term === termLabel(term))?.estimate ?? null;
+  };
+  const rows: FitRow[] = [];
+  // A shared midpoint gives one EC50/IC50 for all series (from the shared
+  // coefficient, its CI on the log when fitted as one).
+  const midpoint = spec.dose?.midpoint;
+  if (midpoint && shared.includes(midpoint)) {
+    const mid = coefficients.find((c) => c.term === termLabel(midpoint));
+    if (mid?.estimate != null) {
+      const isLog = midpoint.startsWith("Log");
+      const label = midpoint === "LogIC50" ? "IC50" : "EC50";
+      const value = isLog ? 10 ** mid.estimate : mid.estimate;
+      rows.push({ label, values: sets.map(() => value) });
+      if (mid.low != null && mid.high != null) {
+        const lo = isLog ? 10 ** mid.low : mid.low;
+        const hi = isLog ? 10 ** mid.high : mid.high;
+        rows.push({ label: "95% CI", ranges: sets.map(() => [lo, hi] as [number | null, number | null]) });
+      }
+    }
+  }
+  // Span per series (Top − Bottom), value-only.
+  if (spec.terms.includes("Top") && spec.terms.includes("Bottom")) {
+    const spans = sets.map((s) => {
+      const top = coefFor("Top", s);
+      const bottom = coefFor("Bottom", s);
+      return top != null && bottom != null ? top - bottom : null;
+    });
+    if (spans.some((v) => v != null)) rows.push({ label: "Span", values: spans });
+  }
+  rows.push({ label: "R squared", values: result.perSeries.map((p) => p.rSquared) });
+  rows.push({ label: "N", values: result.perSeries.map((p) => p.n) });
+  const statOf = (label: string) => result.stats.find((s) => s.label === label)?.value ?? null;
+  const stats: StatRow[] = [
+    { label: "R squared (all series)", value: statOf("R squared") },
+    { label: "Sum of squares", value: statOf("Sum of squares") },
+    { label: "Sy.x", value: statOf("Sy.x") },
+    { label: "Degrees of freedom", value: statOf("Degrees of freedom") },
+  ];
+  const perSeriesParams = spec.terms.filter((t) => !shared.includes(t) && !Object.hasOwn(fixed, t));
+  const groups = (await describe([xCol, ...yCols])).groups;
+  const notes =
+    `Global (shared-parameter) fit (“${MODEL_LABEL[model]}”) of ${sets.map((s) => `“${s}”`).join(", ")} on “${xCol.name}”. ` +
+    `Shared across data sets: ${shared.length ? shared.map(termLabel).join(", ") : "none"}; ` +
+    `fitted separately per data set: ${perSeriesParams.length ? perSeriesParams.map(termLabel).join(", ") : "none"}. ` +
+    `95% CIs are asymptotic (from each parameter's standard error). ` +
+    `R² is per data set; the sum of squares, Sy.x and degrees of freedom are for all series together.` +
+    (Object.keys(fixed).length
+      ? ` Fixed: ${Object.entries(fixed)
+          .map(([n, v]) => `${termLabel(n)} = ${num(v)}`)
+          .join(", ")}.`
+      : "") +
+    (Object.keys(bounds).length
+      ? ` Bounded: ${Object.entries(bounds)
+          .map(([n, [lo, hi]]) => `${termLabel(n)} in [${num(lo)}, ${num(hi)}]`)
+          .join(", ")}.`
+      : "");
+  return {
+    testType: "nonlinear-regression",
+    subtitle: MODEL_LABEL[model],
+    stats,
+    fit: { sets, rows },
+    groups,
+    notes,
+    coefficients,
+  };
+}
+
 export async function runNonlinearRegression(
   columns: Column[],
   params: NonlinearRegressionParams | undefined,
@@ -340,12 +918,92 @@ export async function runNonlinearRegression(
   const yCol = params?.y === undefined ? yCols[0] : yCols.find((c) => c.name === params.y);
   if (!xCol || !yCol) return { error: xyProblem(columns, params?.y)! };
   const spec = modelSpec(model);
-  const other = params?.compareWith === undefined ? undefined : yCols.find((c) => c.name === params.compareWith);
-  if (params?.compareWith !== undefined && !other) return { error: xyProblem(columns, params.compareWith)! };
+
+  // ── Plan 26 validation (all combinations refused up front, plainly) ──
+  const weightsScheme = params?.weights ?? "none";
+  const fixed = params?.fixed ?? {};
+  const bounds = params?.bounds ?? {};
+  const fixedNames = Object.keys(fixed);
+  const boundNames = Object.keys(bounds);
+  for (const name of [...fixedNames, ...boundNames])
+    if (!spec.terms.includes(name))
+      return { error: `“${name}” is not a parameter of “${MODEL_LABEL[model]}”.` };
+  for (const name of fixedNames)
+    if (Object.hasOwn(bounds, name))
+      return { error: `“${name}” cannot be both fixed and bounded — fix it or bound it, not both.` };
+  for (const [name, [lo, hi]] of Object.entries(bounds))
+    if (!(lo < hi)) return { error: `“${name}” bounds [${lo}, ${hi}]: the lower bound must be below the upper.` };
+  for (const [name, value] of Object.entries(fixed))
+    if (!Number.isFinite(value)) return { error: `Fixed “${name}” must be a finite number.` };
+  const comparingModels = params?.compareModel !== undefined;
+  if (comparingModels && params.compareModel === model)
+    return { error: "Choose a different model to compare with." };
+  if (comparingModels && !Object.hasOwn(MODEL_LABEL, params.compareModel!))
+    return { error: "Choose a model to compare with." };
+  const comparingSets = params?.compareWith !== undefined;
+  const global = params?.globalY !== undefined && params.globalY.length > 0;
+  if (comparingModels && comparingSets)
+    return { error: "Compare with another model or another data set — not both at once." };
+  if (comparingModels && (fixedNames.length || boundNames.length))
+    return { error: "Fixed parameters and bounds can't be combined with comparing models — compare the unconstrained fits." };
+  if (comparingModels && params?.interpolate)
+    return { error: "Interpolation can't be combined with comparing models — fit the model first, then interpolate from it." };
+  if (global && comparingSets)
+    return { error: "A global fit can't be combined with comparing two data sets — the global fit already fits them together." };
+  if (global && params?.interpolate)
+    return { error: "Interpolation can't be combined with a global fit — fit one curve first, then interpolate from it." };
+  if (global && weightsScheme !== "none")
+    return { error: "Weighting can't be combined with a global fit yet." };
+  if (global && spec.kind === "lm")
+    return { error: "Global fitting is only supported for nonlinear (nls) curves, not for line/polynomial fits." };
+  if ((fixedNames.length || boundNames.length) && spec.kind === "lm")
+    return { error: "Fixing or bounding parameters is only supported for nonlinear (nls) curves, not for line/polynomial fits." };
+  if (comparingSets && (weightsScheme !== "none" || fixedNames.length || boundNames.length))
+    return { error: "Weighting, fixed parameters and bounds can't be combined with comparing two data sets yet — fit each data set separately." };
+  if (global) {
+    for (const name of params.globalY!) {
+      if (name === yCol.name) return { error: `“${name}” is already the fitted data set — pick other Y data sets for the global fit.` };
+      if (!yCols.some((c) => c.name === name)) return { error: xyProblem(columns, name)! };
+    }
+    if (new Set(params.globalY!).size !== params.globalY!.length)
+      return { error: "Each Y data set can appear once in a global fit." };
+    for (const p of params.sharedParams ?? [])
+      if (!spec.terms.includes(p)) return { error: `“${p}” is not a parameter of “${MODEL_LABEL[model]}”.` };
+  }
+
+  const other = comparingSets ? yCols.find((c) => c.name === params.compareWith) : undefined;
+  if (comparingSets && !other) return { error: xyProblem(columns, params.compareWith)! };
   if (other && !spec.dose) return { error: "Only dose-response curves can be compared." };
 
-  const first = prepareFit(columns, params?.y, model);
+  const first = prepareFit(columns, params?.y, model, fixedNames.length);
   if ("error" in first) return first;
+  // Weighting needs the fitted points (and, for 1/SD², their rows).
+  const weightResult = computeWeights(weightsScheme, first, yCols);
+  if ("error" in weightResult) return weightResult;
+  const weights = weightResult.weights;
+  const fitOpts: FitOptions = {
+    ...(weights ? { weights } : {}),
+    ...(fixedNames.length ? { fixed } : {}),
+    ...(boundNames.length ? { bounds } : {}),
+  };
+  let effSpec: ModelSpec;
+  let extraAssignments = "";
+  try {
+    const applied = applyFitOptions(spec, fitOpts);
+    effSpec = applied.spec;
+    extraAssignments = applied.extraAssignments;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+
+  // The global fit is its own branch (one stacked nls call, not the
+  // single-curve paths below).
+  if (global) return runGlobalNonlinear(columns, params, model, spec, first, xCol);
+
+  // Comparing two models on the same data (plan 26's `compareModel` — the
+  // plan's `compareWith` name is already the other data set's column).
+  if (comparingModels) return compareModels(params, model, spec, first, xCol, weights, titles);
+
   let second: { xs: number[]; ys: number[] } | undefined;
   if (other) {
     const p = prepareFit(columns, params.compareWith, model);
@@ -396,10 +1054,12 @@ export async function runNonlinearRegression(
       `ix` +
       (logX ? `,setNames(10^ix,sub("ix","ic",names(ix)))` : "") +
       `,setNames(li,sub("ix","il",names(ix))),setNames(hi,sub("ix","ih",names(ix)))`;
+    // The effective spec (fixed parameters substituted, weights) drives
+    // the interpolation too, so the unknowns are read off the same fit.
     const rCode =
-      `${fitStatementsForSpec(first.xs, first.ys, spec)}${R_INTERP}\n` +
+      `${fitStatementsForSpec(first.xs, first.ys, effSpec, undefined, extraAssignments, !!weights)}${R_INTERP}\n` +
       `ix<-interp(m,${rVec(unknownY)},${lo},${hi},${spec.positiveX ? "TRUE" : "FALSE"})\n` +
-      `${interpolationCode(spec, unknownY, lo, hi)}c(${fitEntries(spec)},${interpNames})`;
+      `${interpolationCode(effSpec, unknownY, lo, hi)}c(${fitEntries(effSpec)},${interpNames})`;
     try {
       v = await evalNamedVector(rCode);
     } catch (err) {
@@ -407,8 +1067,20 @@ export async function runNonlinearRegression(
     }
   } else {
     try {
-      const fitted = await fitModelSpec(first.xs, first.ys, spec, "", termLabel);
+      const fitted = await fitModelSpec(first.xs, first.ys, spec, "", termLabel, fitOpts);
       retried = fitted.retried;
+      // Fixed parameters are not in the fit — report them as coefficient
+      // rows with no standard error, so the result names what was held.
+      for (const name of fixedNames)
+        fitted.coefficients.push({
+          term: termLabel(name),
+          estimate: fixed[name]!,
+          stdError: null,
+          t: null,
+          p: null,
+          low: null,
+          high: null,
+        });
       // One R call already ran; reuse its entries by re-reading them out of
       // the same shape — simplest is to keep the parsed fit and build the
       // result from it (no second R call).
@@ -420,7 +1092,7 @@ export async function runNonlinearRegression(
 
   // Comparison / interpolation paths: parse each set's prefixed entries.
   const prefix = other ? ["a_", "b_"] : [""];
-  const parsed = sets.map((s, i) => parseFit(v, spec, s.xs.length, termLabel, prefix[i]));
+  const parsed = sets.map((s, i) => parseFit(v, other ? spec : effSpec, s.xs.length, termLabel, prefix[i]));
   if (other) {
     // Comparison coefficients name their set ("Control — Bottom").
     parsed.forEach((p, i) => {
@@ -428,6 +1100,18 @@ export async function runNonlinearRegression(
         c.term = `${sets[i].name} — ${c.term}`;
       });
     });
+  } else {
+    // Interpolation with fixed parameters: the fixed rows belong with the fit.
+    for (const name of fixedNames)
+      parsed[0].coefficients.push({
+        term: termLabel(name),
+        estimate: fixed[name]!,
+        stdError: null,
+        t: null,
+        p: null,
+        low: null,
+        high: null,
+      });
   }
   const interpolated: InterpolatedRow[] = unknowns.map((r, i) => {
     const x = v[`ix_${i}`] ?? null;
@@ -444,10 +1128,53 @@ export async function runNonlinearRegression(
   return assembleResult(model, spec, xCol, yCol, other, sets, parsed, interpolated, v, titles, first, retried, params);
 }
 
+/** The notes' weighting / fixed-parameter / bounds sentences (plan 26): a
+ *  weighted or constrained fit is uninterpretable without them. A parameter
+ *  fitted at its bound is named — `nls(port)` converges onto the bound
+ *  there, which is a property of the fit, not of the data. */
+function frameworkNotes(
+  params: NonlinearRegressionParams | undefined,
+  coefficients: RegressionCoefficient[],
+  first: { xs: number[]; ys: number[] },
+): string {
+  const parts: string[] = [];
+  const scheme = params?.weights;
+  if (scheme && scheme !== "none") {
+    parts.push(`Weighted by ${WEIGHT_LABEL[scheme]}; R² and the sum of squares are weighted.`);
+    if (scheme === "1/y2" && first.ys.some((y) => y <= 0))
+      parts.push("Some Y are ≤ 0; 1/Y² weights still apply arithmetically but, as a variance model, assume scatter grows with |Y|.");
+    if (scheme === "1/x2" && first.xs.some((x) => x <= 0))
+      parts.push("Some X are ≤ 0; 1/X² weights still apply arithmetically but, as a variance model, assume scatter grows with |X|.");
+  }
+  const fixed = params?.fixed ?? {};
+  if (Object.keys(fixed).length)
+    parts.push(
+      `Fixed parameters: ${Object.entries(fixed)
+        .map(([n, v]) => `${termLabel(n)} = ${num(v)}`)
+        .join(", ")}.`,
+    );
+  const bounds = params?.bounds ?? {};
+  if (Object.keys(bounds).length)
+    parts.push(
+      `Bounded parameters: ${Object.entries(bounds)
+        .map(([n, [lo, hi]]) => {
+          const est = coefOf(coefficients, n);
+          const atBound =
+            est != null &&
+            (Math.abs(est - lo) <= 1e-6 * Math.max(1, Math.abs(lo)) ||
+              Math.abs(est - hi) <= 1e-6 * Math.max(1, Math.abs(hi)));
+          return `${termLabel(n)} in [${num(lo)}, ${num(hi)}]${atBound ? " (fitted at its bound)" : ""}`;
+        })
+        .join(", ")}.`,
+    );
+  return parts.length ? ` ${parts.join(" ")}` : "";
+}
+
 /** The result all three paths share: fit block + coefficients + notes, with
  *  the exponential/enzyme extras (equation, starting values, warnings) and
  *  the comparison F test / interpolation sentences when they apply.
- *  `parsed` is one parsed fit per set; `v` the raw vector (comparison F/p). */
+ *  `parsed` is one parsed fit per set; `v` the raw vector (comparison F/p).
+ *  `extraStats`/`comparisonNotes` carry a model comparison's rows and verdict. */
 async function assembleResult(
   model: NonlinearModel,
   spec: ModelSpec,
@@ -462,18 +1189,23 @@ async function assembleResult(
   first: { xs: number[]; ys: number[] },
   retried: boolean | undefined,
   params: NonlinearRegressionParams | undefined,
+  extraStats: StatRow[] = [],
+  comparisonNotes = "",
 ): Promise<AnalysisOutcome> {
   const other = sets.length > 1;
   const coefficients = parsed.flatMap((p) => p.coefficients);
   const fit = { sets: sets.map((s) => s.name), rows: fitRows(parsed.map((p) => p.derived), parsed.map((p) => p.stats)) };
-  const stats: StatRow[] = other
-    ? [
-        { label: "F", value: (v as RVector).F ?? null },
-        { label: "DFn", value: (v as RVector).dfn ?? null },
-        { label: "DFd", value: (v as RVector).dfd ?? null },
-        pRow("P value", (v as RVector).p ?? null),
-      ]
-    : [];
+  const stats: StatRow[] = [
+    ...(other
+      ? [
+          { label: "F", value: (v as RVector).F ?? null },
+          { label: "DFn", value: (v as RVector).dfn ?? null },
+          { label: "DFd", value: (v as RVector).dfd ?? null },
+          pRow("P value", (v as RVector).p ?? null),
+        ]
+      : []),
+    ...extraStats,
+  ];
   const midpoint = spec.dose?.midpoint.replace(/^Log/, "") ?? "EC50";
   const question =
     params?.compare === "all" ? "Does one curve fit both data sets?" : `Is the ${midpoint} different between them?`;
@@ -498,7 +1230,9 @@ async function assembleResult(
   const notes =
     `Least-squares fit ("${MODEL_LABEL[model]}") of ${sets.map((s) => `“${s.name}”`).join(" and ")} on “${xCol.name}”. ` +
     `95% CIs are asymptotic (from each parameter's standard error${spec.terms.includes("S") ? "; the asymmetry S's, on its log" : ""}).` +
+    frameworkNotes(params, coefficients, first) +
     (other ? ` Extra sum-of-squares F test: ${question} ${answer}` : "") +
+    (comparisonNotes ? ` ${comparisonNotes}` : "") +
     interpolation;
   const eq = isExponential(model) || isEnzyme(model) ? equation(model, coefficients) : undefined;
   const extraNotes: string[] = [];

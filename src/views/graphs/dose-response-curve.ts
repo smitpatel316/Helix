@@ -5,7 +5,7 @@
 import type { GraphOptions } from "../../store/types";
 import type { AnalysisResult, RegressionCoefficient } from "../../stats/types";
 import { EXPONENTIAL_MODELS } from "../../stats/xy/nonlinear-fit";
-import { termLabel } from "../../stats/xy/nonlinear-regression";
+import { coefficientsForSet, termLabel } from "../../stats/xy/nonlinear-regression";
 import { pairUp, type Column } from "../../lib/dataset";
 import type { GraphFigure } from ".";
 import { num } from "../../lib/format";
@@ -172,7 +172,8 @@ function doseResponseLabel(model: DoseModel, coefficients: RegressionCoefficient
  *  `interpolate: true`, each interpolated unknown also gets its drop-lines:
  *  a horizontal dashed line at Y = unknown from the Y axis to the curve, a
  *  vertical dashed line down to the interpolated X, and a marker at the curve
- *  point. */
+ *  point. A global fit (`fit.fit.sets` with > 1 series) draws one curve per
+ *  series, each in its series' color, from that series' coefficients. */
 export function addDoseCurve(
   fig: GraphFigure,
   columns: Column[],
@@ -185,6 +186,34 @@ export function addDoseCurve(
   const y = ys.find((c) => c.name === options.doseY) ?? ys[0];
   const coefficients = fit.coefficients ?? [];
   if (!x || !y || !coefficients.length || !options.doseShowCurve) return;
+  const sets = fit.fit?.sets ?? [];
+  if (sets.length > 1) {
+    // One curve per series, each over its own points, in its own color.
+    for (const setName of sets) {
+      const yCol = ys.find((c) => c.name === setName);
+      if (!yCol) continue;
+      const pairs = pairUp(x, yCol);
+      if (!pairs.x.length) continue;
+      const curve = fittedCurve(
+        options.doseModel,
+        coefficientsForSet(coefficients, setName, sets),
+        ...extent(pairs.x),
+      );
+      fig.data = [
+        {
+          type: "scatter",
+          mode: "lines",
+          x: curve.x,
+          y: curve.y,
+          line: { color: paint.color(yCol.name, ys.indexOf(yCol)), width: 1.5 },
+          hoverinfo: "skip",
+          showlegend: false,
+        },
+        ...fig.data,
+      ];
+    }
+    return;
+  }
   const pairs = pairUp(x, y);
   const xs = pairs.x;
   if (!xs.length) return;
