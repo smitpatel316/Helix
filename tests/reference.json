@@ -26170,7 +26170,7 @@
    }
   }
  },
- "graph dose-response doseLog": {
+ "graph xy-scatter doseLog": {
   "data": [
    {
     "type": "scatter",

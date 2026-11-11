@@ -2,8 +2,8 @@
 // equation (computed by a "Binding — Saturation" or "Binding — Kinetics"
 // analysis via WebR nls()) at evenly spaced X points for plotting — no
 // re-fitting here, just the closed form applied to the returned
-// coefficients. Follows dose-response-curve.ts exactly: the graph reads the
-// cached runAnalysis result, as addDoseCurve does.
+// coefficients. Follows fitted-curve.ts exactly: the graph reads the
+// cached runAnalysis result, as addFittedCurve does.
 import type { GraphOptions } from "../../store/types";
 import type {
   AnalysisResult,

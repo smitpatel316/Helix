@@ -25,7 +25,6 @@ export type GraphType =
   | "grouped-hbars"
   | "pie"
   | "donut"
-  | "dose-response"
   | "schild-plot"
   | "logistic-curve"
   | "heatmap"
@@ -52,26 +51,6 @@ export const GRAPH_CHOICES = {
   pieValue: ["sum", "mean"],
   groupLayout: ["interleaved", "separated"],
   sigDisplay: ["stars", "pvalue"],
-  doseModel: [
-    "sigmoidal-4pl-logx",
-    "sigmoidal-4pl-x",
-    "agonist-3pl-logx",
-    "inhibitor-3pl-logx",
-    "asymmetric-5pl-logx",
-    "asymmetric-5pl-x",
-    "one-phase-decay",
-    "two-phase-decay",
-    "plateau-decay",
-    "one-phase-association",
-    "exponential-growth",
-    "michaelis-menten",
-    "allosteric-sigmoidal",
-    "substrate-inhibition",
-    // Binding — Competition (plan 28).
-    "two-site-competition-logx",
-    "two-site-competition-x",
-    "homologous-competition-logx",
-  ],
   survivalMode: ["codes", "counts"],
   volcanoEffect: ["log2ratio", "difference"],
   volcanoSignificance: ["pvalue", "fdr"],
@@ -113,9 +92,6 @@ export const GRAPH_LIMITS = {
    *  clamped to the components the linked PCA actually reported. */
   pcaX: { min: 1, max: 20 },
   pcaY: { min: 1, max: 20 },
-  // A concentration, so 0 is the floor (the homologous runner rejects
-  // 0 itself — [L] must be greater than 0 — with its own message).
-  doseLigandConcentration: { min: 0, max: Infinity },
 } as const;
 
 /**
@@ -199,18 +175,6 @@ export interface GraphOptions {
   pcaAnalysisId?: string;
   pcaX: number;
   pcaY: number;
-  // Dose-response curve (XY family only): a one-click sigmoidal 4PL fit of the
-  // chosen Y series against X, run via WebR (see dose-response-curve.ts) — no
-  // sibling analysis node needed, unlike the Linear-regression overlay above.
-  // `doseY` omitted defaults to the first Y data column.
-  doseY?: string;
-  doseModel: Choice<"doseModel">;
-  // The homologous competition curve needs the radioligand concentration
-  // [L] (plan 28) — the graph fits its own curve, so it carries [L] itself;
-  // without it the homologous fit errors and the graph draws points only.
-  doseLigandConcentration?: number;
-  doseShowCurve: boolean;
-  doseShowEquation: boolean;
   // A Multiple Variables table's scatter: its X and Y variables (column names); omitted,
   // the first two holding numbers.
   xVariable?: string;
@@ -332,9 +296,6 @@ export const DEFAULT_GRAPH_OPTIONS: GraphOptions = {
   demingShowLine: true,
   demingShowOls: true,
   demingShowEquation: true,
-  doseModel: "sigmoidal-4pl-x",
-  doseShowCurve: true,
-  doseShowEquation: true,
   smoothShowCurve: true,
   heatmapShowValues: false,
   heatmapShowScale: true,

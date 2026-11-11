@@ -58,7 +58,7 @@ const POSTHOCS = ["none", "tukey", "bonferroni", "sidak", "holm-sidak", "lsd"] a
  *  a control (Dunnett). */
 export const ANOVA_POSTHOCS = [...POSTHOCS, "dunnett", "games-howell", "t3"] as const;
 export const RANK_POSTHOCS = ["none", "dunn", "dunn-sidak", "dunn-holm-sidak"] as const;
-/** The dose-response (sigmoidal) models: what the Dose-response graph draws, and what can
+/** The dose-response (sigmoidal) models: what an XY scatter's fitted curve draws, and what can
  *  compare two data sets' curves. */
 export const DOSE_MODELS = [
   "sigmoidal-4pl-logx",
@@ -70,7 +70,7 @@ export const DOSE_MODELS = [
   // Binding — Competition (plan 28): the one-site Fit logIC50 is the
   // inhibitor 3PL above; the two-site and homologous competition curves
   // are dose-response curves too, so they live here (wizard dose list,
-  // dose-response graph, curve comparison).
+  // curve comparison).
   "two-site-competition-logx",
   "two-site-competition-x",
   "homologous-competition-logx",
