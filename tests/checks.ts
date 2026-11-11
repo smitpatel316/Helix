@@ -59,7 +59,7 @@ import {
 import { deletePalette, keepPalette, loadMyPalettes } from "../src/store/my-palettes";
 import { GRAPHS, GRAPH_OPTIONS_BY_TABLE, newGraphOptions, type GraphFigure } from "../src/views/graphs";
 import { isGrouped, isNested, readTable, setColumns } from "../src/lib/dataset";
-import { incompleteRows, missingColumn } from "../src/stats/column/base";
+import { adjustComparisonRows, adjustPValues, incompleteRows, missingColumn } from "../src/stats/column/base";
 import { dagostinoPearson } from "../src/stats/column/shapiro-wilk";
 import { parseGroupLevels, toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
 import { addNote, movedText, paintOf, vectorTraces, visibleOutline, withCaps } from "../src/views/graphs/plot-helpers";
@@ -1038,9 +1038,30 @@ check("comparing groups asks equal SDs, then offers the comparisons that fit and
     return q?.kind === "choice" ? q.options.map((o) => o.value) : [];
   };
   const unpaired = { paired: "unpaired", gaussian: "yes" };
-  deepStrictEqual(offered({ ...unpaired, equalSd: "yes" }), ["none", "tukey", "bonferroni", "dunnett"]);
+  deepStrictEqual(offered({ ...unpaired, equalSd: "yes" }), [
+    "none",
+    "tukey",
+    "bonferroni",
+    "sidak",
+    "holm-sidak",
+    "lsd",
+    "dunnett",
+  ]);
   deepStrictEqual(offered({ ...unpaired, equalSd: "no" }), ["none", "games-howell", "t3"]);
-  deepStrictEqual(offered({ paired: "paired", gaussian: "yes" }), ["none", "tukey", "bonferroni"]);
+  deepStrictEqual(offered({ paired: "paired", gaussian: "yes" }), [
+    "none",
+    "tukey",
+    "bonferroni",
+    "sidak",
+    "holm-sidak",
+    "lsd",
+  ]);
+  deepStrictEqual(offered({ paired: "unpaired", gaussian: "no" }), [
+    "none",
+    "dunn",
+    "dunn-sidak",
+    "dunn-holm-sidak",
+  ]);
   ok(!asked({ paired: "paired", gaussian: "yes" }).some((q) => q.id === "equalSd"));
   ok(asked({ paired: "paired", gaussian: "yes" }).some((q) => q.id === "sphericity"));
   ok(!asked({ ...unpaired }).some((q) => q.id === "sphericity"));
@@ -1981,6 +2002,49 @@ check("an exported image says its resolution, and none of the headers that say 7
 });
 
 // ── Analyses ─────────────────────────────────────────────────────────────
+
+// P-value adjustments (plan 25): Šídák and Holm–Šídák are pure TypeScript
+// arithmetic on raw P values — the plan's hand-computed values, pinned here
+// so a regression in the formula shows up without running R.
+check("Šídák adjusts 1 − (1 − p)^m, and is the identity for one comparison", () => {
+  const got = adjustPValues([0.808, 0.0253, 0.0482], "sidak");
+  for (const [i, want] of [0.9929, 0.0741, 0.1378].entries())
+    ok(Math.abs(got[i]! - want) < 0.001, `Šídák #${i}: ${got[i]}, want ${want}`);
+  // With one comparison the adjustment is the identity (up to float noise).
+  for (const method of ["sidak", "holm-sidak"] as const) {
+    const one = adjustPValues([0.04], method);
+    ok(one.length === 1 && Math.abs(one[0]! - 0.04) < 1e-12, `${method} m=1: ${one[0]}`);
+  }
+});
+
+check("Holm–Šídák steps down over the sorted P values, keeping the running max", () => {
+  // Sorted raw 0.0253, 0.0482, 0.8080 → 0.0741, max(0.0741, 0.0941), 0.8080 —
+  // and the input order (unsorted) is preserved in the output.
+  deepStrictEqual(
+    adjustPValues([0.808, 0.0253, 0.0482], "holm-sidak").map((p) => Number(p!.toFixed(4))),
+    [0.808, 0.074, 0.0941],
+  );
+  // A small P later in the order can't lower an earlier adjusted value.
+  deepStrictEqual(
+    adjustPValues([0.9, 0.01, 0.5], "holm-sidak").map((p) => Number(p!.toFixed(4))),
+    [0.9, 0.0297, 0.75],
+  );
+});
+
+check("P-value adjustments pass nulls through", () => {
+  deepStrictEqual(adjustPValues([null, 0.9], "sidak"), [null, 0.99]);
+  deepStrictEqual(adjustPValues([1, null], "holm-sidak"), [1, null]);
+  deepStrictEqual(
+    adjustComparisonRows(
+      [
+        { group1: "A", group2: "B", diff: 1, p: 0.0253 },
+        { group1: "A", group2: "C", diff: 2, p: 0.0482 },
+      ],
+      "sidak",
+    ).map((r) => Number(r.p!.toFixed(4))),
+    [0.05, 0.0941],
+  );
+});
 
 check("an analysis runs on the data sets chosen, in their order", async () => {
   const column = readTable(treatments(["Control", "Drug A", "Drug B"]));

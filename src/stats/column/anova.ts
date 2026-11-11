@@ -5,6 +5,7 @@
 // distribution of the largest of the t statistics compared, integrated in R.
 import type { AnovaParams } from "../types";
 import {
+  adjustComparisonRows,
   dataGroups,
   groupsSetup,
   pairIndices,
@@ -46,6 +47,13 @@ function comparisons(groups: Group[], p: AnovaParams): { setup: string; values: 
   }
   if (p.posthoc === "bonferroni") {
     const ph = pairwisePosthocStatements(k, `pairwise.t.test(v,gr,p.adjust.method="bonferroni")$p.value`);
+    return { setup: ph.setup, values: ph.assign };
+  }
+  if (p.posthoc === "sidak" || p.posthoc === "holm-sidak" || p.posthoc === "lsd") {
+    // Raw (uncorrected) pairwise P values — the Šídák / Holm–Šídák adjustment
+    // runs in TS on the returned rows (see adjustComparisons below); LSD
+    // reports them as they are.
+    const ph = pairwisePosthocStatements(k, `pairwise.t.test(v,gr,p.adjust.method="none")$p.value`);
     return { setup: ph.setup, values: ph.assign };
   }
   if (p.posthoc === "dunnett") {
@@ -119,14 +127,23 @@ export const anovaSpec: ColumnTestSpec<AnovaParams> = {
           { label: "R squared (eta squared)", value: v.eta2 },
         ],
   posthoc: posthocOf,
+  adjustComparisons: (rows, params) =>
+    params?.posthoc === "sidak"
+      ? adjustComparisonRows(rows, "sidak")
+      : params?.posthoc === "holm-sidak"
+        ? adjustComparisonRows(rows, "holm-sidak")
+        : rows,
   pairs: (groups, params) => {
     if (params?.posthoc !== "dunnett") return pairIndices(groups.length);
     const c = controlOf(groups, params);
     return groups.flatMap((_, i): [number, number][] => (i === c ? [] : [[i, c]]));
   },
   notes: (params) =>
-    welch(params)
+    (welch(params)
       ? "Compares means across groups without assuming equal SDs (Welch's ANOVA); assumes normal distributions."
-      : "Compares means across groups; assumes normal distributions with equal variances.",
+      : "Compares means across groups; assumes normal distributions with equal variances.") +
+    (params?.posthoc === "lsd"
+      ? " Fisher's LSD is uncorrected — only interpretable when the overall ANOVA was significant."
+      : ""),
   subtitle: (params) => (welch(params) ? "Welch's ANOVA" : "One-way ANOVA"),
 };

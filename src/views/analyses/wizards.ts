@@ -323,6 +323,8 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           ? [
               ["none", `No — only the overall ${nonParametric}`],
               ["dunn", "Yes — Dunn's multiple comparisons test (Bonferroni-corrected)"],
+              ["dunn-sidak", "Yes — Dunn's multiple comparisons test (Šídák-corrected)"],
+              ["dunn-holm-sidak", "Yes — Dunn's multiple comparisons test (Holm–Šídák-corrected)"],
             ]
           : anova && a.equalSd === "no"
             ? [
@@ -334,6 +336,9 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
                 ["none", "No — only the overall ANOVA"],
                 ["tukey", "Yes, every pair — Tukey's multiple comparisons test"],
                 ["bonferroni", "Yes, every pair — Bonferroni-corrected comparisons"],
+                ["sidak", "Yes, every pair — Šídák-corrected comparisons"],
+                ["holm-sidak", "Yes, every pair — Holm–Šídák comparisons"],
+                ["lsd", "Yes, every pair — Fisher's LSD test (uncorrected — only if the ANOVA is significant)"],
                 ...(anova
                   ? [["dunnett", "Yes, each group against a control — Dunnett's test"] as [string, string]]
                   : []),
@@ -1416,6 +1421,12 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           ["tukey rows", "Yes — Tukey's, comparing rows within each group"],
           ["bonferroni groups", "Yes — Bonferroni, comparing groups within each row"],
           ["bonferroni rows", "Yes — Bonferroni, comparing rows within each group"],
+          ["sidak groups", "Yes — Šídák, comparing groups within each row"],
+          ["sidak rows", "Yes — Šídák, comparing rows within each group"],
+          ["holm-sidak groups", "Yes — Holm–Šídák, comparing groups within each row"],
+          ["holm-sidak rows", "Yes — Holm–Šídák, comparing rows within each group"],
+          ["lsd groups", "Yes — Fisher's LSD (uncorrected), comparing groups within each row"],
+          ["lsd rows", "Yes — Fisher's LSD (uncorrected), comparing rows within each group"],
         ]),
     ],
     finish: (a) => {

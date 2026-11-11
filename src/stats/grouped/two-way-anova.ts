@@ -17,10 +17,46 @@
 // internally (q = sqrt(2)*|t|, t from the pooled-MSE two-sample t stat), just
 // derived directly instead of relying on TukeyHSD's interaction-term row naming.
 // Each row (or each group) is a family of comparisons, corrected on its own.
+// Tukey, Bonferroni, Šídák, Holm–Šídák and Fisher's LSD are offered (plan 25);
+// the Šídák family adjusts in TS per family, on raw P values from R.
 import type { AnalysisOutcome, Column, ComparisonRow, TwoWayAnovaParams } from "../types";
-import { describe, pairIndices, pRow, rStr, rVec } from "../column/base";
+import { adjustPValues, describe, pairIndices, pRow, rStr, rVec } from "../column/base";
 import { evalNamedVector } from "../webr";
 import { completeSubjects, flattenGrouped, flattenRepeated, groupRows, rowName } from "./base";
+
+/** Short heading for a post-hoc method in a two-way comparisons label. */
+const POSTHOC_LABEL_SHORT: Record<string, string> = {
+  tukey: "Tukey's",
+  bonferroni: "Bonferroni-corrected",
+  sidak: "Šídák-corrected",
+  "holm-sidak": "Holm–Šídák",
+  lsd: "Fisher's LSD (uncorrected)",
+};
+
+/** The post-hoc methods a two-way ANOVA offers (plan 25): Tukey, Bonferroni,
+ *  Šídák, Holm–Šídák and Fisher's LSD. Anything else the params type allows
+ *  (Dunnett, Games-Howell, T3 — one-way only) is refused up front rather than
+ *  silently run as Bonferroni. */
+const TWO_WAY_POSTHOCS = ["none", "tukey", "bonferroni", "sidak", "holm-sidak", "lsd"] as const;
+type TwoWayPosthoc = (typeof TWO_WAY_POSTHOCS)[number];
+
+/** Adjust each family's P values (one row, or one group, is a family) — the
+ *  Šídák / Holm–Šídák step needs the whole family sorted, so R returns raw P
+ *  values and the adjustment runs here, family by family. */
+function adjustFamilies(rows: ComparisonRow[], families: string[], method: "sidak" | "holm-sidak"): ComparisonRow[] {
+  const out = [...rows];
+  for (const family of new Set(families)) {
+    const idx = families.map((f, i) => (f === family ? i : -1)).filter((i) => i >= 0);
+    const adjusted = adjustPValues(
+      idx.map((i) => rows[i].p),
+      method,
+    );
+    idx.forEach((i, k) => {
+      out[i] = { ...rows[i], p: adjusted[k] };
+    });
+  }
+  return out;
+}
 
 // Group/row/subject labels derive from user column names, so they must be escaped
 // before interpolation — only their distinctness matters to the model, not their text.
@@ -28,7 +64,7 @@ const rFactor = (labels: string[]) => `factor(c(${labels.map(rStr).join(",")}))`
 
 async function runPosthoc(
   columns: Column[],
-  method: "tukey" | "bonferroni",
+  method: TwoWayPosthoc,
   target: "groups" | "rows",
   mse: number | null,
   dfResid: number | null,
@@ -40,7 +76,9 @@ async function runPosthoc(
   const rowCount = rows.get(names[0])?.length ?? 0;
   // Each comparison's two cells (a group at a row) and how many means its family compares
   // (the groups holding data at its row, or the rows holding data in its group).
-  const cells: { label1: string; label2: string; a: number[]; b: number[]; means: number }[] = [];
+  // `family` is the row (groups target) or group (rows target) the comparison belongs to:
+  // each family is corrected on its own.
+  const cells: { label1: string; label2: string; a: number[]; b: number[]; means: number; family: string }[] = [];
   if (target === "groups") {
     for (let r = 0; r < rowCount; r++) {
       const means = names.filter((name) => rows.get(name)![r].length > 0).length;
@@ -53,6 +91,7 @@ async function runPosthoc(
             a,
             b,
             means,
+            family: rowName(titles, r),
           });
       }
     }
@@ -69,17 +108,21 @@ async function runPosthoc(
             a,
             b,
             means,
+            family: name,
           });
       }
     }
   }
   if (cells.length === 0) return undefined;
   // In R: each pair's difference of means, its t on the ANOVA's mean square, and its P
-  // corrected within its family.
+  // corrected within its family. Šídák / Holm–Šídák take the raw P here and adjust
+  // in TS (adjustFamilies below); LSD reports it as is.
   const p = (c: (typeof cells)[number]) =>
     method === "tukey"
       ? `ptukey(abs(t)*sqrt(2),${c.means},${dfResid},lower.tail=FALSE)`
-      : `pmin(1,${(c.means * (c.means - 1)) / 2}*2*pt(-abs(t),${dfResid}))`;
+      : method === "bonferroni"
+        ? `pmin(1,${(c.means * (c.means - 1)) / 2}*2*pt(-abs(t),${dfResid}))`
+        : `2*pt(-abs(t),${dfResid})`;
   const v = await evalNamedVector(
     `c(${cells
       .map(
@@ -90,12 +133,19 @@ async function runPosthoc(
       .map((code, k) => `setNames(${code},c("d_${k}","p_${k}"))`)
       .join(",")})`,
   );
-  return cells.map((c, k) => ({
+  const comparisons = cells.map((c, k) => ({
     group1: c.label1,
     group2: c.label2,
     diff: v[`d_${k}`] ?? null,
     p: v[`p_${k}`] ?? null,
   }));
+  return method === "sidak" || method === "holm-sidak"
+    ? adjustFamilies(
+        comparisons,
+        cells.map((c) => c.family),
+        method,
+      )
+    : comparisons;
 }
 
 /** R comparing the cells of a repeated-measures design without assuming sphericity (`Y`:
@@ -103,21 +153,26 @@ async function runPosthoc(
  *  its own error, never the whole experiment's: rows within a group, a paired t on that
  *  group's differences (n − 1 df); groups within a row, that row's pooled SD. */
 function correctedPosthoc(
-  method: "tukey" | "bonferroni",
+  method: TwoWayPosthoc,
   target: "groups" | "rows",
   groupNames: string[],
   rowNames: string[],
-): { rCode: string; labels: [string, string][] } {
+): { rCode: string; labels: [string, string][]; families: string[] } {
   const labels: [string, string][] = [];
+  const families: string[] = [];
   const parts: string[] = [];
   const p = (means: number, df: string) =>
     method === "tukey"
       ? `ptukey(t*sqrt(2),${means},${df},lower.tail=FALSE)`
-      : `pmin(1,${(means * (means - 1)) / 2}*2*pt(-t,${df}))`;
+      : method === "bonferroni"
+        ? `pmin(1,${(means * (means - 1)) / 2}*2*pt(-t,${df}))`
+        : // Šídák / Holm–Šídák take the raw P and adjust in TS per family; LSD as is.
+          `2*pt(-t,${df})`;
   if (target === "rows") {
     for (const g of groupNames)
       for (const [i, j] of pairIndices(rowNames.length)) {
         labels.push([`${rowNames[i]} (${g})`, `${rowNames[j]} (${g})`]);
+        families.push(g);
         parts.push(
           `{a<-Y[gs==${rStr(g)},${i + 1}];b<-Y[gs==${rStr(g)},${j + 1}];d<-a-b;n<-length(d);` +
             `t<-abs(mean(d))/(sd(d)/sqrt(n));c(mean(a)-mean(b),${p(rowNames.length, "n-1")})}`,
@@ -128,6 +183,7 @@ function correctedPosthoc(
       for (const [i, j] of pairIndices(groupNames.length)) {
         const [a, b] = [groupNames[i], groupNames[j]];
         labels.push([`${a} (${row})`, `${b} (${row})`]);
+        families.push(row);
         parts.push(
           `{e<-Y[,${r + 1}];m<-tapply(e,gs,mean);k<-tapply(e,gs,length);dfe<-length(e)-nlevels(gs);` +
             `mse<-sum((e-m[gs])^2)/dfe;t<-abs(m[[${rStr(a)}]]-m[[${rStr(b)}]])/sqrt(mse*(1/k[[${rStr(a)}]]+1/k[[${rStr(b)}]]));` +
@@ -137,7 +193,7 @@ function correctedPosthoc(
     });
   }
   const rCode = parts.map((code, k) => `setNames(${code},c("d_${k}","p_${k}"))`).join(",");
-  return { rCode, labels };
+  return { rCode, labels, families };
 }
 
 async function runRepeatedMeasures(
@@ -172,7 +228,8 @@ async function runRepeatedMeasures(
       : `${k}S=${f},${k}Df=${df},${k}DfResid=${resid},${k}P=${p}`;
   const posthoc =
     corrected && params.posthoc !== "none"
-      ? correctedPosthoc(params.posthoc, params.posthocTarget, groupNames, rowNames)
+      ? // runTwoWayAnova refuses any posthoc outside TWO_WAY_POSTHOCS before dispatching here.
+        correctedPosthoc(params.posthoc as TwoWayPosthoc, params.posthocTarget, groupNames, rowNames)
       : undefined;
   const rCode =
     `${setup};a<-summary(aov(v~g*r+Error(id/r)));e1<-a[["Error: id"]][[1]];e2<-a[["Error: id:r"]][[1]];` +
@@ -203,18 +260,24 @@ async function runRepeatedMeasures(
   // own pooled error term.
   const mse = params.posthocTarget === "groups" ? v.gMse : v.rMse;
   const dfResid = params.posthocTarget === "groups" ? v.gDfResid : v.rDfResid;
-  const comparisons = posthoc
+  const correctedRows: ComparisonRow[] | undefined = posthoc
     ? posthoc.labels.map(([group1, group2], k): ComparisonRow => ({
         group1,
         group2,
         diff: v[`d_${k}`] ?? null,
         p: v[`p_${k}`] ?? null,
       }))
+    : undefined;
+  const comparisons = correctedRows
+    ? params.posthoc === "sidak" || params.posthoc === "holm-sidak"
+      ? adjustFamilies(correctedRows, posthoc!.families, params.posthoc)
+      : correctedRows
     : params.posthoc !== "none"
       ? await runPosthoc(
           // The subjects the ANOVA kept: comparisons are of the same means.
+          // runTwoWayAnova refuses any posthoc outside TWO_WAY_POSTHOCS first.
           completeSubjects(columns).subjects,
-          params.posthoc,
+          params.posthoc as TwoWayPosthoc,
           params.posthocTarget,
           mse ?? null,
           dfResid ?? null,
@@ -241,7 +304,7 @@ async function runRepeatedMeasures(
         : ""),
     comparisons,
     comparisonsLabel: comparisons?.length
-      ? `${params.posthoc === "tukey" ? "Tukey's" : "Bonferroni-corrected"} multiple comparisons ` +
+      ? `${POSTHOC_LABEL_SHORT[params.posthoc] ?? params.posthoc} multiple comparisons ` +
         (params.posthocTarget === "groups"
           ? "(groups within each row, each row a family)"
           : "(rows within each group, each group a family)")
@@ -254,6 +317,13 @@ export async function runTwoWayAnova(
   params: TwoWayAnovaParams,
   titles: (string | null)[],
 ): Promise<AnalysisOutcome> {
+  if (!(TWO_WAY_POSTHOCS as readonly string[]).includes(params.posthoc)) {
+    return {
+      error:
+        `“${params.posthoc}” multiple comparisons are not available for two-way ANOVA — ` +
+        `choose Tukey, Bonferroni, Šídák, Holm–Šídák or Fisher's LSD.`,
+    };
+  }
   // One value per cell (a group at a row): the interaction can't be told from scatter, so
   // only the ordinary ANOVA runs, without it (as Prism does).
   const replicated = [...groupRows(columns).values()].some((rows) => rows.some((cell) => cell.length > 1));
@@ -302,7 +372,15 @@ export async function runTwoWayAnova(
   );
   const comparisons =
     replicated && !nonparametric && params.posthoc !== "none"
-      ? await runPosthoc(columns, params.posthoc, params.posthocTarget, v.mse, v.dfResid, titles)
+      ? await runPosthoc(
+          columns,
+          // The guard at the top of this function already refused any other value.
+          params.posthoc as TwoWayPosthoc,
+          params.posthocTarget,
+          v.mse,
+          v.dfResid,
+          titles,
+        )
       : undefined;
   return {
     testType: "two-way-anova",
@@ -318,7 +396,7 @@ export async function runTwoWayAnova(
           "mean little. Comparisons within rows or groups need replicates. Assumes normal distributions with equal variances.",
     comparisons,
     comparisonsLabel: comparisons?.length
-      ? `${params.posthoc === "tukey" ? "Tukey's" : "Bonferroni-corrected"} multiple comparisons ` +
+      ? `${POSTHOC_LABEL_SHORT[params.posthoc] ?? params.posthoc} multiple comparisons ` +
         (params.posthocTarget === "groups"
           ? "(groups within each row, each row a family)"
           : "(rows within each group, each group a family)")

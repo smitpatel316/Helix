@@ -52,11 +52,12 @@ export type AnalysisPickerValue = AnalysisType | "compare-many-groups" | "interp
 // The choices of the params, one list each: wizards ask among them, the types come from
 // them, and a file's value outside them is left out (the test takes its default).
 export const TAILS = ["two-sided", "less", "greater"] as const;
-const POSTHOCS = ["none", "tukey", "bonferroni"] as const;
-/** A one-way ANOVA's comparisons: every pair (Tukey, Bonferroni; with unequal SDs Games-Howell,
- *  Dunnett's T3), or each group against a control (Dunnett). */
+const POSTHOCS = ["none", "tukey", "bonferroni", "sidak", "holm-sidak", "lsd"] as const;
+/** A one-way ANOVA's comparisons: every pair (Tukey, Bonferroni, Šídák, Holm–Šídák,
+ *  Fisher's LSD; with unequal SDs Games-Howell, Dunnett's T3), or each group against
+ *  a control (Dunnett). */
 export const ANOVA_POSTHOCS = [...POSTHOCS, "dunnett", "games-howell", "t3"] as const;
-export const RANK_POSTHOCS = ["none", "dunn"] as const;
+export const RANK_POSTHOCS = ["none", "dunn", "dunn-sidak", "dunn-holm-sidak"] as const;
 /** The dose-response (sigmoidal) models: what the Dose-response graph draws, and what can
  *  compare two data sets' curves. */
 export const DOSE_MODELS = [
@@ -168,20 +169,23 @@ export interface AnovaParams {
   control?: string;
 }
 
-/** Params for "rm-anova": Tukey or Bonferroni comparisons of every pair, or none. */
+/** Params for "rm-anova": Tukey, Bonferroni, Šídák, Holm–Šídák or Fisher's LSD
+ *  comparisons of every pair, or none. */
 export interface RmAnovaParams {
   posthoc: (typeof POSTHOCS)[number];
   /** false: not assumed, the Geisser-Greenhouse correction applies; absent or true, assumed. */
   sphericity?: boolean;
 }
 
-/** Params for "kruskal-wallis": optional Dunn's post-hoc pairwise comparisons between groups. */
+/** Params for "kruskal-wallis": optional Dunn's post-hoc pairwise comparisons between groups
+ *  (Bonferroni-, Šídák- or Holm–Šídák-corrected). */
 export interface KruskalWallisParams {
   posthoc: (typeof RANK_POSTHOCS)[number];
 }
 
 /** Params for "friedman": optional Dunn's post-hoc pairwise comparisons between groups
- *  (block-rank flavor — same "none" | "dunn" shape as Kruskal-Wallis). */
+ *  (block-rank flavor — same shape as Kruskal-Wallis, Bonferroni-, Šídák- or
+ *  Holm–Šídák-corrected). */
 export interface FriedmanParams {
   posthoc: (typeof RANK_POSTHOCS)[number];
 }
@@ -295,7 +299,8 @@ export interface PrincipalComponentAnalysisParams {
  *  matched by row — each replicate column is the same subject across every row;
  *  incomplete replicate columns are dropped), or "nonparametric" (Scheirer-Ray-Hare).
  *  `posthoc` (parametric designs only) pairwise-compares either groups within each
- *  row or rows within each group ("row means"), Tukey- or Bonferroni-corrected. */
+ *  row or rows within each group ("row means"), Tukey-, Bonferroni-, Šídák- or
+ *  Holm–Šídák-corrected, or uncorrected (Fisher's LSD). */
 export interface TwoWayAnovaParams {
   design: (typeof TWO_WAY_DESIGNS)[number];
   posthoc: (typeof POSTHOCS)[number];
@@ -309,14 +314,18 @@ export interface TwoWayAnovaParams {
 /** Params for "three-way-anova" on a Grouped table's column-groups × row
  *  position × row bands: ordinary (parametric) only. `posthoc` pairwise-compares
  *  the means of one term (`posthocTerm`, required when posthoc !== "none"),
- *  Tukey- or Bonferroni-corrected. */
+ *  Tukey- or Bonferroni-corrected — the Šídák / Holm–Šídák / LSD options in
+ *  POSTHOCS are not offered here, and the runner refuses them rather than
+ *  silently running Bonferroni. */
 export interface ThreeWayAnovaParams {
   posthoc: (typeof POSTHOCS)[number];
   posthocTerm?: (typeof THREE_WAY_TERMS)[number];
 }
 
 /** Params for "nested-anova" on a Nested table: optional post-hoc pairwise
- *  comparisons between groups, on the subcolumn means (same choices as ANOVA). */
+ *  comparisons between groups, on the subcolumn means — Tukey or Bonferroni only;
+ *  the Šídák / Holm–Šídák / LSD options in POSTHOCS are not offered here, and the
+ *  runner refuses them rather than silently running Bonferroni. */
 export interface NestedAnovaParams {
   posthoc: (typeof POSTHOCS)[number];
 }
