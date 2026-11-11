@@ -222,6 +222,70 @@ never written by Prism:
 - **Prism 11 files convert.** Three files written by Prism 11.1.0.224
   (formatVersion 1-6-1) pass all checks — the converter is not
   version-gated, and the corpus proves it.
+## Unit tests (abstract layer)
+
+Real files only sample the input space, so the converter is also tested
+against the input model itself — minimal `.prism` buffers built in
+memory, fed straight to `convertPrism`, with every combination of the
+dimensions below pinned:
+
+```sh
+npm test            # tests/unit.ts + tests/unit-helpers.ts — 295 checks
+```
+
+- `tests/unit.ts` — `convertPrism` over in-memory files. Dimensions:
+  A table format × data format (9 × 12 = 108); B row titles × format;
+  C title shape (plain / rich-text / missing / empty / number) ×
+  location (sheet / dataset / X / analysis) + sheet-attributes-map
+  titles; D X shape (absent / 1–3 subcolumns / survival date ISO+US /
+  unparseable / missing JSON); E Y cell values (empty / text /
+  scientific / comma-decimal / unicode / …); F subcolumn source
+  (`replicates` / `replicate ranges` / table fallback) × data format;
+  G dataset presence; H analysis class × input state; I project-level
+  rejects; J `content.json` shape; K orphan/unreferenced tables;
+  L CSV text shape (CRLF, quoted fields, embedded line breaks in row
+  titles). Every successful conversion is also round-tripped through
+  Helix's own `parseProjectFile`, so a case that converts but produces
+  a `.hlx` Helix rejects still fails.
+- `tests/unit-helpers.ts` — the pure helpers directly: `plainTitle`,
+  `parsePrismDate`, `daysBetween`, `subcolumnNames`, `replicateCount`.
+  These are exported from `src/prism.ts` for the tests only (marked in
+  the source); the converter uses them internally and nothing else
+  should import them. Tests go through the exported surface — no
+  test-only backdoors into production code.
+- `tests/build-prism.ts` — the in-memory `.prism` builder the suite
+  uses. Test UIDs are hex-only (`A0000001`, …) because the converter's
+  orphan scan matches UUID-shaped UIDs (`[0-9A-F-]+`).
+- `tests/unit.ts` has a `product2` combinatorial generator: a new
+  dimension value is one list entry, not a new test file.
+
+### Regression verification
+
+The four corpus bugs (commit 13c75c2) are regression tests named
+`REGRESSION R1–R4` in `tests/unit.ts`. They were verified against the
+pre-fix converter (run the suite with `converter/src/prism.ts`
+replaced by `git show 13c75c2^:converter/src/prism.ts`): 66/226 pass
+and all 160 failures map to R1–R4 — the row-title rule (R1: every
+non-XY matrix case shifts by one), multi-subcolumn X and survival
+dates (R2), title unwrapping plus the empty/missing-title fallback
+(R3, including `"[object Object]"` column names), and the no-tables
+refusal (R4). Nothing else fails on the old code, so the suite pins
+exactly the fixed behaviour. The helper tests can't run against the
+old code (the helpers weren't exported then); R3's helpers are covered
+there by the convert-level tests, which do fail on the old code.
+
+### Known behaviour pinned by the suite (not bugs to fix silently)
+
+- A comma in a number is always read as a decimal separator:
+  `"45,5"` → `45.5`, and `"1,234"` → `1.234` too. Prism records no
+  locale, so a thousands separator is indistinguishable from a decimal
+  comma; the rule is pinned, not changed.
+- An embedded line break inside a quoted row title (Prism writes
+  multi-line titles with a bare CR) passes through byte-exact — the
+  converter never rewrites a value. The corpus verifier's C8 check
+  flags any `\r` as a possible CSV leak, so on real files with
+  multi-line titles C8 is a false positive; the value itself is exact
+  (C4 confirms it).
 
 ## Layout
 
@@ -231,3 +295,6 @@ never written by Prism:
 - `tests/verify.ts` — headless verification against the demo file.
 - `tests/verify-corpus.ts` — multi-file verification over a corpus directory (see above).
 - `tests/make-synthetic.ts` — builds the synthetic edge-case corpus from the demo file.
+- `tests/build-prism.ts` — builds minimal `.prism` buffers in memory for the unit tests.
+- `tests/unit.ts` — abstract-layer unit tests for `convertPrism` (permutation suite).
+- `tests/unit-helpers.ts` — direct unit tests for the pure helpers.

@@ -96,9 +96,14 @@ interface PrismDataSet {
   dateTimeConversion?: { units?: string; zeroDate?: string };
 }
 
-/** How many subcolumns a dataset holds: its `replicates` array, else the
- *  span of its `replicate ranges`, else the table's `replicatesCount`. */
-function replicateCount(set: PrismDataSet, table: PrismDataSheet["table"]): number {
+/**
+ * The pure helpers below are exported for the unit tests
+ * (tests/unit-helpers.ts) — the converter only uses them internally, and
+ * nothing else should import them. They are the abstract layer: given a
+ * known input shape, their output is pinned by tests so any file Prism
+ * sends in behaves the same way.
+ */
+export function replicateCount(set: PrismDataSet, table: PrismDataSheet["table"]): number {
   if (Array.isArray(set.replicates)) return set.replicates.length;
   const ranges = set["replicate ranges"];
   if (Array.isArray(ranges)) {
@@ -180,7 +185,7 @@ const genId = (type: string) => `${type}_${Math.random().toString(36).slice(2, 1
  * Helix labels are single-line, so the break becomes one space (see
  * cleanText); the title is never left with a bare \r in it.
  */
-function plainTitle(value: unknown): string {
+export function plainTitle(value: unknown): string {
   if (typeof value === "string") return cleanText(value);
   if (value !== null && typeof value === "object") {
     const s = (value as { string?: unknown }).string;
@@ -200,7 +205,7 @@ function plainTitle(value: unknown): string {
 const cleanText = (value: string): string => value.replace(/\s*\r\n?\s*/g, " ");
 
 /** Parse a Prism date cell: ISO ("2024-09-06 00:00:00") or US ("12/17/2024"). */
-function parsePrismDate(value: string | null): number | null {
+export function parsePrismDate(value: string | null): number | null {
   if (value === null || value === "") return null;
   let ms = Date.parse(value.replace(" ", "T"));
   if (!Number.isNaN(ms)) return ms;
@@ -213,7 +218,7 @@ function parsePrismDate(value: string | null): number | null {
 }
 
 /** Days between two Prism date cells, as Helix stores numbers (text). */
-function daysBetween(start: string | null, end: string | null): string | null {
+export function daysBetween(start: string | null, end: string | null): string | null {
   const a = parsePrismDate(start);
   const b = parsePrismDate(end);
   if (a === null || b === null) return null;
@@ -225,7 +230,7 @@ function daysBetween(start: string | null, end: string | null): string | null {
 const normalizeNumber = (value: string | null): string | null =>
   value !== null && /^-?\d+,\d+$/.test(value) ? value.replace(",", ".") : value;
 
-function subcolumnNames(title: string, dataFormat: string, count: number): string[] {
+export function subcolumnNames(title: string, dataFormat: string, count: number): string[] {
   const base = title === "" ? "Y" : title;
   if (count === 1) return [base];
   const suffixes = SUBCOLUMN_SUFFIXES[dataFormat];
