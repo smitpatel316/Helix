@@ -24042,6 +24042,9 @@
  "two-way-anova noReplicates {\"design\":\"repeated-measures\",\"posthoc\":\"none\",\"posthocTarget\":\"groups\"}": {
   "error": "With one value per cell (no replicates), only the ordinary two-way ANOVA can run."
  },
+ "two-way-anova noReplicates {\"design\":\"nonparametric\",\"posthoc\":\"none\",\"posthocTarget\":\"groups\"}": {
+  "error": "With one value per cell (no replicates), only the ordinary two-way ANOVA can run."
+ },
  "nonlinear-regression inhibition {\"model\":\"sigmoidal-4pl-logx\"}": {
   "testType": "nonlinear-regression",
   "subtitle": "Sigmoidal, 4PL, X is log(concentration)",
