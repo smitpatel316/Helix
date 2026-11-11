@@ -74,6 +74,8 @@ Public files only — Mansi's files are never test material.
 
 ### Public corpus — `~/workspace/helix/test-corpus-prism10/` (66 files, 446/446 checks)
 
+All 66 files are committed in this repo at `test-corpus-prism10/` — per-file sources and licenses: `test-corpus-prism10/LICENSES.md`. The source links below are the original downloads.
+
 | File | Source | What it covers |
 |---|---|---|
 | `no_analysis.prism` (31 KB) | prism2R test data — https://github.com/Biomiha/prism2R (`inst/extdata/.for_testing/`) | 2 tables, 0 analyses; Prism 10.4.1.532 |
@@ -150,6 +152,8 @@ plus survival), 375 named as unsupported; every source file's checksum unchanged
 Prism versions in the corpus: 10.0.0–10.6.1 plus 11.1.0.224 (3 files).
 
 ### Synthetic corpus — `~/workspace/helix/test-corpus-synthetic/` (6 files, 36/36 checks)
+
+Committed in this repo at `test-corpus-synthetic/` (provenance: `test-corpus-synthetic/NOTICE.md` — derived from the MIT-licensed prism2R demo file).
 
 Built by `npm run make-synthetic` (`tests/make-synthetic.ts`) from the
 public demo file — each is one deliberate mutation, labelled `synthetic-`,

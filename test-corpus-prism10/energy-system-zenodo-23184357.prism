@@ -1,0 +1,56 @@
+dtmc
+
+// Environmental regime and condition parameters
+const double p_weather;
+const double p_normal;
+const double alpha;     
+
+// Backup-service parameters
+const double p_grid;
+const double p_retry; 
+const double p_constrained;  
+
+// Calibrated energy rewards
+const double E_normal;
+const double E_constrained;
+const double E_grid;
+
+// Calibrated costs per model interval
+const double C_pv_normal;
+const double C_pv_constrained;
+const double C_grid;
+const double C_failed_request;
+
+module energy_system
+  s : [0..7] init 0; // Energy system states
+
+  [select_regime]  s=0 -> p_weather:(s'=2)+(1-p_weather):(s'=1);
+  [constrained_op] s=1 -> p_constrained:(s'=3)+(1-p_constrained):(s'=7);
+  [normal_op]      s=2 -> p_normal:(s'=6)+(1-p_normal):(s'=3);
+  [request_grid]   s=3 -> p_grid:(s'=4)+(1-p_grid):(s'=5);
+  [grid_success]   s=4 -> 1:(s'=6);
+  [retry_or_stop]  s=5 -> p_retry:(s'=3)+(1-p_retry):(s'=7);
+  [success]        s=6 -> 1:(s'=6);
+  [failure]        s=7 -> 1:(s'=7);
+endmodule
+
+label "success" = s=6; label "terminal_failure" = s=7;
+label "request_failed" = s=5; label "done" = s=6 | s=7;
+
+rewards "pv_generation" 
+  s=1 : E_constrained*(1-alpha);
+  s=2 : E_normal*(1-alpha);
+endrewards
+
+rewards "grid_import"
+  s=4 : E_grid;
+endrewards
+
+rewards "cost"
+  s=1 : C_pv_constrained; s=2 : C_pv_normal;
+  s=4 : C_grid; s=5 : C_failed_request;
+endrewards
+
+rewards "grid_requests"
+  s=3 : 1;
+endrewards

@@ -1,0 +1,66 @@
+// Markov Decision Process (MDP)
+mdp
+
+// ==============================================================================
+// 1. GLOBAL CONSTANTS (Scenario 3 - Commercial Configuration)
+// ==============================================================================
+// Failure rate (lambda) - Probability of component failure per time unit
+const double lambda = 0.01;
+// Repair rate (mu) - Probability of successful recovery per time unit
+const double mu = 0.09;
+// Recovery cost (c) - Normalised cost per recovery
+const double recovery_cost_unit = 0.85; 
+
+// ==============================================================================
+// 2. STATE DEFINITION: The Cloud System (Compute Module is used as primary state)
+// ==============================================================================
+// The entire system state is represented by the primary module, 'compute'.
+// In a full model, all four modules would be included and synchronised.
+module compute
+    // States: 0=idle (Operational), 1=active (Operational), 2=failed (Failed/Degraded)
+    // The paper uses operational, degraded, or failed for states.
+    // Let's use 0/1 for operational and 2 for failed state for simplicity.
+    // 0: idle, 1: active, 2: failed
+    s : [0..2] init 1; // Initial state: active (operational)
+
+    // Nondeterministic choice for management decisions (actions)
+    // The action is chosen by the 'adversary' (or the controller/policy)
+    
+    // ACTION: Failure (Stochastic event, not an action by management)
+    // From active state, with probability lambda, it fails.
+    // [fail] is a synchronous action label for stochastic events.
+    [fail] s=1 -> lambda : (s'=2) + (1-lambda) : (s'=1); // Fail or stay active
+
+    // ACTION: Recovery (management action) - Nondeterministic choice for recovery action
+    // [recover_action] s=2 represents the management system choosing to initiate recovery.
+    // The transition is probabilistic based on 'mu'.
+    [recover_action] s=2 -> mu : (s'=1) + (1-mu) : (s'=2); // Recover (success) or stay failed
+
+    // ACTION: Decommission (management action) - Move from active to idle (operational state)
+    // Assume 0.5 probability for success/stay if the action is chosen.
+    [decommission] s=1 -> 0.5 : (s'=0) + 0.5 : (s'=1); // Idle or stay active
+
+    // ACTION: Allocate (management action) - Move from idle to active (operational state)
+    [allocate] s=0 -> 1 : (s'=1); // Move to active state
+
+    // If already failed, no other action can happen until recovery is attempted
+    [detect] s=2 -> 1 : (s'=2); // Management detects failure (no state change)
+
+endmodule
+
+// ==============================================================================
+// 3. REWARD STRUCTURE (For Expected Recovery Cost)
+// ==============================================================================
+// The property R{cost}=?[F operational] computes the cumulative cost until reaching 'operational'.
+// We assign a cost whenever the recovery action is attempted.
+rewards "cost"
+    // Apply cost only when the recovery action is chosen AND the system is in the failed state.
+    [recover_action] s=2 : recovery_cost_unit;
+endrewards
+
+// ==============================================================================
+// 4. ATOMIC PROPOSITIONS (Labels for states)
+// ==============================================================================
+// Define which states are considered "operational" and "failed"
+label "operational" = s=0 | s=1; // Operational is idle OR active
+label "failed" = s=2;
