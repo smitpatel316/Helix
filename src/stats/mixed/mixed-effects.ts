@@ -19,7 +19,7 @@ import type {
   StatRow,
   VarianceComponent,
 } from "../types";
-import { dataGroups, describe, pairedGroups, rStr, rVec } from "../column/base";
+import { dataGroups, describe, rStr, rVec } from "../column/base";
 import { groupsOf } from "../../lib/dataset";
 import { evalNamedVector } from "../webr";
 import { num } from "../../lib/format";
@@ -151,7 +151,12 @@ export async function runMixedEffects(
     obs = flat.obs;
     total = flat.total;
     subjectCount = flat.subjectRows.length;
-    described = (await describe(pairedGroups(cols))).groups;
+    // Per-column available-case descriptives (NOT pairedGroups): the old sync
+    // describe ran per column over that column's own non-missing values, and
+    // the lme4 fit uses all 23 observations. pairedGroups drops the whole
+    // row holding a missing value from EVERY time point, which silently
+    // changed the pinned descriptives (T0/T1/T3 n 6 -> 5) in the rebase.
+    described = (await describe(cols.map((c) => ({ name: c.name, values: c.values })))).groups;
     thinLevels = cols.map((c, j) => ({ name: c.name, n: flat.perColumn[j] })).filter((t) => t.n < 2);
     const sf = params?.subjectFactor;
     if (sf) {

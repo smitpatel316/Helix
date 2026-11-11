@@ -12643,19 +12643,19 @@
   "groups": [
    {
     "name": "T0",
-    "mean": 12.69194,
-    "sd": 3.302990031,
-    "sem": 1.477142048,
-    "median": 13.6587,
-    "n": 5
+    "mean": 12.67481667,
+    "sd": 2.954581827,
+    "sem": 1.20620298,
+    "median": 13.12395,
+    "n": 6
    },
    {
     "name": "T1",
-    "mean": 14.46388,
-    "sd": 3.654463042,
-    "sem": 1.634325556,
-    "median": 15.4921,
-    "n": 5
+    "mean": 14.22538333,
+    "sd": 3.320446364,
+    "sem": 1.355566552,
+    "median": 14.2625,
+    "n": 6
    },
    {
     "name": "T2",
@@ -12667,11 +12667,11 @@
    },
    {
     "name": "T3",
-    "mean": 17.29982,
-    "sd": 3.523790349,
-    "sem": 1.575886952,
-    "median": 18.6763,
-    "n": 5
+    "mean": 17.2186,
+    "sd": 3.158046686,
+    "sem": 1.289267161,
+    "median": 17.7444,
+    "n": 6
    }
   ],
   "notes": "Mixed-effects model: y ~ Treatment + T + (1 | subject). Random intercept per subject, fitted by restricted maximum likelihood (REML). P-values by Satterthwaite's approximation (lmerTest). 23 of 24 observations used (1 observation dropped as missing).",
@@ -12758,11 +12758,11 @@
   "groups": [
    {
     "name": "T0",
-    "mean": 12.47804,
-    "sd": 3.259069543,
-    "sem": 1.457500208,
-    "median": 12.5892,
-    "n": 5
+    "mean": 12.67481667,
+    "sd": 2.954581827,
+    "sem": 1.20620298,
+    "median": 13.12395,
+    "n": 6
    },
    {
     "name": "T1",

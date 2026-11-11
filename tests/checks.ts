@@ -3139,8 +3139,13 @@ check("Sturges, pretty breaks and nice widths match R's rules", () => {
 // packages.ts), never the CDN: a survival install must not depend on the
 // egress proxy being up.
 const REPO_DIR = fileURLToPath(new URL("../webr-repo/", import.meta.url));
+// Hoisted so the run can shut the server down at the end: without the
+// close + process.exit() below, the listening server keeps the event loop
+// alive and `npm test` never reaches tests/reference.ts (the process hung
+// ~20 min after printing "All 119 checks pass" on the rebased tree).
+let repoServer: ReturnType<typeof createServer> | undefined;
 if (existsSync(`${REPO_DIR}MANIFEST.json`)) {
-  const repoServer = createServer((req, res) => {
+  const server = (repoServer = createServer((req, res) => {
     const path = decodeURIComponent(req.url!.split("?")[0]).replace(/^\/+/, "");
     const file = `${REPO_DIR}${path}`;
     if (!path || !existsSync(file) || !statSync(file).isFile()) {
@@ -3150,9 +3155,9 @@ if (existsSync(`${REPO_DIR}MANIFEST.json`)) {
     }
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end(readFileSync(file));
-  });
-  await new Promise<void>((r) => repoServer.listen(0, "127.0.0.1", r));
-  setPackageRepo(`http://127.0.0.1:${(repoServer.address() as { port: number }).port}`, {
+  }));
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  setPackageRepo(`http://127.0.0.1:${(server.address() as { port: number }).port}`, {
     allowCdnFallback: false,
   });
 } else {
@@ -3171,3 +3176,8 @@ for (const [name, fn] of checks) {
 }
 console.log(failed ? `${failed} of ${checks.length} checks failed.` : `All ${checks.length} checks pass.`);
 process.exitCode = failed ? 1 : 0;
+// Shut down the repo server and exit explicitly (same as reference.ts /
+// packages.ts): otherwise the listening server + webR workers keep the
+// process alive forever and `npm test` stalls here.
+repoServer?.close();
+process.exit(process.exitCode);
