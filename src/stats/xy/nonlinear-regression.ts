@@ -22,7 +22,7 @@ import type {
 } from "../types";
 import { describe, pRow, rVec } from "../column/base";
 import { num } from "../../lib/format";
-import { splitXY, xyProblem } from "../../lib/dataset";
+import { datasetColumns, splitXY, xyProblem } from "../../lib/dataset";
 import { evalNamedVector, type RVector } from "../webr";
 import { rowName } from "../grouped/base";
 import {
@@ -56,6 +56,7 @@ import { evaluate as evaluateCurve } from "../../views/graphs/fitted-curve";
 // live in nonlinear-fit.ts now; positiveXOnly matches upstream's helper.
 export { MODEL_LABEL };
 export const positiveXOnly = (model: NonlinearModel) => modelSpec(model).positiveX === true;
+export const nonNegativeXOnly = (model: NonlinearModel) => modelSpec(model).nonNegativeX === true;
 
 /** A parameter as results name it (its name in the equations otherwise). */
 const TERM_LABEL: Record<string, string> = { HillSlope: "Hill slope", S: "Asymmetry (S)" };
@@ -644,7 +645,7 @@ const R_INTERP =
 function interpolationCode(spec: ModelSpec, unknowns: number[], lo: number, hi: number): string {
   const u = `u<-c(${unknowns.join(",")});`;
   const w = hi - lo;
-  const [gLo, gHi] = spec.positiveX ? [lo / 10, hi * 10] : [lo - w, hi + w];
+  const [gLo, gHi] = spec.positiveX || spec.nonNegativeX ? [lo / 10, hi * 10] : [lo - w, hi + w];
   const grid = `xg<-seq(${gLo},${gHi},length.out=200);`;
   // Curve + band, per fitter kind.
   const band =
@@ -1026,7 +1027,10 @@ export async function runNonlinearRegression(
   if (!model || !Object.hasOwn(MODEL_LABEL, model)) return { error: "Choose a standard curve to fit." };
 
   const { x: xCol, ys: yCols } = splitXY(columns);
-  const yCol = params?.y === undefined ? yCols[0] : yCols.find((c) => c.name === params.y);
+  // A Y data set's replicates pool (see datasetColumns): "Control" fits
+  // "Control_1..3" together, as Prism does — an imported Prism analysis
+  // names its data set, not a column.
+  const yCol = params?.y === undefined ? yCols[0] : datasetColumns(yCols, params.y)[0];
   if (!xCol || !yCol) return { error: xyProblem(columns, params?.y)! };
   // Binding competition (plan 28): Fit Ki needs [L] and Kd (the
   // Cheng–Prusoff divisor 1 + [L]/Kd); the homologous model needs [L] (a

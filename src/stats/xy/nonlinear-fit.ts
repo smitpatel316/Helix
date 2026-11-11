@@ -12,7 +12,7 @@
 // defaults fail or drop points there.
 import type { AnalysisOutcome, Column, NonlinearModel, RegressionCoefficient, StatRow } from "../types";
 import { rVec } from "../column/base";
-import { pairUp, splitXY, xyProblem } from "../../lib/dataset";
+import { datasetColumns, pairUp, splitXY, xyProblem } from "../../lib/dataset";
 import { evalNamedVector, type RVector } from "../webr";
 
 export const MODEL_LABEL: Record<NonlinearModel, string> = {
@@ -138,8 +138,14 @@ export interface ModelSpec {
   terms: string[];
   /** Derived quantities computed from the fit's named coefficients (`cf[["Name"]]`). */
   derived?: Derived[];
-  /** Curves of log or ratio forms fit the points with X > 0 only. */
+  /** Log-X curves fit the points with X > 0 only (log(0) is undefined). */
   positiveX?: boolean;
+  /** Raw-concentration ratio curves (4PL/5PL X, hyperbola, two-site X):
+   *  defined at X = 0 — the vehicle point is the Bottom anchor, so it stays
+   *  in the fit — but not at X < 0 (a fractional power of a negative is NaN
+   *  in R). The enzyme models share the "defined at 0" half and set neither
+   *  flag; their negative-X check lives in prepareFit. */
+  nonNegativeX?: boolean;
   /** nls models only: R defining `g<-function(xv,p)` — the curve evaluated at
    *  X `xv` with parameter vector `p` (named, as `coef(m)` reports them).
    *  Used for the confidence band (delta method) and inverse prediction. */
@@ -165,7 +171,17 @@ export interface ModelSpec {
 // The 4PL's starting slope takes the curve's own sign, so a falling curve keeps Bottom under Top.
 const SIGN = "if(isTRUE(cor(x,y)<0))-1 else 1";
 const FOUR_LOG = "Bottom+(Top-Bottom)/(1+10^((LogEC50-x)*HillSlope))";
-const FOUR_X = "Bottom+(Top-Bottom)/(1+(EC50/x)^HillSlope)";
+// Raw-concentration 4PL, guarded at X = 0 (prism-format-work (g)): the
+// vehicle point is the Bottom anchor and stays in the fit, but (EC50/x)
+// is Inf/NaN at x = 0 whenever a trial step takes EC50 ≤ 0 with a
+// fractional HillSlope — R's nls then dies with "Missing value or an
+// infinity produced when evaluating the model" on datasets Prism fits
+// (39 such failures in the corpus sweep). ifelse returns Bottom at x = 0
+// without evaluating the ratio there; for x > 0 the formula is unchanged,
+// so fitted values on data without an X = 0 point do not move. (ifelse
+// evaluates both branches, but a NaN in the unselected branch is
+// discarded — the plateau-decay model already relies on this.)
+const FOUR_X = "ifelse(x==0,Bottom,Bottom+(Top-Bottom)/(1+(EC50/x)^HillSlope))";
 const nls200 = (expr: string, start: string) => `nls(y~${expr},start=${start},control=nls.control(maxiter=200))`;
 
 export function modelSpec(
@@ -257,6 +273,13 @@ export function modelSpec(
       return {
         kind: "nls",
         fit: `m<-${nls200(FOUR_LOG, `list(Bottom=min(y),Top=max(y),LogEC50=median(x),HillSlope=${SIGN})`)}`,
+        // (g) parity: Gauss-Newton stalls ("singular gradient" / "step
+        // factor reduced below 'minFactor'") on flat, ill-determined
+        // curves Prism fits (41 such failures in the corpus sweep, all
+        // log-X) — retry once with the port optimizer, same starts. The
+        // retry only runs when the primary fit fails, so passing fits
+        // never touch it and their pinned values do not move.
+        retryFit: `m<-nls(y~${FOUR_LOG},start=list(Bottom=min(y),Top=max(y),LogEC50=median(x),HillSlope=${SIGN}),algorithm="port",control=nls.control(maxiter=200))`,
         terms: ["Bottom", "Top", "LogEC50", "HillSlope"],
         derived: [tenTo("EC50", "LogEC50"), span],
         curveFn:
@@ -269,10 +292,14 @@ export function modelSpec(
       return {
         kind: "nls",
         fit: `m<-${nls200(FOUR_X, `list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN})`)}`,
+        // (g) parity: same port retry as the log-X form, for the
+        // Gauss-Newton failures that are not X = 0 artefacts.
+        retryFit: `m<-nls(y~${FOUR_X},start=list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN}),algorithm="port",control=nls.control(maxiter=200))`,
         terms: ["Bottom", "Top", "EC50", "HillSlope"],
         derived: [span],
-        positiveX: true,
-        curveFn: 'g<-function(xv,p) p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])/(1+(p[["EC50"]]/xv)^p[["HillSlope"]])',
+        nonNegativeX: true,
+        curveFn:
+          'g<-function(xv,p) ifelse(xv==0,p[["Bottom"]],p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])/(1+(p[["EC50"]]/xv)^p[["HillSlope"]]))',
         asymptotes: ["Bottom", "Top"],
         dose: { expr: FOUR_X, midpoint: "EC50" },
       };
@@ -324,15 +351,19 @@ export function modelSpec(
       };
     }
     case "asymmetric-5pl-x": {
-      const expr = "Bottom+(Top-Bottom)/(1+(EC50*(2^(1/S)-1)^(1/HillSlope)/x)^HillSlope)^S";
+      // Same X = 0 guard as FOUR_X (see above): at x = 0 the curve is its
+      // Bottom; the unguarded ratio is Inf/NaN there whenever a trial
+      // step takes EC50 ≤ 0.
+      const expr =
+        "ifelse(x==0,Bottom,Bottom+(Top-Bottom)/(1+(EC50*(2^(1/S)-1)^(1/HillSlope)/x)^HillSlope)^S)";
       return {
         kind: "nls",
         fit: `m<-${nls200(expr, `c(as.list(coef(${nls200(FOUR_X, `list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN})`)})),S=1)`)}`,
         terms: ["Bottom", "Top", "EC50", "HillSlope", "S"],
         derived: [span],
-        positiveX: true,
+        nonNegativeX: true,
         curveFn:
-          'g<-function(xv,p) p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])/(1+((p[["EC50"]]*(2^(1/p[["S"]])-1)^(1/p[["HillSlope"]]))/xv)^p[["HillSlope"]])^p[["S"]]',
+          'g<-function(xv,p) ifelse(xv==0,p[["Bottom"]],p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])/(1+((p[["EC50"]]*(2^(1/p[["S"]])-1)^(1/p[["HillSlope"]]))/xv)^p[["HillSlope"]])^p[["S"]])',
         asymptotes: ["Bottom", "Top"],
         dose: { expr, midpoint: "EC50" },
       };
@@ -343,7 +374,7 @@ export function modelSpec(
         kind: "nls",
         fit: `m<-${nls200("Bmax*x/(Kd+x)", "list(Bmax=max(y)*1.1,Kd=median(x[x>0]))")}`,
         terms: ["Bmax", "Kd"],
-        positiveX: true,
+        nonNegativeX: true,
         curveFn: 'g<-function(xv,p) p[["Bmax"]]*xv/(p[["Kd"]]+xv)',
       };
     // ── Exponential family (plan 08) ──────────────────────────────────
@@ -543,7 +574,7 @@ export function modelSpec(
           ...(opts?.kiDivisor != null ? [kiFromLinear("Ki (low affinity)", "IC50Lo", opts.kiDivisor)] : []),
           span,
         ],
-        positiveX: true,
+        nonNegativeX: true,
         curveFn:
           'g<-function(xv,p) p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])*(p[["FractionHi"]]/(1+xv/p[["IC50Hi"]])+(1-p[["FractionHi"]])/(1+xv/p[["IC50Lo"]]))',
         asymptotes: ["Bottom", "Top"],
@@ -886,7 +917,8 @@ export function applyFitOptions(spec: ModelSpec, opts: FitOptions): AppliedFitOp
   return { spec: out, extraAssignments };
 }
 
-/** The X/Y columns and the points to fit: the `positiveX` X > 0 drop rule and
+/** The X/Y columns and the points to fit: the `positiveX` X > 0 drop rule
+ *  (log forms), the `nonNegativeX` X ≥ 0 drop rule (raw ratio forms), and
  *  the `nParams + 1` minimum-points rule, shared by both runners. */
 export function prepareFit(
   columns: Column[],
@@ -897,30 +929,47 @@ export function prepareFit(
   fixedCount = 0,
 ): { xCol: Column; yCol: Column; xs: number[]; ys: number[]; rows: number[] } | { error: string } {
   const { x: xCol, ys: yCols } = splitXY(columns);
-  const yCol = yName === undefined ? yCols[0] : yCols.find((c) => c.name === yName);
+  // A Y data set's replicates pool into one fit (see datasetColumns): a name
+  // that is no column but is a data set ("Control" → "Control_1..3") fits
+  // every replicate point, as Prism does. A plain column name fits that
+  // column alone. The pooled yCol keeps the first replicate's cells (so
+  // interpolation still reads a Y per row) under the data set's name.
+  const cols = yName === undefined ? (yCols[0] ? [yCols[0]] : []) : datasetColumns(yCols, yName);
+  const yCol = cols.length === 1 ? cols[0] : cols.length > 1 ? { ...cols[0], name: yName! } : undefined;
   if (!xCol || !yCol) return { error: xyProblem(columns, yName)! };
 
-  const complete = pairUp(xCol, yCol);
+  const complete =
+    cols.length <= 1
+      ? pairUp(xCol, yCol)
+      : cols.reduce(
+          (acc, c) => {
+            const p = pairUp(xCol, c);
+            return { x: [...acc.x, ...p.x], y: [...acc.y, ...p.y], rows: [...acc.rows, ...p.rows] };
+          },
+          { x: [] as number[], y: [] as number[], rows: [] as number[] },
+        );
   const spec = modelSpec(model);
   const nParams = spec.terms.length - fixedCount;
 
-  // Curves that need X > 0 (log/ratio forms) commonly get a X=0 vehicle/control
-  // point in real dose-response data — drop it from the fit rather than
-  // rejecting the whole curve, mirroring how these curves are conventionally fit.
+  // A log-X curve drops its X = 0 vehicle/control point (log(0) is
+  // undefined); a raw-concentration ratio curve keeps it — at X = 0 the
+  // curve is its Bottom, so the vehicle point anchors Bottom (Prism fits
+  // it too) — and drops only X < 0, where a fractional power is NaN in R.
   let xs = complete.x;
   let ys = complete.y;
-  if (spec.positiveX) {
+  if (spec.positiveX || spec.nonNegativeX) {
+    const keep = spec.positiveX ? (x: number) => x > 0 : (x: number) => x >= 0;
     xs = [];
     ys = [];
     complete.x.forEach((x, i) => {
-      if (x > 0) {
+      if (keep(x)) {
         xs.push(x);
         ys.push(complete.y[i]);
       }
     });
   }
   if (xs.length < nParams + 1) {
-    const scope = spec.positiveX ? " with X > 0" : "";
+    const scope = spec.positiveX ? " with X > 0" : spec.nonNegativeX ? " with X ≥ 0" : "";
     return {
       error: `Not enough complete points${scope} (${xs.length}) to fit this curve; need at least ${nParams + 1}.`,
     };
@@ -952,7 +1001,9 @@ export function prepareFit(
   }
   // The fitted points' rows, in fit order (plan 26: 1/SD² weights need the
   // row's replicate values, not just the fitted pair).
-  const rows = complete.rows.filter((_, i) => !spec.positiveX || complete.x[i] > 0);
+  const rows = complete.rows.filter(
+    (_, i) => (!spec.positiveX && !spec.nonNegativeX) || (spec.positiveX ? complete.x[i] > 0 : complete.x[i] >= 0),
+  );
   return { xCol, yCol, xs, ys, rows };
 }
 
