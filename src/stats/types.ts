@@ -84,6 +84,11 @@ export const NONLINEAR_MODELS = [
   "hyperbola",
   "quadratic",
   "cubic",
+  // Plan 29: lines & polynomials completion — Prism's order after cubic:
+  // the segmental (piecewise) line, then the 4th/5th order polynomials.
+  "segmental-linear",
+  "quartic",
+  "quintic",
   ...KINETIC_MODELS,
   // Exponential family (plan 08, 1/2: decay first; one-phase-decay is already in KINETIC_MODELS).
   "two-phase-decay",

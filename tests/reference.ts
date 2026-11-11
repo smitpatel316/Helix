@@ -2063,6 +2063,18 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["xy", xy, "nonlinear-regression", { model: "line" }],
   ["xy", xy, "nonlinear-regression", { y: "Y3", model: "quadratic" }],
   ["xy", xy, "nonlinear-regression", { y: "Y1", model: "cubic" }],
+  // Lines & polynomials completion (plan 29): quartic R² = 0.9990, RSS =
+  // 0.1940; quintic R² = 0.9992, RSS = 0.1526 — the plan's NumPy values,
+  // confirmed independently here (polyfit agrees to 4 dp). Segmental:
+  // the plan's hinge-RSS anchor (≈ 0.128) was two INDEPENDENT lines and
+  // is unattainable under continuity — the profile minimum over X0 is
+  // 0.2225 (verified in R), and the profile fit lands at X0 ≈ 3.0 with
+  // RSS ≈ 0.2843, R² ≈ 0.9986, slopes 1.953 / 2.045 (also verified in
+  // R); those are the values pinned below. The nls() fit the plan
+  // specified does not converge on this data (see nonlinear-fit.ts).
+  ["xy", xy, "nonlinear-regression", { y: "Y1", model: "quartic" }],
+  ["xy", xy, "nonlinear-regression", { y: "Y1", model: "quintic" }],
+  ["xy", xy, "nonlinear-regression", { y: "Y1", model: "segmental-linear" }],
   ["doseLog", doseLog, "nonlinear-regression", { model: "sigmoidal-4pl-logx" }],
   // Spline and Lowess (plan 15): the Lowess and fixed-spar spline reference
   // runs, the GCV auto-spar run (asserted as the overfit in disagreements()

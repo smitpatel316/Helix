@@ -76,6 +76,12 @@ export type InvertMethod = "closed-form" | "numeric";
 export const invertMethod = (model: NonlinearModel): InvertMethod =>
   model === "quadratic" ||
   model === "cubic" ||
+  // Plan 29: the higher polynomials and the segmental line have no
+  // closed-form inverse either (the breakpoint is profiled, not fitted
+  // as a coefficient) — invert numerically.
+  model === "quartic" ||
+  model === "quintic" ||
+  model === "segmental-linear" ||
   model === "two-phase-decay" ||
   model === "plateau-decay" ||
   model === "substrate-inhibition"
@@ -228,6 +234,18 @@ const NESTED_PAIRS: [NonlinearModel, NonlinearModel][] = [
   ["line", "quadratic"],
   ["line", "cubic"],
   ["quadratic", "cubic"],
+  // Plan 29: the polynomial ladder continues — each higher order is the
+  // lower one with its top coefficients fixed at zero. The segmental
+  // line is NOT nested with the line for an F test: at B2 = 0 the
+  // breakpoint X0 is unidentified (the Davies problem), so the test's
+  // degrees of freedom are undefined — AICc only.
+  ["line", "quartic"],
+  ["line", "quintic"],
+  ["quadratic", "quartic"],
+  ["quadratic", "quintic"],
+  ["cubic", "quartic"],
+  ["cubic", "quintic"],
+  ["quartic", "quintic"],
   ["agonist-3pl-logx", "sigmoidal-4pl-logx"],
   ["inhibitor-3pl-logx", "sigmoidal-4pl-logx"],
   ["sigmoidal-4pl-logx", "asymmetric-5pl-logx"],
@@ -1318,6 +1336,26 @@ async function assembleResult(
   comparisonNotes = "",
 ): Promise<AnalysisOutcome> {
   const other = sets.length > 1;
+  // Plan 29: the segmental breakpoint is a derived value, not a fitted
+  // coefficient — report it as a coefficient row with no standard error
+  // (the fixed-parameter precedent in runNonlinearRegression), so the
+  // overlay can draw the hinge from the coefficients alone. The prefix
+  // matches the set-prefixed coefficient names on comparison paths.
+  if (model === "segmental-linear") {
+    parsed.forEach((p, i) => {
+      const x0 = p.derived.find((d) => d.label === "Breakpoint (X0)")?.value ?? null;
+      const prefix = p.coefficients[0]?.term.startsWith(`${sets[i].name} — `) ? `${sets[i].name} — ` : "";
+      p.coefficients.push({
+        term: `${prefix}X0`,
+        estimate: x0,
+        stdError: null,
+        t: null,
+        p: null,
+        low: null,
+        high: null,
+      });
+    });
+  }
   const coefficients = parsed.flatMap((p) => p.coefficients);
   const fit = { sets: sets.map((s) => s.name), rows: fitRows(parsed.map((p) => p.derived), parsed.map((p) => p.stats)) };
   const stats: StatRow[] = [
@@ -1381,6 +1419,31 @@ async function assembleResult(
       );
     extraNotes.push(...fitWarnings(model, coefficients, first.xs));
   }
+  // Plan 29: the segmental note states the fitted breakpoint and both
+  // slopes in plain language (and warns when the breakpoint sits at the
+  // edge of the data, where the fit is effectively a single line); the
+  // quartic/quintic note carries Prism's overfitting caution.
+  if (model === "segmental-linear") {
+    const derived = parsed[0]?.derived ?? [];
+    const value = (label: string) => derived.find((d) => d.label === label)?.value ?? null;
+    const x0 = value("Breakpoint (X0)");
+    const below = value("Slope below X0");
+    const above = value("Slope above X0");
+    const sentence =
+      `Breakpoint X0 = ${num(x0)} (fitted by profiling over X: the breakpoint minimising the residual sum of squares); ` +
+      `slope below X0 = ${num(below)}, slope above X0 = ${num(above)}.`;
+    extraNotes.push(sentence);
+    if (x0 != null) {
+      const sorted = [...new Set(first.xs)].sort((a, b) => a - b);
+      const spacing = Math.min(...sorted.slice(1).map((v, i) => v - sorted[i]));
+      if (x0 - sorted[0] <= spacing || sorted[sorted.length - 1] - x0 <= spacing)
+        extraNotes.push("The breakpoint is at the edge of the data — the fit is effectively a single line.");
+    }
+  }
+  if (model === "quartic" || model === "quintic")
+    extraNotes.push(
+      `A ${model === "quartic" ? "fourth" : "fifth"} order polynomial can overfit — it follows the noise as well as the trend, so prefer a lower order unless the extra terms are justified.`,
+    );
   if (isExponential(model) || isEnzyme(model)) {
     extraNotes.push(startingValues(model, first.xs, first.ys));
     if (isEnzyme(model)) {

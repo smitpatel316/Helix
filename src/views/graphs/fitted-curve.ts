@@ -49,6 +49,18 @@ export function evaluate(
       return c("B0") + c("B1") * x + c("B2") * x ** 2;
     case "cubic":
       return c("B0") + c("B1") * x + c("B2") * x ** 2 + c("B3") * x ** 3;
+    case "quartic":
+      // Plan 29: the polynomial evaluator generalises by degree.
+      return c("B0") + c("B1") * x + c("B2") * x ** 2 + c("B3") * x ** 3 + c("B4") * x ** 4;
+    case "quintic":
+      return (
+        c("B0") + c("B1") * x + c("B2") * x ** 2 + c("B3") * x ** 3 + c("B4") * x ** 4 + c("B5") * x ** 5
+      );
+    case "segmental-linear":
+      // Plan 29: the continuous hinge (X0 is the coefficient row the
+      // runner appends for the profiled breakpoint) — one unbroken line,
+      // never two disjoint segments.
+      return c("B0") + c("B1") * x + c("B2") * Math.max(x - c("X0"), 0);
     case "exponential-growth":
       return c("Y0") * Math.exp(c("K") * x);
     case "one-phase-decay":

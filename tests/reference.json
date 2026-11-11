@@ -5217,6 +5217,366 @@
    }
   ]
  },
+ "nonlinear-regression xy {\"y\":\"Y1\",\"model\":\"quartic\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Fourth order polynomial (quartic)",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Y1"
+   ],
+   "rows": [
+    {
+     "label": "R squared",
+     "values": [
+      0.9990409991
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      0.2542806216
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      0.1939759036
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      3
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      8
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": 3.625,
+    "sd": 2.669269563,
+    "sem": 0.9437293044,
+    "median": 3.5,
+    "n": 8
+   },
+   {
+    "name": "Y1",
+    "mean": 9.033333333,
+    "sd": 5.503635162,
+    "sem": 1.834545054,
+    "median": 9.1,
+    "n": 9
+   }
+  ],
+  "notes": "Least-squares fit (\"Fourth order polynomial (quartic)\") of “Y1” on “X”. 95% CIs are asymptotic (from each parameter's standard error). A fourth order polynomial can overfit — it follows the noise as well as the trend, so prefer a lower order unless the extra terms are justified.",
+  "coefficients": [
+   {
+    "term": "B0",
+    "estimate": 1.106827309,
+    "stdError": 0.2499399131,
+    "t": 4.428373586,
+    "p": 0.02139191004,
+    "low": 0.3114069562,
+    "high": 1.902247662
+   },
+   {
+    "term": "B1",
+    "estimate": 1.618239625,
+    "stdError": 0.5347888403,
+    "t": 3.025941275,
+    "p": 0.05649234212,
+    "low": -0.08369714376,
+    "high": 3.320176394
+   },
+   {
+    "term": "B2",
+    "estimate": 0.2639056225,
+    "stdError": 0.316604511,
+    "t": 0.8335497863,
+    "p": 0.465693278,
+    "low": -0.7436712338,
+    "high": 1.271482479
+   },
+   {
+    "term": "B3",
+    "estimate": -0.05840026774,
+    "stdError": 0.06380696452,
+    "t": -0.9152647862,
+    "p": 0.4275439528,
+    "low": -0.2614625062,
+    "high": 0.1446619707
+   },
+   {
+    "term": "B4",
+    "estimate": 0.003965863454,
+    "stdError": 0.004043825946,
+    "t": 0.9807206113,
+    "p": 0.3990512726,
+    "low": -0.008903395488,
+    "high": 0.0168351224
+   }
+  ]
+ },
+ "nonlinear-regression xy {\"y\":\"Y1\",\"model\":\"quintic\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Fifth order polynomial (quintic)",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Y1"
+   ],
+   "rows": [
+    {
+     "label": "R squared",
+     "values": [
+      0.9992456552
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      0.2762067797
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      0.1525803703
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      2
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      8
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": 3.625,
+    "sd": 2.669269563,
+    "sem": 0.9437293044,
+    "median": 3.5,
+    "n": 8
+   },
+   {
+    "name": "Y1",
+    "mean": 9.033333333,
+    "sd": 5.503635162,
+    "sem": 1.834545054,
+    "median": 9.1,
+    "n": 9
+   }
+  ],
+  "notes": "Least-squares fit (\"Fifth order polynomial (quintic)\") of “Y1” on “X”. 95% CIs are asymptotic (from each parameter's standard error). A fifth order polynomial can overfit — it follows the noise as well as the trend, so prefer a lower order unless the extra terms are justified.",
+  "coefficients": [
+   {
+    "term": "B0",
+    "estimate": 1.072430088,
+    "stdError": 0.2754783398,
+    "t": 3.892974265,
+    "p": 0.06009702449,
+    "low": -0.1128575432,
+    "high": 2.257717718
+   },
+   {
+    "term": "B1",
+    "estimate": 2.234271826,
+    "stdError": 1.018254459,
+    "t": 2.19421757,
+    "p": 0.159457265,
+    "low": -2.146923504,
+    "high": 6.615467155
+   },
+   {
+    "term": "B2",
+    "estimate": -0.4417296073,
+    "stdError": 1.017800361,
+    "t": -0.4340041761,
+    "p": 0.7066172591,
+    "low": -4.82097111,
+    "high": 3.937511896
+   },
+   {
+    "term": "B3",
+    "estimate": 0.210289333,
+    "stdError": 0.3712874182,
+    "t": 0.5663788288,
+    "p": 0.6282169733,
+    "low": -1.38723149,
+    "high": 1.807810156
+   },
+   {
+    "term": "B4",
+    "estimate": -0.03705263769,
+    "stdError": 0.05585786772,
+    "t": -0.6633378467,
+    "p": 0.5753429468,
+    "low": -0.2773896447,
+    "high": 0.2032843693
+   },
+   {
+    "term": "B5",
+    "estimate": 0.002158184213,
+    "stdError": 0.002929854846,
+    "t": 0.7366181351,
+    "p": 0.5380416204,
+    "low": -0.01044796374,
+    "high": 0.01476433216
+   }
+  ]
+ },
+ "nonlinear-regression xy {\"y\":\"Y1\",\"model\":\"segmental-linear\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Segmental linear regression (two segments)",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Y1"
+   ],
+   "rows": [
+    {
+     "label": "Breakpoint (X0)",
+     "values": [
+      2.999990678
+     ]
+    },
+    {
+     "label": "Slope below X0",
+     "values": [
+      1.952992009
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       1.715296464,
+       2.190687554
+      ]
+     ]
+    },
+    {
+     "label": "Slope above X0",
+     "values": [
+      2.045039224
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       1.89510221,
+       2.194976238
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      0.998594642
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      0.2384365781
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      0.284260009
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      5
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      8
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": 3.625,
+    "sd": 2.669269563,
+    "sem": 0.9437293044,
+    "median": 3.5,
+    "n": 8
+   },
+   {
+    "name": "Y1",
+    "mean": 9.033333333,
+    "sd": 5.503635162,
+    "sem": 1.834545054,
+    "median": 9.1,
+    "n": 9
+   }
+  ],
+  "notes": "Least-squares fit (\"Segmental linear regression (two segments)\") of “Y1” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Breakpoint X0 = 3 (fitted by profiling over X: the breakpoint minimising the residual sum of squares); slope below X0 = 1.953, slope above X0 = 2.045.",
+  "coefficients": [
+   {
+    "term": "B0",
+    "estimate": 1.08133851,
+    "stdError": 0.1963238289,
+    "t": 5.507933071,
+    "p": 0.002697960041,
+    "low": 0.5766720415,
+    "high": 1.586004978
+   },
+   {
+    "term": "B1",
+    "estimate": 1.952992009,
+    "stdError": 0.09246760477,
+    "t": 21.12082403,
+    "p": 0.000004409351917,
+    "low": 1.715296464,
+    "high": 2.190687554
+   },
+   {
+    "term": "B2",
+    "estimate": 0.09204721538,
+    "stdError": 0.1336468333,
+    "t": 0.6887347279,
+    "p": 0.5216377277,
+    "low": -0.2515029067,
+    "high": 0.4355973375
+   },
+   {
+    "term": "X0",
+    "estimate": 2.999990678,
+    "stdError": null,
+    "t": null,
+    "p": null,
+    "low": null,
+    "high": null
+   }
+  ]
+ },
  "nonlinear-regression doseLog {\"model\":\"sigmoidal-4pl-logx\"}": {
   "testType": "nonlinear-regression",
   "subtitle": "Sigmoidal, 4PL, X is log(concentration)",
