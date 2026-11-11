@@ -16,6 +16,12 @@
 //   V8  the transfer report counts (14 tables, 17 graphs + 1 layout not
 //       transferred, orphans ignored)
 //
+// The V3/V4 expectations come from tests/layout-spec.ts — the same
+// independent builder verify-corpus.ts uses — so the demo pin follows
+// the current spec (rowTitlesDataSet, multi-subcolumn X, survival-date
+// durations, file-level comma mode), not the corrected-away rules the
+// old inline builder encoded.
+//
 // Corpus: PRISM_TEST_CORPUS env var, else ~/workspace/helix/test-corpus.
 // Mansi's files are never test material; the corpus is public files only.
 
@@ -27,6 +33,7 @@ import JSZip from "jszip";
 import { parseProjectFile, serializeProjectFile } from "../../src/lib/project-file";
 import { convertPrism, type ConvertResult } from "../src/prism";
 import { parseCsv } from "../src/csv";
+import { detectThousandsMode, expectedRows, resolveLayout, type SetJson } from "./layout-spec";
 
 const CORPUS = process.env.PRISM_TEST_CORPUS ?? join(process.env.HOME ?? "~", "workspace/helix/test-corpus");
 const DEMO = join(CORPUS, "prism2R-demo_dataset.prism");
@@ -37,29 +44,6 @@ function check(name: string, ok: boolean, detail: string) {
   checks++;
   console.log(`${ok ? "PASS" : "FAIL"} ${name} — ${detail}`);
   if (!ok) failures++;
-}
-
-// Independent expectation builder: same mapping rules as the vault spec,
-// written separately from the converter, straight from the raw files.
-const SUFFIXES: Record<string, string[] | null> = {
-  y_replicates: null,
-  y_single: [],
-  y_sd_n: ["_MEAN", "_SD", "_N"],
-  y_se_n: ["_MEAN", "_SEM", "_N"],
-  y_cv_n: ["_MEAN", "_CV", "_N"],
-  y_sd: ["_MEAN", "_SD"],
-  y_se: ["_MEAN", "_SE"],
-  y_cv: ["_MEAN", "_CV"],
-  y_plus_minus: ["_MEAN", "_PLUSERROR", "_MINUSERROR"],
-  y_high_low: ["_MEAN", "_PLUSERROR", "_MINUSERROR"],
-};
-function expectedNames(title: string, dataFormat: string, count: number): string[] {
-  const base = title === "" ? "Y" : title;
-  if (count === 1) return [base];
-  const s = SUFFIXES[dataFormat];
-  if (s && s.length === count) return s.map((x) => `${base}${x}`);
-  if (s === null) return Array.from({ length: count }, (_, i) => `${base}_${i + 1}`);
-  return Array.from({ length: count }, (_, i) => `${base}_${i + 1}`);
 }
 
 const input = await readFile(DEMO);
@@ -98,83 +82,72 @@ check(
   `${tables.length} tables; order ${tables.map((t) => t.name).join(" / ")}`,
 );
 
-// V3 + V4: dims + cell-by-cell vs source CSVs.
+// V3 + V4: dims + cell-by-cell vs source CSVs. Expectations come from
+// tests/layout-spec.ts (the independent builder), per sheet.
 let v4cells = 0;
 let v4bad: string[] = [];
+// File-level comma rule, from the file's own values.
+let thousandsMode = false;
+for (const path of Object.keys(zip.files)) {
+  if (!/^data\/tables\/[^/]+\/data\.csv$/.test(path)) continue;
+  const csvFile = zip.file(path);
+  if (!csvFile) continue;
+  if (detectThousandsMode(parseCsv(await csvFile.async("string")))) {
+    thousandsMode = true;
+    break;
+  }
+}
 for (const sheetUid of doc.sheets.data) {
-  const sheet = await json<{ title?: string; table: { uid: string; format: string; dataFormat: string; replicatesCount?: number; dataSets: string[]; xDataSet?: string } }>(
+  const sheet = await json<{ title?: string; table: { uid: string; format: string; dataFormat: string; replicatesCount?: number; dataSets: string[]; xDataSet?: string; rowTitlesDataSet?: string } }>(
     `data/sheets/${sheetUid}/sheet.json`,
   );
-  const content = await json<{ numberOfColumns: number; numberOfRows: number }>(
+  const csvText = (await text(`data/tables/${sheet.table.uid}/data.csv`)) as string;
+  let csv = parseCsv(csvText);
+  const contentRaw = await json<{ numberOfColumns?: number; numberOfRows?: number }>(
     `data/tables/${sheet.table.uid}/content.json`,
-  );
-  const csv = parseCsv((await text(`data/tables/${sheet.table.uid}/data.csv`)) as string).slice(0, content.numberOfRows);
-  const sets = await Promise.all(
-    sheet.table.dataSets.map((u) =>
-      json<{ title?: string; replicates?: unknown[]; "replicate ranges"?: { range?: string }[] }>(
-        `data/sets/${u}.json`,
-      ),
-    ),
-  );
-  const repCount = (s: { replicates?: unknown[]; "replicate ranges"?: { range?: string }[] }): number => {
-    if (Array.isArray(s.replicates)) return s.replicates.length;
-    if (Array.isArray(s["replicate ranges"])) {
-      return s["replicate ranges"].reduce((n, r) => {
-        const m = /^(\d+)(?:~(\d+))?$/.exec(r.range ?? "");
-        return m ? n + (m[2] === undefined ? 1 : Number(m[2]) - Number(m[1]) + 1) : n;
-      }, 0);
-    }
-    return sheet.table.replicatesCount ?? 0;
+  ).catch(() => null);
+  const content = {
+    numberOfColumns: contentRaw?.numberOfColumns ?? csv[0]?.length ?? 0,
+    numberOfRows: contentRaw?.numberOfRows ?? csv.length,
   };
-  const xTitle = sheet.table.xDataSet
-    ? ((await json<{ title?: string }>(`data/sets/${sheet.table.xDataSet}.json`)).title ?? "X")
+  if (csv.length > content.numberOfRows) csv = csv.slice(0, content.numberOfRows);
+  while (csv.length < content.numberOfRows) csv.push([]);
+  const setJsons = await Promise.all(
+    sheet.table.dataSets.map((u) => json<SetJson>(`data/sets/${u}.json`).catch(() => null)),
+  );
+  const xJson = sheet.table.xDataSet
+    ? await json<SetJson>(`data/sets/${sheet.table.xDataSet}.json`).catch(() => null)
     : null;
-  const hasTitle = sheet.table.format !== "xy";
-  const hasX = xTitle !== null;
-  const expCols = ["Title"];
-  if (hasX) expCols.push(xTitle);
-  if (sheet.table.format === "grouped") {
-    sets.forEach((s) => {
-      const g = s.title && s.title !== "" ? s.title : "Group";
-      for (let i = 0; i < repCount(s); i++) expCols.push(`${g}:Y${i + 1}`);
-    });
-  } else {
-    sets.forEach((s) => {
-      expCols.push(...expectedNames(s.title ?? "", sheet.table.dataFormat, repCount(s)));
-    });
-  }
+  const layoutInput = {
+    format: sheet.table.format,
+    dataFormat: sheet.table.dataFormat,
+    replicatesCount: sheet.table.replicatesCount,
+    hasTitleCol: sheet.table.rowTitlesDataSet != null,
+    declaredCols: content.numberOfColumns,
+    declaredRows: content.numberOfRows,
+    xPresent: sheet.table.xDataSet !== undefined,
+    xJson,
+    sets: setJsons,
+    thousandsMode,
+  };
+  const layout = resolveLayout(layoutInput);
+  const expCols = ["Title", ...layout.columns];
   const node = tables.find((t) => t.name === sheet.title && t.data!.columns.join("|") === expCols.join("|"));
   if (!node) {
     v4bad.push(`${sheet.title}: no table with expected columns [${expCols.join(", ")}]`);
     continue;
   }
   const data = node.data!;
-  // .hlx has a Title column the CSV doesn't have on XY tables (their first
-  // CSV column is X); grouped/column/survival CSVs already carry titles.
-  const expectedHlxCols = content.numberOfColumns + (sheet.table.format === "xy" ? 1 : 0);
-  const titleNote = sheet.table.format === "xy" ? " (+1 Title col for XY)" : "";
+  const expectedHlxCols = 1 + layout.columns.length;
   check(
     `V3 dims ${sheet.title}`,
     data.columns.length === expectedHlxCols && data.rows.length === content.numberOfRows,
-    `${data.columns.length}x${data.rows.length} vs content.json ${content.numberOfColumns}x${content.numberOfRows}${titleNote}`,
+    `${data.columns.length}x${data.rows.length} vs layout ${expectedHlxCols}x${content.numberOfRows}`,
   );
-  // Expected rows, built straight from the CSV.
-  let cursor = 0;
-  const colVals: (string | null)[][] = [];
-  if (hasTitle) cursor++;
-  if (hasX) {
-    colVals.push(csv.map((r) => (r[cursor] === "" ? null : (r[cursor] ?? null))));
-    cursor++;
-  }
-  for (const s of sets) {
-    for (let i = 0; i < repCount(s); i++) {
-      colVals.push(csv.map((r) => (r[cursor] === "" ? null : (r[cursor] ?? null))));
-      cursor++;
-    }
-  }
-  const titles = hasTitle ? csv.map((r) => (r[0] === "" ? null : (r[0] ?? null))) : csv.map(() => null);
+  // Expected rows, built straight from the CSV through the layout.
+  const expRows = expectedRows(layoutInput, layout, csv);
   for (let r = 0; r < data.rows.length; r++) {
-    const expected = [titles[r], ...colVals.map((c) => c[r] ?? null)];
+    const expected = expRows[r];
     for (let c = 0; c < expected.length; c++) {
       v4cells++;
       if (data.rows[r][c] !== expected[c]) {
@@ -184,7 +157,11 @@ for (const sheetUid of doc.sheets.data) {
   }
   // Grouped groups/replicates.
   if (sheet.table.format === "grouped") {
-    const ok = data.groups === sets.length && data.replicates === sheet.table.replicatesCount;
+    const presentCounts = setJsons
+      .map((s, i) => (s === null ? null : layout.counts[i]))
+      .filter((c): c is number => c !== null);
+    const expectedReplicates = sheet.table.replicatesCount ?? Math.max(...presentCounts);
+    const ok = data.groups === layout.presentSets.length && data.replicates === expectedReplicates;
     check(`V3 grouped ${sheet.title}`, ok === true, `groups=${data.groups} replicates=${data.replicates}`);
   }
 }
