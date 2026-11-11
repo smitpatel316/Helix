@@ -6,7 +6,8 @@
 // else ~/workspace/helix/test-corpus-prism10) through the converter and,
 // per file, checks:
 //   C0  the real CLI converts a good file (exit 0, .hlx written) and
-//       refuses a bad one (exit 1) — once per run, not per file
+//       refuses a bad one (exit 1), and a write failure is a
+//       plain-language error, not a stack — once per run, not per file
 //   C1  conversion succeeds (or fails cleanly, for the known-reject files)
 //   C2  tables: converted names are the document's data sheets in order,
 //       and any sheet left out is named in a warning — never silently
@@ -20,14 +21,20 @@
 //   C6  the written .hlx round-trips through Helix's own parseProjectFile
 //   C7  the source file's checksum is unchanged
 //   C8  no converted value carries a stray carriage return or a comma
-//       decimal separator — both would mean the CSV layer leaked raw text
-//       into the .hlx (the C3/C4 rebuild shares the converter's parser,
-//       so it can't catch those on its own)
+//       that the file's own comma rule says should have been converted
+//       — both would mean the CSV layer leaked raw text into the .hlx
+//       (the C3/C4 rebuild shares the converter's parser, so it can't
+//       catch those on its own)
+//   C9  alignment: every converted table's layout accounts for each
+//       dataset's columns exactly once, and the columns the layout
+//       consumes never exceed the file's declared numberOfColumns
+//       (a shortfall is either warned about as extra columns, or the
+//       table is left out)
 //
-// The expectation builder mirrors the field-by-field mapping in the vault
-// spec (~/workspace/helix-vault/Research/Prism 10 to hlx mapping.md) and
-// is written separately from the converter, straight from the raw files.
-// Public files only — Mansi's files are never test material.
+// The expectation builder lives in tests/layout-spec.ts: the field-by-
+// field mapping from the vault spec, written separately from the
+// converter, straight from the raw files. Public files only — Mansi's
+// files are never test material.
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -40,6 +47,15 @@ import JSZip from "jszip";
 import { parseProjectFile, serializeProjectFile } from "../../src/lib/project-file";
 import { convertPrism, type ConvertResult } from "../src/prism";
 import { parseCsv } from "../src/csv";
+import {
+  detectThousandsMode,
+  expectedRows,
+  plainTitle,
+  resolveLayout,
+  type LayoutInput,
+  type LayoutResult,
+  type SetJson,
+} from "./layout-spec";
 
 const CONVERTER_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
 const CORPUS =
@@ -81,72 +97,7 @@ function check(file: string, name: string, ok: boolean, detail: string) {
   if (!ok) failures++;
 }
 
-// ── Independent expectation builder (vault spec, straight from raw files) ──
-
-const SUFFIXES: Record<string, string[] | null> = {
-  y_replicates: null,
-  y_single: [],
-  y_sd_n: ["_MEAN", "_SD", "_N"],
-  y_se_n: ["_MEAN", "_SEM", "_N"],
-  y_cv_n: ["_MEAN", "_CV", "_N"],
-  y_sd: ["_MEAN", "_SD"],
-  y_se: ["_MEAN", "_SE"],
-  y_cv: ["_MEAN", "_CV"],
-  y_plus_minus: ["_MEAN", "_PLUSERROR", "_MINUSERROR"],
-  y_high_low: ["_MEAN", "_PLUSERROR", "_MINUSERROR"],
-};
-function expectedNames(title: string, dataFormat: string, count: number): string[] {
-  const base = title === "" ? "Y" : title;
-  if (count === 1) return [base];
-  const s = SUFFIXES[dataFormat];
-  if (s && s.length === count) return s.map((x) => `${base}${x}`);
-  if (s === null) return Array.from({ length: count }, (_, i) => `${base}_${i + 1}`);
-  return Array.from({ length: count }, (_, i) => `${base}_${i + 1}`);
-}
-/** `1,5` (comma decimal) → `1.5`; same rule as the converter. A Prism
- *  carriage return inside a quoted field is a multi-line label break, not
- *  a number — cleanText (same rule as the converter) turns it into one
- *  space first, so the expectation matches the converted value. */
-const normalizeNumber = (value: string | null): string | null => {
-  if (value === null) return null;
-  const clean = cleanText(value);
-  return /^-?\d+,\d+$/.test(clean) ? clean.replace(",", ".") : clean;
-};
-
-/** Mirror of the converter's cleanText (converter/src/prism.ts): Prism's
- *  \r line breaks in labels become one space. */
-const cleanText = (value: string): string => value.replace(/\s*\r\n?\s*/g, " ");
-
-/** A Prism title as plain text (see converter/src/prism.ts plainTitle). */
-function plainTitle(value: unknown): string {
-  if (typeof value === "string") return cleanText(value);
-  if (value !== null && typeof value === "object") {
-    const s = (value as { string?: unknown }).string;
-    if (typeof s === "string") return cleanText(s);
-  }
-  return "";
-}
-
-/** Parse a Prism date cell: ISO ("2024-09-06 00:00:00") or US ("12/17/2024"). */
-function parsePrismDate(value: string | null): number | null {
-  if (value === null || value === "") return null;
-  let ms = Date.parse(value.replace(" ", "T"));
-  if (!Number.isNaN(ms)) return ms;
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value.trim());
-  if (m) {
-    ms = Date.parse(`${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}T00:00:00`);
-    if (!Number.isNaN(ms)) return ms;
-  }
-  return null;
-}
-
-function daysBetween(start: string | null, end: string | null): string | null {
-  const a = parsePrismDate(start);
-  const b = parsePrismDate(end);
-  if (a === null || b === null) return null;
-  const days = (b - a) / 86_400_000;
-  return Number.isInteger(days) ? String(days) : String(Number(days.toFixed(6)));
-}
+// ── Per-sheet raw pieces + the independently resolved layout ──────────
 
 interface SheetInfo {
   uid: string;
@@ -156,77 +107,20 @@ interface SheetInfo {
   replicatesCount?: number;
   tableUid: string;
   content: { numberOfColumns: number; numberOfRows: number };
+  /** False when content.json is absent (dims fall back to the CSV). */
+  hasContentJson: boolean;
   csv: string[][];
-  sets: { title?: string | { string?: string }; replicates?: unknown[]; "replicate ranges"?: { range?: string }[] }[];
-  xTitle: string | null;
-  /** Subcolumns the X dataset spans in the CSV (0 = no X dataset). */
-  xCount: number;
-  /** The X dataset's format (e.g. "date_se" on survival tables). */
-  xFormat: string;
+  /** One entry per dataSets UID, in file order; null = JSON missing. */
+  setJsons: (SetJson | null)[];
+  xJson: SetJson | null;
+  xPresent: boolean;
   hasTitleCol: boolean;
-}
-function repCount(
-  s: { replicates?: unknown[]; "replicate ranges"?: { range?: string }[] },
-  fallback: number,
-): number {
-  if (Array.isArray(s.replicates)) return s.replicates.length;
-  if (Array.isArray(s["replicate ranges"])) {
-    return s["replicate ranges"].reduce((n, r) => {
-      const m = /^(\d+)(?:~(\d+))?$/.exec(r.range ?? "");
-      return m ? n + (m[2] === undefined ? 1 : Number(m[2]) - Number(m[1]) + 1) : n;
-    }, 0);
-  }
-  return fallback;
-}
-/** Expected Helix column names for a sheet, in order (after the Title col). */
-function expectedColumns(sheet: SheetInfo): string[] {
-  const cols: string[] = [];
-  if (sheet.xTitle !== null) cols.push(sheet.xTitle);
-  if (sheet.format === "grouped") {
-    for (const s of sheet.sets) {
-      const g = plainTitle(s.title) || "Group";
-      for (let i = 0; i < repCount(s, sheet.replicatesCount ?? 0); i++) cols.push(`${g}:Y${i + 1}`);
-    }
-  } else {
-    for (const s of sheet.sets) {
-      cols.push(...expectedNames(plainTitle(s.title), sheet.dataFormat, repCount(s, sheet.replicatesCount ?? 0)));
-    }
-  }
-  return cols;
-}
-/** Expected Helix rows for a sheet, built straight from its CSV. */
-function expectedRows(sheet: SheetInfo): (string | null)[][] {
-  const csv = sheet.csv;
-  const hasTitle = sheet.hasTitleCol;
-  const hasX = sheet.xTitle !== null;
-  let cursor = 0;
-  const colVals: (string | null)[][] = [];
-  if (hasTitle) cursor++;
-  if (hasX) {
-    if (sheet.format === "survival" && sheet.xFormat.startsWith("date") && sheet.xCount >= 2) {
-      // X is start/end dates: Helix time is the gap in days.
-      const starts = csv.map((r) => (r[cursor] === "" ? null : (r[cursor] ?? null)));
-      const ends = csv.map((r) => (r[cursor + 1] === "" ? null : (r[cursor + 1] ?? null)));
-      colVals.push(starts.map((s, i) => daysBetween(s, ends[i])));
-    } else {
-      colVals.push(csv.map((r) => normalizeNumber(r[cursor] === "" ? null : (r[cursor] ?? null))));
-    }
-    cursor += sheet.xCount;
-  }
-  for (const s of sheet.sets) {
-    for (let i = 0; i < repCount(s, sheet.replicatesCount ?? 0); i++) {
-      colVals.push(csv.map((r) => normalizeNumber(r[cursor] === "" ? null : (r[cursor] ?? null))));
-      cursor++;
-    }
-  }
-  const titles = hasTitle
-    ? csv.map((r) => (r[0] === "" || r[0] === undefined ? null : cleanText(r[0])))
-    : csv.map(() => null);
-  const rowCount = sheet.content.numberOfRows;
-  return Array.from({ length: rowCount }, (_, r) => [
-    titles[r] ?? null,
-    ...colVals.map((c) => c[r] ?? null),
-  ]);
+  thousandsMode: boolean;
+  /** The layout input, kept so C3/C4 can rebuild rows from it. */
+  layoutInput: LayoutInput;
+  /** The layout, resolved from content.json dims + the raw JSONs — never
+   *  from the converter's walk. */
+  layout: LayoutResult;
 }
 
 interface DocJson {
@@ -269,6 +163,20 @@ async function verifyFile(fileName: string): Promise<void> {
   const doc = await json<DocJson>("document.json");
   const titles = doc.sheetAttributesMap ?? {};
 
+  // File-level comma rule, from the file's own values (same rule as the
+  // converter, read independently here): any parsed cell with 2+ comma
+  // groups makes commas thousands separators file-wide.
+  let thousandsMode = false;
+  for (const path of Object.keys(zip.files)) {
+    if (!/^data\/tables\/[^/]+\/data\.csv$/.test(path)) continue;
+    const csvFile = zip.file(path);
+    if (!csvFile) continue;
+    if (detectThousandsMode(parseCsv(await csvFile.async("string")))) {
+      thousandsMode = true;
+      break;
+    }
+  }
+
   // Load every data sheet's raw pieces.
   const sheets: SheetInfo[] = [];
   for (const sheetUid of doc.sheets?.data ?? []) {
@@ -286,37 +194,41 @@ async function verifyFile(fileName: string): Promise<void> {
     }>(`data/sheets/${sheetUid}/sheet.json`);
     const table = sheet.table;
     if (!table?.uid) continue;
-    const content = await json<{ numberOfColumns: number; numberOfRows: number }>(
-      `data/tables/${table.uid}/content.json`,
-    );
     const csvText = await text(`data/tables/${table.uid}/data.csv`);
     if (csvText === null) continue;
     let csv = parseCsv(csvText);
+    // content.json may be absent (the converter then uses the CSV's own
+    // shape); when present, its dims rule the layout and the padding.
+    const contentRaw = await json<{ numberOfColumns?: number; numberOfRows?: number }>(
+      `data/tables/${table.uid}/content.json`,
+    ).catch(() => null);
+    const content = {
+      numberOfColumns: contentRaw?.numberOfColumns ?? csv[0]?.length ?? 0,
+      numberOfRows: contentRaw?.numberOfRows ?? csv.length,
+    };
+    const hasContentJson = contentRaw !== null;
     if (csv.length > content.numberOfRows) csv = csv.slice(0, content.numberOfRows);
     while (csv.length < content.numberOfRows) csv.push([]);
-    const sets = await Promise.all(
-      (table.dataSets ?? []).map((u) =>
-        json<{ title?: string | { string?: string }; replicates?: unknown[]; "replicate ranges"?: { range?: string }[] }>(
-          `data/sets/${u}.json`,
-        ).catch(() => null),
-      ),
+    // Missing dataset JSONs stay null here — the layout resolves their
+    // skip count from the table/dims instead of dropping them silently.
+    const setJsons = await Promise.all(
+      (table.dataSets ?? []).map((u) => json<SetJson>(`data/sets/${u}.json`).catch(() => null)),
     );
-    let xTitle: string | null = null;
-    let xCount = 0;
-    let xFormat = "";
-    if (table.xDataSet) {
-      const xSet = await json<{ title?: string | { string?: string }; format?: string; replicates?: unknown[]; "replicate ranges"?: { range?: string }[] }>(
-        `data/sets/${table.xDataSet}.json`,
-      ).catch(() => null);
-      if (xSet) {
-        xTitle = plainTitle(xSet.title) || "X";
-        xCount = repCount(xSet, table.replicatesCount ?? 0);
-        xFormat = xSet.format ?? "";
-      } else {
-        xTitle = "X";
-        xCount = 1;
-      }
-    }
+    const xJson = table.xDataSet
+      ? await json<SetJson>(`data/sets/${table.xDataSet}.json`).catch(() => null)
+      : null;
+    const layoutInput = {
+      format: table.format ?? "",
+      dataFormat: table.dataFormat ?? "",
+      replicatesCount: table.replicatesCount,
+      hasTitleCol: table.rowTitlesDataSet != null,
+      declaredCols: content.numberOfColumns,
+      declaredRows: content.numberOfRows,
+      xPresent: table.xDataSet !== undefined,
+      xJson,
+      sets: setJsons,
+      thousandsMode,
+    };
     sheets.push({
       uid: sheetUid,
       title: plainTitle(sheet.title) || plainTitle(titles[sheetUid]?.title) || "Imported table",
@@ -325,18 +237,23 @@ async function verifyFile(fileName: string): Promise<void> {
       replicatesCount: table.replicatesCount,
       tableUid: table.uid,
       content,
+      hasContentJson,
       csv,
-      sets: sets.filter((s): s is NonNullable<typeof s> => s !== null),
-      xTitle,
-      xCount,
-      xFormat,
+      setJsons,
+      xJson,
+      xPresent: table.xDataSet !== undefined,
       hasTitleCol: table.rowTitlesDataSet != null,
+      thousandsMode,
+      layoutInput,
+      layout: resolveLayout(layoutInput),
     });
   }
 
-  // C2: converted tables are the document's data sheets in order; anything
-  // left out must be named in a warning.
-  const expectedOrder = sheets.map((s) => s.title);
+  // C2: converted tables are the sheets the layout says convert, in
+  // document order; anything the layout refuses must be left out and
+  // named in a warning — never silently dropped, never converted
+  // against the layout.
+  const expectedOrder = sheets.filter((s) => s.layout.convert).map((s) => s.title);
   const converted = report.tables;
   let sub = 0;
   let orderOk = true;
@@ -348,7 +265,10 @@ async function verifyFile(fileName: string): Promise<void> {
     }
     sub = idx + 1;
   }
-  const leftOut = expectedOrder.filter((n) => !converted.includes(n));
+  // A sheet the layout says convert but the converter left out (empty
+  // CSV, no data) counts as left out too — it still needs its warning.
+  const notConverted = expectedOrder.filter((n) => !converted.includes(n));
+  const leftOut = [...new Set([...sheets.filter((s) => !s.layout.convert).map((s) => s.title), ...notConverted])];
   const warned = leftOut.filter((n) =>
     report.issues.some((i) => i.severity === "warning" && i.message.includes(`“${n}”`)),
   );
@@ -360,7 +280,9 @@ async function verifyFile(fileName: string): Promise<void> {
       (leftOut.length ? `; left out ${leftOut.length}, warned about ${warned.length}` : ""),
   );
 
-  // C3 + C4: dims + cells for every converted table.
+  // C3 + C4: dims + cells for every converted table. The expectations
+  // come from the layout (content.json dims + raw JSONs), never from the
+  // converter's walk — so a shifted column fails here as wrong values.
   const convertedNodes = project.rootOrder
     .map((id) => project.nodes[id])
     .filter((n) => n.type === "table");
@@ -373,7 +295,7 @@ async function verifyFile(fileName: string): Promise<void> {
         !usedSheets.has(s.uid) &&
         s.title === node.name &&
         node.data !== undefined &&
-        node.data.columns.join("|") === ["Title", ...expectedColumns(s)].join("|"),
+        node.data.columns.join("|") === ["Title", ...s.layout.columns].join("|"),
     );
     if (!sheet) {
       bad.push(`${node.name}: no source sheet matches its columns`);
@@ -385,11 +307,7 @@ async function verifyFile(fileName: string): Promise<void> {
       bad.push(`${node.name}: no data`);
       continue;
     }
-    // .hlx columns: Title + one X column + dataset subcolumns. The CSV
-    // holds the title column (only when the table has row titles) plus
-    // every X subcolumn, so the counts differ by exactly that.
-    const datasetCols = expectedColumns(sheet).length - (sheet.xTitle !== null ? 1 : 0);
-    const expectedCols = 1 + (sheet.xTitle !== null ? 1 : 0) + datasetCols;
+    const expectedCols = 1 + sheet.layout.columns.length;
     if (data.columns.length !== expectedCols || data.rows.length !== sheet.content.numberOfRows) {
       bad.push(
         `${node.name}: dims ${data.columns.length}x${data.rows.length} vs expected ${expectedCols}x${sheet.content.numberOfRows}`,
@@ -398,16 +316,20 @@ async function verifyFile(fileName: string): Promise<void> {
     if (sheet.format === "grouped") {
       // replicatesCount is absent from some files (seen: marelli, opossum,
       // endosymbioses, figure-6) — then it is the per-dataset subcolumn
-      // count, the same fallback the converter uses.
-      const expectedReplicates =
-        sheet.replicatesCount ?? Math.max(...sheet.sets.map((s) => repCount(s, 0)));
-      if (data.groups !== sheet.sets.length || data.replicates !== expectedReplicates) {
-        bad.push(`${node.name}: groups=${data.groups} replicates=${data.replicates} vs ${sheet.sets.length}/${expectedReplicates}`);
+      // count, the same fallback the converter uses. Groups count the
+      // datasets whose JSON is present; a missing one consumes CSV
+      // columns without becoming a group.
+      const presentCounts = sheet.setJsons
+        .map((s, i) => (s === null ? null : sheet.layout.counts[i]))
+        .filter((c): c is number => c !== null);
+      const expectedReplicates = sheet.replicatesCount ?? Math.max(...presentCounts);
+      if (data.groups !== sheet.layout.presentSets.length || data.replicates !== expectedReplicates) {
+        bad.push(`${node.name}: groups=${data.groups} replicates=${data.replicates} vs ${sheet.layout.presentSets.length}/${expectedReplicates}`);
       }
     }
     // Compare the overlapping cells even when the dims are off, so a
     // shifted column is caught as wrong values, not just wrong dims.
-    const expRows = expectedRows(sheet);
+    const expRows = expectedRows(sheet.layoutInput, sheet.layout, sheet.csv);
     for (let r = 0; r < Math.min(data.rows.length, expRows.length); r++) {
       for (let c = 0; c < Math.min(data.rows[r].length, expRows[r].length); c++) {
         cells++;
@@ -424,16 +346,24 @@ async function verifyFile(fileName: string): Promise<void> {
     `${cells} cells compared; ${bad.length} problems${bad.length ? ": " + bad.slice(0, 3).join(" | ") : ""}`,
   );
 
-  // C8: values are clean — no stray \r, no comma-decimal text left in the
-  // .hlx. The C3/C4 rebuild shares the converter's CSV parser, so it
-  // would agree with a parser leak; this check is independent of it.
+  // C8: values are clean — no stray \r, and no comma the file's own
+  // comma rule says should have been converted. The C3/C4 rebuild shares
+  // the converter's CSV parser, so it would agree with a parser leak;
+  // this check is independent of it. The \r check is unconditional; the
+  // comma check is mode-aware — in decimal mode a "45,5" left in the
+  // .hlx is a leak, in thousands mode it is expected text (only a
+  // grouped "1,234,567" left behind is a leak there).
+  const fileThousandsMode = sheets[0]?.thousandsMode ?? false;
+  const commaLeak = fileThousandsMode
+    ? /^-?\d{1,3}(,\d{3})+(\.\d+)?$/
+    : /^-?\d+,\d+$/;
   const dirty: string[] = [];
   for (const node of convertedNodes) {
     if (!node.data) continue;
     for (let r = 0; r < node.data.rows.length; r++) {
       for (let c = 0; c < node.data.rows[r].length; c++) {
         const v = node.data.rows[r][c];
-        if (typeof v === "string" && (v.includes("\r") || /^-?\d+,\d+$/.test(v))) {
+        if (typeof v === "string" && (v.includes("\r") || v.includes("\n") || commaLeak.test(v))) {
           dirty.push(`${node.name} r${r} c${c}: ${JSON.stringify(v)}`);
         }
       }
@@ -443,7 +373,45 @@ async function verifyFile(fileName: string): Promise<void> {
     fileName,
     "C8 values clean",
     dirty.length === 0,
-    dirty.length ? dirty.slice(0, 3).join(" | ") : "no stray CR or comma decimals",
+    dirty.length ? dirty.slice(0, 3).join(" | ") : "no stray CR/LF or unconverted commas",
+  );
+
+  // C9: alignment — every converted table's layout accounts for each
+  // dataset's columns exactly once, and the columns the layout consumes
+  // never exceed the file's declared numberOfColumns. A shortfall is
+  // either warned about as extra columns left out, or the table is
+  // refused (C2 covers the refusal). This is the check that would have
+  // caught B1/B2/B3: a converter that lays out on a shifted cursor
+  // consumes a different column count than the layout says.
+  const alignProblems: string[] = [];
+  for (const sheet of sheets) {
+    const layout = sheet.layout;
+    if (!layout.convert) continue;
+    if (layout.consumedCols > sheet.content.numberOfColumns) {
+      alignProblems.push(
+        `${sheet.title}: layout consumes ${layout.consumedCols} columns but the file declares ${sheet.content.numberOfColumns}`,
+      );
+      continue;
+    }
+    if (layout.consumedCols < sheet.content.numberOfColumns) {
+      // Only when content.json exists: without it the converter has no
+      // declared width to compare against, so no warning is expected.
+      if (!sheet.hasContentJson) continue;
+      const warned = report.issues.some((i) =>
+        i.message.includes(`holds ${sheet.content.numberOfColumns} columns but only ${layout.consumedCols} map`),
+      );
+      if (!warned) {
+        alignProblems.push(
+          `${sheet.title}: ${sheet.content.numberOfColumns - layout.consumedCols} column(s) unaccounted for with no warning`,
+        );
+      }
+    }
+  }
+  check(
+    fileName,
+    "C9 alignment",
+    alignProblems.length === 0,
+    alignProblems.length ? alignProblems.slice(0, 3).join(" | ") : "every dataset's columns accounted for exactly once",
   );
 
   // C5: analyses — supported ones transferred onto the right table, the
@@ -481,6 +449,16 @@ async function verifyFile(fileName: string): Promise<void> {
         if (!inputConverted) {
           if (!report.issues.some((i) => i.message.includes(`“${name}”`))) {
             analysisProblems.push(`${name}: ${equation} but input table missing and no warning`);
+          }
+        } else if ((sheet.inputDataSets ?? []).length === 0) {
+          // A supported equation with no input datasets is warned about
+          // and left out — it converts to no node at all (M4).
+          const warned = report.issues.some(
+            (i) => i.message.includes(`“${name}”`) && i.message.includes("has no input datasets"),
+          );
+          if (!warned) analysisProblems.push(`${name}: zero input datasets but no warning`);
+          if (report.analyses.some((a) => a === name || a.startsWith(`${name} (`))) {
+            analysisProblems.push(`${name}: zero input datasets but a node was converted`);
           }
         } else {
           const want = (sheet.inputDataSets ?? []).map((ds) =>
@@ -571,11 +549,13 @@ async function checkCli(): Promise<void> {
     return;
   }
   const goodOut = join(dir, "no_analysis.hlx");
+  // The CLI runs with CWD = the converter dir: its own node_modules
+  // holds tsx, so the probe must not depend on the repo-root install.
   try {
     execFileSync(
       process.execPath,
       ["--import", "tsx", join(CONVERTER_DIR, "src/cli.ts"), good, goodOut],
-      { cwd: join(CONVERTER_DIR, ".."), stdio: "pipe" },
+      { cwd: CONVERTER_DIR, stdio: "pipe" },
     );
     const out = await readFile(goodOut, "utf8");
     check("cli", "C0 convert", out.includes("nodes"), "exit 0, .hlx written and parses as JSON");
@@ -586,12 +566,27 @@ async function checkCli(): Promise<void> {
     execFileSync(
       process.execPath,
       ["--import", "tsx", join(CONVERTER_DIR, "src/cli.ts"), bad, join(dir, "empty.hlx")],
-      { cwd: join(CONVERTER_DIR, ".."), stdio: "pipe" },
+      { cwd: CONVERTER_DIR, stdio: "pipe" },
     );
     check("cli", "C0 reject", false, "empty.prism converted but should have failed");
   } catch (err) {
     const e = err as { status?: number; stderr?: Buffer };
     check("cli", "C0 reject", e.status === 1, `exit ${e.status ?? "?"} on empty.prism`);
+  }
+  // A write failure (output folder doesn't exist) is a plain-language
+  // error on stderr, exit 1 — never a raw stack trace.
+  try {
+    execFileSync(
+      process.execPath,
+      ["--import", "tsx", join(CONVERTER_DIR, "src/cli.ts"), good, join(dir, "no-such-dir", "out.hlx")],
+      { cwd: CONVERTER_DIR, stdio: "pipe" },
+    );
+    check("cli", "C0 write failure", false, "write to a missing folder succeeded but should have failed");
+  } catch (err) {
+    const e = err as { status?: number; stderr?: Buffer };
+    const stderr = e.stderr?.toString() ?? "";
+    const plain = e.status === 1 && stderr.includes("Can't write") && !stderr.includes("    at ") && !stderr.includes("Error:");
+    check("cli", "C0 write failure", plain, plain ? "exit 1, plain-language error" : `exit ${e.status ?? "?"}, stderr: ${stderr.slice(0, 200)}`);
   }
 }
 
