@@ -246,6 +246,19 @@ export function useAppMenu(doc: DocumentActions) {
         ],
       },
       {
+        text: "Figure",
+        items: [
+          {
+            text: "New Figure…",
+            accelerator: "CmdOrCtrl+Alt+F",
+            enabled: Object.values(nodes).some((n) => n.type === "graph"),
+            action: () => latest.current.store.createFigure(),
+          },
+          sep,
+          deleteItem("figure"),
+        ],
+      },
+      {
         text: "View",
         items: [
           {
