@@ -188,8 +188,8 @@ export async function runCoxPH(
     t: v[`z${i}`] ?? null,
     p: v[`pv${i}`] ?? null,
     hazardRatio: v[`hr${i}`] ?? null,
-    ciLow: v[`lo${i}`] ?? null,
-    ciHigh: v[`hi${i}`] ?? null,
+    low: v[`lo${i}`] ?? null,
+    high: v[`hi${i}`] ?? null,
   }));
   const described: GroupDescriptives[] = (await describe(pairedGroups(used))).groups;
   const stats: StatRow[] = [

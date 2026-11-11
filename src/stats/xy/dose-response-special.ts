@@ -107,8 +107,8 @@ const derivedCoef = (term: string, estimate: number | null): RegressionCoefficie
   stdError: null,
   t: null,
   p: null,
-  ciLow: null,
-  ciHigh: null,
+  low: null,
+  high: null,
 });
 
 interface SeriesFit {
@@ -423,10 +423,10 @@ export async function runDoseResponseSpecial(
       const effectmaxRow = coefficients.find((c) => c.term === "Effectmax");
       if (
         effectmax != null &&
-        effectmaxRow?.ciLow != null &&
-        effectmaxRow?.ciHigh != null &&
-        effectmaxRow.ciLow > 0 &&
-        effectmaxRow.ciHigh / effectmaxRow.ciLow > 10
+        effectmaxRow?.low != null &&
+        effectmaxRow?.high != null &&
+        effectmaxRow.low > 0 &&
+        effectmaxRow.high / effectmaxRow.low > 10
       )
         notes.push(
           "The full agonist's Effectmax has a confidence interval spanning more than an order of magnitude — its top plateau is not clearly reached, so Effectmax, KA and tau are poorly identified.",

@@ -214,9 +214,15 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
           label="Model"
           value={options.doseModel}
           onChange={(doseModel) => set({ doseModel })}
+          wrap
           items={[
             { value: "sigmoidal-4pl-logx", label: "Log X" },
             { value: "sigmoidal-4pl-x", label: "Linear X" },
+            // Prism's dose-response (sigmoidal) family, 3PL/5PL (rebase).
+            { value: "agonist-3pl-logx", label: MODEL_LABEL["agonist-3pl-logx"] },
+            { value: "inhibitor-3pl-logx", label: MODEL_LABEL["inhibitor-3pl-logx"] },
+            { value: "asymmetric-5pl-logx", label: MODEL_LABEL["asymmetric-5pl-logx"] },
+            { value: "asymmetric-5pl-x", label: MODEL_LABEL["asymmetric-5pl-x"] },
             // Prism's "Exponential" family (plan 08, 1/2: decay first).
             { value: "one-phase-decay", label: MODEL_LABEL["one-phase-decay"] },
             { value: "two-phase-decay", label: MODEL_LABEL["two-phase-decay"] },

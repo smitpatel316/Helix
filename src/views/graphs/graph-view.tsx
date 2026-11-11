@@ -287,13 +287,20 @@ export function GraphView({ node }: { node: ProjectNode }) {
   });
   const doseFit = doseOutcome && !("error" in doseOutcome) ? doseOutcome : null;
   // A dose-response graph also draws the drop-lines of a sibling
-  // standard-curve-interpolation analysis on the same table: its cached run
-  // (no extra R call), when it fits the same model and Y series — the curve
-  // it was interpolated from. Without one, the graph is just the curve.
+  // nonlinear-regression analysis with `interpolate: true` on the same table:
+  // its cached run (no extra R call), when it fits the same model and Y
+  // series — the curve it was interpolated from. Without one, the graph is
+  // just the curve.
   const interpAnalysis =
-    type === "dose-response" ? analyses.find((n) => n.analysisType === "standard-curve-interpolation") : undefined;
+    type === "dose-response"
+      ? analyses.find(
+          (n) =>
+            n.analysisType === "nonlinear-regression" &&
+            (n.analysisParams as NonlinearRegressionParams | undefined)?.interpolate === true,
+        )
+      : undefined;
   const interpOutcome = useAnalysis(
-    interpAnalysis ? "standard-curve-interpolation" : undefined,
+    interpAnalysis ? "nonlinear-regression" : undefined,
     data,
     interpAnalysis?.analysisParams,
   );

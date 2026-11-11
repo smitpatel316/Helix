@@ -13,8 +13,8 @@ import { num } from "../../lib/format";
 import type { GraphFigure, GraphModule } from ".";
 
 /** One row's label: "HR 0.37 (95% CI 0.10–1.34)". */
-export function forestRowLabel(hazardRatio: number, ciLow: number, ciHigh: number): string {
-  return `HR ${num(hazardRatio)} (95% CI ${num(ciLow)}–${num(ciHigh)})`;
+export function forestRowLabel(hazardRatio: number, low: number, high: number): string {
+  return `HR ${num(hazardRatio)} (95% CI ${num(low)}–${num(high)})`;
 }
 
 /** The vertical reference line at HR = 1, drawn as a layout shape. */
@@ -49,13 +49,13 @@ function build(_columns: Column[], options: GraphOptions, _paint: Paint): GraphF
  *  (not a Cox result, or the fit failed). */
 export function addForestPlot(fig: GraphFigure, outcome: AnalysisResult, _paint: Paint): void {
   const rows = (outcome.coefficients ?? []).filter(
-    (c) => c.hazardRatio != null && c.ciLow != null && c.ciHigh != null,
+    (c) => c.hazardRatio != null && c.low != null && c.high != null,
   );
   if (!rows.length) return;
   const terms = rows.map((c) => c.term);
   const hrs = rows.map((c) => c.hazardRatio!);
-  const los = rows.map((c) => c.ciLow!);
-  const his = rows.map((c) => c.ciHigh!);
+  const los = rows.map((c) => c.low!);
+  const his = rows.map((c) => c.high!);
   const layout = fig.layout as Record<string, unknown>;
   // The range covers every whisker plus the reference line at 1, with room
   // for the labels: a log axis takes data units, not log units.
@@ -96,7 +96,7 @@ export function addForestPlot(fig: GraphFigure, outcome: AnalysisResult, _paint:
         thickness: 1.5,
         width: 6,
       },
-      text: rows.map((c) => forestRowLabel(c.hazardRatio!, c.ciLow!, c.ciHigh!)),
+      text: rows.map((c) => forestRowLabel(c.hazardRatio!, c.low!, c.high!)),
       hoverinfo: "text+x",
       showlegend: false,
     },

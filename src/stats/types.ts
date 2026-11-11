@@ -17,7 +17,6 @@ export type AnalysisType =
   | "simple-logistic-regression"
   | "area-under-curve"
   | "nonlinear-regression"
-  | "standard-curve-interpolation"
   | "two-way-anova"
   | "three-way-anova"
   | "multiple-t-tests"
@@ -233,26 +232,6 @@ export interface NonlinearRegressionParams {
   compare?: (typeof CURVE_COMPARISONS)[number];
   /** Interpolate the unknowns: the rows holding a Y but no X get the X the curve gives them. */
   interpolate?: boolean;
-}
-
-/** Params for "standard-curve-interpolation" (XY table): fit a standard curve
- *  to the standards, then read unknown concentrations off it from their Y
- *  (response) values. */
-export interface StandardCurveInterpolationParams {
-  /** Omitted defaults to the first Y data column. */
-  y?: string;
-  model: NonlinearModel;
-  /** The unknown Y values to interpolate, in the order entered. */
-  unknowns: number[];
-}
-
-/** One interpolated unknown: `x: null` means the Y value falls outside the
- *  fitted curve's range and cannot be interpolated (see the result's notes). */
-export interface InterpolationRow {
-  unknownY: number;
-  x: number | null;
-  ciLow: number | null;
-  ciHigh: number | null;
 }
 
 /** Params for "correlation-matrix": Pearson (parametric) vs. Spearman
@@ -575,7 +554,6 @@ export type AnalysisParams = DataSetsParam &
     | SimpleLogisticRegressionParams
     | AreaUnderCurveParams
     | NonlinearRegressionParams
-    | StandardCurveInterpolationParams
     | BindingSaturationParams
     | BindingKineticsParams
     | EnzymeInhibitionParams
@@ -683,13 +661,10 @@ export interface HazardRatioRow {
 }
 
 /** One row of a regression coefficients table (intercept or a predictor).
- *  `ciLow`/`ciHigh` are the Wald 95% CIs (estimate ± t(0.975, df)·SE),
- *  populated by the nonlinear-fit runner (plan 09) — other runners leave
- *  them undefined, and the results view only shows the CI columns when a
- *  coefficient carries them. A Cox regression (plan 10) also carries the
- *  hazard ratio `hazardRatio` = exp(estimate), with `ciLow`/`ciHigh` its
- *  95% CI on the hazard-ratio scale — the results view adds a Hazard ratio
- *  column when a coefficient carries one. */
+ *  `low`/`high` are the 95% CIs (asymptotic for a nonlinear fit, estimate ±
+ *  t(0.975, df)·SE; a Cox regression (plan 10) carries them on the
+ *  hazard-ratio scale instead — the results view adds a Hazard ratio column
+ *  when a coefficient carries one). */
 export interface RegressionCoefficient {
   term: string;
   estimate: number | null;
@@ -699,11 +674,6 @@ export interface RegressionCoefficient {
   /** Its 95% confidence interval (asymptotic for a nonlinear fit). */
   low?: number | null;
   high?: number | null;
-  /** The Wald 95% CI (estimate ± t(0.975, df)·SE) from the nonlinear-fit
-   *  runner (plan 09) — kept alongside low/high; the dedup commit renames
-   *  these to low/high per the upstream shape. */
-  ciLow?: number | null;
-  ciHigh?: number | null;
   hazardRatio?: number | null;
 }
 
@@ -716,13 +686,16 @@ export interface FitRow {
 
 /** An unknown read off a standard curve: its row, its Y, the X the curve gives it (null when
  *  the curve never reaches that Y), 10^X when X is a log, and whether X lies beyond the
- *  standards' X. */
+ *  standards' X. `low`/`high` are the 95% CI of the interpolated X, from inverting the
+ *  curve's 95% confidence band (null where the band never reaches the Y). */
 export interface InterpolatedRow {
   label: string;
   y: number;
   x: number | null;
   concentration?: number | null;
   extrapolated: boolean;
+  low: number | null;
+  high: number | null;
 }
 
 /** One row of a mixed-effects variance-components table: the random-effect
@@ -845,8 +818,6 @@ export interface AnalysisResult {
   correlations?: CorrelationRow[];
   /** Optional per-Y area-under-curve table ("area-under-curve"). */
   areas?: AreaUnderCurveRow[];
-  /** Optional interpolated unknowns ("standard-curve-interpolation"). */
-  interpolations?: InterpolationRow[];
   /** Optional per-column outlier summary ("outliers"). */
   outlierGroups?: OutlierGroupRow[];
   /** Optional per-group survival summary ("survival"). */

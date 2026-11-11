@@ -84,11 +84,10 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
   const groups = result.groups;
   // The 95% CI and Min/Max/Range only come from the Descriptive statistics analysis.
   const showCi = groups.some((g) => g.ciLow != null || g.ciHigh != null);
-  // The coefficient 95% CIs come from the nonlinear-fit runner (plan 09) —
-  // other runners leave them undefined, so the columns only appear then.
+  // The coefficient 95% CIs come from the nonlinear-fit runner — other
+  // runners leave them undefined, so the "95% CI" column only fills then.
   // A Cox regression (plan 10) also carries a hazard ratio per coefficient —
-  // its CI columns above are on the hazard-ratio scale.
-  const showCoefCi = (result.coefficients ?? []).some((c) => c.ciLow != null || c.ciHigh != null);
+  // its CI above is on the hazard-ratio scale.
   const showHr = (result.coefficients ?? []).some((c) => c.hazardRatio != null);
   const showRange = groups.some((g) => g.min != null || g.max != null || g.range != null);
   const matrix = result.matrix;
@@ -135,6 +134,9 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
             ...(result.interpolated[0].concentration !== undefined
               ? [{ label: "Concentration (10^X)", numeric: true }]
               : []),
+            ...(result.interpolated.some((u) => u.low != null || u.high != null)
+              ? [{ label: "95% CI of X", numeric: true }]
+              : []),
             { label: "" },
           ]}
           rows={result.interpolated.map((u) => [
@@ -142,6 +144,9 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
             num(u.y),
             num(u.x),
             ...(u.concentration !== undefined ? [num(u.concentration)] : []),
+            ...(result.interpolated!.some((w) => w.low != null || w.high != null)
+              ? [u.low == null && u.high == null ? "—" : `${num(u.low)} to ${num(u.high)}`]
+              : []),
             <span className="text-secondary">{u.extrapolated ? "extrapolated" : ""}</span>,
           ])}
         />
@@ -287,15 +292,10 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
             { label: "P value", numeric: true },
             { label: "95% CI", numeric: true },
             ...(showHr ? [{ label: "Hazard ratio", numeric: true }] : []),
-            ...(showCoefCi
-              ? [
-                  { label: "95% CI lower", numeric: true },
-                  { label: "95% CI upper", numeric: true },
-                ]
-              : []),
           ]}
           rows={result.coefficients.map((c) => [
-            // Prism's wording for the Hill slope (4PL and allosteric).
+            // Prism's wording for the Hill slope (4PL and allosteric) — kept
+            // for stored results predating the dedup rename.
             c.term === "HillSlope" ? "Hill slope" : c.term,
             num(c.estimate),
             num(c.stdError),
@@ -303,7 +303,6 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
             <P p={c.p} />,
             c.low == null && c.high == null ? "—" : `${num(c.low)} to ${num(c.high)}`,
             ...(showHr ? [num(c.hazardRatio)] : []),
-            ...(showCoefCi ? [num(c.ciLow), num(c.ciHigh)] : []),
           ])}
         />
       )}
@@ -378,19 +377,6 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
             num(p.y),
             p.observed == null ? "—" : num(p.observed - p.y),
           ])}
-        />
-      )}
-
-      {result.interpolations && result.interpolations.length > 0 && (
-        <Table
-          title="Interpolated unknowns"
-          columns={[
-            { label: "Unknown Y", numeric: true },
-            { label: "Interpolated X", numeric: true },
-            { label: "95% CI lower", numeric: true },
-            { label: "95% CI upper", numeric: true },
-          ]}
-          rows={result.interpolations.map((r) => [num(r.unknownY), num(r.x), num(r.ciLow), num(r.ciHigh)])}
         />
       )}
 

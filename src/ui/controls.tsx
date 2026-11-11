@@ -182,20 +182,24 @@ export function Segmented<T extends string>({
   value,
   onChange,
   options,
+  wrap,
 }: {
   value: T;
   onChange: (value: T) => void;
   options: Option<T>[];
+  /** Flow onto more rows instead of squeezing into one (many options). */
+  wrap?: boolean;
 }) {
   return (
-    <div className="flex rounded-md bg-control p-0.5">
+    <div className={cn("flex rounded-md bg-control p-0.5", wrap && "flex-wrap gap-0.5")}>
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
           className={cn(
-            "h-6 flex-1 rounded-[5px] px-2 text-small",
+            "h-6 rounded-[5px] px-2 text-small",
+            wrap ? "flex-none whitespace-nowrap" : "flex-1",
             value === o.value && "bg-chosen text-primary shadow-sm",
           )}
         >

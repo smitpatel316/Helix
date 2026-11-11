@@ -53,7 +53,6 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "binding-kinetics",
     "enzyme-inhibition",
     "spline-lowess",
-    "standard-curve-interpolation",
     "bland-altman",
     "interpolate",
     "roc-curve",

@@ -439,9 +439,9 @@ async function runMorrison(
     const allCoefficients: RegressionCoefficient[] = [
       ...coefficients,
       ...(ki != null
-        ? [{ term: "Ki", estimate: ki, stdError: null, t: null, p: null, ciLow: null, ciHigh: null }]
+        ? [{ term: "Ki", estimate: ki, stdError: null, t: null, p: null, low: null, high: null }]
         : []),
-      { term: "Et", estimate: et, stdError: null, t: null, p: null, ciLow: null, ciHigh: null },
+      { term: "Et", estimate: et, stdError: null, t: null, p: null, low: null, high: null },
     ];
     // The plan's Morrison rows are R², Sy.x, DF and N (no sum of squares,
     // no AICc — a single-curve fit at one fixed [S]).

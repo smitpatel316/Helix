@@ -1856,12 +1856,6 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["doseLog", doseLog, "spline-lowess", { y: "Response", method: "spline", f: 2 / 3, spar: 2 }],
   ["doseLog", doseLog, "spline-lowess", { y: "Response", method: "spline", f: 2 / 3, spar: 0.5, df: 4 }],
   ["smoothTooFew", smoothTooFew, "spline-lowess", { y: "Response", method: "lowess", f: 2 / 3 }],
-  // Standard-curve interpolation (plan 02): the reference 4PL fit, the
-  // out-of-range case, the lm band path (line), and the 4PL-X band path.
-  ["doseLog", doseLog, "standard-curve-interpolation", { model: "sigmoidal-4pl-logx", unknowns: [20, 50, 80] }],
-  ["doseLog", doseLog, "standard-curve-interpolation", { model: "sigmoidal-4pl-logx", unknowns: [20, 150] }],
-  ["xy", xy, "standard-curve-interpolation", { model: "line", unknowns: [5, 10] }],
-  ["doseRaw", doseRaw, "standard-curve-interpolation", { model: "sigmoidal-4pl-x", unknowns: [30, 60] }],
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "sigmoidal-4pl-x" }],
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "hyperbola" }],
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "semilog-line" }],
@@ -2568,27 +2562,36 @@ async function disagreements(): Promise<string[]> {
   if (a4?.diff !== 5.5) out.push(`Two-way RM comparisons: A − C at Day 4 is ${a4?.diff}, not 5.5`);
   // Graphs draw each model's curve as R fits it: its squared distances to the points add up to
   // R's sum of squares.
-  const curveData: Partial<Record<NonlinearModel, TableData>> = {
-    "inhibitor-3pl-logx": doseFall,
-    "semilog-line": doseRaw,
-    hyperbola: doseRaw,
-    line: xy,
-    quadratic: xy,
-    cubic: xy,
-    "exponential-growth": growth,
-    "one-phase-decay": decay,
-    "michaelis-menten": enzyme,
+  // Each model runs on the table (and Y series) it was fitted on: the
+  // two-phase/plateau/association models on their expX series, the enzyme
+  // models on their enzymeS series — running them on doseLog's log-X (or
+  // the wrong series) is a convergence/validation error, not a fit.
+  const curveData: Partial<Record<NonlinearModel, [TableData, string?]>> = {
+    "inhibitor-3pl-logx": [doseFall],
+    "two-phase-decay": [expX, "B"],
+    "plateau-decay": [expX, "E"],
+    "one-phase-association": [expX, "C"],
+    "allosteric-sigmoidal": [enzymeS, "B"],
+    "substrate-inhibition": [enzymeS, "C"],
+    "semilog-line": [doseRaw],
+    hyperbola: [doseRaw],
+    line: [xy],
+    quadratic: [xy],
+    cubic: [xy],
+    "exponential-growth": [growth],
+    "one-phase-decay": [decay],
+    "michaelis-menten": [enzyme],
   };
-  for (const [model, data] of NONLINEAR_MODELS.map(
-    (m) => [m, curveData[m] ?? (m.endsWith("-x") ? doseRaw : doseLog)] as const,
+  for (const [model, [data, y]] of NONLINEAR_MODELS.map(
+    (m) => [m, curveData[m] ?? (m.endsWith("-x") ? [doseRaw] : [doseLog])] as const,
   )) {
-    const r = await runAnalysis("nonlinear-regression", data, { model });
+    const r = await runAnalysis("nonlinear-regression", data, y ? { y, model } : { model });
     if ("error" in r) {
       out.push(`${model}: ${r.error}`);
       continue;
     }
     const { x: dose, ys } = splitXY(readTable(data).columns);
-    const pairs = pairUp(dose!, ys[0]);
+    const pairs = pairUp(dose!, ys.find((c) => c.name === (y ?? ys[0].name))!);
     const ss = pairs.x.reduce(
       (sum, x, i) =>
         positiveXOnly(model) && x <= 0 ? sum : sum + (pairs.y[i] - doseCurveAt(model, r.coefficients!, x)) ** 2,
@@ -2738,15 +2741,22 @@ async function disagreements(): Promise<string[]> {
     const mid = curve?.y?.[50];
     if (!curve || mid == null || Math.abs(mid - 0.5) > 1e-6) out.push(`Logistic curve at X=4.5: ${mid}, expected 0.5`);
   }
-  // Standard-curve interpolation (plan 02): the fit equals the
-  // nonlinear-regression fit on the same table (the shared-fit refactor's
-  // proof, beyond the unchanged reference entries); the point estimates
-  // match the planner's scipy values; the band-inversion CIs sit within
-  // 0.02 of the planner's delta-method CIs (cross-check only — the locked
-  // values are the band-inversion ones from WebR).
-  const interp = await runAnalysis("standard-curve-interpolation", doseLog, {
+  // Standard-curve interpolation (plan 02, folded into the merged
+  // nonlinear runner): the interpolated fit equals the plain
+  // nonlinear-regression fit on the same standards (the shared-fit
+  // refactor's proof, beyond the unchanged reference entries); the point
+  // estimates match the planner's scipy values; the band-inversion CIs sit
+  // within 0.02 of the planner's delta-method CIs (cross-check only — the
+  // locked values are the band-inversion ones from WebR).
+  const interpTable = table(doseLog.columns, [
+    ...doseLog.rows.map((r) => r.map((c) => c ?? "")),
+    ["Unknown 1", "", "20"],
+    ["Unknown 2", "", "50"],
+    ["Unknown 3", "", "80"],
+  ]);
+  const interp = await runAnalysis("nonlinear-regression", interpTable, {
     model: "sigmoidal-4pl-logx",
-    unknowns: [20, 50, 80],
+    interpolate: true,
   });
   const nonlin = await runAnalysis("nonlinear-regression", doseLog, { model: "sigmoidal-4pl-logx" });
   if ("error" in interp) {
@@ -2763,10 +2773,27 @@ async function disagreements(): Promise<string[]> {
           `Interpolation fit ${c.term}: ${c.estimate} ± ${c.stdError}, nonlinear-regression: ${n?.estimate} ± ${n?.stdError}`,
         );
     });
-    (interp.stats ?? []).forEach((s) => {
-      const n = nonlin.stats.find((t) => t.label === s.label);
-      if (!n || !close(s.value, n.value, 1e-9))
-        out.push(`Interpolation stat ${s.label}: ${s.value}, nonlinear-regression: ${n?.value}`);
+    // Fit rows come out in the same order from both runs — compare by
+    // position, not label (the two "95% CI" rows share a label).
+    const nonlinRows = nonlin.fit?.rows ?? [];
+    if ((interp.fit?.rows ?? []).length !== nonlinRows.length)
+      out.push(
+        `Interpolation fit rows: ${(interp.fit?.rows ?? []).length}, nonlinear-regression: ${nonlinRows.length}`,
+      );
+    (interp.fit?.rows ?? []).forEach((row, idx) => {
+      const n = nonlinRows[idx];
+      // Derived rows carry a "95% CI" range instead of a value — compare
+      // whichever the row has (a value row never carries a range, and
+      // vice versa); a null bound matches a null bound.
+      const sameBound = (a: number | null | undefined, b: number | null | undefined) =>
+        (a == null && b == null) || close(a, b, 1e-9);
+      const sameRange =
+        (row.ranges?.length ?? 0) === (n?.ranges?.length ?? 0) &&
+        (row.ranges ?? []).every(
+          ([lo, hi], j) => sameBound(lo, n?.ranges?.[j]?.[0]) && sameBound(hi, n?.ranges?.[j]?.[1]),
+        );
+      if (!n || row.label !== n.label || !sameBound(row.values?.[0], n.values?.[0]) || !sameRange)
+        out.push(`Interpolation fit row ${row.label}: ${row.values?.[0]}, nonlinear-regression: ${n?.values?.[0]}`);
     });
     const planX: [number, number][] = [
       [20, -1.4834],
@@ -2779,19 +2806,19 @@ async function disagreements(): Promise<string[]> {
       [80, -0.2332, -0.1982],
     ];
     for (const [y0, x] of planX) {
-      const row = interp.interpolations?.find((r) => r.unknownY === y0);
+      const row = interp.interpolated?.find((r) => r.y === y0);
       if (!row || !close(row.x, x, 1e-3)) out.push(`Interpolation Y=${y0}: x=${row?.x}, plan says ${x}`);
     }
     for (const [y0, lo, hi] of planCI) {
-      const row = interp.interpolations?.find((r) => r.unknownY === y0);
+      const row = interp.interpolated?.find((r) => r.y === y0);
       if (
         !row ||
-        row.ciLow == null ||
-        row.ciHigh == null ||
-        Math.abs(row.ciLow - lo) > 0.02 ||
-        Math.abs(row.ciHigh - hi) > 0.02
+        row.low == null ||
+        row.high == null ||
+        Math.abs(row.low - lo) > 0.02 ||
+        Math.abs(row.high - hi) > 0.02
       )
-        out.push(`Interpolation Y=${y0}: CI=[${row?.ciLow}, ${row?.ciHigh}], delta-method cross-check [${lo}, ${hi}]`);
+        out.push(`Interpolation Y=${y0}: CI=[${row?.low}, ${row?.high}], delta-method cross-check [${lo}, ${hi}]`);
     }
     // The dose-response graph's drop-lines, from the same cached result.
     const { addDoseCurve } = await import("../src/views/graphs/dose-response-curve");
@@ -2809,12 +2836,12 @@ async function disagreements(): Promise<string[]> {
     const dropMarkers = traces.filter(
       (t) => t.mode === "markers" && t.x?.length === 3 && JSON.stringify(t.y) === JSON.stringify([20, 50, 80]),
     );
-    const xs = (interp.interpolations ?? []).map((r) => r.x);
+    const xs = (interp.interpolated ?? []).map((r) => r.x);
     if (dashed.length !== 6) out.push(`Dose-response drop-lines: ${dashed.length} dashed traces, expected 6`);
     if (dropMarkers.length !== 1 || JSON.stringify(dropMarkers[0]?.x) !== JSON.stringify(xs))
       out.push(`Dose-response drop-line markers: ${JSON.stringify(dropMarkers[0]?.x)}, expected ${JSON.stringify(xs)}`);
     for (const y0 of [20, 50, 80]) {
-      const row = interp.interpolations?.find((r) => r.unknownY === y0);
+      const row = interp.interpolated?.find((r) => r.y === y0);
       const horiz = dashed.find((t) => t.y?.[0] === y0 && t.y?.[1] === y0);
       if (!horiz || horiz.x?.[1] !== row?.x)
         out.push(`Dose-response drop-line Y=${y0}: horizontal to ${horiz?.x?.[1]}, expected ${row?.x}`);
@@ -2846,7 +2873,7 @@ async function disagreements(): Promise<string[]> {
       if (!relClose(got, want, 1e-3)) out.push(`Exponential ${label} ${term}: ${got}, plan says ${want}`);
     }
     for (const [name, want] of stats) {
-      const got = r.stats.find((s) => s.label === name)?.value;
+      const got = r.fit?.rows.find((row) => row.label === name)?.values?.[0];
       const ok = name === "R squared" ? got != null && Math.abs(got - want) <= 1e-6 : relClose(got, want, 1e-3);
       if (!ok) out.push(`Exponential ${label} ${name}: ${got}, plan says ${want}`);
     }
@@ -3093,13 +3120,13 @@ async function disagreements(): Promise<string[]> {
       const c = r.coefficients?.find((cc) => cc.term === term);
       if (!relClose(c?.estimate, want, 1e-3)) out.push(`Enzyme ${label} ${term}: ${c?.estimate}, plan says ${want}`);
       // CI fields present and containing the estimate (0-width on noiseless data).
-      if (c == null || c.ciLow == null || c.ciHigh == null)
-        out.push(`Enzyme ${label} ${term}: CI missing (low=${c?.ciLow}, high=${c?.ciHigh})`);
-      else if (c.estimate == null || c.ciLow > c.estimate + 1e-6 || c.ciHigh < c.estimate - 1e-6)
-        out.push(`Enzyme ${label} ${term}: CI [${c.ciLow}, ${c.ciHigh}] does not contain ${c.estimate}`);
+      if (c == null || c.low == null || c.high == null)
+        out.push(`Enzyme ${label} ${term}: CI missing (low=${c?.low}, high=${c?.high})`);
+      else if (c.estimate == null || c.low > c.estimate + 1e-6 || c.high < c.estimate - 1e-6)
+        out.push(`Enzyme ${label} ${term}: CI [${c.low}, ${c.high}] does not contain ${c.estimate}`);
     }
     for (const [name, want] of stats) {
-      const got = r.stats.find((s) => s.label === name)?.value;
+      const got = r.fit?.rows.find((row) => row.label === name)?.values?.[0];
       const ok = name === "R squared" ? got != null && Math.abs(got - want) <= 1e-6 : relClose(got, want, 1e-3);
       if (!ok) out.push(`Enzyme ${label} ${name}: ${got}, plan says ${want}`);
     }
@@ -3186,7 +3213,7 @@ async function disagreements(): Promise<string[]> {
     [
       ["Vmax", 100],
       ["Khalf", 5],
-      ["HillSlope", 2],
+      ["Hill slope", 2],
     ],
     [["R squared", 1]],
   );
@@ -3242,18 +3269,18 @@ async function disagreements(): Promise<string[]> {
       if (!relClose(c?.estimate, want, 1e-3)) out.push(`Enzyme noisy MM ${term}: ${c?.estimate}, WebR says ${want}`);
       if (!relClose(c?.stdError, wantSe, 1e-3))
         out.push(`Enzyme noisy MM ${term} SE: ${c?.stdError}, WebR says ${wantSe}`);
-      if (c == null || c.ciLow == null || c.ciHigh == null || c.ciHigh <= c.ciLow)
-        out.push(`Enzyme noisy MM ${term}: CI not a nonzero interval (low=${c?.ciLow}, high=${c?.ciHigh})`);
-      else if (c.estimate == null || c.ciLow > c.estimate || c.ciHigh < c.estimate)
-        out.push(`Enzyme noisy MM ${term}: CI [${c.ciLow}, ${c.ciHigh}] does not contain ${c.estimate}`);
+      if (c == null || c.low == null || c.high == null || c.high <= c.low)
+        out.push(`Enzyme noisy MM ${term}: CI not a nonzero interval (low=${c?.low}, high=${c?.high})`);
+      else if (c.estimate == null || c.low > c.estimate || c.high < c.estimate)
+        out.push(`Enzyme noisy MM ${term}: CI [${c.low}, ${c.high}] does not contain ${c.estimate}`);
       else {
-        if (!relClose(c.ciLow, wantLo, 1e-3))
-          out.push(`Enzyme noisy MM ${term} CI low: ${c.ciLow}, WebR says ${wantLo}`);
-        if (!relClose(c.ciHigh, wantHi, 1e-3))
-          out.push(`Enzyme noisy MM ${term} CI high: ${c.ciHigh}, WebR says ${wantHi}`);
+        if (!relClose(c.low, wantLo, 1e-3))
+          out.push(`Enzyme noisy MM ${term} CI low: ${c.low}, WebR says ${wantLo}`);
+        if (!relClose(c.high, wantHi, 1e-3))
+          out.push(`Enzyme noisy MM ${term} CI high: ${c.high}, WebR says ${wantHi}`);
       }
     }
-    const r2 = fitNoisy.stats.find((s) => s.label === "R squared")?.value;
+    const r2 = fitNoisy.fit?.rows.find((row) => row.label === "R squared")?.values?.[0];
     if (r2 == null || r2 < 0.999) out.push(`Enzyme noisy MM R squared: ${r2}, expected ≥ 0.999`);
   }
   // The edge cases are errors, not fits — and the negative-X / constant-X
@@ -3274,18 +3301,23 @@ async function disagreements(): Promise<string[]> {
       `Enzyme too-few: ${"error" in enzTooFew ? enzTooFew.error : "ran without error"}, expected an error naming at least 3 points`,
     );
   // Out of range: Y = 150 is above the curve's Top — a null row, not an error.
-  const oor = await runAnalysis("standard-curve-interpolation", doseLog, {
+  const oorTable = table(doseLog.columns, [
+    ...doseLog.rows.map((r) => r.map((c) => c ?? "")),
+    ["Unknown 1", "", "20"],
+    ["Unknown 2", "", "150"],
+  ]);
+  const oor = await runAnalysis("nonlinear-regression", oorTable, {
     model: "sigmoidal-4pl-logx",
-    unknowns: [20, 150],
+    interpolate: true,
   });
   if ("error" in oor) {
     out.push(`Standard-curve interpolation out-of-range: ${oor.error}`);
   } else {
-    const row150 = oor.interpolations?.find((r) => r.unknownY === 150);
-    const row20 = oor.interpolations?.find((r) => r.unknownY === 20);
+    const row150 = oor.interpolated?.find((r) => r.y === 150);
+    const row20 = oor.interpolated?.find((r) => r.y === 20);
     if (!row150 || row150.x !== null) out.push(`Interpolation Y=150: x=${row150?.x}, expected null`);
     if (!row20 || row20.x == null) out.push(`Interpolation Y=150 run: Y=20 row missing: ${JSON.stringify(row20)}`);
-    if (!oor.notes.includes("Y = 150 is above the fitted curve's maximum"))
+    if (!oor.notes.includes("never reaches that Y"))
       out.push(`Interpolation out-of-range note missing: ${oor.notes}`);
   }
   // Bland-Altman: the plot's three lines equal the analysis's bias and limits.
@@ -3487,15 +3519,15 @@ async function disagreements(): Promise<string[]> {
       close(trt?.estimate, -0.9859, 1e-3, "A β_Trt");
       close(trt?.stdError, 0.6567, 1e-3, "A SE_Trt");
       rel(trt?.hazardRatio, 0.3731, 1e-3, "A HR_Trt");
-      rel(trt?.ciLow, 0.103, 1e-2, "A HR_Trt CI low");
-      rel(trt?.ciHigh, 1.3516, 1e-2, "A HR_Trt CI high");
+      rel(trt?.low, 0.103, 1e-2, "A HR_Trt CI low");
+      rel(trt?.high, 1.3516, 1e-2, "A HR_Trt CI high");
       close(trt?.t, -1.501, 1e-3, "A z_Trt");
       close(trt?.p, 0.1333, 1e-3, "A p_Trt");
       close(age?.estimate, -0.0351, 1e-3, "A β_Age");
       close(age?.stdError, 0.0598, 1e-3, "A SE_Age");
       rel(age?.hazardRatio, 0.9655, 1e-3, "A HR_Age");
-      rel(age?.ciLow, 0.8587, 1e-2, "A HR_Age CI low");
-      rel(age?.ciHigh, 1.0857, 1e-2, "A HR_Age CI high");
+      rel(age?.low, 0.8587, 1e-2, "A HR_Age CI low");
+      rel(age?.high, 1.0857, 1e-2, "A HR_Age CI high");
       close(age?.t, -0.586, 1e-3, "A z_Age");
       close(age?.p, 0.5578, 1e-3, "A p_Age");
       rel(coxStat(coxA, "Likelihood ratio chi-square"), 2.724, 1e-2, "A LR χ²");
@@ -3556,8 +3588,8 @@ async function disagreements(): Promise<string[]> {
       close(trt?.estimate, -1.0018, 1e-3, "B β_Trt");
       close(trt?.stdError, 0.6593, 1e-3, "B SE_Trt");
       rel(trt?.hazardRatio, 0.3672, 1e-3, "B HR_Trt");
-      rel(trt?.ciLow, 0.1009, 1e-2, "B HR_Trt CI low");
-      rel(trt?.ciHigh, 1.3369, 1e-2, "B HR_Trt CI high");
+      rel(trt?.low, 0.1009, 1e-2, "B HR_Trt CI low");
+      rel(trt?.high, 1.3369, 1e-2, "B HR_Trt CI high");
       rel(coxStat(coxB, "Likelihood ratio chi-square"), 2.3715, 1e-2, "B LR χ²");
       close(coxStat(coxB, "Likelihood ratio df"), 1, 0, "B LR df");
       rel(coxStat(coxB, "Likelihood ratio P value"), 0.1236, 1e-2, "B LR p");
@@ -4952,7 +4984,7 @@ async function disagreements(): Promise<string[]> {
     }
     // Every fitted parameter carries estimate + SE + t + p + 95% CI.
     for (const c of r.coefficients ?? []) {
-      if (c.estimate == null || c.stdError == null || c.t == null || c.p == null || c.ciLow == null || c.ciHigh == null)
+      if (c.estimate == null || c.stdError == null || c.t == null || c.p == null || c.low == null || c.high == null)
         out.push(`Binding ${label} ${c.term}: missing estimate/SE/t/p/CI`);
     }
     if (bindStat(r, "R squared") !== 1 && label !== "association then dissociation") {
@@ -5234,7 +5266,7 @@ async function disagreements(): Promise<string[]> {
         if (c.estimate == null) out.push(`Enzyme inhibition ${label} ${c.term}: missing estimate`);
         continue;
       }
-      if (c.estimate == null || c.stdError == null || c.t == null || c.p == null || c.ciLow == null || c.ciHigh == null)
+      if (c.estimate == null || c.stdError == null || c.t == null || c.p == null || c.low == null || c.high == null)
         out.push(`Enzyme inhibition ${label} ${c.term}: missing estimate/SE/t/p/CI`);
     }
     const r2 = enzStat(r, "R squared");
@@ -5485,7 +5517,7 @@ async function disagreements(): Promise<string[]> {
         if (c.estimate == null) out.push(`Dose-response — Special ${label} ${c.term}: missing estimate`);
         continue;
       }
-      if (c.estimate == null || c.stdError == null || c.t == null || c.p == null || c.ciLow == null || c.ciHigh == null)
+      if (c.estimate == null || c.stdError == null || c.t == null || c.p == null || c.low == null || c.high == null)
         out.push(`Dose-response — Special ${label} ${c.term}: missing estimate/SE/t/p/CI`);
     }
     const r2 = specialStat(r, "R squared");

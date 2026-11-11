@@ -54,6 +54,10 @@ export const GRAPH_CHOICES = {
   doseModel: [
     "sigmoidal-4pl-logx",
     "sigmoidal-4pl-x",
+    "agonist-3pl-logx",
+    "inhibitor-3pl-logx",
+    "asymmetric-5pl-logx",
+    "asymmetric-5pl-x",
     "one-phase-decay",
     "two-phase-decay",
     "plateau-decay",

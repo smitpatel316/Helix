@@ -3,8 +3,9 @@
 // plotting — no re-fitting here, just the closed-form 4PL equation applied to the
 // returned coefficients.
 import type { GraphOptions } from "../../store/types";
-import type { AnalysisResult, RegressionCoefficient, StatRow } from "../../stats/types";
+import type { AnalysisResult, RegressionCoefficient } from "../../stats/types";
 import { EXPONENTIAL_MODELS } from "../../stats/xy/nonlinear-fit";
+import { termLabel } from "../../stats/xy/nonlinear-regression";
 import { pairUp, type Column } from "../../lib/dataset";
 import type { GraphFigure } from ".";
 import { num } from "../../lib/format";
@@ -12,8 +13,10 @@ import { addNote, extent, type Paint } from "./plot-helpers";
 
 type DoseModel = GraphOptions["doseModel"];
 
+/** A coefficient's estimate, looked up by its equation name ("HillSlope",
+ *  "S") — results store the display name ("Hill slope", "Asymmetry (S)"). */
 function coef(coefficients: RegressionCoefficient[], term: string): number {
-  return coefficients.find((c) => c.term === term)?.estimate ?? NaN;
+  return coefficients.find((c) => c.term === termLabel(term))?.estimate ?? NaN;
 }
 
 /** The fitted curve's value at X, from the fit's coefficients — the same
@@ -33,6 +36,37 @@ export function evaluateFittedCurve(model: DoseModel, coefficients: RegressionCo
       const top = coef(coefficients, "Top");
       const hill = coef(coefficients, "HillSlope");
       return bottom + (top - bottom) / (1 + (coef(coefficients, "EC50") / x) ** hill);
+    }
+    case "agonist-3pl-logx": {
+      const bottom = coef(coefficients, "Bottom");
+      const top = coef(coefficients, "Top");
+      return bottom + (top - bottom) / (1 + 10 ** (coef(coefficients, "LogEC50") - x));
+    }
+    case "inhibitor-3pl-logx": {
+      const bottom = coef(coefficients, "Bottom");
+      const top = coef(coefficients, "Top");
+      return bottom + (top - bottom) / (1 + 10 ** (x - coef(coefficients, "LogIC50")));
+    }
+    case "asymmetric-5pl-logx": {
+      const bottom = coef(coefficients, "Bottom");
+      const top = coef(coefficients, "Top");
+      const hill = coef(coefficients, "HillSlope");
+      const s = coef(coefficients, "S");
+      return (
+        bottom +
+        (top - bottom) / (1 + 10 ** ((coef(coefficients, "LogEC50") + Math.log10(2 ** (1 / s) - 1) / hill - x) * hill)) ** s
+      );
+    }
+    case "asymmetric-5pl-x": {
+      const bottom = coef(coefficients, "Bottom");
+      const top = coef(coefficients, "Top");
+      const hill = coef(coefficients, "HillSlope");
+      const s = coef(coefficients, "S");
+      return (
+        bottom +
+        (top - bottom) /
+          (1 + ((coef(coefficients, "EC50") * (2 ** (1 / s) - 1) ** (1 / hill)) / x) ** hill) ** s
+      );
     }
     case "one-phase-decay":
       return (
@@ -91,33 +125,42 @@ function fittedCurve(
   return { x, y };
 }
 
-function stat(stats: StatRow[], label: string): number | null | undefined {
-  return stats.find((s) => s.label === label)?.value;
+/** A best-fit value from the fit block (one set here), e.g. a half-life. */
+function fitValue(fit: AnalysisResult, label: string): number | null {
+  return fit.fit?.rows.find((r) => r.label === label)?.values?.[0] ?? null;
 }
 
 /** "EC50 = 12.3<br>Hill slope = 1.05<br>R² = 0.9821" annotation text (Plotly-ready)
  *  — for the exponential models, the half-life / doubling time instead; for
  *  the enzyme models, the fitted constants (and Vmax/Km for Michaelis-Menten). */
-function doseResponseLabel(model: DoseModel, coefficients: RegressionCoefficient[], stats: StatRow[]): string {
-  const r2 = stat(stats, "R squared");
+function doseResponseLabel(model: DoseModel, coefficients: RegressionCoefficient[], fit: AnalysisResult): string {
+  const r2 = fitValue(fit, "R squared");
   const lines: string[] = [];
   if (model === "sigmoidal-4pl-logx" || model === "sigmoidal-4pl-x") {
     const ec50 = model === "sigmoidal-4pl-logx" ? 10 ** coef(coefficients, "LogEC50") : coef(coefficients, "EC50");
     lines.push(`EC50 = ${num(ec50)}`, `Hill slope = ${num(coef(coefficients, "HillSlope"))}`);
+  } else if (model === "agonist-3pl-logx") {
+    lines.push(`EC50 = ${num(10 ** coef(coefficients, "LogEC50"))}`);
+  } else if (model === "inhibitor-3pl-logx") {
+    lines.push(`IC50 = ${num(10 ** coef(coefficients, "LogIC50"))}`);
+  } else if (model === "asymmetric-5pl-logx" || model === "asymmetric-5pl-x") {
+    const ec50 =
+      model === "asymmetric-5pl-logx" ? 10 ** coef(coefficients, "LogEC50") : coef(coefficients, "EC50");
+    lines.push(`EC50 = ${num(ec50)}`, `Hill slope = ${num(coef(coefficients, "HillSlope"))}`);
   } else if (model === "two-phase-decay") {
-    lines.push(`Half-life (fast) = ${num(stat(stats, "Half-life (fast)"))}`);
-    lines.push(`Half-life (slow) = ${num(stat(stats, "Half-life (slow)"))}`);
+    lines.push(`Half-life (fast) = ${num(fitValue(fit, "Half-life (fast)"))}`);
+    lines.push(`Half-life (slow) = ${num(fitValue(fit, "Half-life (slow)"))}`);
   } else if (model === "exponential-growth") {
-    lines.push(`Doubling time = ${num(stat(stats, "Doubling time"))}`);
+    lines.push(`Doubling time = ${num(fitValue(fit, "Doubling time"))}`);
   } else if (model === "michaelis-menten") {
     lines.push(`Vmax = ${num(coef(coefficients, "Vmax"))}`, `Km = ${num(coef(coefficients, "Km"))}`);
-    lines.push(`Vmax/Km = ${num(stat(stats, "Vmax/Km"))}`);
+    lines.push(`Vmax/Km = ${num(fitValue(fit, "Vmax/Km"))}`);
   } else if (model === "allosteric-sigmoidal") {
     lines.push(`Khalf = ${num(coef(coefficients, "Khalf"))}`, `Hill slope = ${num(coef(coefficients, "HillSlope"))}`);
   } else if (model === "substrate-inhibition") {
     lines.push(`Km = ${num(coef(coefficients, "Km"))}`, `Ki = ${num(coef(coefficients, "Ki"))}`);
   } else if ((EXPONENTIAL_MODELS as readonly string[]).includes(model)) {
-    lines.push(`Half-life = ${num(stat(stats, "Half-life"))}`);
+    lines.push(`Half-life = ${num(fitValue(fit, "Half-life"))}`);
   }
   if (r2 != null) lines.push(`R² = ${num(r2)}`);
   return lines.join("<br>");
@@ -125,10 +168,11 @@ function doseResponseLabel(model: DoseModel, coefficients: RegressionCoefficient
 
 /** Draws the fitted curve (and its fit-summary note) of the chosen Y series
  *  (`columns` = X, then the Y series), under the points. When `interp` is a
- *  standard-curve-interpolation result for the same model and Y series, each
- *  interpolated unknown also gets its drop-lines: a horizontal dashed line at
- *  Y = unknown from the Y axis to the curve, a vertical dashed line down to
- *  the interpolated X, and a marker at the curve point. */
+ *  nonlinear-regression result for the same model and Y series with
+ *  `interpolate: true`, each interpolated unknown also gets its drop-lines:
+ *  a horizontal dashed line at Y = unknown from the Y axis to the curve, a
+ *  vertical dashed line down to the interpolated X, and a marker at the curve
+ *  point. */
 export function addDoseCurve(
   fig: GraphFigure,
   columns: Column[],
@@ -157,17 +201,17 @@ export function addDoseCurve(
     },
     ...fig.data,
   ];
-  if (options.doseShowEquation) addNote(fig, doseResponseLabel(options.doseModel, coefficients, fit.stats), options);
+  if (options.doseShowEquation) addNote(fig, doseResponseLabel(options.doseModel, coefficients, fit), options);
   // Drop-lines only make sense on the curve they were interpolated from.
   if (
-    interp?.interpolations?.length &&
+    interp?.interpolated?.length &&
     interp.subtitle === fit.subtitle &&
     interp.groups[1]?.name === fit.groups[1]?.name
   ) {
     const [xMin] = extent(xs);
     const yMin = Math.min(...pairs.y, ...curve.y);
     const color = paint.color(y.name, ys.indexOf(y));
-    const rows = interp.interpolations.filter((r) => r.x != null);
+    const rows = interp.interpolated.filter((r) => r.x != null);
     for (const r of rows) {
       fig.data = [
         ...fig.data,
@@ -175,7 +219,7 @@ export function addDoseCurve(
           type: "scatter",
           mode: "lines",
           x: [xMin, r.x],
-          y: [r.unknownY, r.unknownY],
+          y: [r.y, r.y],
           line: { color, width: 1, dash: "dash" },
           hoverinfo: "skip",
           showlegend: false,
@@ -184,7 +228,7 @@ export function addDoseCurve(
           type: "scatter",
           mode: "lines",
           x: [r.x, r.x],
-          y: [yMin, r.unknownY],
+          y: [yMin, r.y],
           line: { color, width: 1, dash: "dash" },
           hoverinfo: "skip",
           showlegend: false,
@@ -198,7 +242,7 @@ export function addDoseCurve(
           type: "scatter",
           mode: "markers",
           x: rows.map((r) => r.x),
-          y: rows.map((r) => r.unknownY),
+          y: rows.map((r) => r.y),
           marker: { color, size: 7, symbol: "circle-open" },
           hoverinfo: "skip",
           showlegend: false,

@@ -397,21 +397,25 @@ export function NumRow({ label, value, onChange }: { label: string; value?: numb
   );
 }
 
-/** A labelled single-select row built on SegmentedControl. */
+/** A labelled single-select row built on SegmentedControl. `wrap` lets the
+ *  options flow onto more rows instead of squeezing into one (the
+ *  dose-response Model row, now 14 models, would clip otherwise). */
 export function Choice<T extends string>({
   label,
   value,
   onChange,
   items,
+  wrap,
 }: {
   label: string;
   value: T;
   onChange: (v: T) => void;
   items: { value: T; label: string }[];
+  wrap?: boolean;
 }) {
   return (
     <Row label={label}>
-      <Segmented value={value} onChange={onChange} options={items} />
+      <Segmented value={value} onChange={onChange} options={items} wrap={wrap} />
     </Row>
   );
 }

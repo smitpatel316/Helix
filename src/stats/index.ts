@@ -30,7 +30,6 @@ import type {
   RocParams,
   SimpleLogisticRegressionParams,
   SplineLowessParams,
-  StandardCurveInterpolationParams,
   ThreeWayAnovaParams,
   TwoWayAnovaParams,
   XYCorrelationParams,
@@ -56,7 +55,6 @@ import { runBindingKinetics, runBindingSaturation } from "./xy/binding";
 import { runEnzymeInhibition } from "./xy/enzyme-inhibition";
 import { runDoseResponseSpecial } from "./xy/dose-response-special";
 import { runSplineLowess } from "./xy/spline-lowess";
-import { runStandardCurveInterpolation } from "./xy/standard-curve-interpolation";
 import { runTwoWayAnova } from "./grouped/two-way-anova";
 import { runThreeWayAnova } from "./grouped/three-way-anova";
 import { runMultipleTTests } from "./grouped/multiple-t-tests";
@@ -144,7 +142,7 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
       (p as NonlinearRegressionParams | undefined)?.interpolate
         ? "Interpolated standard curve"
         : "Nonlinear regression",
-    run: (c, p) => runNonlinearRegression(c, p as NonlinearRegressionParams),
+    run: (c, p, t) => runNonlinearRegression(c, p as NonlinearRegressionParams, t),
   },
   "binding-saturation": {
     label: "Binding — Saturation",
@@ -176,11 +174,6 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Spline and Lowess",
     minColumns: 2,
     run: (c, p) => runSplineLowess(c, p as SplineLowessParams),
-  },
-  "standard-curve-interpolation": {
-    label: "Interpolate from a standard curve",
-    minColumns: 2,
-    run: (c, p) => runStandardCurveInterpolation(c, p as StandardCurveInterpolationParams),
   },
   "two-way-anova": {
     label: "Two-way ANOVA",

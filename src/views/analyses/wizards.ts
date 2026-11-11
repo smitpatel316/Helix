@@ -33,7 +33,6 @@ import type {
   CoxParams,
   PrincipalComponentAnalysisParams,
   SplineLowessParams,
-  StandardCurveInterpolationParams,
   ThreeWayAnovaParams,
   TwoWayAnovaParams,
   XYCorrelationParams,
@@ -69,7 +68,8 @@ export type Question = { id: string; ask: string } & (
   | { kind: "text"; label: string; initial: string; placeholder?: string; parse?: (text: string) => { error?: string } }
 );
 
-/** Parse a comma-separated list of numbers (the standard-curve unknowns).
+/** Parse a comma-separated list of numbers (the default check for a `text`
+ *  question without its own `parse` — see analysis-wizard.tsx).
  *  Empty entries are ignored; a non-numeric entry, or an empty list, is an
  *  error naming the problem. */
 export function parseUnknowns(text: string): { values: number[]; error?: string } {
@@ -1145,38 +1145,6 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         },
       };
     },
-  },
-
-  "standard-curve-interpolation": {
-    questions: (_, table) => [
-      choice("y", "Which Y data set holds the standards?", names(yNames(table))),
-      // Same 7 options, same order and labels as the nonlinear-regression wizard.
-      choice("model", "Which standard curve should be fitted to X and Y?", [
-        ["sigmoidal-4pl-logx", "Sigmoidal, 4PL, X is log(concentration)"],
-        ["sigmoidal-4pl-x", "Sigmoidal, 4PL, X is concentration"],
-        ["line", "Line"],
-        ["semilog-line", "Semilog line"],
-        ["hyperbola", "Hyperbola (X is concentration)"],
-        ["quadratic", "Second order polynomial (quadratic)"],
-        ["cubic", "Third order polynomial (cubic)"],
-      ]),
-      {
-        id: "unknowns",
-        ask: "Enter the unknown Y values to interpolate, separated by commas (e.g. 20, 50, 80). Single Y values only — unknowns as replicate means, weighting of the fit and comparing two standard curves are not supported in this version.",
-        kind: "text",
-        label: "Unknown Y values",
-        initial: "",
-        placeholder: "20, 50, 80",
-      },
-    ],
-    finish: (a) => ({
-      type: "standard-curve-interpolation",
-      params: {
-        y: a.y as string,
-        model: a.model as StandardCurveInterpolationParams["model"],
-        unknowns: parseUnknowns(String(a.unknowns ?? "")).values,
-      },
-    }),
   },
 
   "two-way-anova": {
