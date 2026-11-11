@@ -13,7 +13,7 @@
     "web": "vite",
     "check": "tsc --noEmit",
     "sample": "node --import tsx tests/sample-project.ts",
-    "test": "node --import tsx tests/checks.ts && node --import tsx tests/prism.ts && node --import tsx tests/reference.ts && node --import tsx tests/packages.ts",
+    "test": "node --import tsx tests/checks.ts && node --import tsx tests/prism.ts && node --import tsx tests/prism-write.ts && node --import tsx tests/reference.ts && node --import tsx tests/packages.ts",
     "format": "prettier --write ."
   },
   "dependencies": {
