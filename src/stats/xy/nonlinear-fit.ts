@@ -38,6 +38,12 @@ export const MODEL_LABEL: Record<NonlinearModel, string> = {
   // michaelis-menten's label already exists above).
   "allosteric-sigmoidal": "Allosteric sigmoidal",
   "substrate-inhibition": "Substrate inhibition",
+  // Prism's "Binding — Competition" (plan 28): two-site competition and
+  // homologous competition. The one-site Fit logIC50 is the inhibitor 3PL
+  // above; Fit Ki is a derived quantity on it (see modelSpec's opts).
+  "two-site-competition-logx": "Two sites — Fit logIC50, X is log(concentration)",
+  "two-site-competition-x": "Two sites — Fit logIC50, X is concentration",
+  "homologous-competition-logx": "One site — Homologous, X is log(concentration)",
 };
 
 /** The exponential-curve models (plan 08): fitted with nls() algorithm
@@ -90,6 +96,22 @@ const sumOf = (a: string, b: string, label = "Span"): Derived => {
   return { label, expr: value, low: `${value}-q*${se}`, high: `${value}+q*${se}` };
 };
 const span = difference("Top", "Bottom");
+/** Ki from a log midpoint: Ki = 10^LogIC50 / D, where D = 1 + [L]/Kd is a
+ *  constant the wizard supplies — so log Ki's SE is logIC50's SE, and the
+ *  Ki CI is 10^ the logIC50 CI, over D. (Cheng–Prusoff; plan 28.) */
+const kiFromLog = (label: string, p: string, d: number): Derived => ({
+  label,
+  expr: `10^cf[["${p}"]]/${d}`,
+  low: `10^pci("${p}")[1]/${d}`,
+  high: `10^pci("${p}")[2]/${d}`,
+});
+/** Ki from a linear IC50: Ki = IC50 / D, its CI the IC50 CI over D. */
+const kiFromLinear = (label: string, p: string, d: number): Derived => ({
+  label,
+  expr: `cf[["${p}"]]/${d}`,
+  low: `pci("${p}")[1]/${d}`,
+  high: `pci("${p}")[2]/${d}`,
+});
 /** `c` / K (a half-life, a doubling time, tau), its CI `c` over K's: none when K's
  *  includes 0, the time then unbounded. The value is null when the fitted K ≤ 0. */
 const overK = (label: string, c: string, k = "K"): Derived => {
@@ -128,6 +150,12 @@ export interface ModelSpec {
   /** A dose-response curve's formula (its right side) and midpoint, which
    *  comparing two curves shares (upstream 1.0.7). */
   dose?: { expr: string; midpoint: string };
+  /** True when the model cannot be fitted without the radioligand
+   *  concentration [L] (plan 28: homologous competition — [L] is a constant
+   *  of its equation). The runner refuses before calling R when it is
+   *  missing; other models take [L]/Kd only for the optional Fit-Ki
+   *  derived rows (see modelSpec's opts). */
+  needsRadioligand?: boolean;
 }
 
 // The 4PL's starting slope takes the curve's own sign, so a falling curve keeps Bottom under Top.
@@ -136,7 +164,21 @@ const FOUR_LOG = "Bottom+(Top-Bottom)/(1+10^((LogEC50-x)*HillSlope))";
 const FOUR_X = "Bottom+(Top-Bottom)/(1+(EC50/x)^HillSlope)";
 const nls200 = (expr: string, start: string) => `nls(y~${expr},start=${start},control=nls.control(maxiter=200))`;
 
-export function modelSpec(model: NonlinearModel): ModelSpec {
+export function modelSpec(
+  model: NonlinearModel,
+  opts?: {
+    /** Cheng–Prusoff divisor D = 1 + [L]/Kd (plan 28): when supplied, the
+     *  competition models gain Ki derived rows (Ki = IC50 / D). */
+    kiDivisor?: number;
+    /** Radioligand concentration [L] (plan 28, homologous only): embedded
+     *  as an R literal in its fit / curve / derived expressions, so every
+     *  path that uses the spec (single fit, comparison, interpolation)
+     *  sees the same constant. Absent, the expressions use the R variable
+     *  `L` instead — the runner must then define it (it always supplies
+     *  opts, after validating [L] > 0). */
+    ligandConcentration?: number;
+  },
+): ModelSpec {
   switch (model) {
     case "line":
       return { kind: "lm", fit: "m<-lm(y~x)", terms: ["Intercept", "Slope"] };
@@ -191,13 +233,18 @@ export function modelSpec(model: NonlinearModel): ModelSpec {
       };
     }
     case "inhibitor-3pl-logx": {
-      // The Hill slope is −1: a falling curve.
+      // The Hill slope is −1: a falling curve. Prism's "One site — Fit
+      // logIC50"; with opts.kiDivisor it also reports Ki (Cheng–Prusoff).
       const expr = "Bottom+(Top-Bottom)/(1+10^(x-LogIC50))";
       return {
         kind: "nls",
         fit: `m<-${nls200(expr, "list(Bottom=min(y),Top=max(y),LogIC50=median(x))")}`,
         terms: ["Bottom", "Top", "LogIC50"],
-        derived: [tenTo("IC50", "LogIC50"), span],
+        derived: [
+          tenTo("IC50", "LogIC50"),
+          ...(opts?.kiDivisor != null ? [kiFromLog("Ki", "LogIC50", opts.kiDivisor)] : []),
+          span,
+        ],
         curveFn:
           'g<-function(xv,p) p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])/(1+10^(xv-p[["LogIC50"]]))',
         asymptotes: ["Bottom", "Top"],
@@ -368,6 +415,122 @@ export function modelSpec(model: NonlinearModel): ModelSpec {
         retryFit:
           "m<-nls(y~Vmax*x/(Km+x+x^2/Ki),start=list(Vmax=max(y)*1.5,Km=median(x[x>0]),Ki=median(x[x>0])*5),algorithm=\"port\")",
       };
+    // ── Binding — Competition (plan 28) ─────────────────────────────────
+    // Prism's built-in "Two sites — Fit logIC50" fixes BOTH Hill slopes at
+    // −1 (standard slope):
+    //   Y = Bottom + (Top−Bottom)·(Frac/(1+10^(X−LogIC50Hi)) + (1−Frac)/(1+10^(X−LogIC50Lo)))
+    // Source: GraphPad Prism Curve Fitting Guide, "Equation: Two sites -
+    // Fit logIC50" (graphpad.com/guides/prism/10/curve-fitting/reg_competition_two_sites_ic50.htm).
+    // DEVIATION from the plan: the plan's equation carries a shared fitted
+    // HillSlope — that is Prism's older "classic" variable-slope form, not
+    // the built-in model, so this build has no HillSlope term.
+    // Both two-site fits use nls() algorithm "port": the default
+    // Gauss-Newton fails on (near-)noiseless two-site data in WebR's R
+    // ("step factor reduced below 'minFactor'"), while "port" recovers the
+    // generating parameters exactly (verified in R before implementing).
+    // FractionHi is bounded to [0,1] — outside it, the "fraction" is meaningless.
+    case "two-site-competition-logx": {
+      const expr =
+        "Bottom+(Top-Bottom)*(FractionHi/(1+10^(x-LogIC50Hi))+(1-FractionHi)/(1+10^(x-LogIC50Lo)))";
+      // Starting values (the plan's strategy — a bad start is the #1 reason
+      // two-site fits fail): the high-affinity LogIC50 from the
+      // low-concentration half's median X, the low-affinity one from the
+      // high half's, Frac = 0.5.
+      const start =
+        "list(Bottom=min(y),Top=max(y),LogIC50Hi=median(x[x<=median(x)]),LogIC50Lo=median(x[x>median(x)]),FractionHi=0.5)";
+      return {
+        kind: "nls",
+        fit:
+          `m<-nls(y~${expr},start=${start},algorithm="port",` +
+          `lower=c(-Inf,-Inf,-Inf,-Inf,0),upper=c(Inf,Inf,Inf,Inf,1),control=nls.control(maxiter=200))`,
+        terms: ["Bottom", "Top", "LogIC50Hi", "LogIC50Lo", "FractionHi"],
+        derived: [
+          tenTo("IC50 (high affinity)", "LogIC50Hi"),
+          ...(opts?.kiDivisor != null ? [kiFromLog("Ki (high affinity)", "LogIC50Hi", opts.kiDivisor)] : []),
+          tenTo("IC50 (low affinity)", "LogIC50Lo"),
+          ...(opts?.kiDivisor != null ? [kiFromLog("Ki (low affinity)", "LogIC50Lo", opts.kiDivisor)] : []),
+          span,
+        ],
+        curveFn:
+          'g<-function(xv,p) p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])*(p[["FractionHi"]]/(1+10^(xv-p[["LogIC50Hi"]]))+(1-p[["FractionHi"]])/(1+10^(xv-p[["LogIC50Lo"]])))',
+        asymptotes: ["Bottom", "Top"],
+        dose: { expr, midpoint: "LogIC50Hi" },
+      };
+    }
+    case "two-site-competition-x": {
+      // Same model, X the raw concentration: 1/(1+X/IC50) is the fixed-slope
+      // (−1) form in concentration units. X = 0 vehicle points are dropped
+      // (positiveX), as for the other ratio forms. The raw-concentration
+      // parameterisation is worse conditioned than the log form: in WebR's
+      // R 4.6.0 the half-median starts that the log form uses fail here
+      // ("singular convergence"), so this model starts from the geometric
+      // mean of each half instead (concentrations are log-spaced in
+      // practice) and retries once from the half-medians without bounds if
+      // port still fails — both start strategies were verified in WebR on
+      // the noiseless fixture before implementing (the retry is modelSpec's
+      // retryFit, the substrate-inhibition pattern).
+      const expr = "Bottom+(Top-Bottom)*(FractionHi/(1+x/IC50Hi)+(1-FractionHi)/(1+x/IC50Lo))";
+      const geoStart =
+        "list(Bottom=min(y),Top=max(y),IC50Hi=10^mean(log10(x[x<=median(x)])),IC50Lo=10^mean(log10(x[x>median(x)])),FractionHi=0.5)";
+      const medianStart =
+        "list(Bottom=min(y),Top=max(y),IC50Hi=median(x[x<=median(x)]),IC50Lo=median(x[x>median(x)]),FractionHi=0.5)";
+      return {
+        kind: "nls",
+        fit:
+          `m<-nls(y~${expr},start=${geoStart},algorithm="port",` +
+          `lower=c(-Inf,-Inf,0,0,0),upper=c(Inf,Inf,Inf,Inf,1),control=nls.control(maxiter=200))`,
+        terms: ["Bottom", "Top", "IC50Hi", "IC50Lo", "FractionHi"],
+        derived: [
+          ...(opts?.kiDivisor != null ? [kiFromLinear("Ki (high affinity)", "IC50Hi", opts.kiDivisor)] : []),
+          ...(opts?.kiDivisor != null ? [kiFromLinear("Ki (low affinity)", "IC50Lo", opts.kiDivisor)] : []),
+          span,
+        ],
+        positiveX: true,
+        curveFn:
+          'g<-function(xv,p) p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])*(p[["FractionHi"]]/(1+xv/p[["IC50Hi"]])+(1-p[["FractionHi"]])/(1+xv/p[["IC50Lo"]]))',
+        asymptotes: ["Bottom", "Top"],
+        dose: { expr, midpoint: "IC50Hi" },
+        retryFit: `m<-nls(y~${expr},start=${medianStart},algorithm="port",control=nls.control(maxiter=200))`,
+      };
+    }
+    case "homologous-competition-logx": {
+      // Prism's "One site — Homologous": the labeled and unlabeled ligands
+      // are the same compound, so Ki = Kd by definition. With [L] the
+      // radioligand concentration (same units as 10^X) and Kd fitted:
+      //   Cold = 10^X;  Y = Bmax·[L]/([L] + Cold + Kd) + Bottom
+      // fitted as LogKd, so Kd = 10^LogKd > 0 by construction (the plan's
+      // "negative Kd" case cannot occur). Source: GraphPad Prism Curve
+      // Fitting Guide, "Equation: One site - Homologous"
+      // (graphpad.com/guides/prism/7/curve-fitting/reg_homologous_one_site_two_conc.htm).
+      // The default Gauss-Newton fails on (near-)noiseless homologous data
+      // ("singular gradient"); algorithm "port" recovers the generating
+      // parameters exactly (verified in R before implementing). The cold
+      // concentration displacing half the hot binding is IC50 = [L] + Kd.
+      const l =
+        opts?.ligandConcentration != null && Number.isFinite(opts.ligandConcentration)
+          ? String(opts.ligandConcentration)
+          : "L";
+      const expr = `Bmax*${l}/(${l}+10^x+10^LogKd)+Bottom`;
+      return {
+        kind: "nls",
+        fit:
+          `m<-nls(y~${expr},start=list(Bmax=(max(y)-min(y))*(${l}+10^median(x))/${l},` +
+          `LogKd=median(x),Bottom=min(y)),algorithm="port",control=nls.control(maxiter=200))`,
+        terms: ["Bmax", "LogKd", "Bottom"],
+        derived: [
+          tenTo("Kd", "LogKd"),
+          {
+            label: "IC50",
+            expr: `${l}+10^cf[["LogKd"]]`,
+            low: `${l}+10^pci("LogKd")[1]`,
+            high: `${l}+10^pci("LogKd")[2]`,
+          },
+        ],
+        curveFn: `g<-function(xv,p) p[["Bmax"]]*${l}/(${l}+10^xv+10^p[["LogKd"]])+p[["Bottom"]]`,
+        dose: { expr, midpoint: "LogKd" },
+        needsRadioligand: true,
+      };
+    }
     default:
       throw new Error(`Model "${model}" is not implemented in the shared fit yet.`);
   }

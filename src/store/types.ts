@@ -67,6 +67,10 @@ export const GRAPH_CHOICES = {
     "michaelis-menten",
     "allosteric-sigmoidal",
     "substrate-inhibition",
+    // Binding — Competition (plan 28).
+    "two-site-competition-logx",
+    "two-site-competition-x",
+    "homologous-competition-logx",
   ],
   survivalMode: ["codes", "counts"],
   volcanoEffect: ["log2ratio", "difference"],
@@ -109,6 +113,9 @@ export const GRAPH_LIMITS = {
    *  clamped to the components the linked PCA actually reported. */
   pcaX: { min: 1, max: 20 },
   pcaY: { min: 1, max: 20 },
+  // A concentration, so 0 is the floor (the homologous runner rejects
+  // 0 itself — [L] must be greater than 0 — with its own message).
+  doseLigandConcentration: { min: 0, max: Infinity },
 } as const;
 
 /**
@@ -198,6 +205,10 @@ export interface GraphOptions {
   // `doseY` omitted defaults to the first Y data column.
   doseY?: string;
   doseModel: Choice<"doseModel">;
+  // The homologous competition curve needs the radioligand concentration
+  // [L] (plan 28) — the graph fits its own curve, so it carries [L] itself;
+  // without it the homologous fit errors and the graph draws points only.
+  doseLigandConcentration?: number;
   doseShowCurve: boolean;
   doseShowEquation: boolean;
   // A Multiple Variables table's scatter: its X and Y variables (column names); omitted,

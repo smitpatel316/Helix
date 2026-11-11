@@ -218,7 +218,11 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
               ? "Khalf & Hill slope"
               : options.doseModel === "substrate-inhibition"
                 ? "Km & Ki"
-                : "EC50 & Hill slope";
+                : options.doseModel === "two-site-competition-logx" || options.doseModel === "two-site-competition-x"
+                  ? "IC50s"
+                  : options.doseModel === "homologous-competition-logx"
+                    ? "Kd"
+                    : "EC50 & Hill slope";
     return (
       <>
         <Choice
@@ -245,6 +249,10 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
             { value: "michaelis-menten", label: MODEL_LABEL["michaelis-menten"] },
             { value: "allosteric-sigmoidal", label: MODEL_LABEL["allosteric-sigmoidal"] },
             { value: "substrate-inhibition", label: MODEL_LABEL["substrate-inhibition"] },
+            // Prism's "Binding — Competition" family (plan 28).
+            { value: "two-site-competition-logx", label: MODEL_LABEL["two-site-competition-logx"] },
+            { value: "two-site-competition-x", label: MODEL_LABEL["two-site-competition-x"] },
+            { value: "homologous-competition-logx", label: MODEL_LABEL["homologous-competition-logx"] },
           ]}
         />
         <Toggle
@@ -252,6 +260,13 @@ export function statisticsControls(c: SectionContext): React.ReactNode {
           checked={options.doseShowCurve}
           onChange={(doseShowCurve) => set({ doseShowCurve })}
         />
+        {options.doseModel === "homologous-competition-logx" && (
+          <NumRow
+            label="Radioligand [L]"
+            value={options.doseLigandConcentration}
+            onChange={(doseLigandConcentration) => set({ doseLigandConcentration })}
+          />
+        )}
         <Toggle
           label={summaryLabel}
           checked={options.doseShowEquation}

@@ -135,7 +135,7 @@ type OptionalOption = {
 // prettier-ignore
 const OPTIONAL_OPTIONS = {
   yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number",
-  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", pcaAnalysisId: "text", monteCarloAnalysisId: "text", doseY: "text", xVariable: "text", yVariable: "text",
+  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", pcaAnalysisId: "text", monteCarloAnalysisId: "text", doseY: "text", doseLigandConcentration: "number", xVariable: "text", yVariable: "text",
   volcanoX: "text", volcanoY: "text", volcanoLabel: "text", volcanoGroupA: "text", volcanoGroupB: "text",
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",
@@ -191,7 +191,7 @@ const PARAMS = {
   alpha: { min: 0.001, max: 0.5 }, iterate: "yes/no",
   f: "number", spar: "number", df: "number",
   y: "name-or-names", y2: "name", ys: "names", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names",
-  ligandConcentration: "number", koff: "number", hotNM: "number", time0: "number",
+  ligandConcentration: "number", ligandKd: "number", fitKi: "yes/no", koff: "number", hotNM: "number", time0: "number",
   enzymeConcentration: "number", substrateConcentration: "number", kmForMorrison: "number",
   inhibitorConcentrations: "numbers-by-name",
   antagonistConcentrations: "numbers-by-name",
@@ -642,7 +642,8 @@ function fitsFromDoseGraphs(nodes: Record<string, ProjectNode>): Record<string, 
   const fits: Record<string, string> = {};
   for (const graph of Object.values(nodes)) {
     if (graph.type !== "graph" || (graph.graphType as string) !== DOSE_GRAPH) continue;
-    const { doseY, doseModel, doseShowCurve, doseShowEquation, ...options } = graph.graphOptions as unknown as Obj;
+    const { doseY, doseModel, doseShowCurve, doseShowEquation, doseLigandConcentration, ...options } =
+      graph.graphOptions as unknown as Obj;
     let id = `analysis_fit_${graph.id}`;
     while (isIn(nodes, id)) id += "_";
     const siblings = Object.values(nodes)
@@ -660,6 +661,12 @@ function fitsFromDoseGraphs(nodes: Record<string, ProjectNode>): Record<string, 
       analysisParams: defined({
         y: typeof doseY === "string" ? doseY : undefined,
         model: oneOf(DOSE_MODELS, doseModel) ?? "sigmoidal-4pl-x",
+        // The homologous model needs [L] (plan 28) — the graph carries it in
+        // doseLigandConcentration; without it the created analysis errors
+        // and the migrated scatter draws points only.
+        ...(typeof doseLigandConcentration === "number"
+          ? { ligandConcentration: doseLigandConcentration }
+          : {}),
       }),
     };
     graph.graphType = "xy-scatter";

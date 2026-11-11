@@ -7358,6 +7358,733 @@
    }
   ]
  },
+ "nonlinear-regression doseFall {\"model\":\"inhibitor-3pl-logx\",\"fitKi\":true,\"ligandConcentration\":1,\"ligandKd\":0.5}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "log(inhibitor) vs. response, standard slope (3PL)",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Response"
+   ],
+   "rows": [
+    {
+     "label": "IC50",
+     "values": [
+      0.1440302715
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.1378420804,
+       0.1504962712
+      ]
+     ]
+    },
+    {
+     "label": "Ki",
+     "values": [
+      0.0480100905
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.04594736012,
+       0.05016542373
+      ]
+     ]
+    },
+    {
+     "label": "Span",
+     "values": [
+      97.37261756
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       96.48596876,
+       98.25926635
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      0.9998964175
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      0.4787403644
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      1.604346355
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      7
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      10
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": -0.75,
+    "sd": 1.513825177,
+    "sem": 0.4787135539,
+    "median": -0.75,
+    "n": 10
+   },
+   {
+    "name": "Response",
+    "mean": 47.95,
+    "sd": 41.48438126,
+    "sem": 13.11851321,
+    "median": 44.95,
+    "n": 10
+   }
+  ],
+  "notes": "Least-squares fit (\"log(inhibitor) vs. response, standard slope (3PL)\") of “Response” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Ki = IC50 / (1 + [L]/Kd), with [L] = 1 and Kd = 0.5 (same units as X); the divisor is a constant, so each Ki's 95% CI comes from its logIC50's.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": 1.035781111,
+    "stdError": 0.2782112088,
+    "t": 3.723002805,
+    "p": 0.007426699536,
+    "low": 0.3779161394,
+    "high": 1.693646082
+   },
+   {
+    "term": "Top",
+    "estimate": 98.40839867,
+    "stdError": 0.2962479526,
+    "t": 332.1825443,
+    "p": 5.916322518e-16,
+    "low": 97.70788357,
+    "high": 99.10891376
+   },
+   {
+    "term": "LogIC50",
+    "estimate": -0.8415462206,
+    "stdError": 0.008065535276,
+    "t": -104.3385457,
+    "p": 1.957912349e-12,
+    "low": -0.860618181,
+    "high": -0.8224742603
+   }
+  ],
+  "ligandConcentration": 1
+ },
+ "nonlinear-regression competitionTwoSite {\"model\":\"two-site-competition-logx\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Two sites — Fit logIC50, X is log(concentration)",
+  "equation": "Y = 9.959e-8 + (100 − 9.959e-8)·(0.5/(1 + 10^(X + 2)) + 0.5/(1 + 10^(X − 1)))",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Response"
+   ],
+   "rows": [
+    {
+     "label": "IC50 (high affinity)",
+     "values": [
+      0.009999999985
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.009999999925,
+       0.01000000004
+      ]
+     ]
+    },
+    {
+     "label": "IC50 (low affinity)",
+     "values": [
+      9.99999994
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       9.999999868,
+       10.00000001
+      ]
+     ]
+    },
+    {
+     "label": "Span",
+     "values": [
+      99.99999991
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       99.99999983,
+       99.99999998
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      1
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      2.052227904e-8
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      2.105819685e-15
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      5
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      10
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": -0.75,
+    "sd": 1.513825177,
+    "sem": 0.4787135539,
+    "median": -0.75,
+    "n": 10
+   },
+   {
+    "name": "Response",
+    "mean": 54.5449546,
+    "sd": 26.46103258,
+    "sem": 8.367713218,
+    "median": 52.02520252,
+    "n": 10
+   }
+  ],
+  "notes": "Least-squares fit (\"Two sites — Fit logIC50, X is log(concentration)\") of “Response” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Starting values: Bottom = 12.03, Top = 95.45, LogIC50 (high affinity) = -2, LogIC50 (low affinity) = 0.5, Fraction (high affinity) = 0.5.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": 9.959182062e-8,
+    "stdError": 1.559839257e-8,
+    "t": 6.384748952,
+    "p": 0.001395454112,
+    "low": 5.949487601e-8,
+    "high": 1.396887652e-7
+   },
+   {
+    "term": "Top",
+    "estimate": 100,
+    "stdError": 2.684811829e-8,
+    "t": 3724655819,
+    "p": 2.647726515e-47,
+    "low": 99.99999994,
+    "high": 100.0000001
+   },
+   {
+    "term": "LogIC50Hi",
+    "estimate": -2.000000001,
+    "stdError": 1.011642846e-9,
+    "t": -1976982300,
+    "p": 6.284778208e-46,
+    "low": -2.000000003,
+    "high": -1.999999998
+   },
+   {
+    "term": "LogIC50Lo",
+    "estimate": 0.9999999974,
+    "stdError": 1.222761209e-9,
+    "t": 817821165.7,
+    "p": 5.188145307e-44,
+    "low": 0.9999999943,
+    "high": 1.000000001
+   },
+   {
+    "term": "FractionHi",
+    "estimate": 0.5000000002,
+    "stdError": 1.899636798e-10,
+    "t": 2632082095,
+    "p": 1.502473108e-46,
+    "low": 0.4999999997,
+    "high": 0.5000000007
+   }
+  ]
+ },
+ "nonlinear-regression competitionTwoSite {\"model\":\"two-site-competition-logx\",\"fitKi\":true,\"ligandConcentration\":1,\"ligandKd\":0.5}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Two sites — Fit logIC50, X is log(concentration)",
+  "equation": "Y = 9.959e-8 + (100 − 9.959e-8)·(0.5/(1 + 10^(X + 2)) + 0.5/(1 + 10^(X − 1)))",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Response"
+   ],
+   "rows": [
+    {
+     "label": "IC50 (high affinity)",
+     "values": [
+      0.009999999985
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.009999999925,
+       0.01000000004
+      ]
+     ]
+    },
+    {
+     "label": "Ki (high affinity)",
+     "values": [
+      0.003333333328
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.003333333308,
+       0.003333333348
+      ]
+     ]
+    },
+    {
+     "label": "IC50 (low affinity)",
+     "values": [
+      9.99999994
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       9.999999868,
+       10.00000001
+      ]
+     ]
+    },
+    {
+     "label": "Ki (low affinity)",
+     "values": [
+      3.333333313
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       3.333333289,
+       3.333333338
+      ]
+     ]
+    },
+    {
+     "label": "Span",
+     "values": [
+      99.99999991
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       99.99999983,
+       99.99999998
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      1
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      2.052227904e-8
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      2.105819685e-15
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      5
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      10
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": -0.75,
+    "sd": 1.513825177,
+    "sem": 0.4787135539,
+    "median": -0.75,
+    "n": 10
+   },
+   {
+    "name": "Response",
+    "mean": 54.5449546,
+    "sd": 26.46103258,
+    "sem": 8.367713218,
+    "median": 52.02520252,
+    "n": 10
+   }
+  ],
+  "notes": "Least-squares fit (\"Two sites — Fit logIC50, X is log(concentration)\") of “Response” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Starting values: Bottom = 12.03, Top = 95.45, LogIC50 (high affinity) = -2, LogIC50 (low affinity) = 0.5, Fraction (high affinity) = 0.5. Ki = IC50 / (1 + [L]/Kd), with [L] = 1 and Kd = 0.5 (same units as X); the divisor is a constant, so each Ki's 95% CI comes from its logIC50's.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": 9.959182062e-8,
+    "stdError": 1.559839257e-8,
+    "t": 6.384748952,
+    "p": 0.001395454112,
+    "low": 5.949487601e-8,
+    "high": 1.396887652e-7
+   },
+   {
+    "term": "Top",
+    "estimate": 100,
+    "stdError": 2.684811829e-8,
+    "t": 3724655819,
+    "p": 2.647726515e-47,
+    "low": 99.99999994,
+    "high": 100.0000001
+   },
+   {
+    "term": "LogIC50Hi",
+    "estimate": -2.000000001,
+    "stdError": 1.011642846e-9,
+    "t": -1976982300,
+    "p": 6.284778208e-46,
+    "low": -2.000000003,
+    "high": -1.999999998
+   },
+   {
+    "term": "LogIC50Lo",
+    "estimate": 0.9999999974,
+    "stdError": 1.222761209e-9,
+    "t": 817821165.7,
+    "p": 5.188145307e-44,
+    "low": 0.9999999943,
+    "high": 1.000000001
+   },
+   {
+    "term": "FractionHi",
+    "estimate": 0.5000000002,
+    "stdError": 1.899636798e-10,
+    "t": 2632082095,
+    "p": 1.502473108e-46,
+    "low": 0.4999999997,
+    "high": 0.5000000007
+   }
+  ],
+  "ligandConcentration": 1
+ },
+ "nonlinear-regression competitionTwoSiteRaw {\"model\":\"two-site-competition-x\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Two sites — Fit logIC50, X is concentration",
+  "equation": "Y = 5.606e-8 + (100 − 5.606e-8)·(0.5/(1 + X/0.01) + 0.5/(1 + X/10))",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Response"
+   ],
+   "rows": [
+    {
+     "label": "Span",
+     "values": [
+      99.99999999
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       99.99999983,
+       100.0000001
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      1
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      4.588579838e-8
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      1.052753247e-14
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      5
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      10
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": 4.624706708,
+    "sd": 9.984610323,
+    "sem": 3.157411017,
+    "median": 0.208113883,
+    "n": 10
+   },
+   {
+    "name": "Response",
+    "mean": 54.5449546,
+    "sd": 26.46103258,
+    "sem": 8.367713218,
+    "median": 52.02520252,
+    "n": 10
+   }
+  ],
+  "notes": "Least-squares fit (\"Two sites — Fit logIC50, X is concentration\") of “Response” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Starting values: Bottom = 12.03, Top = 95.45, IC50 (high affinity) = 0.01, IC50 (low affinity) = 3.162, Fraction (high affinity) = 0.5.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": 5.605947277e-8,
+    "stdError": 9.485894832e-9,
+    "t": 5.909771693,
+    "p": 0.001975453299,
+    "low": 3.167520382e-8,
+    "high": 8.044374172e-8
+   },
+   {
+    "term": "Top",
+    "estimate": 100,
+    "stdError": 5.944446719e-8,
+    "t": 1682242348,
+    "p": 1.408837992e-45,
+    "low": 99.99999989,
+    "high": 100.0000002
+   },
+   {
+    "term": "IC50Hi",
+    "estimate": 0.01000000001,
+    "stdError": 5.858842427e-11,
+    "t": 170682180.6,
+    "p": 1.310276491e-40,
+    "low": 0.00999999986,
+    "high": 0.01000000016
+   },
+   {
+    "term": "IC50Lo",
+    "estimate": 9.999999976,
+    "stdError": 4.514491042e-8,
+    "t": 221508911.7,
+    "p": 3.559162731e-41,
+    "low": 9.99999986,
+    "high": 10.00000009
+   },
+   {
+    "term": "FractionHi",
+    "estimate": 0.5000000007,
+    "stdError": 1.177934897e-9,
+    "t": 424471676.7,
+    "p": 1.377400632e-42,
+    "low": 0.4999999977,
+    "high": 0.5000000037
+   }
+  ]
+ },
+ "nonlinear-regression competitionHomologous {\"model\":\"homologous-competition-logx\",\"ligandConcentration\":1}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "One site — Homologous, X is log(concentration)",
+  "equation": "Y = 100·1/(1 + 10^X + 10^-0.301) + 8.395e-8",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Response"
+   ],
+   "rows": [
+    {
+     "label": "Kd",
+     "values": [
+      0.4999999953
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.4999999891,
+       0.5000000014
+      ]
+     ]
+    },
+    {
+     "label": "IC50",
+     "values": [
+      1.499999995
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       1.499999989,
+       1.500000001
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      1
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      3.691192204e-8
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      9.537429922e-15
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      7
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      10
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": -0.75,
+    "sd": 1.513825177,
+    "sem": 0.4787135539,
+    "median": -0.75,
+    "n": 10
+   },
+   {
+    "name": "Response",
+    "mean": 45.53867023,
+    "sd": 25.51189368,
+    "sem": 8.067569145,
+    "median": 58.77958684,
+    "n": 10
+   }
+  ],
+  "notes": "Least-squares fit (\"One site — Homologous, X is log(concentration)\") of “Response” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Starting values: Bmax = 74.91, LogKd = -0.75, Bottom = 3.019. Homologous competition: [L] = 1 (same units as X); Kd = Ki, since the competitor and radioligand are the same compound.",
+  "coefficients": [
+   {
+    "term": "Bmax",
+    "estimate": 99.99999954,
+    "stdError": 1.631318e-7,
+    "t": 613001263.7,
+    "p": 8.119805245e-60,
+    "low": 99.99999916,
+    "high": 99.99999993
+   },
+   {
+    "term": "LogKd",
+    "estimate": -0.3010299998,
+    "stdError": 2.263526789e-9,
+    "t": -132991578.1,
+    "p": 3.589270793e-55,
+    "low": -0.3010300051,
+    "high": -0.3010299944
+   },
+   {
+    "term": "Bottom",
+    "estimate": 8.395104217e-8,
+    "stdError": 2.19744677e-8,
+    "t": 3.820390251,
+    "p": 0.006538935878,
+    "low": 3.198968294e-8,
+    "high": 1.359124014e-7
+   }
+  ],
+  "ligandConcentration": 1
+ },
+ "nonlinear-regression doseFall {\"model\":\"inhibitor-3pl-logx\",\"fitKi\":true}": {
+  "error": "Enter the radioligand concentration [L] and Kd (both greater than 0, in the same units as X) to calculate Ki — Ki = IC50 / (1 + [L]/Kd)."
+ },
+ "nonlinear-regression competitionHomologous {\"model\":\"homologous-competition-logx\"}": {
+  "error": "Enter the radioligand concentration [L] (greater than 0, in the same units as X) to fit the homologous competition model."
+ },
  "nonlinear-regression doseLog {\"model\":\"asymmetric-5pl-logx\"}": {
   "testType": "nonlinear-regression",
   "subtitle": "Asymmetric sigmoidal, 5PL, X is log(concentration)",
