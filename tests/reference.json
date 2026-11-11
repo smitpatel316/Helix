@@ -9634,6 +9634,195 @@
    }
   ]
  },
+ "nonlinear-regression doseTwo {\"y\":\"Control\",\"model\":\"agonist-3pl-logx\",\"compareWith\":\"Treated\",\"compare\":\"ec50\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "log(agonist) vs. response, standard slope (3PL)",
+  "stats": [
+   {
+    "label": "F",
+    "value": 1204.803801
+   },
+   {
+    "label": "DFn",
+    "value": 1
+   },
+   {
+    "label": "DFd",
+    "value": 14
+   },
+   {
+    "label": "P value",
+    "value": 5.554958374e-15,
+    "p": true
+   }
+  ],
+  "fit": {
+   "sets": [
+    "Control",
+    "Treated"
+   ],
+   "rows": [
+    {
+     "label": "EC50",
+     "values": [
+      0.1440302722,
+      0.4105914148
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.1378420825,
+       0.1504962703
+      ],
+      [
+       0.3885736851,
+       0.4338567339
+      ]
+     ]
+    },
+    {
+     "label": "Span",
+     "values": [
+      97.37261752,
+      97.26496396
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       96.48596855,
+       98.25926648
+      ],
+      [
+       96.13460981,
+       98.39531812
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      0.9998964175,
+      0.9998363494
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      0.4787403644,
+      0.5923869607
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      1.604346355,
+      2.456456178
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      7,
+      7
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      10,
+      10
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": -0.75,
+    "sd": 1.513825177,
+    "sem": 0.4787135539,
+    "median": -0.75,
+    "n": 10
+   },
+   {
+    "name": "Control",
+    "mean": 52.05,
+    "sd": 41.48438126,
+    "sem": 13.11851321,
+    "median": 55.05,
+    "n": 10
+   },
+   {
+    "name": "Treated",
+    "mean": 43.21,
+    "sd": 40.83893703,
+    "sem": 12.91440582,
+    "median": 32.6,
+    "n": 10
+   }
+  ],
+  "notes": "Least-squares fit (\"log(agonist) vs. response, standard slope (3PL)\") of “Control” and “Treated” on “X”. 95% CIs are asymptotic (from each parameter's standard error). Extra sum-of-squares F test: Is the EC50 different between them? The EC50s differ.",
+  "coefficients": [
+   {
+    "term": "Control — Bottom",
+    "estimate": 1.591601431,
+    "stdError": 0.296247916,
+    "t": 5.372532074,
+    "p": 0.001038678856,
+    "low": 0.891086424,
+    "high": 2.292116437
+   },
+   {
+    "term": "Control — Top",
+    "estimate": 98.96421895,
+    "stdError": 0.2782111995,
+    "t": 355.7161578,
+    "p": 3.664167413e-16,
+    "low": 98.306354,
+    "high": 99.6220839
+   },
+   {
+    "term": "Control — LogEC50",
+    "estimate": -0.8415462186,
+    "stdError": 0.008065533263,
+    "t": -104.3385714,
+    "p": 1.957908964e-12,
+    "low": -0.8606181741,
+    "high": -0.822474263
+   },
+   {
+    "term": "Treated — Bottom",
+    "estimate": 1.599656289,
+    "stdError": 0.3174602243,
+    "t": 5.038918789,
+    "p": 0.001498300782,
+    "low": 0.8489821437,
+    "high": 2.350330434
+   },
+   {
+    "term": "Treated — Top",
+    "estimate": 98.86462025,
+    "stdError": 0.4088414845,
+    "t": 241.8165083,
+    "p": 5.460241429e-15,
+    "low": 97.89786376,
+    "high": 99.83137674
+   },
+   {
+    "term": "Treated — LogEC50",
+    "estimate": -0.3865901357,
+    "stdError": 0.01012274074,
+    "t": -38.19026344,
+    "p": 2.196023995e-9,
+    "low": -0.4105266139,
+    "high": -0.3626536574
+   }
+  ]
+ },
  "nonlinear-regression doseTwo {\"y\":\"Control\",\"model\":\"sigmoidal-4pl-logx\",\"compareWith\":\"Treated\",\"compare\":\"all\"}": {
   "testType": "nonlinear-regression",
   "subtitle": "Sigmoidal, 4PL, X is log(concentration)",

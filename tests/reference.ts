@@ -2066,6 +2066,11 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["doseRaw", doseRaw, "nonlinear-regression", { model: "asymmetric-5pl-x" }],
   // prettier-ignore
   ["doseTwo", doseTwo, "nonlinear-regression", { y: "Control", model: "sigmoidal-4pl-logx", compareWith: "Treated", compare: "ec50" }],
+  // Plan 31: the EC50 comparison on a 3PL pair — same two data sets, the
+  // standard-slope model (F = 1204.8038, P = 5.555e-15, verified in system
+  // R against an independent extra-sum-of-squares computation).
+  // prettier-ignore
+  ["doseTwo", doseTwo, "nonlinear-regression", { y: "Control", model: "agonist-3pl-logx", compareWith: "Treated", compare: "ec50" }],
   // prettier-ignore
   ["doseTwo", doseTwo, "nonlinear-regression", { y: "Control", model: "sigmoidal-4pl-logx", compareWith: "Treated", compare: "all" }],
   // Exponential curves (plan 08, 1/2: decay) — noiseless fixtures A/B/E, the
