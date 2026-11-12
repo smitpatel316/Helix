@@ -759,7 +759,7 @@ export interface RocPoint {
 }
 
 /** The data sets an analysis runs on, in this order: columns, or a grouped table's groups.
- *  Absent (files before Helix 1.0.5): all of them, the first two for a two-group test. */
+ *  Absent (files before Titer 1.0.5): all of them, the first two for a two-group test. */
 interface DataSetsParam {
   sets?: string[];
 }

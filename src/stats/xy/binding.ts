@@ -2,7 +2,7 @@
 // Saturation fits total / nonspecific binding against radioligand
 // concentration (one-site total, two-site specific, and the two-series
 // total+nonspecific fits, where NS and Background are SHARED between the
-// series — the first shared-parameter fit in Helix). Kinetics fits
+// series — the first shared-parameter fit in Titer). Kinetics fits
 // association / dissociation against time (one/two-phase), plus
 // association-then-dissociation (one experiment, HotNM/Time0 constrained).
 // The two-series saturation fits run through the shared global-fit helper
@@ -291,7 +291,7 @@ function rSquared(ys: number[], fitted: number[]): number | null {
 }
 
 /** The fitted equation, from the fitted coefficients (4 significant figures,
- *  like the rest of Helix's display). Two-series models show the total
+ *  like the rest of Titer's display). Two-series models show the total
  *  equation — the nonspecific branch is NS·X + Background, named in the notes. */
 function equation(
   model: BindingSaturationModel | BindingKineticsModel,

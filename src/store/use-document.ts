@@ -13,7 +13,7 @@ const isProjectFile = (path: string) => path.toLowerCase().endsWith(`.${PROJECT_
 
 /**
  * The window's project, from opening to saving: what the shell gives it to open (a
- * file, the sample, a project still open when Helix last quit), files dropped on it,
+ * file, the sample, a project still open when Titer last quit), files dropped on it,
  * Save / Save As, Open Recent, the title and unsaved-changes dot of the window, and the
  * Save / Don't Save / Cancel prompt when it closes. Each project has its own window:
  * the shell decides where a project opens (native.openProjects).
@@ -63,7 +63,7 @@ export function useDocument() {
       (await native.pickSavePath(
         "Save Project",
         filePath ?? `${untitled}.${PROJECT_FILE_EXTENSION}`,
-        "Helix Project",
+        "Titer Project",
         PROJECT_FILE_EXTENSION,
       ));
     if (!target) return false;
@@ -112,7 +112,7 @@ export function useDocument() {
         report();
         return native.alert("Couldn't Open Project", parsed.error, "error");
       }
-      // A file changed as it was read (repaired, or from an older Helix) opens edited: saving
+      // A file changed as it was read (repaired, or from an older Titer) opens edited: saving
       // it keeps the project as it is now. The sample stays untitled, never to be saved.
       const edited = parsed.updated && !untitled;
       latest.current.loadProject({ ...parsed.project, filePath: untitled ? null : path, edited });
@@ -133,13 +133,13 @@ export function useDocument() {
       }
     } catch {
       report();
-      await native.alert("Couldn't Open Project", "This file is damaged or isn't a valid Helix project.", "error");
+      await native.alert("Couldn't Open Project", "This file is damaged or isn't a valid Titer project.", "error");
     }
   };
 
   /** Imports a Prism `.pzfx` file as a new untitled project (File ▸ Import Prism File…,
    *  or a dropped file). Analyses and graphs aren't in the file — only its data tables —
-   *  so the imported project opens edited: saving keeps it as a Helix project. */
+   *  so the imported project opens edited: saving keeps it as a Titer project. */
   const importPrismText = async (text: string, name: string) => {
     const imported = parsePzfx(text);
     if (imported.tables.length === 0) {
@@ -163,7 +163,7 @@ export function useDocument() {
     }
     await native.alert(
       "Prism File Imported",
-      lines.join("\n") + "\n\nSave the project to keep it as a Helix project.",
+      lines.join("\n") + "\n\nSave the project to keep it as a Titer project.",
       imported.issues.length ? "warning" : "info",
     );
   };
@@ -215,7 +215,7 @@ export function useDocument() {
     const projects = paths.filter(isProjectFile);
     const prism = paths.filter((p) => p.toLowerCase().endsWith(".pzfx"));
     if (paths.length > projects.length + prism.length) {
-      void native.alert("Can't Open File", "Helix can only open .hlx project files and import .pzfx Prism files.");
+      void native.alert("Can't Open File", "Titer can only open .hlx project files and import .pzfx Prism files.");
     }
     if (projects.length) openProjectsOrSay(projects);
     // One Prism file at a time: each imports as its own untitled project.

@@ -81,7 +81,7 @@ export const rStr = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\
 export const declareGroups = (groups: Group[]) => groups.map((g, i) => `g${i}<-${rVec(g.values)}`).join(";");
 
 /** The error for a column a wizard chose that the table no longer has (deleted, or
- *  renamed outside Helix): never fall back on another column. */
+ *  renamed outside Titer): never fall back on another column. */
 export const missingColumn = (name: string) =>
   `The column “${name}” is no longer in the table. Create this analysis again to choose another.`;
 

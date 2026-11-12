@@ -102,7 +102,7 @@ type Action =
       childOrder: Record<string, string[]>;
       activeNodeId: string | null;
       filePath: string | null;
-      /** Changed as it was read (repaired, or from an older Helix): to be saved. */
+      /** Changed as it was read (repaired, or from an older Titer): to be saved. */
       edited?: boolean;
     }
   | { type: "markSaved"; filePath: string; savedRevision: number };

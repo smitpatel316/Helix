@@ -14,7 +14,7 @@ import { analysisOptionsForTable } from "./views/analyses";
 import { GRAPH_OPTIONS_BY_TABLE } from "./views/graphs";
 import { useStartAnalysis } from "./views/analyses/use-analysis-launcher";
 
-const THEME_KEY = "helix.theme";
+const THEME_KEY = "titer.theme";
 
 /** The appearance chosen in View ▸ Appearance, which every window shares. */
 function savedTheme(): Theme {
@@ -43,7 +43,7 @@ function edit(command: EditCommand) {
   if (focusKind() === "text" && TEXT_COMMANDS.includes(command)) {
     document.execCommand(command === "select-all" ? "selectAll" : command);
   } else {
-    window.dispatchEvent(new CustomEvent<EditCommand>("helix:edit", { detail: command }));
+    window.dispatchEvent(new CustomEvent<EditCommand>("titer:edit", { detail: command }));
   }
 }
 

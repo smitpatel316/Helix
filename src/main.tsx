@@ -18,7 +18,7 @@ onFocusChange((focused) => focused && syncAccent());
 // browser (`npm run web`), this page starts its own R at the first analysis.
 if (isNative) connectR(evalR);
 
-// Whether a newer Helix is out, at most once a day.
+// Whether a newer Titer is out, at most once a day.
 checkForUpdatesDaily();
 
 createRoot(document.getElementById("root")!).render(

@@ -215,7 +215,7 @@ function enzymeInhibitionLabel(
  *  colour, evaluated from the closed-form model + shared fitted parameters
  *  at 100 X points across the pooled X range (Morrison: one curve, X = [I]).
  *  No Lineweaver–Burk overlay: Prism offers LB only as a display Transform,
- *  never as a fit, and Helix has no transform infrastructure — these curves
+ *  never as a fit, and Titer has no transform infrastructure — these curves
  *  are always the closed-form nls fit, never a reciprocal linear regression. */
 export function addEnzymeInhibitionCurve(
   fig: GraphFigure,

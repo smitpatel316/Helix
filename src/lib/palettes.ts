@@ -54,8 +54,8 @@ export const PALETTES: Palette[] = [
     names: words("Black, Gray 70%, Gray 50%, Gray 30%, Gray 10%"),
   },
   {
-    name: "helix",
-    label: "Helix",
+    name: "titer",
+    label: "Titer",
     kind: "categorical",
     colors: hex("8195FC F87171 4ADE80 A78BFA FB923C 6B7280"),
     names: words("Blue, Red, Green, Purple, Orange, Gray"),
@@ -252,15 +252,18 @@ export const PALETTES: Palette[] = [
   },
 ];
 
-export const paletteNamed = (name: string) => PALETTES.find((p) => p.name === name);
+/** A palette by its key. "helix" still resolves, for files saved before the rename. */
+const ALIASES: Record<string, string> = { helix: "titer" };
+export const paletteNamed = (name: string) =>
+  PALETTES.find((p) => p.name === name) ?? PALETTES.find((p) => p.name === ALIASES[name]);
 
-/** Whether one of Helix's palettes is called `name` (its key or its label), in any case. */
-export const isHelixPalette = (name: string) =>
+/** Whether one of Titer's palettes is called `name` (its key or its label), in any case. */
+export const isTiterPalette = (name: string) =>
   PALETTES.some((p) => [p.name, p.label].some((n) => n.toLowerCase() === name.toLowerCase()));
 
-/** A graph's palette: Helix's for a graph that has none (made before palettes). */
+/** A graph's palette: Titer's for a graph that has none (made before palettes). */
 export const paletteOf = (options: { palette?: GraphPalette }): GraphPalette =>
-  options.palette ?? paletteNamed("helix")!;
+  options.palette ?? paletteNamed("titer")!;
 
 /** What a graph or My Palettes saves of a palette. */
 export const savedPalette = ({ name, kind, colors }: GraphPalette): GraphPalette => ({ name, kind, colors });
@@ -280,10 +283,10 @@ export const reversedPalette = (p: GraphPalette): GraphPalette =>
     ? { name: p.name, kind: p.kind, colors: [...p.colors].reverse() }
     : { ...p, colors: [...p.colors].reverse(), reversed: true };
 
-/** Helix 1.0's colors by name, as its files hold them: its palette, in order. */
-const helix = paletteNamed("helix")!;
+/** Titer 1.0's colors by name, as its files hold them: its palette, in order. */
+const titer = paletteNamed("titer")!;
 export const NAMED_COLORS = Object.fromEntries(
-  (["blue", "red", "green", "purple", "orange", "black"] as const).map((key, i) => [key, helix.colors[i]]),
+  (["blue", "red", "green", "purple", "orange", "black"] as const).map((key, i) => [key, titer.colors[i]]),
 ) as Record<PaletteColor, string>;
 
 /** A palette color's name, where its authors give one, else its code. */

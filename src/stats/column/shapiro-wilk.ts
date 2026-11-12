@@ -27,7 +27,7 @@
 //   estimated parameters is Lilliefors); the notes say so. R's P value is
 //   the asymptotic Kolmogorov distribution, not the exact finite-n one
 //   SciPy's `kstest` reports by default (A: 0.8889 vs 0.8508) — the
-//   reference pins R's values, since Helix runs R.
+//   reference pins R's values, since Titer runs R.
 // A column a test can't take (too few values, too many for Shapiro–Wilk,
 // or all identical) gets no result, and the notes say so.
 import { dataGroups, declareGroups, type ColumnTestSpec, type Group } from "./base";
@@ -215,7 +215,7 @@ export const shapiroWilkSpec: ColumnTestSpec<ShapiroWilkParams> = {
           ? "D'Agostino–Pearson omnibus K2 test per column: it combines skewness and kurtosis into one statistic, so it can miss a distribution whose skewness and kurtosis both match a normal distribution's."
           : test === "anderson-darling"
             ? "Anderson–Darling test per column: it compares the cumulative distribution with a Gaussian's, weighting the tails. Its P value is a table approximation."
-            : "Kolmogorov–Smirnov test per column: it compares the cumulative distribution with a Gaussian's, using only the largest discrepancy, so it is the least sensitive of the four tests. The mean and SD are estimated from the same sample, which makes the P value anti-conservative (the proper test with estimated parameters is Lilliefors); Prism does the same, so Helix matches Prism.",
+            : "Kolmogorov–Smirnov test per column: it compares the cumulative distribution with a Gaussian's, using only the largest discrepancy, so it is the least sensitive of the four tests. The mean and SD are estimated from the same sample, which makes the P value anti-conservative (the proper test with estimated parameters is Lilliefors); Prism does the same, so Titer matches Prism.",
       "P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality.",
     ];
     if (test === "kolmogorov-smirnov" || test === "anderson-darling") {
