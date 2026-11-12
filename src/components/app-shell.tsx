@@ -7,6 +7,7 @@ import { useProjectStore } from "../store/use-project-store";
 import { useLayout } from "../store/use-layout";
 import { onFullscreenChange } from "../native";
 import { UniversalModal } from "./universal-modal";
+import { Dialog } from "../ui/dialog";
 import { TABLE_TYPE_OPTIONS } from "../views/tables";
 import { TableDetail } from "../views/tables/table-detail";
 import { analysisOptionsForTable } from "../views/analyses";
@@ -24,7 +25,9 @@ const HIDDEN_SIDEBAR = {
 };
 
 export function AppShell() {
-  useAppMenu(useDocument());
+  const documentActions = useDocument();
+  useAppMenu(documentActions);
+  const { projectUpdated, dismissProjectUpdated } = documentActions;
   const { sidebar } = useLayout();
   const [fullscreen, setFullscreen] = React.useState(false);
   React.useEffect(() => onFullscreenChange(setFullscreen), []);
@@ -75,6 +78,17 @@ export function AppShell() {
       <AnalysisWizard />
 
       <SimulateDataDialog />
+
+      {/* The "Project Updated" notice, in-app: the native dialog's window lingered
+          on macOS after dismissal, blocking clicks and quitting (Quirk 2). */}
+      <Dialog
+        open={projectUpdated}
+        onClose={dismissProjectUpdated}
+        onReturn={dismissProjectUpdated}
+        dismissLabel="OK"
+        title="Project Updated"
+        description="This project was made with an older Helix, or part of it couldn't be read as it was. Helix brought it up to date; save it to keep the update."
+      />
 
       <UniversalModal
         open={selector?.kind === "new-graph"}

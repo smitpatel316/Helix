@@ -25,6 +25,11 @@ export function useDocument() {
     latest.current = store;
   });
   const [recents, setRecents] = React.useState(loadRecents);
+  // The "Project Updated" notice, shown in-app rather than as a native dialog:
+  // the native one's window lingered on macOS after dismissal, blocking clicks
+  // and quitting (Quirk 2). Set when a load brings a file up to date.
+  const [projectUpdated, setProjectUpdated] = React.useState(false);
+  const dismissProjectUpdated = () => setProjectUpdated(false);
   // The window's title while the project isn't saved anywhere.
   const [untitled, setUntitled] = React.useState(UNTITLED);
   // Other windows change the list too: this one reads it again when it comes to the front.
@@ -122,12 +127,9 @@ export function useDocument() {
         if (save) shown.push("", save);
         await native.alert(`Opened with ${issues.length} Issue${issues.length === 1 ? "" : "s"}`, shown.join("\n"));
       } else if (edited) {
-        await native.alert(
-          "Project Updated",
-          "This project was made with an older Helix, or part of it couldn't be read as it was. " +
-            "Helix brought it up to date; save it to keep the update.",
-          "info",
-        );
+        // In-app, not native.alert: the native dialog's window lingered on macOS
+        // after dismissal, blocking clicks and quitting (Quirk 2).
+        setProjectUpdated(true);
       }
     } catch {
       report();
@@ -213,10 +215,7 @@ export function useDocument() {
     const projects = paths.filter(isProjectFile);
     const prism = paths.filter((p) => p.toLowerCase().endsWith(".pzfx"));
     if (paths.length > projects.length + prism.length) {
-      void native.alert(
-        "Can't Open File",
-        "Helix can only open .hlx project files and import .pzfx Prism files.",
-      );
+      void native.alert("Can't Open File", "Helix can only open .hlx project files and import .pzfx Prism files.");
     }
     if (projects.length) openProjectsOrSay(projects);
     // One Prism file at a time: each imports as its own untitled project.
@@ -232,7 +231,7 @@ export function useDocument() {
   React.useEffect(() => native.onDrop((paths) => handlers.current.openPaths(paths)), []);
   React.useEffect(() => native.onOpening(({ path, untitled }) => void handlers.current.load(path, untitled)), []);
 
-  return { save, recents, forgetRecent, clearRecents, importPrism };
+  return { save, recents, forgetRecent, clearRecents, importPrism, projectUpdated, dismissProjectUpdated };
 }
 
 export type DocumentActions = ReturnType<typeof useDocument>;

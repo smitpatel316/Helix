@@ -1,6 +1,7 @@
 // Modal dialog on the native <dialog> element: focus trapping, Esc and the
 // backdrop come from the browser engine. A dialog that can be dismissed has a
-// Cancel button, before its other buttons, as on macOS; Return presses its default one.
+// dismiss button, before its other buttons, as on macOS — "Cancel" unless
+// `dismissLabel` says otherwise (an informational notice dismisses with "OK").
 import * as React from "react";
 import { Button } from "./controls";
 
@@ -8,6 +9,8 @@ interface DialogProps {
   open: boolean;
   /** Omit to make the dialog impossible to dismiss (e.g. while a task runs). */
   onClose?: () => void;
+  /** Label of the dismiss button; "Cancel" by default. */
+  dismissLabel?: string;
   /** Its default button's action, which Return presses too, as on macOS. */
   onReturn?: () => void;
   title: string;
@@ -18,7 +21,17 @@ interface DialogProps {
   children?: React.ReactNode;
 }
 
-export function Dialog({ open, onClose, onReturn, title, description, footer, start, children }: DialogProps) {
+export function Dialog({
+  open,
+  onClose,
+  dismissLabel,
+  onReturn,
+  title,
+  description,
+  footer,
+  start,
+  children,
+}: DialogProps) {
   const ref = React.useRef<HTMLDialogElement>(null);
 
   React.useLayoutEffect(() => {
@@ -53,7 +66,7 @@ export function Dialog({ open, onClose, onReturn, title, description, footer, st
           {(onClose || footer) && (
             <div className="flex justify-end gap-2">
               {start && <div className="mr-auto">{start}</div>}
-              {onClose && <Button onClick={onClose}>Cancel</Button>}
+              {onClose && <Button onClick={onClose}>{dismissLabel ?? "Cancel"}</Button>}
               {footer}
             </div>
           )}

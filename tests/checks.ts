@@ -217,6 +217,21 @@ check("a file Helix had to repair or bring up to date opens to be saved; a sound
   strictEqual(read(JSON.stringify(older)).updated, true);
 });
 
+// Quirk 2: the "Project Updated" notice must not go through the native dialog —
+// its window lingered on macOS after dismissal, blocking clicks and quitting.
+// load() raises the in-app dialog state instead, and the shell mounts it.
+// What this proves: the wiring. It cannot prove the Mac orphan is gone: the
+// orphan was rfd's NSAlert lingering, which Linux never reproduces — the Mac
+// retest (open an older .hlx, dismiss, assert no AXDialog remains) still stands.
+check("an updated project is announced in-app, never through the native dialog", () => {
+  const document = readFileSync("src/store/use-document.ts", "utf8");
+  ok(!/native\.alert\([^;]*"Project Updated"/.test(document), "load() must not route the notice through native.alert");
+  ok(document.includes("setProjectUpdated(true)"), "load() raises the in-app notice");
+  const shell = readFileSync("src/components/app-shell.tsx", "utf8");
+  ok(shell.includes('title="Project Updated"'), "the shell mounts the in-app notice");
+  ok(shell.includes("projectUpdated"), "the shell reads the notice state");
+});
+
 // Plan 28: a dose-response graph's radioligand concentration — the
 // homologous model's [L], which the graph carries in its own options — is
 // written to the file, and on read the graph becomes a scatter whose created
