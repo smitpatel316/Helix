@@ -2753,6 +2753,7 @@ const GRAPH_CASES: [string, TableData, GraphType, Partial<GraphOptions>?][] = [
   ["schild", schild, "schild-plot"],
   ["doseLog", doseLog, "smooth-curve"],
   ["logistic", logistic, "logistic-curve"],
+  ["doseTextbook", doseTextbook, "logistic-curve"],
   ["blandAltman", blandAltman, "bland-altman"],
   ["rocTable", rocTable, "roc-curve"],
   ["freqCol", freqCol, "histogram"],
