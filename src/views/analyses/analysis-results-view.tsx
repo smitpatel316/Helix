@@ -152,16 +152,24 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
-      {(result.equation || result.stats.length > 0) && (
+      {/* The equation is its own wrapping block, not a row of the stats table:
+          a long equation (the Operational model's is 183 chars) in a
+          whitespace-nowrap table stretches the table past the window and
+          pushes the right-aligned stats values off-screen (F-01). */}
+      {result.equation && (
+        <p className="break-words">
+          <span className="text-secondary">Equation: </span>
+          {result.equation}
+        </p>
+      )}
+
+      {result.stats.length > 0 && (
         <Table
           columns={[{ label: "" }, { label: "", numeric: true }]}
-          rows={[
-            ...(result.equation ? [[<span className="text-secondary">Equation</span>, result.equation]] : []),
-            ...result.stats.map((s) => [
-              <span className="text-secondary">{s.label}</span>,
-              s.p ? <P p={s.value} /> : num(s.value),
-            ]),
-          ]}
+          rows={result.stats.map((s) => [
+            <span className="text-secondary">{s.label}</span>,
+            s.p ? <P p={s.value} /> : num(s.value),
+          ])}
         />
       )}
 
