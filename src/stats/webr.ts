@@ -15,7 +15,11 @@ import type { WebR } from "webr";
 export type RVector = Record<string, number | null>;
 
 let engine: Promise<WebR> | null = null;
+/** The booted R, while one is live in this window — what `interruptR` talks to. */
+let liveWebR: WebR | null = null;
 let remote: ((code: string) => Promise<RVector>) | null = null;
+/** Stops the in-flight remote evaluation (the app's engine window), if one is wired. */
+let remoteCancel: (() => Promise<void>) | null = null;
 
 /** Start (or reuse) the R runtime. A failed boot is retried on the next call.
  *  `baseUrl` locates the R files: served by the app, or a folder when run by the tests. */
@@ -24,16 +28,202 @@ export function startR(baseUrl = "/webr/"): Promise<WebR> {
     const { WebR } = await import("webr");
     const webR = new WebR({ baseUrl });
     await webR.init();
+    liveWebR = webR;
     return webR;
   })().catch((err) => {
     engine = null;
+    liveWebR = null;
     throw err;
   }));
 }
 
-/** From now on, `evalNamedVector` hands its code to `evaluate` (the app's engine). */
-export function connectR(evaluate: (code: string) => Promise<RVector>) {
+/** From now on, `evalNamedVector` hands its code to `evaluate` (the app's engine).
+ *  `cancel` stops the in-flight remote evaluation (the engine window's R). */
+export function connectR(evaluate: (code: string) => Promise<RVector>, cancel?: () => Promise<void>) {
   remote = evaluate;
+  remoteCancel = cancel ?? null;
+}
+
+// ── Watchdog: no R evaluation runs forever ────────────────────────────────
+// A hung R call used to strand the analysis on "Running…" forever, the only
+// recovery a restart. Every evaluation below now races its watchdog budget:
+// on a timeout (or a cancel) R is interrupted, and if the interrupt does not
+// free it within the grace, the engine is abandoned for a fresh one.
+
+/** How long one R calculation may run before the watchdog stops it. Five
+ *  minutes: every analysis in the suite finishes in seconds, and the slowest
+ *  measured provisioning batch (a 21-package install) takes ~71 s — a single
+ *  calculation past this is hung, not slow. A caller with a legitimately
+ *  longer calculation passes `timeoutMs`. */
+export const EVAL_TIMEOUT_MS = 300_000;
+/** How long the watchdog waits for the interrupt to free R before giving up
+ *  on the engine and restarting it. */
+export const INTERRUPT_GRACE_MS = 5_000;
+
+/** The watchdog stopped a calculation that ran past its budget. */
+export class EvalTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EvalTimeoutError";
+  }
+}
+
+/** The user cancelled a running calculation. */
+export class EvalCancelledError extends Error {
+  constructor(message = "The calculation was cancelled.") {
+    super(message);
+    this.name = "EvalCancelledError";
+  }
+}
+
+/** Per-evaluation options: a watchdog budget, and a signal that cancels it. */
+export interface EvalOptions {
+  /** Watchdog budget in ms (default `EVAL_TIMEOUT_MS`). */
+  timeoutMs?: number;
+  /** Grace after the interrupt before the engine is restarted (default `INTERRUPT_GRACE_MS`). */
+  graceMs?: number;
+  /** Aborting this cancels the evaluation. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Interrupt the R running in this window's engine, if one is live. Best
+ * effort, never throws: webR's `interrupt()` only works on its
+ * SharedArrayBuffer channel — on the PostMessage fallback (a Tauri webview
+ * without cross-origin isolation) it logs and does nothing, which is why a
+ * stuck evaluation escalates to restarting the engine (see `onEngineStuck`).
+ */
+export function interruptR(): void {
+  try {
+    liveWebR?.interrupt();
+  } catch {
+    // No live R, or the channel cannot be interrupted — the watchdog's
+    // escalation below is the recovery.
+  }
+}
+
+/** Drop the cached engine, so the next evaluation boots a fresh R. The
+ *  wedged worker is abandoned with it; in the app the engine window reloads
+ *  so it dies too (see `onEngineStuck`). */
+export function resetR(): void {
+  engine = null;
+  liveWebR = null;
+}
+
+/** Called when an evaluation stays stuck after the interrupt — the engine
+ *  needs restarting, not another interrupt. The engine window registers a
+ *  handler that drops the shell's waiting requests and reloads itself; tests
+ *  and `npm run web` register none, and the next evaluation simply boots a
+ *  fresh R (`resetR` above). */
+let engineStuckHandler: (() => void) | null = null;
+export function onEngineStuck(handler: (() => void) | null): void {
+  engineStuckHandler = handler;
+}
+
+/** Every evaluation in flight in this window, each with its own abort. */
+const liveEvals = new Set<{ controller: AbortController }>();
+
+/** Cancel every evaluation in flight in this window. The app's one R serves
+ *  every window, so this stops the shared engine for everyone — the user
+ *  staring at the stuck analysis is the one who asked. A cancelled run is
+ *  not cached, so asking again retries it. */
+export function cancelActiveEvals(): void {
+  for (const { controller } of liveEvals) controller.abort();
+}
+
+function formatBudget(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? "" : "s"}`;
+  const minutes = Math.round(seconds / 60);
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+/**
+ * Race an R evaluation against its watchdog budget and an abort signal. On
+ * a timeout or a cancel, R is interrupted (`onTrigger` — `interruptR` for a
+ * local engine, the remote cancel for the app's engine window) and the
+ * evaluation gets `graceMs` to die; a calculation that outlives the grace
+ * means the interrupt did not free R, so the engine is abandoned (`resetR`)
+ * and the registered stuck-engine recovery runs. The caller's error is a
+ * timeout/cancel error either way — never a raw R interrupt, and never a
+ * hang. The underlying evaluation promise may stay pending forever (as with
+ * `ensurePackages`' install race); it is abandoned with the engine.
+ */
+async function withEvalWatchdog<T>(
+  task: Promise<T>,
+  opts: { timeoutMs: number; graceMs: number; signal?: AbortSignal; onTrigger: () => void },
+): Promise<T> {
+  const entry = { controller: new AbortController() };
+  liveEvals.add(entry);
+  const onExternalAbort = () => entry.controller.abort();
+  opts.signal?.addEventListener("abort", onExternalAbort, { once: true });
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let graceTimer: ReturnType<typeof setTimeout> | undefined;
+  let triggered: "timeout" | "cancelled" | null = null;
+  let taskSettled = false;
+  let error: Error = new EvalTimeoutError("");
+  const guarded = task.then(
+    (value) => {
+      taskSettled = true;
+      return value;
+    },
+    (err) => {
+      taskSettled = true;
+      throw err instanceof Error ? err : new Error(String(err));
+    },
+  );
+
+  const cleanup = () => {
+    clearTimeout(timer);
+    clearTimeout(graceTimer);
+    opts.signal?.removeEventListener("abort", onExternalAbort);
+    liveEvals.delete(entry);
+  };
+
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      let done = false;
+      const settle = (fn: () => void) => {
+        if (done) return;
+        done = true;
+        fn();
+      };
+      guarded.then(
+        (value) => settle(() => (triggered ? reject(error) : resolve(value))),
+        (err) => settle(() => reject(triggered ? error : err)),
+      );
+      const trigger = (kind: "timeout" | "cancelled") => {
+        if (triggered) return;
+        triggered = kind;
+        error =
+          kind === "timeout"
+            ? new EvalTimeoutError(
+                `The calculation took longer than ${formatBudget(opts.timeoutMs)} and was stopped. Try running it again.`,
+              )
+            : new EvalCancelledError();
+        opts.onTrigger();
+        graceTimer = setTimeout(() => {
+          if (!taskSettled) {
+            // The interrupt did not free R: abandon this engine so the next
+            // calculation boots a fresh one.
+            resetR();
+            engineStuckHandler?.();
+            if (kind === "timeout") {
+              error = new EvalTimeoutError(
+                `The calculation took longer than ${formatBudget(opts.timeoutMs)} and was stopped — the R engine was restarted. Try running it again.`,
+              );
+            }
+          }
+          settle(() => reject(error));
+        }, opts.graceMs);
+      };
+      timer = setTimeout(() => trigger("timeout"), opts.timeoutMs);
+      entry.controller.signal.addEventListener("abort", () => trigger("cancelled"), { once: true });
+    });
+  } finally {
+    cleanup();
+  }
 }
 
 /**
@@ -45,9 +235,21 @@ export function connectR(evaluate: (code: string) => Promise<RVector>) {
  * only serves named vectors: the entries are named v1..vn in R and read
  * back in that order.
  */
-export async function evalNumericVector(code: string): Promise<number[]> {
+export async function evalNumericVector(code: string, opts?: EvalOptions): Promise<number[]> {
+  const timeoutMs = opts?.timeoutMs ?? EVAL_TIMEOUT_MS;
+  const graceMs = opts?.graceMs ?? INTERRUPT_GRACE_MS;
   if (remote) {
-    const named = await remote(`v<-local({${code}});names(v)<-paste0("v",seq_along(v));v`);
+    const named = await withEvalWatchdog(
+      remote(`v<-local({${code}});names(v)<-paste0("v",seq_along(v));v`),
+      {
+        timeoutMs,
+        graceMs,
+        signal: opts?.signal,
+        onTrigger: () => {
+          void remoteCancel?.();
+        },
+      },
+    );
     return Object.keys(named)
       .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
       .map((k) => named[k] ?? NaN);
@@ -55,11 +257,17 @@ export async function evalNumericVector(code: string): Promise<number[]> {
   const webR = await startR();
   const shelter = await new webR.Shelter();
   try {
-    const result = await shelter.evalR(`local({${code}})`).catch((err: unknown) => {
-      // R says "Error in `call`: reason". The call is our generated code: keep the reason.
-      throw new Error(String(err instanceof Error ? err.message : err).replace(/^Error in `[^`]*`\s*:\s*/, ""));
-    });
-    const { values } = (await result.toJs()) as { values: number[] };
+    const values = await withEvalWatchdog(
+      (async () => {
+        const result = await shelter.evalR(`local({${code}})`).catch((err: unknown) => {
+          // R says "Error in `call`: reason". The call is our generated code: keep the reason.
+          throw new Error(String(err instanceof Error ? err.message : err).replace(/^Error in `[^`]*`\s*:\s*/, ""));
+        });
+        const { values } = (await result.toJs()) as { values: number[] };
+        return values;
+      })(),
+      { timeoutMs, graceMs, signal: opts?.signal, onTrigger: interruptR },
+    );
     return values.map((v) => (Number.isFinite(v) ? v : NaN));
   } finally {
     shelter.purge();
@@ -71,16 +279,32 @@ export async function evalNumericVector(code: string): Promise<number[]> {
  * `{ name: value }` map. The single primitive every analysis builds on. `local()`
  * gives each run a fresh environment, so analyses can never read each other's variables.
  */
-export async function evalNamedVector(code: string): Promise<RVector> {
-  if (remote) return remote(code);
+export async function evalNamedVector(code: string, opts?: EvalOptions): Promise<RVector> {
+  const timeoutMs = opts?.timeoutMs ?? EVAL_TIMEOUT_MS;
+  const graceMs = opts?.graceMs ?? INTERRUPT_GRACE_MS;
+  if (remote) {
+    return withEvalWatchdog(remote(code), {
+      timeoutMs,
+      graceMs,
+      signal: opts?.signal,
+      onTrigger: () => {
+        void remoteCancel?.();
+      },
+    });
+  }
   const webR = await startR();
   const shelter = await new webR.Shelter();
   try {
-    const result = await shelter.evalR(`local({${code}})`).catch((err: unknown) => {
-      // R says "Error in `call`: reason". The call is our generated code: keep the reason.
-      throw new Error(String(err instanceof Error ? err.message : err).replace(/^Error in `[^`]*`\s*:\s*/, ""));
-    });
-    const { names, values } = (await result.toJs()) as { names: string[] | null; values: number[] };
+    const { names, values } = await withEvalWatchdog(
+      (async () => {
+        const result = await shelter.evalR(`local({${code}})`).catch((err: unknown) => {
+          // R says "Error in `call`: reason". The call is our generated code: keep the reason.
+          throw new Error(String(err instanceof Error ? err.message : err).replace(/^Error in `[^`]*`\s*:\s*/, ""));
+        });
+        return (await result.toJs()) as { names: string[] | null; values: number[] };
+      })(),
+      { timeoutMs, graceMs, signal: opts?.signal, onTrigger: interruptR },
+    );
     const out: RVector = {};
     (names ?? []).forEach((name, i) => {
       out[name] = Number.isFinite(values[i]) ? values[i] : null;
