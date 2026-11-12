@@ -266,7 +266,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
 
   const rowTitles = firstChild(table, "RowTitlesColumn");
   const rowTitleValues = rowTitles ? readColumn(rowTitles).subcolumns[0]?.values ?? [] : [];
-  const hasRowTitles = rowTitleValues.some((v) => v !== null && v !== "");
+  let hasRowTitles = rowTitleValues.some((v) => v !== null && v !== "");
 
   const xColumns = childrenNamed(table, "XColumn").map(readColumn);
   const xAdvanced = firstChild(table, "XAdvancedColumn");
@@ -295,13 +295,27 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
   if (xFormat === "date") {
     if (xAdvanced) {
       const dates = readColumn(xAdvanced).subcolumns[0]?.values ?? [];
+      let datesKeptAsRowTitles = false;
       if (!hasRowTitles) {
         // The character dates name the rows, as Prism shows them.
         for (let r = 0; r < dates.length; r++) {
-          if (dates[r] !== null) rowTitleValues[r] = dates[r];
+          if (dates[r] !== null) {
+            rowTitleValues[r] = dates[r];
+            datesKeptAsRowTitles = true;
+          }
         }
       }
-      warnings.push(`${displayName}: the X values are dates; the dates were kept as row titles.`);
+      if (datesKeptAsRowTitles) {
+        warnings.push(`${displayName}: the X values are dates; the dates were kept as row titles.`);
+      } else if (hasRowTitles) {
+        warnings.push(
+          `${displayName}: the X values are dates; the existing row titles were kept and the dates were dropped.`,
+        );
+      } else {
+        warnings.push(`${displayName}: the X values are dates; they were imported as numbers.`);
+      }
+      // The dates above may have filled previously-empty row titles.
+      hasRowTitles = rowTitleValues.some((v) => v !== null && v !== "");
     } else {
       warnings.push(`${displayName}: the X values are dates; they were imported as numbers.`);
     }
