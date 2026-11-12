@@ -3154,6 +3154,36 @@ check("the chi-square wizard asks about ordering only on a 2×k / k×2 table, de
   deepStrictEqual(analysisOptionsForTable("contingency")[1]?.label, "McNemar's test (paired proportions)");
 });
 
+// QAB-4: the 2×2 chi-square shown for reference is the UNCORRECTED Pearson
+// statistic (Prism's default), not R's Yates-corrected default. Fisher's exact
+// test is the primary result and must stay untouched.
+check("the 2x2 chi-square for reference is uncorrected, Fisher's exact unchanged", async () => {
+  const twoByTwo: TableData = {
+    columns: ["Title", "Outcome A", "Outcome B"],
+    rows: [
+      ["Drug", "15", "5"],
+      ["Placebo", "6", "14"],
+    ],
+  };
+  const out = await runAnalysis("chi-square", twoByTwo);
+  if ("error" in out) throw new Error(out.error);
+  const stat = (label: string) => out.stats.find((s) => s.label === label)?.value;
+  close(stat("Chi-square (for reference)"), 8.1203, 1e-3, "uncorrected chi-square");
+  close(stat("P value (Fisher's exact test)"), 0.0103867, 1e-3, "Fisher p value");
+  strictEqual(stat("df"), 1);
+  const second: TableData = {
+    columns: ["Title", "Outcome A", "Outcome B"],
+    rows: [
+      ["Group 1", "10", "20"],
+      ["Group 2", "30", "40"],
+    ],
+  };
+  const out2 = await runAnalysis("chi-square", second);
+  if ("error" in out2) throw new Error(out2.error);
+  const stat2 = (label: string) => out2.stats.find((s) => s.label === label)?.value;
+  close(stat2("Chi-square (for reference)"), 0.7937, 1e-3, "uncorrected chi-square, second table");
+});
+
 check("the McNemar wizard confirms paired data and defaults the correction on", () => {
   const data: TableData = {
     columns: ["Title", "Second: Yes", "Second: No"],

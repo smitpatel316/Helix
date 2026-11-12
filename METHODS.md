@@ -89,7 +89,7 @@ X is the first data column. X and a Y pair on the rows where both hold a number.
 
 | Analysis | Computed with | Choices |
 | --- | --- | --- |
-| Fisher's exact test (2 × 2) | `fisher.test` | The odds ratio and its 95% CI are the test's conditional estimate, close to but not a·d / b·c. The chi-square shown for reference has Yates' correction. |
+| Fisher's exact test (2 × 2) | `fisher.test` | The odds ratio and its 95% CI are the test's conditional estimate, close to but not a·d / b·c. The chi-square shown for reference is the uncorrected Pearson chi-square (Prism's default; Yates' correction is not applied). |
 | Chi-square test (larger tables) | `chisq.test` | Warns when an expected count is under 5. |
 
 Counts must be whole numbers; rows lacking a count are left out.
