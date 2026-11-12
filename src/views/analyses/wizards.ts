@@ -1535,6 +1535,20 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       const first = (a.first as string | undefined) ?? ys[0];
       const isSchild = model === "schild" || model === "schild-slope-1";
       const needsB = isSchild || model === "ec50-shift";
+      // One Y (or none) can never satisfy the two-series minimum, so the
+      // step used to strand the wizard on a permanently disabled Next with
+      // no message (R2-B4): relax the minimum to 1 and name the shortfall
+      // in the question itself. The wizard then reaches Run and the runner
+      // reports it too ("add at least a control and one shifted curve").
+      const yCount = yNames(table).length;
+      const shortfall =
+        yCount === 0
+          ? "This table has no Y data sets — this fit needs a control and at least one shifted curve. Add Y columns to the table first."
+          : yCount === 1
+            ? model === "operational-partial"
+              ? "Only one Y data set exists — this fit needs a full agonist and at least one partial agonist. Add another Y column to the table, then run it again."
+              : "Only one Y data set exists — this fit needs a control and at least one shifted curve. Add another Y column to the table, then run it again."
+            : null;
       return [
         choice("model", "Which dose-response — Special model should be fitted?", [
           ["schild-slope-1", "Gaddum/Schild EC50 shift (SchildSlope = 1)"],
@@ -1545,12 +1559,13 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         {
           id: "ys",
           ask:
-            model === "operational-partial"
+            shortfall ??
+            (model === "operational-partial"
               ? "Which Y data sets should be fitted? The first is the full agonist; the rest are partial agonists."
-              : "Which Y data sets should be fitted? Each is one antagonist concentration; the first is the control (no antagonist).",
+              : "Which Y data sets should be fitted? Each is one antagonist concentration; the first is the control (no antagonist)."),
           kind: "names",
           options: yNames(table),
-          min: 2,
+          min: yCount < 2 ? 1 : 2,
         },
         // The assumed first series, named — proceeding picks it (or
         // another series) explicitly, so the fit never silently takes

@@ -3116,6 +3116,36 @@ check("a wizard asks which data sets only when there is a choice", () => {
   );
 });
 
+check("the dose-response — Special wizard completes with X + 1 Y and the fit names the shortfall (R2-B4)", async () => {
+  // One Y could never satisfy the two-series minimum, so the wizard used to
+  // strand on a permanently disabled Next with no message; the runner's
+  // clear error ("add at least a control and one shifted curve") was
+  // unreachable. The step now relaxes its minimum to 1 and names the
+  // shortfall, so the wizard reaches Run and the fit reports it.
+  const one = treatments(["X", "Y1"]);
+  const ys = WIZARDS["dose-response-special"]!.questions({}, readTable(one)).find((q) => q && q.id === "ys");
+  ok(ys && ys.kind === "names" && ys.options.length === 1 && ys.min === 1, "one Y: the step is passable");
+  ok(
+    ys &&
+      ys.kind === "names" &&
+      /Only one Y data set exists/.test(ys.ask) &&
+      /control and at least one shifted curve/.test(ys.ask),
+    "one Y: the question names the shortfall",
+  );
+  const finished = WIZARDS["dose-response-special"]!.finish(
+    { model: "schild-slope-1", ys: ["Y1"], first: "Y1", bUnits: "M", fixHillSlope: "no" },
+    readTable(one),
+  );
+  deepStrictEqual(await runAnalysis(finished.type, one, finished.params), {
+    error: "Dose-response — Special fits several curves at once — add at least a control and one shifted curve.",
+  });
+  // With two Y series the requirement is unchanged.
+  const two = treatments(["X", "Y1", "Y2"]);
+  const ys2 = WIZARDS["dose-response-special"]!.questions({}, readTable(two)).find((q) => q && q.id === "ys");
+  ok(ys2 && ys2.kind === "names" && ys2.min === 2, "two Y: the minimum stays 2");
+  ok(ys2 && ys2.kind === "names" && /Which Y data sets should be fitted/.test(ys2.ask), "two Y: the usual question");
+});
+
 check("the ROC wizard asks truth, score and positive class, defaulting to the largest value", () => {
   const data: TableData = {
     columns: ["Title", "Truth", "Score"],
