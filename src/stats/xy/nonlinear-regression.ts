@@ -1419,6 +1419,15 @@ async function assembleResult(
       );
     extraNotes.push(...fitWarnings(model, coefficients, first.xs));
   }
+  // The 4PL retry (Linux 4PL fix): a near-perfect sigmoid stalls the
+  // default Gauss-Newton fit at the optimum, so the runner retried once
+  // with a relaxed convergence tolerance — say so, or the converged
+  // numbers look like they came from the first attempt.
+  if (retried && (model === "sigmoidal-4pl-logx" || model === "sigmoidal-4pl-x")) {
+    extraNotes.push(
+      "The first fit did not converge; retried with a relaxed convergence tolerance (tol = 1e-3) and converged.",
+    );
+  }
   // Plan 29: the segmental note states the fitted breakpoint and both
   // slopes in plain language (and warns when the breakpoint sits at the
   // edge of the data, where the fit is effectively a single line); the

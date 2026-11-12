@@ -154,6 +154,27 @@ const doseLog = table(
   ],
 );
 
+/** The textbook dose-response data (Linux 4PL fix): X log10 −2..2, a
+ *  near-perfect sigmoid (Bottom −1.3512, Top 101.3511, LogEC50 ≈ 0,
+ *  HillSlope 0.7766, R² = 0.99926, SS = 9.1933 — verified in R and scipy).
+ *  The default Gauss-Newton fit stalls at the optimum ("step factor
+ *  reduced below 'minFactor'") and only the relaxed-tolerance retry
+ *  converges, so this case pins the retry path and its note. */
+const doseTextbook = table(
+  ["Title", "X", "Response"],
+  [
+    ["", "-2", "2"],
+    ["", "-1.5", "5"],
+    ["", "-1", "12"],
+    ["", "-0.5", "30"],
+    ["", "0", "50"],
+    ["", "0.5", "70"],
+    ["", "1", "88"],
+    ["", "1.5", "95"],
+    ["", "2", "98"],
+  ],
+);
+
 /** A tumor growing exponentially, a drug cleared from plasma, an enzyme's rate. */
 const growth = table(
   ["Title", "Day", "Volume"],
@@ -2137,6 +2158,9 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["xy", xy, "nonlinear-regression", { y: "Y1", model: "quintic" }],
   ["xy", xy, "nonlinear-regression", { y: "Y1", model: "segmental-linear" }],
   ["doseLog", doseLog, "nonlinear-regression", { model: "sigmoidal-4pl-logx" }],
+  // Linux 4PL fix: the textbook sigmoid only converges via the
+  // relaxed-tolerance retry (see doseTextbook above).
+  ["doseTextbook", doseTextbook, "nonlinear-regression", { model: "sigmoidal-4pl-logx" }],
   // Spline and Lowess (plan 15): the Lowess and fixed-spar spline reference
   // runs, the GCV auto-spar run (asserted as the overfit in disagreements()
   // below), and the validation errors.

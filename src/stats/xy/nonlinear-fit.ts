@@ -149,7 +149,8 @@ export interface ModelSpec {
   asymptotes?: [string, string];
   /** nls models only: an alternate `m<-nls(...)` assignment to retry once
    *  with if the primary fit fails (substrate inhibition's Ki start is the
-   *  least robust — plan 09). `fitNonlinearModel` reports the retry. */
+   *  least robust — plan 09; the 4PLs retry with a relaxed tolerance —
+   *  Linux 4PL fix). `fitNonlinearModel` reports the retry. */
   retryFit?: string;
   /** A dose-response curve's formula (its right side) and midpoint, which
    *  comparing two curves shares (upstream 1.0.7). */
@@ -167,6 +168,14 @@ const SIGN = "if(isTRUE(cor(x,y)<0))-1 else 1";
 const FOUR_LOG = "Bottom+(Top-Bottom)/(1+10^((LogEC50-x)*HillSlope))";
 const FOUR_X = "Bottom+(Top-Bottom)/(1+(EC50/x)^HillSlope)";
 const nls200 = (expr: string, start: string) => `nls(y~${expr},start=${start},control=nls.control(maxiter=200))`;
+/** The 4PL retry (Linux 4PL fix): the same nls call with a relaxed
+ *  convergence tolerance. On near-perfect sigmoids the default tol=1e-5
+ *  Gauss-Newton reaches the optimum, then stalls — the residual sum of
+ *  squares is flat while the relative offset oscillates, step-halving
+ *  bottoms out, and nls errors "step factor reduced below 'minFactor'".
+ *  tol=1e-3 converges at the same optimum (verified in R and scipy). */
+const nls200Tol = (expr: string, start: string) =>
+  `nls(y~${expr},start=${start},control=nls.control(maxiter=200,tol=1e-3))`;
 
 export function modelSpec(
   model: NonlinearModel,
@@ -254,9 +263,13 @@ export function modelSpec(
       };
     case "sigmoidal-4pl-logx":
       // X is already log10(dose). EC50 = 10^LogEC50.
+      // The retry is the same fit with a relaxed tolerance (see nls200Tol):
+      // the primary tol stays 1e-5, so every pinned 4PL number is untouched
+      // — only a dataset the primary cannot converge on takes the retry.
       return {
         kind: "nls",
         fit: `m<-${nls200(FOUR_LOG, `list(Bottom=min(y),Top=max(y),LogEC50=median(x),HillSlope=${SIGN})`)}`,
+        retryFit: `m<-${nls200Tol(FOUR_LOG, `list(Bottom=min(y),Top=max(y),LogEC50=median(x),HillSlope=${SIGN})`)}`,
         terms: ["Bottom", "Top", "LogEC50", "HillSlope"],
         derived: [tenTo("EC50", "LogEC50"), span],
         curveFn:
@@ -266,9 +279,14 @@ export function modelSpec(
       };
     case "sigmoidal-4pl-x":
       // X is the raw concentration; EC50 is fitted directly.
+      // Same relaxed-tolerance retry as the logx twin, for symmetry: the
+      // raw-concentration parameterisation converges at the default
+      // tolerance on the textbook data, but a flat-asymptote dataset can
+      // stall it the same way.
       return {
         kind: "nls",
         fit: `m<-${nls200(FOUR_X, `list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN})`)}`,
+        retryFit: `m<-${nls200Tol(FOUR_X, `list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN})`)}`,
         terms: ["Bottom", "Top", "EC50", "HillSlope"],
         derived: [span],
         positiveX: true,
@@ -812,14 +830,30 @@ function transformNlsCall(
   const head = call.slice(0, yAt + 2);
   const expr = substituteFormula(call.slice(yAt + 2, startAt), fixedByVar);
   const rest = call.slice(startAt + 7);
-  // The start list ends where the outer call's trailing arguments begin:
-  // `,control=nls.control(maxiter=200))` or `,algorithm="port")`.
-  const suffixes = [",control=nls.control(maxiter=200))", ',algorithm="port")'];
-  const suffix = suffixes.find((s) => rest.endsWith(s));
-  if (!suffix) throw new Error("Cannot parse the fit's trailing arguments.");
-  const start = transformStart(rest.slice(0, rest.length - suffix.length), fixedByVar);
-  const hasControl = suffix.startsWith(",control=");
-  const hadPort = suffix.startsWith(',algorithm=');
+  // The start expression (`list(...)` / `c(...)`) ends at its matching
+  // paren; everything after it is the call's trailing arguments plus the
+  // closing paren of nls(. They are parsed, not matched against a fixed
+  // list: `,algorithm="port"`, `,control=nls.control(maxiter=200)` (or
+  // with `,tol=1e-3` — the 4PL retry), `,lower=...`, `,upper=...`. The
+  // control call is preserved verbatim — its tolerance is the retry's
+  // point, and dropping it would silently re-impose tol=1e-5 on a retried
+  // fit. lower/upper are dropped and regenerated below when bounds are
+  // given; anything else unrecognised still throws rather than guessing.
+  if (!rest.startsWith("list(") && !rest.startsWith("c(")) throw new Error("Cannot parse the fit's start list.");
+  const openAt = rest.indexOf("(");
+  const startClose = matchParen(rest, openAt);
+  if (startClose < 0) throw new Error("Cannot parse the fit's start list.");
+  const trailing = rest.slice(startClose + 1);
+  if (!trailing.endsWith(")")) throw new Error("Cannot parse the fit's trailing arguments.");
+  const trailingArgs = splitTopLevel(trailing.slice(0, -1).replace(/^,/, ""));
+  const hadPort = trailingArgs.some((a) => a.trim() === 'algorithm="port"');
+  const control = trailingArgs.find((a) => a.trim().startsWith("control="));
+  for (const a of trailingArgs) {
+    const t = a.trim();
+    if (t !== 'algorithm="port"' && !t.startsWith("control=") && !t.startsWith("lower=") && !t.startsWith("upper="))
+      throw new Error("Cannot parse the fit's trailing arguments.");
+  }
+  const start = transformStart(rest.slice(0, startClose + 1), fixedByVar);
   const boundNames = Object.keys(boundsByVar);
   let args = "";
   // The "port" algorithm must survive the rewrite (the exponential/enzyme
@@ -831,7 +865,7 @@ function transformNlsCall(
     const upper = remainingVars.map((v) => (boundsByVar[v] ? rNum(boundsByVar[v][1]) : "Inf"));
     args += `,lower=c(${lower.join(",")}),upper=c(${upper.join(",")})`;
   }
-  if (hasControl) args += ",control=nls.control(maxiter=200)";
+  if (control) args += `,${control.trim()}`;
   return `${head}${expr},start=${start}${args})`;
 }
 
