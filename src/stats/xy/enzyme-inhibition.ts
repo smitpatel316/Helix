@@ -36,14 +36,35 @@ export const ENZYME_INHIBITION_LABEL: Record<EnzymeInhibitionModel, string> = {
   morrison: "Morrison Ki (tight binding)",
 };
 
-/** The first number in a column title ("10 nM" → 10, "I=5" → 5) — the
- *  Prism convention that the inhibitor concentration is entered in the
- *  column title. Titles with no number ("Control") give undefined, and the
- *  wizard asks for the value instead. */
+/** The inhibitor concentration parsed out of a column title — the Prism
+ *  convention that [I] is entered in the column title. Titles with no
+ *  number ("Control") give undefined, and the wizard asks for the value
+ *  instead.
+ *
+ *  The number taken is the one next to a concentration unit ("10 nM" →
+ *  10), never a stray leading number: "Day 2 — 10 nM", "Exp 1: 5 nM" and
+ *  "Replicate 1 50 nM" all used to parse as 2, 1 and 1 (the FIRST number
+ *  in the title) — a wrong-but-plausible [I] that silently corrupted Ki,
+ *  pA2, Kb and dose ratios. The unit-adjacent number wins even when it
+ *  is not the last number ("10 nM Day 2" → 10). With no unit in the
+ *  title, the LAST number is taken ("Day 2 — 10" → 10, "I=5" → 5). A
+ *  title carrying two different unit-tagged numbers ("10 nM, 20 nM")
+ *  is genuinely ambiguous, so it gives undefined and the wizard asks —
+ *  guessing would be the same silent-wrong failure again. */
+const NUMBER = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/;
+// Longest units first (mM before M); a unit must not be the start of a
+// longer word ("10 Max" is not 10 molar). µ is U+00B5, μ is U+03BC.
+const UNIT_ADJACENT = new RegExp(
+  `(${NUMBER.source})\\s*(pM|nM|µM|μM|uM|mM|fM|aM|M)(?![A-Za-z])`,
+  "g",
+);
+const ALL_NUMBERS = new RegExp(NUMBER.source, "g");
 export function parseInhibitorConcentration(title: string): number | undefined {
-  const m = title.match(/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/);
-  if (!m) return undefined;
-  const v = Number(m[0]);
+  const unitMatches = [...title.matchAll(UNIT_ADJACENT)];
+  if (unitMatches.length > 1) return undefined;
+  const raw = unitMatches.length === 1 ? unitMatches[0][1] : title.match(ALL_NUMBERS)?.pop();
+  if (raw === undefined) return undefined;
+  const v = Number(raw);
   return Number.isFinite(v) ? v : undefined;
 }
 
