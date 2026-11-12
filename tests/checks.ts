@@ -78,7 +78,9 @@ import { genesNamed } from "../src/views/graphs/volcano";
 import { examplesFor, matched, type Matched } from "../src/views/graphs/match-graph";
 import type { OutlineNode } from "../src/store/use-project-store";
 import { deriveComparisons } from "../src/views/graphs/significance-overlay";
-import { headline } from "../src/views/analyses/analysis-results-view";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { AnalysisResultsView, headline } from "../src/views/analyses/analysis-results-view";
 import { fitWidths, fitZoom } from "../src/store/use-layout";
 import { computeGroupedDEG } from "../src/lib/deg";
 import { runAnalysis } from "../src/stats";
@@ -2761,6 +2763,41 @@ check("a result's heading says whether the test itself is significant", () => {
   strictEqual(headline([row("Control — P value", 0.03)]), 0.03);
   strictEqual(headline([row("Control — P value", 0.01), row("Drug — P value", 0.3)]), null);
   strictEqual(headline([row("Group P value", 0.01), row("Row P value", 0.3)]), null);
+});
+
+check("a long equation does not push the stats values out of the stats table (F-01)", () => {
+  // The Operational model's 183-char equation used to be a row of the
+  // two-column stats table, whose nowrap cells stretched the table to
+  // ~1,700px and pushed the right-aligned values off-screen. The equation
+  // is now its own wrapping block above the table, so the table holds only
+  // the stats. Pinned values from tests/reference.json (Operational model —
+  // Partial agonist); num() renders Sy.x as "1.44e-7" and SS as "2.49e-13".
+  const result: AnalysisResult = {
+    testType: "dose-response-special",
+    subtitle: "Operational model — Partial agonist",
+    equation:
+      "Full agonist: Y = 3.447e-7 + (100 − 3.447e-7)/(1 + 10^((-7 − X)·1)); partial agonists: Y = 3.447e-7 + (100 − 3.447e-7)/(1 + operate), operate = ((10^logKA + 10^X)/(10^(logtau + X)))^1",
+    stats: [
+      { label: "R squared (Full agonist)", value: 1 },
+      { label: "R squared (Partial agonist)", value: 1 },
+      { label: "R squared", value: 1 },
+      { label: "Sy.x", value: 1.440383352e-7 },
+      { label: "Sum of squares", value: 2.489645039e-13 },
+      { label: "Degrees of freedom", value: 12 },
+      { label: "N", value: 18 },
+    ],
+    groups: [],
+    notes: "",
+  };
+  const html = renderToStaticMarkup(createElement(AnalysisResultsView, { result }));
+  for (const text of ["1.44e-7", "2.49e-13", ">12<", ">18<"]) ok(html.includes(text), `missing ${text}`);
+  strictEqual((html.match(/>1</g) ?? []).length, 3, "three R squared values of 1");
+  // The stats table holds exactly the 7 stats rows — no equation row — and
+  // the equation renders outside it, in its own wrapping block.
+  const table = html.slice(html.indexOf("<table"), html.indexOf("</table>"));
+  strictEqual((table.match(/<tr/g) ?? []).length, 7);
+  ok(!table.includes("Full agonist: Y"), "equation is a row of the stats table");
+  ok(/<p[^>]*>.*Equation:/s.test(html), "equation is not its own block");
 });
 
 check("a graph's stars compare the two groups its t test chose, with the test's own P value", () => {
