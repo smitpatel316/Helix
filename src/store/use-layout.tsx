@@ -56,6 +56,17 @@ type LayoutValue = Layout & {
 
 const LayoutContext = React.createContext<LayoutValue | null>(null);
 
+/** The p-12 padding round the sheet in the graph and figure views, each side. */
+const FIT_PADDING = 96;
+
+/** The view-only zoom that fits a sheet of `graphW`×`graphH` into the visible pane
+ *  (`availW`×`availH`): 1 when it fits, smaller when it doesn't, never above 1.
+ *  The saved size is untouched — fitting only scales the view. */
+export function fitZoom(availW: number, availH: number, graphW: number, graphH: number) {
+  if (availW <= 0 || availH <= 0 || graphW <= 0 || graphH <= 0) return 1;
+  return Math.min(1, availW / (graphW + FIT_PADDING), availH / (graphH + FIT_PADDING));
+}
+
 /** The panels' widths as shown: in a narrow window they give room back to the content,
  *  the inspector first, down to their minimum. Their chosen widths come back as it widens.
  *  `here`: whether the view shown has an inspector (a graph, a grouped table). */

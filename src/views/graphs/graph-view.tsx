@@ -36,6 +36,7 @@ import { copyGraphImage, saveGraphImage } from "./graph-export";
 import { addNote, INK, MOVABLE, marginsFor, movedText, paintOf, withCaps } from "./plot-helpers";
 import { useStartAnalysis } from "../analyses/use-analysis-launcher";
 import { loadPlotly } from "./plotly";
+import { fitZoom } from "../../store/use-layout";
 import { addRegression } from "./regression-overlay";
 import { addDeming } from "./deming-overlay";
 import { addObservedFitted } from "./observed-fitted";
@@ -99,7 +100,14 @@ export function GraphView({ node }: { node: ProjectNode }) {
   // The saved size, and a live preview while dragging an axis.
   const size: Size = { width: options.width, height: options.height };
   const [drag, setDrag] = React.useState<Size | null>(null);
-  const [zoom, setZoom] = React.useState(1);
+  // The view-only fit: the sheet is scaled to the visible pane until the user
+  // zooms by hand (Ctrl+scroll/pinch), which sets an explicit zoom; Reset returns
+  // to the fit. The saved size never changes — fitting only scales the view.
+  const [fit, setFit] = React.useState(1);
+  const [explicitZoom, setExplicitZoom] = React.useState<number | null>(null);
+  const zoom = explicitZoom ?? fit;
+  const zoomRef = React.useRef(zoom);
+  zoomRef.current = zoom;
   // The margins Plotly drew, which grow for long labels and place the resize grab
   // zones on the real axes.
   const [margins, setMargins] = React.useState<Margins | null>(null);
@@ -423,7 +431,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
           fx: (e.clientX - r.left) / r.width,
           fy: (e.clientY - r.top) / r.height,
         };
-      setZoom((z) => clamp(z * (1 - e.deltaY * 0.01), ZOOM));
+      setExplicitZoom((z) => clamp((z ?? zoomRef.current) * (1 - e.deltaY * 0.01), ZOOM));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -636,6 +644,25 @@ export function GraphView({ node }: { node: ProjectNode }) {
   const box = drag ?? size;
   const m = margins ?? marginsFor(options); // until Plotly reports the real ones
 
+  // The fit follows the visible pane: the inspector opening or closing, the window
+  // resizing, or the sheet itself changing size all refit it. The observer reads
+  // the live sheet size through a ref, so it never goes stale.
+  const boxRef = React.useRef(box);
+  boxRef.current = box;
+  React.useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const update = () =>
+      setFit((prev) => {
+        const next = fitZoom(el.clientWidth, el.clientHeight, boxRef.current.width, boxRef.current.height);
+        return next === prev ? prev : next;
+      });
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
     <WithInspector
       title={node.name}
@@ -683,12 +710,15 @@ export function GraphView({ node }: { node: ProjectNode }) {
       <div className="relative min-h-0 flex-1">
         <div ref={canvasRef} className="absolute inset-0 overflow-auto bg-desk">
           {hasData ? (
-            <div className="flex min-h-full w-max min-w-full items-center justify-center p-12">
+            <div className="flex min-h-full w-max min-w-full items-center p-12">
               {/* The sheet: exactly the exported image, white or checked (transparent). Zoomed, it
-                  takes its zoomed size, so the view scrolls to every edge of it. */}
+                  takes its zoomed size, so the view scrolls to every edge of it. `m-auto` (not
+                  `justify-center`) centers it with room to spare and keeps its left edge
+                  reachable when it overflows — centered flex content otherwise pushes the
+                  left edge past where the scroll container can reach. */}
               <div
                 ref={sheetRef}
-                className="relative shrink-0"
+                className="relative m-auto shrink-0"
                 style={{ width: box.width * zoom, height: box.height * zoom }}
               >
                 <div
@@ -766,11 +796,11 @@ export function GraphView({ node }: { node: ProjectNode }) {
             </div>
           )}
         </div>
-        {zoom !== 1 && (
+        {explicitZoom !== null && (
           <button
             type="button"
-            onClick={() => setZoom(1)}
-            title="Reset zoom to 100%"
+            onClick={() => setExplicitZoom(null)}
+            title="Reset zoom to fit"
             className="absolute right-3 bottom-3 z-20 rounded-full bg-black/70 px-2.5 py-1 text-small text-white hover:bg-black/80"
           >
             {Math.round(zoom * 100)}%

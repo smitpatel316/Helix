@@ -79,7 +79,7 @@ import { examplesFor, matched, type Matched } from "../src/views/graphs/match-gr
 import type { OutlineNode } from "../src/store/use-project-store";
 import { deriveComparisons } from "../src/views/graphs/significance-overlay";
 import { headline } from "../src/views/analyses/analysis-results-view";
-import { fitWidths } from "../src/store/use-layout";
+import { fitWidths, fitZoom } from "../src/store/use-layout";
 import { computeGroupedDEG } from "../src/lib/deg";
 import { runAnalysis } from "../src/stats";
 import {
@@ -3708,6 +3708,24 @@ check("a narrow window narrows the sidebar for the inspector only where there is
   const layout = { sidebar: true, sidebarWidth: 224, inspector: true, inspectorWidth: 256 };
   deepStrictEqual(fitWidths(layout, 700, true), { sidebarWidth: 180, inspectorWidth: 220 });
   strictEqual(fitWidths(layout, 700, false).sidebarWidth, 224);
+});
+
+check("a graph too wide for its pane is fitted to the pane, never enlarged", () => {
+  // A 640×460 sheet in a 520×600 pane (inspector open at a 1000px window):
+  // 520 / (640 + 96) ≈ 0.71.
+  const fitted = fitZoom(520, 600, 640, 460);
+  ok(fitted > 0.7 && fitted < 0.72);
+  // Room to spare: no scaling.
+  strictEqual(fitZoom(1000, 800, 640, 460), 1);
+  // Height-bound: a short pane clamps on height, not width (400 / (460 + 96) ≈ 0.72).
+  const short = fitZoom(1000, 400, 640, 460);
+  ok(short > 0.71 && short < 0.73);
+  // A small graph is never enlarged.
+  strictEqual(fitZoom(1000, 800, 200, 100), 1);
+  // Fitting is view-only: it takes the saved size, it does not change it.
+  const saved = { ...DEFAULT_GRAPH_OPTIONS };
+  fitZoom(520, 600, saved.width, saved.height);
+  deepStrictEqual(saved, DEFAULT_GRAPH_OPTIONS);
 });
 
 check("the update check still answers when GitHub refuses it", async () => {
