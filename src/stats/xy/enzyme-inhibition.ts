@@ -255,6 +255,13 @@ function alphaMechanism(alpha: number): string {
   return "Alpha < 1 — the inhibitor prefers the enzyme–substrate complex; the fit points toward uncompetitive inhibition (Alpha → 0 is the uncompetitive limit).";
 }
 
+/** A hand-edited or older file may carry `y` as one bare column name — the
+ *  file reader's `name-or-names` kind permits it — while this runner works
+ *  with a list. One name means one series, never one character per series. */
+function normalizeY(y: string[] | string | undefined): string[] | undefined {
+  return Array.isArray(y) ? y : y == null ? undefined : [y];
+}
+
 export async function runEnzymeInhibition(
   columns: Column[],
   params: EnzymeInhibitionParams | undefined,
@@ -269,7 +276,8 @@ export async function runEnzymeInhibition(
   if (model === "morrison") return runMorrison(xCol, yCols, params, label);
 
   // ── Global models (competitive / noncompetitive / uncompetitive / mixed) ──
-  const requested = params?.y?.length ? params.y : yCols.map((c) => c.name);
+  const y = normalizeY(params?.y);
+  const requested = y?.length ? y : yCols.map((c) => c.name);
   if (requested.length < 2)
     return {
       error:
@@ -383,7 +391,8 @@ async function runMorrison(
   params: EnzymeInhibitionParams | undefined,
   label: string,
 ): Promise<AnalysisOutcome> {
-  const yCol = params?.y?.length ? yCols.find((c) => c.name === params.y![0]) : yCols[0];
+  const y = normalizeY(params?.y);
+  const yCol = y?.length ? yCols.find((c) => c.name === y[0]) : yCols[0];
   if (!yCol) return { error: xyProblem([xCol, ...yCols])! };
   const et = params?.enzymeConcentration;
   if (et === undefined || !Number.isFinite(et))
