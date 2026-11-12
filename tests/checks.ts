@@ -60,6 +60,8 @@ import { deletePalette, keepPalette, loadMyPalettes } from "../src/store/my-pale
 import { GRAPHS, GRAPH_OPTIONS_BY_TABLE, newGraphOptions, type GraphFigure } from "../src/views/graphs";
 import { isGrouped, isNested, readTable, setColumns, type Dataset } from "../src/lib/dataset";
 import { adjustComparisonRows, adjustPValues, incompleteRows, missingColumn } from "../src/stats/column/base";
+import { compareTwoGroupsSpec } from "../src/stats/column/compare-two-groups";
+import { kruskalWallisSpec } from "../src/stats/column/kruskal-wallis";
 import { dagostinoPearson } from "../src/stats/column/shapiro-wilk";
 import { parseGroupLevels, toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
 import { addNote, movedText, paintOf, vectorTraces, visibleOutline, withCaps } from "../src/views/graphs/plot-helpers";
@@ -215,6 +217,111 @@ check("a file Helix had to repair or bring up to date opens to be saved; a sound
   const older = file(); // from a Helix before the bars' gap
   delete older.project.nodes.g1.graphOptions.barGap;
   strictEqual(read(JSON.stringify(older)).updated, true);
+});
+
+// R2 M5: a dropped/invalid param value falls back to its runner default, and
+// says so — a hand-edited or cross-version value must not silently change the
+// test on re-run. Before the fix the reader left the key out and the runner
+// read `undefined`: a dropped `gaussian` ran a Wilcoxon instead of a t test, a
+// dropped `tails` reached R as alternative="undefined", a dropped `posthoc` ran
+// Dunn, a dropped `correction` reached R as p.adjust(pr,"undefined"). (The
+// queue's `q` example did not reproduce: the ROUT runner already falls back
+// to `q ?? 1`, so a dropped `q` was never NaN.)
+check("a dropped param value falls back to its default, and says so", () => {
+  const withAnalysis = (id: string, type: string, params: unknown) => {
+    const file = JSON.parse(serializeProjectFile(payload)) as { project: ProjectFilePayload };
+    file.project.nodes[id] = {
+      id,
+      type: "analysis",
+      name: id,
+      parentId: "t1",
+      analysisType: type,
+      analysisParams: params,
+    } as ProjectNode;
+    file.project.childOrder.t1 = [...file.project.childOrder.t1, id];
+    return read(JSON.stringify(file));
+  };
+  const paramsOf = (result: ReturnType<typeof read>, id: string) =>
+    (result.project.nodes[id] as ProjectNode).analysisParams as Record<string, unknown>;
+
+  const bad = withAnalysis("m5a", "compare-two-groups", {
+    paired: "yes",
+    gaussian: "yes",
+    equalVariance: "maybe",
+    tails: "sideways",
+    ratio: 1,
+  });
+  deepStrictEqual(paramsOf(bad, "m5a"), {
+    paired: false,
+    gaussian: true,
+    equalVariance: true,
+    ratio: false,
+    tails: "two-sided",
+  });
+  strictEqual(bad.updated, true);
+  for (const key of ["paired", "gaussian", "equalVariance", "tails", "ratio"])
+    ok(
+      bad.issues.some((i) => i.message.includes(`“${key}”`) && i.message.includes("usual default")),
+      `expected a warning naming “${key}”`,
+    );
+  // The runner now sees the defaults, not `undefined`.
+  strictEqual(compareTwoGroupsSpec.subtitle?.(paramsOf(bad, "m5a") as never), "Unpaired t test");
+  ok(
+    !compareTwoGroupsSpec
+      .rCode(
+        [
+          { name: "A", values: [1, 2, 3] },
+          { name: "B", values: [2, 3, 4] },
+        ],
+        paramsOf(bad, "m5a") as never,
+      )
+      .includes("undefined"),
+    "no undefined reaches R",
+  );
+
+  // Valid values are never overwritten by the defaults.
+  const good = withAnalysis("m5b", "compare-two-groups", {
+    paired: true,
+    gaussian: false,
+    equalVariance: false,
+    tails: "less",
+    ratio: false,
+  });
+  deepStrictEqual(paramsOf(good, "m5b"), {
+    paired: true,
+    gaussian: false,
+    equalVariance: false,
+    tails: "less",
+    ratio: false,
+  });
+  strictEqual(good.issues.length, 0);
+
+  const kw = withAnalysis("m5c", "kruskal-wallis", { posthoc: "bogus" });
+  deepStrictEqual(paramsOf(kw, "m5c"), { posthoc: "none" });
+  ok(
+    !kruskalWallisSpec
+      .rCode(
+        [
+          { name: "A", values: [1, 2, 3] },
+          { name: "B", values: [2, 3, 4] },
+          { name: "C", values: [3, 4, 5] },
+        ],
+        paramsOf(kw, "m5c") as never,
+      )
+      .includes("Rbar<-"),
+    "no Dunn runs when the post-hoc fell back to none",
+  );
+
+  const deming = withAnalysis("m5d", "deming-regression", { y: "Y1", lambda: "wide" });
+  deepStrictEqual(paramsOf(deming, "m5d"), { y: "Y1", lambda: 1 });
+
+  const multi = withAnalysis("m5e", "multiple-t-tests", { correction: "bogus", gaussian: "yes" });
+  deepStrictEqual(paramsOf(multi, "m5e"), { paired: false, gaussian: true, pooledSd: false, correction: "holm" });
+
+  // A dropped `q` was already safe (the runner falls back to 1); the reader
+  // still leaves it out, and the method stays.
+  const outliers = withAnalysis("m5f", "outliers", { q: "bad", method: "rout" });
+  deepStrictEqual(paramsOf(outliers, "m5f"), { method: "rout" });
 });
 
 // Quirk 2: the "Project Updated" notice must not go through the native dialog —

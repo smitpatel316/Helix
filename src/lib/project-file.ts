@@ -454,6 +454,23 @@ function readOptions(raw: unknown): GraphOptions {
   return defined(out) as unknown as GraphOptions;
 }
 
+/** The runner default for a param, by analysis: when a file's value for one
+ *  of these is unusable it falls back to this instead of being left out — the
+ *  file header's promise. Only keys whose runner reads them whole-object
+ *  (`(params ?? DEFAULTS).key`) are listed; the rest already fall back per
+ *  key (`??` in the runner) or spread-merge their defaults (one-sample-t,
+ *  one-way ANOVA, frequency-distribution). Mirrors each runner's DEFAULTS —
+ *  compare-two-groups, kruskal-wallis, friedman, nested-anova,
+ *  deming-regression — and the multiple-t-tests wizard default (Holm). */
+const PARAM_DEFAULTS: Record<string, Record<string, unknown>> = {
+  "compare-two-groups": { paired: false, gaussian: true, equalVariance: true, ratio: false, tails: "two-sided" },
+  "kruskal-wallis": { posthoc: "none" },
+  friedman: { posthoc: "none" },
+  "nested-anova": { posthoc: "none" },
+  "deming-regression": { lambda: 1 },
+  "multiple-t-tests": { paired: false, gaussian: true, pooledSd: false, correction: "holm" },
+};
+
 function readParam(kind: ParamKind, v: unknown): unknown {
   if (kind === "yes/no") return typeof v === "boolean" ? v : undefined;
   if (kind === "number") return isFiniteNumber(v) ? v : undefined;
@@ -478,13 +495,35 @@ function readParam(kind: ParamKind, v: unknown): unknown {
   return Array.isArray(kind) ? oneOf(kind, v) : within(v, kind as Limits);
 }
 
-function readParams(raw: unknown): AnalysisParams | undefined {
+function readParams(
+  raw: unknown,
+  analysisType: string | undefined,
+  label: string,
+  issues: ProjectIssue[],
+): AnalysisParams | undefined {
   if (!isObj(raw)) return undefined;
   const p = canonical(raw, Object.keys(PARAMS));
   // A param this version doesn't know is kept as a plain word.
   const read = (k: string, v: unknown) =>
     isIn(PARAMS, k) ? readParam(PARAMS[k as ParamKey], v) : isWord(lower(v)) ? lower(v) : undefined;
-  return defined(Object.fromEntries(Object.entries(p).map(([k, v]) => [k, read(k, v)]))) as unknown as AnalysisParams;
+  const sanitized = Object.fromEntries(Object.entries(p).map(([k, v]) => [k, read(k, v)]));
+  // A value the reader left out falls back to its runner default (M5) — a
+  // dropped `gaussian` must not silently turn a t test into a Wilcoxon, a
+  // dropped `tails` must not reach R as "undefined", a dropped `posthoc`
+  // must not silently run Dunn. Keys the file never had are filled the same
+  // way, silently: an older file's partial params are brought up to date.
+  const defaults = (analysisType ? PARAM_DEFAULTS[analysisType] : undefined) ?? {};
+  for (const key of Object.keys(p)) {
+    if (sanitized[key] === undefined && isIn(PARAMS, key) && key in defaults) {
+      issues.push({
+        severity: "warning",
+        message: `Analysis “${label}”: “${key}” was not a usable value, so the usual default applies.`,
+      });
+    }
+  }
+  // Strip the left-out values first, so a dropped key falls back to its
+  // default instead of shadowing it with `undefined`.
+  return defined({ ...defaults, ...defined(sanitized) }) as unknown as AnalysisParams;
 }
 
 const NODE_TYPES: NodeType[] = ["table", "analysis", "graph", "figure"];
@@ -584,7 +623,7 @@ function readNode(
     }
   } else if (type === "analysis") {
     node.analysisType = lower(n.analysisType) as ProjectNode["analysisType"];
-    node.analysisParams = readParams(n.analysisParams);
+    node.analysisParams = readParams(n.analysisParams, node.analysisType as string, node.name, issues);
     if (!isIn(ANALYSES, node.analysisType)) {
       issues.push({ severity: "error", message: `Analysis “${node.name}” uses a test this version doesn't know.` });
     }
