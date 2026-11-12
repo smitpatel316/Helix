@@ -337,7 +337,13 @@ function readPointStyles(v: unknown): Record<string, PointStyle> | undefined {
 const READ_OPTION = {
   number: (v: unknown) => (isFiniteNumber(v) ? v : undefined),
   text: (v: unknown) => (typeof v === "string" ? v : undefined),
-  texts: (v: unknown) => (Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined),
+  texts: (v: unknown) => {
+    // A graph's significance pairs, keeping the usable ones (M6): one bad
+    // entry used to drop the whole list.
+    if (!Array.isArray(v)) return undefined;
+    const kept = v.filter((s) => typeof s === "string");
+    return kept.length ? kept : undefined;
+  },
   palette: readPalette,
   styles: readStyles,
   pointStyles: readPointStyles,
@@ -432,7 +438,7 @@ function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: num
 
 /** Every option, of the right type, one of its choices and within its limits: a missing
  *  or wrong one takes its default, a number beyond its limits the nearest it can be. */
-function readOptions(raw: unknown): GraphOptions {
+function readOptions(raw: unknown, label: string, issues: ProjectIssue[]): GraphOptions {
   const o = isObj(raw)
     ? canonical(raw, [
         ...Object.keys(DEFAULT_GRAPH_OPTIONS),
@@ -450,7 +456,19 @@ function readOptions(raw: unknown): GraphOptions {
     if (!choices || choices.includes(v)) out[key] = v;
   }
   for (const [key, limits] of Object.entries(GRAPH_LIMITS)) out[key] = within(out[key], limits);
-  for (const [key, kind] of Object.entries(OPTIONAL_OPTIONS)) out[key] = READ_OPTION[kind](o[key]);
+  for (const [key, kind] of Object.entries(OPTIONAL_OPTIONS)) {
+    const raw = o[key];
+    out[key] = READ_OPTION[kind](raw);
+    if (kind === "texts" && Array.isArray(raw) && raw.length) {
+      const kept = Array.isArray(out[key]) ? (out[key] as unknown[]).length : 0;
+      if (kept < raw.length) {
+        issues.push({
+          severity: "warning",
+          message: `Graph “${label}”: ${raw.length - kept} invalid ${raw.length - kept === 1 ? "entry" : "entries"} in “${key}” ${raw.length - kept === 1 ? "was" : "were"} left out; the rest were kept.`,
+        });
+      }
+    }
+  }
   return defined(out) as unknown as GraphOptions;
 }
 
@@ -471,27 +489,51 @@ const PARAM_DEFAULTS: Record<string, Record<string, unknown>> = {
   "multiple-t-tests": { paired: false, gaussian: true, pooledSd: false, correction: "holm" },
 };
 
-function readParam(kind: ParamKind, v: unknown): unknown {
+/** A collection param, keeping its usable entries: one bad entry used to
+ *  drop the whole value (M6) — the analysis then silently ran on all columns
+ *  instead of the chosen subset, or lost every wizard-entered concentration
+ *  at once. `report` hears how many entries were left out, so the reader
+ *  can warn about them. */
+function readParam(kind: ParamKind, v: unknown, report?: (dropped: number) => void): unknown {
   if (kind === "yes/no") return typeof v === "boolean" ? v : undefined;
   if (kind === "number") return isFiniteNumber(v) ? v : undefined;
   if (kind === "name") return typeof v === "string" ? v : undefined;
   if (kind === "name-or-number") return typeof v === "string" || isFiniteNumber(v) ? v : undefined;
-  if (kind === "name-or-names")
-    return typeof v === "string" ? v : Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
-  if (kind === "numbers-by-name") return isObj(v) && Object.values(v).every(isFiniteNumber) ? v : undefined;
-  if (kind === "number-pairs-by-name")
-    return isObj(v) &&
-      Object.values(v).every((p) => Array.isArray(p) && p.length === 2 && p.every(isFiniteNumber))
-      ? v
-      : undefined;
-  if (kind === "name-and-names")
-    return isObj(v) &&
-      typeof v.name === "string" &&
-      Array.isArray(v.levels) &&
-      v.levels.every((s) => typeof s === "string")
-      ? v
-      : undefined;
-  if (kind === "names") return Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
+  if (kind === "name-or-names") {
+    if (typeof v === "string") return v;
+    if (!Array.isArray(v)) return undefined;
+    const kept = v.filter((s): s is string => typeof s === "string");
+    if (kept.length !== v.length) report?.(v.length - kept.length);
+    return kept.length ? kept : undefined;
+  }
+  if (kind === "numbers-by-name") {
+    if (!isObj(v)) return undefined;
+    const kept = Object.fromEntries(Object.entries(v).filter(([, n]) => isFiniteNumber(n)));
+    const dropped = Object.keys(v).length - Object.keys(kept).length;
+    if (dropped) report?.(dropped);
+    return Object.keys(kept).length ? kept : undefined;
+  }
+  if (kind === "number-pairs-by-name") {
+    if (!isObj(v)) return undefined;
+    const kept = Object.fromEntries(
+      Object.entries(v).filter(([, p]) => Array.isArray(p) && p.length === 2 && p.every(isFiniteNumber)),
+    );
+    const dropped = Object.keys(v).length - Object.keys(kept).length;
+    if (dropped) report?.(dropped);
+    return Object.keys(kept).length ? kept : undefined;
+  }
+  if (kind === "name-and-names") {
+    if (!isObj(v) || typeof v.name !== "string" || !Array.isArray(v.levels)) return undefined;
+    const levels = v.levels.filter((s): s is string => typeof s === "string");
+    if (levels.length !== v.levels.length) report?.(v.levels.length - levels.length);
+    return levels.length ? { ...v, levels } : undefined;
+  }
+  if (kind === "names") {
+    if (!Array.isArray(v)) return undefined;
+    const kept = v.filter((s): s is string => typeof s === "string");
+    if (kept.length !== v.length) report?.(v.length - kept.length);
+    return kept.length ? kept : undefined;
+  }
   return Array.isArray(kind) ? oneOf(kind, v) : within(v, kind as Limits);
 }
 
@@ -504,8 +546,20 @@ function readParams(
   if (!isObj(raw)) return undefined;
   const p = canonical(raw, Object.keys(PARAMS));
   // A param this version doesn't know is kept as a plain word.
-  const read = (k: string, v: unknown) =>
-    isIn(PARAMS, k) ? readParam(PARAMS[k as ParamKey], v) : isWord(lower(v)) ? lower(v) : undefined;
+  const read = (k: string, v: unknown) => {
+    if (!isIn(PARAMS, k)) return isWord(lower(v)) ? lower(v) : undefined;
+    let dropped = 0;
+    const value = readParam(PARAMS[k as ParamKey], v, (n) => {
+      dropped = n;
+    });
+    if (dropped > 0) {
+      issues.push({
+        severity: "warning",
+        message: `Analysis “${label}”: ${dropped} invalid ${dropped === 1 ? "entry" : "entries"} in “${k}” ${dropped === 1 ? "was" : "were"} left out; the rest were kept.`,
+      });
+    }
+    return value;
+  };
   const sanitized = Object.fromEntries(Object.entries(p).map(([k, v]) => [k, read(k, v)]));
   // A value the reader left out falls back to its runner default (M5) — a
   // dropped `gaussian` must not silently turn a t test into a Wilcoxon, a
@@ -633,7 +687,7 @@ function readNode(
     Object.assign(node, readFigure(n));
   } else {
     node.graphType = lower(n.graphType) as ProjectNode["graphType"];
-    node.graphOptions = readOptions(n.graphOptions);
+    node.graphOptions = readOptions(n.graphOptions, node.name, issues);
     if (!isIn(GRAPHS, node.graphType) && (node.graphType as string) !== DOSE_GRAPH) {
       issues.push({ severity: "error", message: `Graph “${node.name}” uses a chart this version doesn't know.` });
     }

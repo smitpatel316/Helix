@@ -324,6 +324,62 @@ check("a dropped param value falls back to its default, and says so", () => {
   deepStrictEqual(paramsOf(outliers, "m5f"), { method: "rout" });
 });
 
+// R2 M6: one bad entry in an array/map param leaves the rest out on its own —
+// the whole value used to be dropped, so the analysis silently ran on all
+// columns instead of the chosen subset, or lost every wizard-entered
+// concentration at once. The reader warns about the entries it left out.
+check("one bad entry in a param list leaves the rest alone", () => {
+  const withAnalysis = (id: string, type: string, params: unknown) => {
+    const file = JSON.parse(serializeProjectFile(payload)) as { project: ProjectFilePayload };
+    file.project.nodes[id] = {
+      id,
+      type: "analysis",
+      name: id,
+      parentId: "t1",
+      analysisType: type,
+      analysisParams: params,
+    } as ProjectNode;
+    file.project.childOrder.t1 = [...file.project.childOrder.t1, id];
+    return read(JSON.stringify(file));
+  };
+  const paramsOf = (result: ReturnType<typeof read>, id: string) =>
+    (result.project.nodes[id] as ProjectNode).analysisParams as Record<string, unknown>;
+
+  const sets = withAnalysis("m6a", "compare-two-groups", { sets: ["A", 42, "B"], gaussian: true });
+  deepStrictEqual(paramsOf(sets, "m6a").sets, ["A", "B"]);
+  ok(sets.issues.some((i) => i.message.includes("“sets”") && i.message.includes("1 invalid entry")));
+
+  const conc = withAnalysis("m6b", "enzyme-inhibition", { inhibitorConcentrations: { A: 10, B: "x", C: 5 } });
+  deepStrictEqual(paramsOf(conc, "m6b").inhibitorConcentrations, { A: 10, C: 5 });
+  ok(conc.issues.some((i) => i.message.includes("“inhibitorConcentrations”")));
+
+  const bounds = withAnalysis("m6c", "nonlinear-regression", {
+    bounds: { X: [0, 1], Y: [0, "z"], Z: [1] },
+  });
+  deepStrictEqual(paramsOf(bounds, "m6c").bounds, { X: [0, 1] });
+  ok(bounds.issues.some((i) => i.message.includes("2 invalid entries")));
+
+  const subject = withAnalysis("m6d", "mixed-effects", {
+    subjectFactor: { name: "S", levels: ["a", 3, "b"] },
+  });
+  deepStrictEqual(paramsOf(subject, "m6d").subjectFactor, { name: "S", levels: ["a", "b"] });
+
+  const ys = withAnalysis("m6e", "nonlinear-regression", { y: ["Y1", null] });
+  deepStrictEqual(paramsOf(ys, "m6e").y, ["Y1"]);
+
+  // Every entry bad still drops the value — but now with a warning, not silence.
+  const allBad = withAnalysis("m6f", "compare-two-groups", { sets: [42, true] });
+  strictEqual(paramsOf(allBad, "m6f").sets, undefined);
+  ok(allBad.issues.some((i) => i.message.includes("“sets”") && i.message.includes("2 invalid entries")));
+
+  // A graph's significance pairs filter the same way.
+  const file = JSON.parse(serializeProjectFile(payload)) as { project: ProjectFilePayload };
+  (file.project.nodes.g1.graphOptions as unknown as Record<string, unknown>).sigPairs = ["A-B", 7, "C-D"];
+  const graph = read(JSON.stringify(file));
+  deepStrictEqual((graph.project.nodes.g1 as ProjectNode).graphOptions?.sigPairs, ["A-B", "C-D"]);
+  ok(graph.issues.some((i) => i.message.includes("“sigPairs”") && i.message.includes("1 invalid entry")));
+});
+
 // Quirk 2: the "Project Updated" notice must not go through the native dialog —
 // its window lingered on macOS after dismissal, blocking clicks and quitting.
 // load() raises the in-app dialog state instead, and the shell mounts it.
