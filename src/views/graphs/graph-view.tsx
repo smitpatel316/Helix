@@ -28,7 +28,7 @@ import { addFittedCurve } from "./fitted-curve";
 import { addBindingCurve, addDoseResponseSpecialCurve, addEnzymeInhibitionCurve } from "./binding-curve";
 import { addSchildPlot } from "./schild-plot";
 import { addSmoothCurve } from "./smooth-curve";
-import { addLogisticCurve } from "./logistic-curve";
+import { addLogisticCurve, logisticCurveNote } from "./logistic-curve";
 import { addForestPlot } from "./forest-plot";
 import { coxSurvivalColumns } from "./survival";
 import { FormatPanel } from "./format-panel";
@@ -527,7 +527,16 @@ export function GraphView({ node }: { node: ProjectNode }) {
         else addNote(fig, "Run a Gaddum/Schild analysis on this table to draw the Schild plot.", options);
       }
       if (type === "smooth-curve" && smoothResult) addSmoothCurve(fig, columns, options, smoothResult, paint);
-      if (logisticFit) addLogisticCurve(fig, columns, logisticFit, paint);
+      if (type === "logistic-curve") {
+        // A non-binary Y has no fit to draw: the build already leaves the
+        // points on their own scale, and the runner's error is shown as a
+        // note (F-02) instead of a silent empty 0–1 plot.
+        if (logisticFit) addLogisticCurve(fig, columns, logisticFit, paint);
+        else {
+          const note = logisticCurveNote(logisticOutcome);
+          if (note) addNote(fig, note, options);
+        }
+      }
       if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint);
       if (type === "observed-fitted" && poissonResult)
         addObservedFitted(fig, columns, poissonResult, poissonParams, paint);
@@ -596,6 +605,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
     specialParams,
     smoothResult,
     logisticFit,
+    logisticOutcome,
     coxResult,
     poissonResult,
     poissonParams,

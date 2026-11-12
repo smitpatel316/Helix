@@ -57,7 +57,7 @@ import {
   withoutColors,
 } from "../src/lib/palettes";
 import { deletePalette, keepPalette, loadMyPalettes } from "../src/store/my-palettes";
-import { GRAPHS, GRAPH_OPTIONS_BY_TABLE, newGraphOptions, type GraphFigure } from "../src/views/graphs";
+import { GRAPHS, GRAPH_OPTIONS_BY_TABLE, newGraphOptions, plotColumns, type GraphFigure } from "../src/views/graphs";
 import { isGrouped, isNested, readTable, setColumns, type Dataset } from "../src/lib/dataset";
 import { adjustComparisonRows, adjustPValues, incompleteRows, missingColumn } from "../src/stats/column/base";
 import { dagostinoPearson } from "../src/stats/column/shapiro-wilk";
@@ -83,6 +83,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AnalysisResultsView, headline } from "../src/views/analyses/analysis-results-view";
 import { fitWidths, fitZoom } from "../src/store/use-layout";
 import { computeGroupedDEG } from "../src/lib/deg";
+import { logisticCurveNote } from "../src/views/graphs/logistic-curve";
 import { runAnalysis } from "../src/stats";
 import {
   computeFrequencyBins,
@@ -3486,6 +3487,72 @@ check("multiple logistic regression refuses a non-binary or constant outcome, an
     await runAnalysis("multiple-logistic-regression", table(["0", "1", "0"], ["22", "25", "28"], ["0", "1", "0"]), params),
     { error: "Not enough complete rows (3) to fit 2 predictor(s). Enter more data and try again." },
   );
+});
+
+check("a logistic curve on a non-binary Y shows the points and says the outcome must be 0/1 (F-02)", async () => {
+  // The textbook dose-response table (F-02's fixture): X −2..2, Response 2..98.
+  const textbook: TableData = {
+    columns: ["Title", "X", "Response"],
+    rows: [
+      [null, "-2", "2"],
+      [null, "-1.5", "5"],
+      [null, "-1", "12"],
+      [null, "-0.5", "30"],
+      [null, "0", "50"],
+      [null, "0.5", "70"],
+      [null, "1", "88"],
+      [null, "1.5", "95"],
+      [null, "2", "98"],
+    ],
+  };
+  // The binary fixture (reference.ts's `logistic`): X 0..9, Response 0/0/0/0/1/0/1/1/1/1.
+  const binary: TableData = {
+    columns: ["Title", "X", "Response"],
+    rows: [
+      [null, "0", "0"],
+      [null, "1", "0"],
+      [null, "2", "0"],
+      [null, "3", "0"],
+      [null, "4", "1"],
+      [null, "5", "0"],
+      [null, "6", "1"],
+      [null, "7", "1"],
+      [null, "8", "1"],
+      [null, "9", "1"],
+    ],
+  };
+  const build = (data: TableData) => {
+    const opts = newGraphOptions("logistic-curve");
+    return GRAPHS["logistic-curve"].build(
+      plotColumns(readTable(data), "logistic-curve", opts, "xy"),
+      opts,
+      paintOf(opts, 1),
+      readTable(data).titles,
+    );
+  };
+  // Binary, as designed: the fixed 0–1 axis with 0/1 ticks.
+  const binaryFig = build(binary);
+  const binaryY = binaryFig.layout.yaxis as { range: number[]; autorange: boolean; tickvals: number[] };
+  deepStrictEqual(binaryY.range, [-0.05, 1.05]);
+  strictEqual(binaryY.autorange, false);
+  deepStrictEqual(binaryY.tickvals, [0, 1]);
+  // Non-binary: no fixed 0–1 range — Plotly autoranges, so all 9 points stay visible.
+  const fig = build(textbook);
+  const yaxis = fig.layout.yaxis as { range?: number[]; autorange?: boolean };
+  ok(yaxis.range === undefined || yaxis.range[1] >= 98, `logistic Y range: ${JSON.stringify(yaxis.range)}`);
+  ok(yaxis.autorange !== false, "logistic Y axis must autorange on a non-binary Y");
+  const [trace] = fig.data as { y?: number[] }[];
+  deepStrictEqual(trace?.y, [2, 5, 12, 30, 50, 70, 88, 95, 98]);
+  // The runner's error becomes the on-graph note; a good fit, or a fit still
+  // running, becomes no note.
+  const bad = await runAnalysis("simple-logistic-regression", textbook, {});
+  ok("error" in bad, "the textbook table must refuse simple logistic regression");
+  const note = logisticCurveNote(bad);
+  ok(note?.includes("0/1"), `logistic note: ${note}`);
+  const good = await runAnalysis("simple-logistic-regression", binary, {});
+  ok(!("error" in good), `binary logistic fit: ${"error" in good ? good.error : "ok"}`);
+  strictEqual(logisticCurveNote(good), null);
+  strictEqual(logisticCurveNote(null), null);
 });
 
 check("the poisson regression wizard asks for the dependent, predictors, and quasi-Poisson", () => {
