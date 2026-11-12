@@ -3846,6 +3846,19 @@ check(".pzfx import reads an XY table with replicates", () => {
   ]);
 });
 
+check(".pzfx import keeps date X values as row titles", () => {
+  const { imported, table } = importedTable("x_date");
+  strictEqual(table.name, "Sample Data");
+  strictEqual(table.tableType, "xy");
+  deepStrictEqual(table.data!.columns, ["Title", "Date X", "Observation"]);
+  strictEqual(table.data!.rows.length, 50);
+  deepStrictEqual(table.data!.rows[0], ["16-Jan-2004", "0", "120"]);
+  deepStrictEqual(table.data!.rows[1], ["9-Apr-2009", "5.22929500342231", "64"]);
+  deepStrictEqual(table.data!.rows[2], ["1-Mar-2012", "8.12320328542094", "46"]);
+  deepStrictEqual(table.data!.rows[49], ["17-Oct-2018", "14.7515400410678", "87"]);
+  ok(imported.issues.some((i) => i.message.includes("kept as row titles")), "says the dates were kept as row titles");
+});
+
 check(".pzfx import reads a Survival table (time + event codes)", () => {
   const { imported, table } = importedTable("survival");
   strictEqual(table.tableType, "survival");
