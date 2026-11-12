@@ -62,6 +62,7 @@ import { isGrouped, isNested, readTable, setColumns, type Dataset } from "../src
 import { adjustComparisonRows, adjustPValues, incompleteRows, missingColumn } from "../src/stats/column/base";
 import { compareTwoGroupsSpec } from "../src/stats/column/compare-two-groups";
 import { kruskalWallisSpec } from "../src/stats/column/kruskal-wallis";
+import { anovaSpec } from "../src/stats/column/anova";
 import { dagostinoPearson } from "../src/stats/column/shapiro-wilk";
 import { parseGroupLevels, toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
 import { addNote, movedText, paintOf, vectorTraces, visibleOutline, withCaps } from "../src/views/graphs/plot-helpers";
@@ -316,7 +317,9 @@ check("a dropped param value falls back to its default, and says so", () => {
   deepStrictEqual(paramsOf(deming, "m5d"), { y: "Y1", lambda: 1 });
 
   const multi = withAnalysis("m5e", "multiple-t-tests", { correction: "bogus", gaussian: "yes" });
-  deepStrictEqual(paramsOf(multi, "m5e"), { paired: false, gaussian: true, pooledSd: false, correction: "holm" });
+  // Both values were written and unusable, so both fall back; keys the file
+  // never wrote stay absent (the runner's own fallbacks cover them).
+  deepStrictEqual(paramsOf(multi, "m5e"), { gaussian: true, correction: "holm" });
 
   // A dropped `q` was already safe (the runner falls back to 1); the reader
   // still leaves it out, and the method stays.
@@ -378,6 +381,77 @@ check("one bad entry in a param list leaves the rest alone", () => {
   const graph = read(JSON.stringify(file));
   deepStrictEqual((graph.project.nodes.g1 as ProjectNode).graphOptions?.sigPairs, ["A-B", "C-D"]);
   ok(graph.issues.some((i) => i.message.includes("“sigPairs”") && i.message.includes("1 invalid entry")));
+});
+
+// R2 M7: a choice value from another test's family is left out at load and
+// falls back to the default, with a warning — it used to be silently
+// reinterpreted (ANOVA `posthoc: "dunn"` ran Dunnett's T3 math under a Dunn's
+// label; `"tukey"` on Kruskal-Wallis ran Dunn regardless; `method: "spline"`
+// on a correlation was silently Pearson). Tests whose runner already refuses
+// a cross-family value with a clean error keep the value, so the error still
+// reaches the user: nested/three-way ANOVA posthoc, spline-lowess method.
+check("a cross-family choice value falls back to the default", () => {
+  const withAnalysis = (id: string, type: string, params: unknown) => {
+    const file = JSON.parse(serializeProjectFile(payload)) as { project: ProjectFilePayload };
+    file.project.nodes[id] = {
+      id,
+      type: "analysis",
+      name: id,
+      parentId: "t1",
+      analysisType: type,
+      analysisParams: params,
+    } as ProjectNode;
+    file.project.childOrder.t1 = [...file.project.childOrder.t1, id];
+    return read(JSON.stringify(file));
+  };
+  const paramsOf = (result: ReturnType<typeof read>, id: string) =>
+    (result.project.nodes[id] as ProjectNode).analysisParams as Record<string, unknown>;
+  const groups = [
+    { name: "A", values: [1, 2, 3] },
+    { name: "B", values: [2, 3, 4] },
+    { name: "C", values: [3, 4, 5] },
+  ];
+
+  const anova = withAnalysis("m7a", "anova", { posthoc: "dunn" });
+  deepStrictEqual(paramsOf(anova, "m7a"), { posthoc: "none" });
+  ok(anova.issues.some((i) => i.message.includes("“posthoc”") && i.message.includes("doesn't offer")));
+  // No T3 math runs for the fallen-back params.
+  ok(!anovaSpec.rCode(groups, paramsOf(anova, "m7a") as never).includes("smm("));
+
+  const kw = withAnalysis("m7b", "kruskal-wallis", { posthoc: "tukey" });
+  deepStrictEqual(paramsOf(kw, "m7b"), { posthoc: "none" });
+  ok(kw.issues.some((i) => i.message.includes("“posthoc”") && i.message.includes("doesn't offer")));
+  ok(!kruskalWallisSpec.rCode(groups, paramsOf(kw, "m7b") as never).includes("Rbar<-"));
+
+  const friedman = withAnalysis("m7c", "friedman", { posthoc: "bonferroni" });
+  deepStrictEqual(paramsOf(friedman, "m7c"), { posthoc: "none" });
+
+  const corr = withAnalysis("m7d", "correlation", { method: "spline", mode: "x-vs-every-y" });
+  deepStrictEqual(paramsOf(corr, "m7d"), { method: "pearson", mode: "x-vs-every-y" });
+
+  const matrix = withAnalysis("m7e", "correlation-matrix", { method: "lowess" });
+  deepStrictEqual(paramsOf(matrix, "m7e"), { method: "pearson" });
+
+  const outliers = withAnalysis("m7f", "outliers", { method: "pearson", q: 1 });
+  deepStrictEqual(paramsOf(outliers, "m7f"), { method: "rout", q: 1 });
+
+  // Each family's own values pass through untouched, with no warning.
+  const own = withAnalysis("m7g", "anova", { posthoc: "dunnett", control: "A" });
+  deepStrictEqual(paramsOf(own, "m7g"), { posthoc: "dunnett", control: "A" });
+  strictEqual(own.issues.length, 0);
+  const ownKw = withAnalysis("m7h", "kruskal-wallis", { posthoc: "dunn-sidak" });
+  deepStrictEqual(paramsOf(ownKw, "m7h"), { posthoc: "dunn-sidak" });
+  const ownCorr = withAnalysis("m7i", "correlation", { method: "spearman" });
+  deepStrictEqual(paramsOf(ownCorr, "m7i"), { method: "spearman" });
+
+  // Runners that refuse cross-family values cleanly keep them, so the user
+  // still gets the error instead of a silent fallback.
+  const nested = withAnalysis("m7j", "nested-anova", { posthoc: "dunn" });
+  deepStrictEqual(paramsOf(nested, "m7j"), { posthoc: "dunn" });
+  const threeWay = withAnalysis("m7k", "three-way-anova", { posthoc: "sidak" });
+  deepStrictEqual(paramsOf(threeWay, "m7k"), { posthoc: "sidak" });
+  const spline = withAnalysis("m7l", "spline-lowess", { method: "pearson" });
+  deepStrictEqual(paramsOf(spline, "m7l"), { method: "pearson" });
 });
 
 // Quirk 2: the "Project Updated" notice must not go through the native dialog —
@@ -773,7 +847,8 @@ check("a file is never trusted: unknown types, R code in params, a huge graph", 
   const { project, issues } = read(JSON.stringify(file));
   strictEqual(project.nodes.t1.tableType, "column");
   strictEqual(issues.filter((i) => /doesn't know/.test(i.message)).length, 2);
-  deepStrictEqual(project.nodes.a2.analysisParams, { tails: "less", gaussian: true, y: "Dose (µM)" });
+  // R2 M6: `datasets` keeps its usable entry instead of dropping the whole list.
+  deepStrictEqual(project.nodes.a2.analysisParams, { tails: "less", gaussian: true, y: "Dose (µM)", datasets: ["A"] });
   const o = project.nodes.g1.graphOptions!;
   deepStrictEqual([o.width, o.height], [2400, 120]);
   ok("error" in (await runAnalysis("constructor" as never, project.nodes.t1.data!)));
@@ -833,7 +908,8 @@ check("a file's choices and numbers stay within what Helix offers", () => {
     [20, 1, 0, 0.5, 28, 0, 0.5],
   );
   deepStrictEqual(o.points?.["A#0"], { size: 20, fill: 1, outline: 6 });
-  deepStrictEqual(project.nodes.a3.analysisParams, { q: 50, model: "line", method: "pearson" });
+  // R2 M7: `method: "pearson"` is not an outliers method, so it falls back to ROUT.
+  deepStrictEqual(project.nodes.a3.analysisParams, { q: 50, model: "line", method: "rout" });
 });
 
 // ── Tables ───────────────────────────────────────────────────────────────

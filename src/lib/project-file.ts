@@ -487,6 +487,33 @@ const PARAM_DEFAULTS: Record<string, Record<string, unknown>> = {
   "nested-anova": { posthoc: "none" },
   "deming-regression": { lambda: 1 },
   "multiple-t-tests": { paired: false, gaussian: true, pooledSd: false, correction: "holm" },
+  // M7 fallbacks: a cross-family choice left out below lands on these.
+  anova: { posthoc: "none" },
+  correlation: { method: "pearson" },
+  "correlation-matrix": { method: "pearson" },
+  outliers: { method: "rout" },
+};
+
+/** Choice values only one family of analyses may use (M7). The merged PARAMS
+ *  lists admit them all, so each runner reinterprets the other family's
+ *  values: `posthoc: "dunn"` on a one-way ANOVA runs Dunnett's T3 math under
+ *  a Dunn's label, `"tukey"`/`"bonferroni"` on Kruskal-Wallis or Friedman
+ *  runs Dunn regardless, `method: "spline"|"lowess"` on a correlation is
+ *  silently treated as Pearson. Restricted here, at load, to the list its
+ *  own analysis offers; anything else is left out and falls back to the
+ *  default above, with a warning. Analyses whose runner already refuses
+ *  cross-family values with a clean error — nested-anova and three-way-anova
+ *  posthoc, two-way-anova posthoc, spline-lowess method, repeated-measures
+ *  ANOVA posthoc — are left alone: the error is the honest answer there.
+ *  The merged `model` list is likewise safe (each runner validates and
+ *  errors cleanly). */
+const PARAM_CHOICES: Record<string, Record<string, readonly string[]>> = {
+  anova: { posthoc: ANOVA_POSTHOCS },
+  "kruskal-wallis": { posthoc: RANK_POSTHOCS },
+  friedman: { posthoc: RANK_POSTHOCS },
+  correlation: { method: CORRELATION_METHODS },
+  "correlation-matrix": { method: CORRELATION_METHODS },
+  outliers: { method: ["rout", "grubbs"] },
 };
 
 /** A collection param, keeping its usable entries: one bad entry used to
@@ -561,14 +588,34 @@ function readParams(
     return value;
   };
   const sanitized = Object.fromEntries(Object.entries(p).map(([k, v]) => [k, read(k, v)]));
+  // A choice from another test's family is left out (M7) — it would be
+  // silently reinterpreted by this test's runner — and falls back to the
+  // default below, with a warning of its own (not the M5 one).
+  const choices = (analysisType ? PARAM_CHOICES[analysisType] : undefined) ?? {};
+  const restricted = new Set<string>();
+  for (const [key, allowed] of Object.entries(choices)) {
+    const value = sanitized[key];
+    if (value !== undefined && !allowed.includes(value as string)) {
+      issues.push({
+        severity: "warning",
+        message: `Analysis “${label}”: “${key}” was “${value}”, which this test doesn't offer, so the usual default applies.`,
+      });
+      delete sanitized[key];
+      restricted.add(key);
+    }
+  }
   // A value the reader left out falls back to its runner default (M5) — a
   // dropped `gaussian` must not silently turn a t test into a Wilcoxon, a
   // dropped `tails` must not reach R as "undefined", a dropped `posthoc`
-  // must not silently run Dunn. Keys the file never had are filled the same
-  // way, silently: an older file's partial params are brought up to date.
+  // must not silently run Dunn. Only keys the file actually wrote get a
+  // substituted default: a key the file never had stays absent — the
+  // runner's own fallbacks cover it, and an older file (an outliers
+  // analysis with `{q}` only) still opens clean instead of "updated".
   const defaults = (analysisType ? PARAM_DEFAULTS[analysisType] : undefined) ?? {};
+  const present = new Set(Object.keys(p));
+  const fill = Object.fromEntries(Object.entries(defaults).filter(([k]) => present.has(k)));
   for (const key of Object.keys(p)) {
-    if (sanitized[key] === undefined && isIn(PARAMS, key) && key in defaults) {
+    if (sanitized[key] === undefined && isIn(PARAMS, key) && key in defaults && !restricted.has(key)) {
       issues.push({
         severity: "warning",
         message: `Analysis “${label}”: “${key}” was not a usable value, so the usual default applies.`,
@@ -577,7 +624,7 @@ function readParams(
   }
   // Strip the left-out values first, so a dropped key falls back to its
   // default instead of shadowing it with `undefined`.
-  return defined({ ...defaults, ...defined(sanitized) }) as unknown as AnalysisParams;
+  return defined({ ...fill, ...defined(sanitized) }) as unknown as AnalysisParams;
 }
 
 const NODE_TYPES: NodeType[] = ["table", "analysis", "graph", "figure"];
