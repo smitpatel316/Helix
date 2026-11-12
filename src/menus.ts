@@ -19,7 +19,7 @@ export const separator = { item: "Separator" } as const;
 
 // The icon comes from the app bundle. The website and GitHub are in the Help menu.
 const ABOUT = {
-  name: "Helix", // spelled out: in development the process is named "helix"
+  name: "Titer", // spelled out: in development the process is named "titer"
   version,
   shortVersion: "", // empty: no "(1.0.0)" after the version
   credits: "Scientific data analysis, simplified.",
@@ -62,31 +62,29 @@ export function projectItems(
   ];
 }
 
-/** Sets the app's menu bar: the Helix menu, `menus`, then Window and Help. */
+/** Sets the app's menu bar: the Titer menu, `menus`, then Window and Help. */
 export function setMenuBar(menus: MenuItems) {
-  const helix = {
-    text: "Helix",
+  const titer = {
+    text: "Titer",
     items: [
-      { item: { About: ABOUT }, text: "About Helix" },
+      { item: { About: ABOUT }, text: "About Titer" },
       { text: "Check for Updates…", action: () => void checkForUpdates() },
       separator,
       { item: "Services" },
       separator,
-      { item: "Hide", text: "Hide Helix" },
+      { item: "Hide", text: "Hide Titer" },
       { item: "HideOthers" },
       { item: "ShowAll" },
       separator,
       // The shell closes every project window first: each asks about its unsaved changes.
-      { item: "Quit", text: "Quit Helix" },
+      { item: "Quit", text: "Quit Titer" },
     ],
   } as const;
   return installMenuBar(
-    [helix, ...menus],
+    [titer, ...menus],
     [{ item: "Minimize" }, { item: "Maximize" }, separator, { item: "BringAllToFront" }],
     [
-      { text: "Helix Website", action: () => openLink("website") },
-      { text: "Helix on GitHub", action: () => openLink("github") },
-      { text: "Buy Me a Coffee", action: () => openLink("coffee") },
+      { text: "Titer on GitHub", action: () => openLink("github") },
       separator,
       { text: "Sample Project", action: () => void openSample() },
     ],

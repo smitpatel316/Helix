@@ -1,4 +1,4 @@
-// Helix's native shell: the project windows showing the web app (src/), a hidden
+// Titer's native shell: the project windows showing the web app (src/), a hidden
 // window running R (src/engine.ts), and the few things a web page can't do on its
 // own. See src/native.ts for the other side.
 //
@@ -45,7 +45,7 @@ struct Document {
 
 /// The project windows ("project-1", "project-2"…), one project each. Opening a
 /// project brings its window forward if it is open already, fills the front
-/// window if that one is blank, or opens a new window. Helix stays open without
+/// window if that one is blank, or opens a new window. Titer stays open without
 /// any, as Pages does: only quitting closes them all and then ends (`quitting`).
 #[derive(Default)]
 struct Projects(Mutex<ProjectWindows>);
@@ -111,14 +111,14 @@ fn build_window(app: &AppHandle, label: String) -> tauri::Result<()> {
     let front = front_window(app);
     // The first window appears where the last one was; the others appear once cascaded.
     let config = WindowConfig { label, visible: front.is_none(), ..template.clone() };
-    // A project window only ever shows Helix: a link in a text a file brought (a graph's
+    // A project window only ever shows Titer: a link in a text a file brought (a graph's
     // title…) neither takes the window elsewhere nor opens another.
     let window = WebviewWindowBuilder::from_config(app, &config)?
         .on_navigation(|url| url.scheme() == "tauri" || (cfg!(debug_assertions) && url.host_str() == Some("localhost")))
         .on_new_window(|_, _| NewWindowResponse::Deny)
         .build()?;
     if let Some(front) = front {
-        // A front window still being made (Helix launched by opening a file) can't say
+        // A front window still being made (Titer launched by opening a file) can't say
         // where it is yet: the new one then keeps the remembered frame.
         if let (Ok(at), Ok(scale), Ok(size)) = (front.outer_position(), front.scale_factor(), front.inner_size()) {
             let at = at.to_logical::<f64>(scale);
@@ -191,7 +191,7 @@ async fn open_projects(app: AppHandle, window: WebviewWindow, paths: Vec<String>
 /// The sample project, which ships inside the app, opened as a new document.
 #[tauri::command]
 async fn open_sample(app: AppHandle, window: WebviewWindow) -> Result<(), String> {
-    let path = app.path().resource_dir().map_err(|e| e.to_string())?.join("Helix Sample.hlx");
+    let path = app.path().resource_dir().map_err(|e| e.to_string())?.join("Titer Sample.hlx");
     let opening = Opening { path: path.to_string_lossy().into_owned(), untitled: true };
     open(&app, Some(window.label().into()), opening).map_err(|e| e.to_string())
 }
@@ -205,7 +205,7 @@ async fn new_project(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn choose_project(app: AppHandle, window: WebviewWindow) {
     let into = window.label().to_string();
-    app.dialog().file().set_title("Open Project").add_filter("Helix Project", &["hlx"]).pick_file(move |file| {
+    app.dialog().file().set_title("Open Project").add_filter("Titer Project", &["hlx"]).pick_file(move |file| {
         if let Some(path) = file.and_then(|file| file.into_path().ok()) {
             let _ = open(&app, Some(into), Opening { path: path.to_string_lossy().into_owned(), untitled: false });
         }
@@ -215,7 +215,7 @@ fn choose_project(app: AppHandle, window: WebviewWindow) {
 /// File ▸ Import Prism File…: the Open panel for a Prism `.pzfx` file.
 /// Non-blocking, like choose_project: blocking_pick_file parks the main
 /// thread on a semaphore while the NSOpenPanel needs that same thread to
-/// process clicks — deadlock, Helix (not responding), 0% CPU (confirmed
+/// process clicks — deadlock, Titer (not responding), 0% CPU (confirmed
 /// Nov 9 on macOS; the same bug froze the picker on Linux). pick_file's
 /// callback fires when the user picks or cancels, and the page then reads
 /// the file (read_prism_text) and imports it. The event carries the path,
@@ -231,17 +231,17 @@ fn choose_prism_file(app: AppHandle, window: WebviewWindow) {
     );
 }
 
-/// A window refused to close (its user chose Cancel): Helix doesn't quit after all.
+/// A window refused to close (its user chose Cancel): Titer doesn't quit after all.
 #[tauri::command]
 fn cancel_quit(projects: State<Projects>) {
     projects.0.lock().unwrap().quitting = false;
 }
 
 // ── Session ──────────────────────────────────────────────────────────────
-// The project files still open when Helix quits, reopened at the next launch, each
+// The project files still open when Titer quits, reopened at the next launch, each
 // in its window (as Pages does). A project closed before quitting doesn't come back.
 
-/// One path per line, in Helix's data folder.
+/// One path per line, in Titer's data folder.
 fn session_file(app: &AppHandle) -> Option<std::path::PathBuf> {
     app.path().app_data_dir().ok().map(|dir| dir.join("open-projects"))
 }
@@ -263,8 +263,8 @@ fn save_session(app: &AppHandle) {
 }
 
 /// Reopens the last session's projects that are still there, else a blank project. Like the
-/// Finder's, each goes through `open`: a file already opened (Helix launched by opening it)
-/// isn't opened twice. A project that can't be reopened never stops Helix.
+/// Finder's, each goes through `open`: a file already opened (Titer launched by opening it)
+/// isn't opened twice. A project that can't be reopened never stops Titer.
 fn restore_session(app: &AppHandle) {
     let text = session_file(app).and_then(|file| fs::read_to_string(file).ok()).unwrap_or_default();
     for path in text.lines().filter(|path| Path::new(path).is_file()) {
@@ -278,13 +278,13 @@ fn restore_session(app: &AppHandle) {
 
 // ── Files ────────────────────────────────────────────────────────────────
 
-/// Only the file types Helix actually reads or writes, so even a compromised
+/// Only the file types Titer actually reads or writes, so even a compromised
 /// page can't touch anything else on disk.
 fn check_extension(path: &str, allowed: &[&str]) -> Result<(), String> {
     let ext = Path::new(path).extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
     match ext {
         Some(ext) if allowed.contains(&ext.as_str()) => Ok(()),
-        _ => Err(format!("Helix can't access {path}")),
+        _ => Err(format!("Titer can't access {path}")),
     }
 }
 
@@ -322,7 +322,7 @@ fn write_atomically(path: &Path, data: &[u8]) -> Result<(), String> {
 }
 
 // ── My Palettes ──────────────────────────────────────────────────────────
-// The palettes made on this Mac, for every project and window: JSON in Helix's data
+// The palettes made on this Mac, for every project and window: JSON in Titer's data
 // folder, read and checked by the page (src/store/my-palettes.ts).
 
 const PALETTES_FILE: &str = "palettes.json";
@@ -345,7 +345,7 @@ fn write_my_palettes(app: AppHandle, text: String) -> Result<(), String> {
 // command keeps a non-macOS twin below it with the same signature so the page
 // (src/native.ts) can call it on Linux too.
 
-/// Hands Helix's recent projects (newest first) to macOS, which lists them in the
+/// Hands Titer's recent projects (newest first) to macOS, which lists them in the
 /// Dock icon's Open Recent menu. The system list is rebuilt to match File ▸ Open Recent.
 #[cfg(target_os = "macos")]
 #[tauri::command]
@@ -363,7 +363,7 @@ fn set_recent_documents(app: AppHandle, paths: Vec<String>) {
     });
 }
 
-/// The accent color chosen in System Settings ▸ Appearance, as `#RRGGBB`: what Helix
+/// The accent color chosen in System Settings ▸ Appearance, as `#RRGGBB`: what Titer
 /// highlights with (selections, focus, buttons), as every Mac app does.
 #[cfg(target_os = "macos")]
 #[tauri::command]
@@ -383,16 +383,15 @@ fn accent_color() -> Option<String> {
     }
 }
 
-/// Helix's website, GitHub page, releases or Buy Me a Coffee page, in the default
-/// browser: fixed addresses, so the page can't open anything else.
+/// Titer's GitHub page or releases, in the default browser: fixed addresses,
+/// so the page can't open anything else. (No website or Buy Me a Coffee link:
+/// there is no Titer site, and the coffee URL is still to be confirmed.)
 #[cfg(target_os = "macos")]
 #[tauri::command]
 fn open_link(link: String) {
     let url = match link.as_str() {
-        "website" => c"https://www.helix-desktop.com",
-        "github" => c"https://github.com/mickaphd/Helix",
-        "releases" => c"https://github.com/mickaphd/Helix/releases/latest",
-        "coffee" => c"https://buymeacoffee.com/mickaphd",
+        "github" => c"https://github.com/smitpatel316/Helix",
+        "releases" => c"https://github.com/smitpatel316/Helix/releases/latest",
         _ => return,
     };
     unsafe {
@@ -403,11 +402,11 @@ fn open_link(link: String) {
     }
 }
 
-/// Quitting (Helix ▸ Quit, the Dock, the app switcher, logout) asks the app delegate
-/// `applicationShouldTerminate:`, which tao doesn't answer, so Helix would quit
+/// Quitting (Titer ▸ Quit, the Dock, the app switcher, logout) asks the app delegate
+/// `applicationShouldTerminate:`, which tao doesn't answer, so Titer would quit
 /// without asking to save. This answers "not now" and closes the project windows
 /// instead: each asks about its unsaved changes, and once the last one is closed
-/// Helix ends (see `main`).
+/// Titer ends (see `main`).
 fn ask_before_quitting(app: &AppHandle) {
     #[cfg(target_os = "macos")]
     ask_before_quitting_macos(app);
@@ -415,11 +414,11 @@ fn ask_before_quitting(app: &AppHandle) {
     let _ = app;
 }
 
-/// Quitting (Helix ▸ Quit, the Dock, the app switcher, logout) asks the app delegate
-/// `applicationShouldTerminate:`, which tao doesn't answer, so Helix would quit
+/// Quitting (Titer ▸ Quit, the Dock, the app switcher, logout) asks the app delegate
+/// `applicationShouldTerminate:`, which tao doesn't answer, so Titer would quit
 /// without asking to save. This answers "not now" and closes the project windows
 /// instead: each asks about its unsaved changes, and once the last one is closed
-/// Helix ends (see `main`).
+/// Titer ends (see `main`).
 #[cfg(target_os = "macos")]
 fn ask_before_quitting_macos(app: &AppHandle) {
     static APP: OnceLock<AppHandle> = OnceLock::new();
@@ -447,7 +446,7 @@ fn ask_before_quitting_macos(app: &AppHandle) {
     }
 }
 
-/// macOS 27 hides menu items' pictures unless told to show them. Helix's own (a
+/// macOS 27 hides menu items' pictures unless told to show them. Titer's own (a
 /// palette's band, a color's swatch) are what their item says, so they stay; the
 /// system's symbols (template images) keep macOS's choice. A menu of pictures alone
 /// (swatches, shapes) drops the column kept for check marks, so it is no wider than
@@ -457,7 +456,7 @@ fn show_menu_pictures() {
     show_menu_pictures_macos();
 }
 
-/// macOS 27 hides menu items' pictures unless told to show them. Helix's own (a
+/// macOS 27 hides menu items' pictures unless told to show them. Titer's own (a
 /// palette's band, a color's swatch) are what their item says, so they stay; the
 /// system's symbols (template images) keep macOS's choice. A menu of pictures alone
 /// (swatches, shapes) drops the column kept for check marks, so it is no wider than
@@ -499,11 +498,11 @@ fn show_menu_pictures_macos() {
         let Some(delegate) = delegate.as_ref() else { return };
         let imp: Imp = std::mem::transmute(item_added as extern "C-unwind" fn(_, _, _));
         let class = delegate.class() as *const AnyClass as *mut AnyClass;
-        objc2::ffi::class_addMethod(class, objc2::sel!(helixMenuItemAdded:), imp, c"v@:@".as_ptr());
+        objc2::ffi::class_addMethod(class, objc2::sel!(titerMenuItemAdded:), imp, c"v@:@".as_ptr());
         let name: *mut AnyObject =
             objc2::msg_send![objc2::class!(NSString), stringWithUTF8String: c"NSMenuDidAddItemNotification".as_ptr()];
         let center: *mut AnyObject = objc2::msg_send![objc2::class!(NSNotificationCenter), defaultCenter];
-        let _: () = objc2::msg_send![center, addObserver: delegate, selector: objc2::sel!(helixMenuItemAdded:), name: name, object: std::ptr::null_mut::<AnyObject>()];
+        let _: () = objc2::msg_send![center, addObserver: delegate, selector: objc2::sel!(titerMenuItemAdded:), name: name, object: std::ptr::null_mut::<AnyObject>()];
     }
 }
 
@@ -530,10 +529,8 @@ fn accent_color() -> Option<String> {
 #[tauri::command]
 fn open_link(link: String) {
     let url = match link.as_str() {
-        "website" => "https://www.helix-desktop.com",
-        "github" => "https://github.com/mickaphd/Helix",
-        "releases" => "https://github.com/mickaphd/Helix/releases/latest",
-        "coffee" => "https://buymeacoffee.com/mickaphd",
+        "github" => "https://github.com/smitpatel316/Helix",
+        "releases" => "https://github.com/smitpatel316/Helix/releases/latest",
         _ => return,
     };
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
@@ -630,7 +627,7 @@ fn main() {
             r_ready
         ])
         .build(tauri::generate_context!())
-        .expect("failed to start Helix")
+        .expect("failed to start Titer")
         .run(|app, event| match event {
             // Files opened from the Finder: a double-click, Open With, a drop on the Dock icon.
             // macOS only: these RunEvent variants don't exist on Linux.
@@ -657,7 +654,7 @@ fn main() {
                     if quitting {
                         app.exit(0);
                     } else {
-                        // Helix stays open: the engine window sets the menu bar for no window.
+                        // Titer stays open: the engine window sets the menu bar for no window.
                         let _ = app.emit_to("engine", "no-windows", ());
                     }
                 }

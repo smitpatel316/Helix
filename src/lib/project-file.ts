@@ -84,7 +84,7 @@ export interface ProjectFilePayload {
 
 export function serializeProjectFile({ nodes, rootOrder, childOrder, activeNodeId }: ProjectFilePayload): string {
   const project: ProjectFilePayload = { nodes, rootOrder, childOrder, activeNodeId };
-  return format({ app: "helix", schemaVersion: 1, savedAt: new Date().toISOString(), project }, "") + "\n";
+  return format({ app: "titer", schemaVersion: 1, savedAt: new Date().toISOString(), project }, "") + "\n";
 }
 
 /** Indented JSON, with each list of plain values (a table row, the column names)
@@ -615,15 +615,17 @@ const contents = (v: unknown) =>
   );
 
 /** Reads a `.hlx` file forgivingly. `{ error }` only when nothing usable remains;
- *  otherwise the project, what the user should know about it, and whether Helix changed
- *  anything as it read it (`updated`: repaired, or brought up to date from an older Helix),
+ *  otherwise the project, what the user should know about it, and whether Titer changed
+ *  anything as it read it (`updated`: repaired, or brought up to date from an older Titer),
  *  so saving it keeps the project as it is now. */
 export function parseProjectFile(
   raw: unknown,
 ): { project: ProjectFilePayload; issues: ProjectIssue[]; updated: boolean } | { error: string } {
-  if (!isObj(raw)) return { error: "Not a valid Helix project file." };
+  if (!isObj(raw)) return { error: "Not a valid Titer project file." };
   const file = canonical(raw, FILE_KEYS);
-  if (lower(file.app) !== "helix") return { error: "This file was not created by Helix." };
+  // Files from before the rename carry app "helix"; both are accepted.
+  if (lower(file.app) !== "helix" && lower(file.app) !== "titer")
+    return { error: "This file was not created by Titer." };
   const project = isObj(file.project) ? canonical(file.project, PROJECT_KEYS) : null;
   if (!project || !isObj(project.nodes)) return { error: "This file's project data is missing or corrupted." };
 

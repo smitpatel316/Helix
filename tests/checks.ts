@@ -207,7 +207,7 @@ const treatments = (columns: string[]): TableData => ({
 
 check("a file Helix had to repair or bring up to date opens to be saved; a sound one doesn't", () => {
   strictEqual(read(serializeProjectFile(payload)).updated, false);
-  strictEqual(read(readFileSync("samples/Helix Sample.hlx", "utf8")).updated, false);
+  strictEqual(read(readFileSync("samples/Titer Sample.hlx", "utf8")).updated, false);
   const file = () => JSON.parse(serializeProjectFile(payload));
   const repaired = file();
   repaired.project.nodes.g1.graphOptions.lineDash = "zigzag";
@@ -2624,7 +2624,7 @@ check("the sample project ships a 2-panel figure", () => {
     ["g-viab", "g-volume-bars"],
   );
   // The sample file on disk round-trips with its figure intact.
-  const { project } = read(readFileSync("samples/Helix Sample.hlx", "utf8"));
+  const { project } = read(readFileSync("samples/Titer Sample.hlx", "utf8"));
   deepStrictEqual(project.nodes["f-main"].panels, figure.panels);
 });
 

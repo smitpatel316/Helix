@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Helix",
+  "productName": "Titer",
   "version": "../package.json",
-  "identifier": "com.helix-desktop.helix",
+  "identifier": "net.smitpatel.helix",
   "build": {
     "beforeDevCommand": "npm run web",
     "devUrl": "http://localhost:1420",
@@ -15,7 +15,7 @@
       {
         "label": "project",
         "create": false,
-        "title": "Helix",
+        "title": "Titer",
         "width": 1000,
         "height": 700,
         "minWidth": 820,
@@ -55,11 +55,11 @@
     "copyright": "© 2026 mickaphd",
     "icon": ["icons/icon.png", "icons/icon.icns"],
     "resources": {
-      "../samples/Helix Sample.hlx": "Helix Sample.hlx",
+      "../samples/Titer Sample.hlx": "Titer Sample.hlx",
       "../LICENSE": "LICENSE",
       "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md"
     },
-    "fileAssociations": [{ "ext": ["hlx"], "name": "Helix Project", "role": "Editor" }],
+    "fileAssociations": [{ "ext": ["hlx"], "name": "Titer Project", "role": "Editor" }],
     "macOS": {
       "minimumSystemVersion": "13.3",
       "signingIdentity": "-",

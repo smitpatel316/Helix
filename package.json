@@ -1,5 +1,5 @@
 {
-  "name": "helix",
+  "name": "titer",
   "version": "1.0.7",
   "description": "Scientific data analysis, simplified — an open-source alternative to GraphPad Prism.",
   "private": true,
@@ -9,7 +9,7 @@
     "dev": "tauri dev",
     "build": "tauri build --target aarch64-apple-darwin && tauri build --target x86_64-apple-darwin",
     "build:linux": "tauri build --no-bundle",
-    "install-app": "tauri build --bundles app && rm -rf /Applications/Helix.app && ditto src-tauri/target/release/bundle/macos/Helix.app /Applications/Helix.app",
+    "install-app": "tauri build --bundles app && rm -rf /Applications/Titer.app && ditto src-tauri/target/release/bundle/macos/Titer.app /Applications/Titer.app",
     "web": "vite",
     "check": "tsc --noEmit",
     "sample": "node --import tsx tests/sample-project.ts",
