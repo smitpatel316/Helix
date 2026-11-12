@@ -115,6 +115,7 @@ import { crc32 } from "node:zlib";
 import type { AnalysisOutcome, AnalysisParams, AnalysisResult, MonteCarloParams, RegressionCoefficient, SimulationSpec } from "../src/stats/types";
 import { simulationRCode, validateSimulationSpec } from "../src/stats/simulation/simulate";
 import { aicc, coefficientsForSet, invertMethod, invertModel, nestedPair } from "../src/stats/xy/nonlinear-regression";
+import { parseInhibitorConcentration } from "../src/stats/xy/enzyme-inhibition";
 import { monteCarloRCode, percentile } from "../src/stats/simulation/monte-carlo";
 import { addMonteCarloHistogram } from "../src/views/graphs/monte-carlo-histogram";
 
@@ -4530,6 +4531,30 @@ check("the Monte Carlo histogram draws the bins, shades P < 0.05 and marks the o
   const fig2 = GRAPHS["monte-carlo-histogram"].build([], options, paint);
   addMonteCarloHistogram(fig2, fake("Slope", 0.03), paint);
   deepStrictEqual((fig2.layout.shapes as { type: string }[]).map((s) => s.type), ["line"]);
+});
+
+// ── R2-M1: inhibitor concentration is parsed from the number next to a
+// concentration unit, never a stray leading number ─────────────────────────
+check("parseInhibitorConcentration takes the unit-adjacent number, not the first number", () => {
+  // The finding: "Day 2 — 10 nM", "Exp 1: 5 nM" and "Replicate 1 50 nM"
+  // used to parse as 2, 1 and 1 — a wrong-but-plausible [I] that silently
+  // corrupted Ki, pA2, Kb and dose ratios.
+  const cases: [string, number | undefined][] = [
+    ["Day 2 — 10 nM", 10],
+    ["Exp 1: 5 nM", 5],
+    ["Replicate 1 50 nM", 50],
+    ["10 nM", 10],
+    ["I=5", 5],
+    ["Control", undefined],
+    ["0 nM", 0],
+    ["10 nM Day 2", 10],
+    ["1e-8 M", 1e-8],
+    ["2.5 µM", 2.5],
+    ["Day 2 — 10", 10],
+    ["10 nM, 20 nM", undefined],
+  ];
+  for (const [title, want] of cases)
+    strictEqual(parseInhibitorConcentration(title), want, `${JSON.stringify(title)} should parse as ${want}`);
 });
 
 // ── Run ──────────────────────────────────────────────────────────────────
