@@ -632,6 +632,26 @@ const bindAssocThenDissoc = table(
   ],
 );
 
+/** Association-then-dissociation, zero-median regression (Round 2, M2):
+ *  same true model as bindAssocThenDissoc, on the reported grid
+ *  [0, 12, 20, 30] with Time0=10 — plus a t=0 replicate (the fit needs at
+ *  least 5 points) and a t=2 association point (so Kon/Bmax are identified,
+ *  not just Yat0). The pre-Time0 times are [0, 0, 2], so their median is 0
+ *  and the old Kon start was log(2)/0 = Inf, failing nls outright; the fix
+ *  floors the median at the smallest positive pre-Time0 time (2) and clamps
+ *  the start to [1e5, 1e10]. */
+const bindAssocThenDissocZeroMedian = table(
+  ["Title", "X", "Y"],
+  [
+    ["", "0", "0.5"],
+    ["", "0", "0.5"],
+    ["", "2", "16.9839976982"],
+    ["", "12", "35.8963797358"],
+    ["", "20", "16.4046186402"],
+    ["", "30", "6.3509822174"],
+  ],
+);
+
 /** Enzyme kinetics — Inhibition (plan 17): noiseless by construction on
  *  the shared substrate grid 1–100. enzMixed: Vmax=100, Km=10, Ki=5,
  *  Alpha=2 (mixed equation). enzCompetitive: Vmax=100, Km=10, Ki=5
@@ -2305,6 +2325,12 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
     bindAssocThenDissoc,
     "binding-kinetics",
     { model: "association-then-dissociation", hotNM: 1, time0: 100 },
+  ],
+  [
+    "bindAssocThenDissocZeroMedian",
+    bindAssocThenDissocZeroMedian,
+    "binding-kinetics",
+    { model: "association-then-dissociation", hotNM: 1, time0: 10 },
   ],
   // Enzyme kinetics — Inhibition (plan 17): the noiseless reference cases
   // (coefficients + AICc + notes asserted in disagreements() below), the
@@ -5870,6 +5896,37 @@ async function disagreements(): Promise<string[]> {
     out.push(`Binding assoc-then-dissoc Eq: ${bindStat(atd, "Eq")}, expected 50`);
   if (!closeRel(bindStat(atd, "R squared"), 1, 1e-9))
     out.push(`Binding assoc-then-dissoc R²: ${bindStat(atd, "R squared")}, expected 1`);
+  // Zero-median regression (Round 2, M2): median pre-Time0 time is 0, so the
+  // old Kon start was Inf and nls failed outright — the fit must now succeed
+  // and recover the true parameters (Kon floored at the smallest positive
+  // pre-Time0 time, 2, so the start is finite, ≈3.30e8).
+  const atdZeroMedian = await runAnalysis("binding-kinetics", bindAssocThenDissocZeroMedian, {
+    model: "association-then-dissociation",
+    hotNM: 1,
+    time0: 10,
+  });
+  if ("error" in atdZeroMedian) out.push(`Binding assoc-then-dissoc zero-median: ${atdZeroMedian.error}`);
+  else {
+    for (const [term, want] of [
+      ["Kon", 1e8],
+      ["Koff", 0.1],
+      ["Bmax", 100],
+      ["NS", 0.5],
+    ] as const) {
+      if (!closeRel(bindCoef(atdZeroMedian, term), want, 1e-6))
+        out.push(`Binding assoc-then-dissoc zero-median ${term}: ${bindCoef(atdZeroMedian, term)}, expected ${want}`);
+    }
+    if (!closeRel(bindStat(atdZeroMedian, "Kinetic Kd (nM)"), 1, 1e-6))
+      out.push(
+        `Binding assoc-then-dissoc zero-median kinetic Kd: ${bindStat(atdZeroMedian, "Kinetic Kd (nM)")}, expected 1 nM`,
+      );
+    if (!closeRel(bindStat(atdZeroMedian, "Eq"), 50, 1e-6))
+      out.push(`Binding assoc-then-dissoc zero-median Eq: ${bindStat(atdZeroMedian, "Eq")}, expected 50`);
+    if (!closeRel(bindStat(atdZeroMedian, "R squared"), 1, 1e-9))
+      out.push(`Binding assoc-then-dissoc zero-median R²: ${bindStat(atdZeroMedian, "R squared")}, expected 1`);
+    if (!atdZeroMedian.notes.includes("Kon = 3.299e+08") && !atdZeroMedian.notes.includes("Kon = 329900000"))
+      out.push(`Binding assoc-then-dissoc zero-median notes do not name the finite Kon start: ${atdZeroMedian.notes}`);
+  }
   // Two-series fits: R² per series + pooled, N per series, shared NS/Background noted.
   const twoSeries = await runAnalysis("binding-saturation", bindTotalNs, {
     y: "Total",

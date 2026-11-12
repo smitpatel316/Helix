@@ -212,9 +212,16 @@ function kineticsSpec(model: BindingKineticsModel): ModelSpec {
       // time), so Kob starts near the observed rise rather than at 1e6 —
       // from a flat Kon start the port optimizer stalls at its iteration
       // limit on noiseless data. maxiter is raised for the same reason.
+      // The median is floored at the smallest positive pre-Time0 time (or
+      // Time0/2 when there is none — every pre-Time0 time is 0), and the
+      // Kon start is clamped to [1e5, 1e10]: a zero median would otherwise
+      // make log(2)/0 = Inf, and pmax(Inf, 1e5) = Inf hands nls a
+      // non-finite start and the fit fails outright on fittable data (a
+      // tiny-but-nonzero median likewise explodes the start, stalling the
+      // optimizer). The cap is a start only — Kon itself stays unbounded.
       return {
         kind: "nls",
-        fit: 'f<-function(xv,Kon,Koff,Bmax,NS){Kob<-hot*Kon+Koff;Kd<-Koff/Kon;Eq<-Bmax*hot/(hot+Kd);Yat0<-Eq*(1-exp(-Kob*t0));ifelse(xv<t0,Eq*(1-exp(-Kob*xv)),Yat0*exp(-Koff*(xv-t0)))+NS};m<-nls(y~f(x,Kon,Koff,Bmax,NS),start=list(Kon=pmax((log(2)/median(x[x<t0])-0.5/(max(x)-min(x)))/hot,1e5),Koff=0.5/(max(x)-min(x)),Bmax=max(y),NS=min(y)),algorithm="port",lower=c(0,0,0,-Inf),upper=c(Inf,Inf,Inf,Inf),control=nls.control(maxiter=200))',
+        fit: 'f<-function(xv,Kon,Koff,Bmax,NS){Kob<-hot*Kon+Koff;Kd<-Koff/Kon;Eq<-Bmax*hot/(hot+Kd);Yat0<-Eq*(1-exp(-Kob*t0));ifelse(xv<t0,Eq*(1-exp(-Kob*xv)),Yat0*exp(-Koff*(xv-t0)))+NS};med<-median(x[x<t0]);med<-max(med,min(c(x[x<t0&x>0],t0/2)));kon0<-pmin(pmax((log(2)/med-0.5/(max(x)-min(x)))/hot,1e5),1e10);m<-nls(y~f(x,Kon,Koff,Bmax,NS),start=list(Kon=kon0,Koff=0.5/(max(x)-min(x)),Bmax=max(y),NS=min(y)),algorithm="port",lower=c(0,0,0,-Inf),upper=c(Inf,Inf,Inf,Inf),control=nls.control(maxiter=200))',
         terms: ["Kon", "Koff", "Bmax", "NS"],
         derived: [
           { label: "Kinetic Kd (nM)", expr: 'cf[["Koff"]]/cf[["Kon"]]*1e9' },
@@ -396,13 +403,19 @@ function kineticsStarts(
     case "dissociation-two-phase":
       return `Starting values: Y0 = ${num(yAtMinX)}, Plateau = ${num(yAtMaxX)}, PercentFast = 0.5, KFast = ${num(5 / range)}, KSlow = ${num(0.5 / range)}.`;
     case "association-then-dissociation": {
-      // Kon starts from the association phase's half-time (see kineticsSpec).
+      // Kon starts from the association phase's half-time (see kineticsSpec):
+      // the median pre-Time0 time floored at the smallest positive pre-Time0
+      // time (or Time0/2 when there is none), with the start clamped to
+      // [1e5, 1e10] — mirroring the R spec so the note always names what
+      // nls() actually started from.
       const below = xs.filter((x) => x < atd!.time0).sort((a, b) => a - b);
       const median =
         below.length % 2 === 1
           ? below[(below.length - 1) / 2]
           : (below[below.length / 2 - 1] + below[below.length / 2]) / 2;
-      const kon0 = Math.max((Math.LN2 / median - 0.5 / range) / (atd!.hotNM * 1e-9), 1e5);
+      const positive = below.filter((x) => x > 0);
+      const medEff = Math.max(median, Math.min(...positive, atd!.time0 / 2));
+      const kon0 = Math.min(Math.max((Math.LN2 / medEff - 0.5 / range) / (atd!.hotNM * 1e-9), 1e5), 1e10);
       return `Starting values: Kon = ${num(kon0)}, Koff = ${num(0.5 / range)}, Bmax = ${num(maxY)}, NS = ${num(Math.min(...ys))}.`;
     }
   }
