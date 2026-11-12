@@ -1376,16 +1376,34 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
   // (plan 18's global fits will want the same shape).
   "enzyme-inhibition": {
     questions: (a, table) => [
-      choice("model", "Which inhibition model should be fitted?", [
-        ["mixed", "Mixed model"],
-        ["competitive", "Competitive"],
-        ["noncompetitive", "Noncompetitive"],
-        ["uncompetitive", "Uncompetitive"],
-        ["morrison", "Morrison Ki (tight binding)"],
-      ]),
+      // A global fit needs at least two Y series (the runner errors with
+      // one), so with a single Y data set only Morrison — a single-curve
+      // fit — is offered, and the question says why: otherwise the Y
+      // question's min: 2 can never be met and Next stays disabled with
+      // no message.
+      choice(
+        "model",
+        yNames(table).length >= 2
+          ? "Which inhibition model should be fitted?"
+          : "Which inhibition model should be fitted? Global models need at least two Y data sets — with one Y data set, only Morrison Ki (tight binding) can be fitted.",
+        [
+          ...(yNames(table).length >= 2
+            ? ([
+                ["mixed", "Mixed model"],
+                ["competitive", "Competitive"],
+                ["noncompetitive", "Noncompetitive"],
+                ["uncompetitive", "Uncompetitive"],
+              ] as [string, string][])
+            : []),
+          ["morrison", "Morrison Ki (tight binding)"],
+        ],
+      ),
       {
         id: "y",
-        ask: "Which Y data sets should be fitted? Each is one inhibitor concentration.",
+        ask:
+          a.model === "morrison"
+            ? "Which Y data sets should be fitted? Each is one inhibitor concentration."
+            : "Which Y data sets should be fitted? Each is one inhibitor concentration — at least two for a global fit.",
         kind: "names",
         options: yNames(table),
         min: a.model === "morrison" ? 1 : 2,
