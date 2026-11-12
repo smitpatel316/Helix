@@ -5706,6 +5706,135 @@
    }
   ]
  },
+ "nonlinear-regression doseTextbook {\"model\":\"sigmoidal-4pl-logx\"}": {
+  "testType": "nonlinear-regression",
+  "subtitle": "Sigmoidal, 4PL, X is log(concentration)",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Response"
+   ],
+   "rows": [
+    {
+     "label": "EC50",
+     "values": [
+      0.9999911113
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.8315585203,
+       1.202539807
+      ]
+     ]
+    },
+    {
+     "label": "Span",
+     "values": [
+      102.7023157
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       95.74023418,
+       109.6643973
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      0.9992553645
+     ]
+    },
+    {
+     "label": "Sy.x",
+     "values": [
+      1.355969749
+     ]
+    },
+    {
+     "label": "Sum of squares",
+     "values": [
+      9.193269796
+     ]
+    },
+    {
+     "label": "Degrees of freedom",
+     "values": [
+      5
+     ]
+    },
+    {
+     "label": "N",
+     "values": [
+      9
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": 0,
+    "sd": 1.369306394,
+    "sem": 0.4564354646,
+    "median": 0,
+    "n": 9
+   },
+   {
+    "name": "Response",
+    "mean": 50,
+    "sd": 39.28422075,
+    "sem": 13.09474025,
+    "median": 50,
+    "n": 9
+   }
+  ],
+  "notes": "Least-squares fit (\"Sigmoidal, 4PL, X is log(concentration)\") of “Response” on “X”. 95% CIs are asymptotic (from each parameter's standard error). The first fit did not converge; retried with a relaxed convergence tolerance (tol = 1e-3) and converged.",
+  "coefficients": [
+   {
+    "term": "Bottom",
+    "estimate": -1.351243008,
+    "stdError": 1.582963178,
+    "t": -0.8536161973,
+    "p": 0.4323003606,
+    "low": -5.420379399,
+    "high": 2.717893383
+   },
+   {
+    "term": "Top",
+    "estimate": 101.3510727,
+    "stdError": 1.585721205,
+    "t": 63.91481204,
+    "p": 1.77483466e-8,
+    "low": 97.27484661,
+    "high": 105.4272989
+   },
+   {
+    "term": "LogEC50",
+    "estimate": -0.000003860329358,
+    "stdError": 0.03116155292,
+    "t": -0.0001238811611,
+    "p": 0.9999059478,
+    "low": -0.08010718224,
+    "high": 0.08009946158
+   },
+   {
+    "term": "Hill slope",
+    "estimate": 0.7765701309,
+    "stdError": 0.04579972989,
+    "t": 16.95577971,
+    "p": 0.00001305163117,
+    "low": 0.6588381772,
+    "high": 0.8943020846
+   }
+  ]
+ },
  "spline-lowess doseLog {\"y\":\"Response\",\"method\":\"lowess\",\"f\":0.6666666666666666}": {
   "testType": "spline-lowess",
   "subtitle": "Lowess",
