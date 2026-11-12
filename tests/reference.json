@@ -13536,6 +13536,98 @@
  "binding-kinetics bindAssocThenDissoc {\"model\":\"association-then-dissociation\",\"hotNM\":1,\"time0\":100}": {
   "error": "Time0 must lie strictly inside the observed time range, with data on both sides."
  },
+ "binding-kinetics bindAssocThenDissocZeroMedian {\"model\":\"association-then-dissociation\",\"hotNM\":1,\"time0\":10}": {
+  "testType": "binding-kinetics",
+  "subtitle": "Association then dissociation",
+  "equation": "Y = Eq·(1 − exp(−Kob·X)) + 0.5 for X < 10; Y = YatTime0·exp(−0.1·(X − 10)) + 0.5 after (Kon = 100000000, HotNM = 1 nM)",
+  "stats": [
+   {
+    "label": "Kinetic Kd (nM)",
+    "value": 1
+   },
+   {
+    "label": "Eq",
+    "value": 50
+   },
+   {
+    "label": "R squared",
+    "value": 1
+   },
+   {
+    "label": "Sy.x",
+    "value": 4.077594274e-12
+   },
+   {
+    "label": "Sum of squares",
+    "value": 3.325355013e-23
+   },
+   {
+    "label": "Degrees of freedom",
+    "value": 2
+   },
+   {
+    "label": "N",
+    "value": 6
+   }
+  ],
+  "groups": [
+   {
+    "name": "X",
+    "mean": 10.66666667,
+    "sd": 12.37201142,
+    "sem": 5.050852513,
+    "median": 7,
+    "n": 6
+   },
+   {
+    "name": "Y",
+    "mean": 12.77266305,
+    "sd": 13.47670001,
+    "sem": 5.50183974,
+    "median": 11.37780043,
+    "n": 6
+   }
+  ],
+  "notes": "Binding kinetics fit (\"Association then dissociation\") of \"Y\" on \"X\" (time). Starting values: Kon = 329900000, Koff = 0.01667, Bmax = 35.9, NS = 0.5. HotNM = 1 nM and Time0 = 10 are constrained constants, not fitted parameters.",
+  "coefficients": [
+   {
+    "term": "Kon",
+    "estimate": 100000000,
+    "stdError": 0.0001437303431,
+    "t": 695747312900,
+    "p": 2.065841153e-24,
+    "low": 100000000,
+    "high": 100000000
+   },
+   {
+    "term": "Koff",
+    "estimate": 0.1,
+    "stdError": 3.177838285e-14,
+    "t": 3146793229000,
+    "p": 1.009865617e-25,
+    "low": 0.1,
+    "high": 0.1
+   },
+   {
+    "term": "Bmax",
+    "estimate": 100,
+    "stdError": 1.085784806e-10,
+    "t": 920992810800,
+    "p": 1.178928644e-24,
+    "low": 100,
+    "high": 100
+   },
+   {
+    "term": "NS",
+    "estimate": 0.5,
+    "stdError": 2.825206722e-12,
+    "t": 176978199900,
+    "p": 3.192717208e-23,
+    "low": 0.5,
+    "high": 0.5
+   }
+  ]
+ },
  "enzyme-inhibition enzMixed {\"model\":\"mixed\",\"inhibitorConcentrations\":{\"0 nM\":0,\"5 nM\":5,\"20 nM\":20}}": {
   "testType": "enzyme-inhibition",
   "subtitle": "Mixed model",
