@@ -27,6 +27,7 @@ import {
   validateFigureSize,
 } from "../../lib/figure";
 import { useProjectStore } from "../../store/use-project-store";
+import { fitZoom } from "../../store/use-layout";
 import { GRAPHS } from "../graphs";
 import { DEFAULT_GRAPH_OPTIONS, type FigurePanel, type ProjectNode, type Resolution } from "../../store/types";
 import { PanelPlot } from "./panel-plot";
@@ -58,6 +59,11 @@ export function FigureView({ node }: { node: ProjectNode }) {
   const [sizeError, setSizeError] = React.useState<string | null>(null);
   // The drawn panel elements, for per-panel export (the graph's own export path).
   const plottedRef = React.useRef(new Map<string, HTMLElement>());
+  // The view-only fit, as in the graph view: the figure is scaled to the visible
+  // pane (the inspector is a flex sibling, so the pane narrows when it opens).
+  // The saved figure size never changes — fitting only scales the view.
+  const canvasRef = React.useRef<HTMLDivElement>(null);
+  const [fit, setFit] = React.useState(1);
 
   const graphs = Object.values(nodes).filter((n) => n.type === "graph");
   const available = graphs.filter((g) => !panels.some((p) => p.graphId === g.id));
@@ -163,6 +169,20 @@ export function FigureView({ node }: { node: ProjectNode }) {
   const heightPx = Math.round(figureSize.heightIn * SCREEN_PX_PER_IN);
   const cellW = widthPx / grid.cols;
   const cellH = heightPx / grid.rows;
+
+  React.useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const update = () =>
+      setFit((prev) => {
+        const next = fitZoom(el.clientWidth, el.clientHeight, widthPx, heightPx);
+        return next === prev ? prev : next;
+      });
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [widthPx, heightPx]);
 
   const inspector = (
     <>
@@ -351,14 +371,14 @@ export function FigureView({ node }: { node: ProjectNode }) {
   return (
     <WithInspector title={node.name} tag="Figure" inspector={inspector}>
       <div className="relative min-h-0 flex-1">
-        <div className="absolute inset-0 overflow-auto bg-desk">
+        <div ref={canvasRef} className="absolute inset-0 overflow-auto bg-desk">
           {panels.length === 0 ? (
             <div className="flex h-full items-center justify-center">
               <p className="text-regular text-secondary">This figure has no panels yet — add a graph above.</p>
             </div>
           ) : (
-            <div className="flex min-h-full w-max min-w-full items-center justify-center p-12">
-              <div className="shrink-0">
+            <div className="flex min-h-full w-max min-w-full items-center p-12">
+              <div className="m-auto shrink-0">
                 {figureTitle && (
                   <p className="mb-2 text-center text-large-strong">{figureTitle}</p>
                 )}
@@ -378,15 +398,20 @@ export function FigureView({ node }: { node: ProjectNode }) {
                     Duplicate label{ dupes.length === 1 ? "" : "s" }: {dupes.join(", ")}.
                   </p>
                 )}
-                <div
-                  className="grid bg-white shadow-sheet"
-                  style={{
-                    width: widthPx,
-                    height: heightPx,
-                    gridTemplateColumns: `repeat(${grid.cols}, 1fr)`,
-                    gridTemplateRows: `repeat(${grid.rows}, 1fr)`,
-                  }}
-                >
+                {/* The grid at its saved size, scaled by the fit: the wrapper takes the
+                    scaled size, so the view scrolls to every edge of it. */}
+                <div style={{ width: widthPx * fit, height: heightPx * fit }}>
+                  <div
+                    className="grid bg-white shadow-sheet"
+                    style={{
+                      width: widthPx,
+                      height: heightPx,
+                      transform: `scale(${fit})`,
+                      transformOrigin: "0 0",
+                      gridTemplateColumns: `repeat(${grid.cols}, 1fr)`,
+                      gridTemplateRows: `repeat(${grid.rows}, 1fr)`,
+                    }}
+                  >
                   {panels.map((panel) => {
                     const graph = nodes[panel.graphId];
                     const w = Math.round(panel.colSpan * cellW);
@@ -448,6 +473,7 @@ export function FigureView({ node }: { node: ProjectNode }) {
                       </div>
                     );
                   })}
+                </div>
                 </div>
                 {sharedLegend === "shared" && legend.entries && (
                   <div className="mt-2 flex justify-center gap-4 text-small">
