@@ -3972,6 +3972,28 @@ check(".pzfx import keeps date X values as row titles", () => {
   ok(imported.issues.some((i) => i.message.includes("kept as row titles")), "says the dates were kept as row titles");
 });
 
+check(".pzfx import keeps date X values in their own column when row titles exist", () => {
+  const { imported, table } = importedTable("x_date_row_titles");
+  strictEqual(table.name, "Sample Data");
+  strictEqual(table.tableType, "xy");
+  deepStrictEqual(table.data!.columns, ["Title", "Date X", "Date X (date)", "Observation"]);
+  strictEqual(table.data!.rows.length, 5);
+  deepStrictEqual(table.data!.rows[0], ["Sample A", "0", "16-Jan-2004", "120"]);
+  deepStrictEqual(table.data!.rows[1], ["Sample B", "5.22929500342231", "9-Apr-2009", "64"]);
+  deepStrictEqual(table.data!.rows[4], ["Sample E", "8.27652292950034", "26-Apr-2012", "52"]);
+  // The warning must be true in this branch: the row titles are the original
+  // ones, the dates live in their own column — neither "kept as row titles"
+  // (false: the titles are the samples') nor "dropped" (false: kept).
+  ok(
+    imported.issues.some((i) => i.message.includes("kept in a “Date X (date)” column")),
+    "says the dates were kept in their own column",
+  );
+  ok(
+    !imported.issues.some((i) => i.message.includes("kept as row titles") || i.message.includes("were dropped")),
+    "never claims the dates were kept as row titles or dropped",
+  );
+});
+
 check(".pzfx import reads a Survival table (time + event codes)", () => {
   const { imported, table } = importedTable("survival");
   strictEqual(table.tableType, "survival");

@@ -292,9 +292,13 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
       );
     }
   }
+  // A date X whose dates survive import: as row titles when the table has
+  // none of its own, else in a dedicated column next to X — never dropped.
+  let dateColumn: { name: string; values: (string | null)[]; excluded: Set<number> } | null = null;
   if (xFormat === "date") {
     if (xAdvanced) {
       const dates = readColumn(xAdvanced).subcolumns[0]?.values ?? [];
+      const hasAnyDate = dates.some((v) => v !== null && v !== "");
       let datesKeptAsRowTitles = false;
       if (!hasRowTitles) {
         // The character dates name the rows, as Prism shows them.
@@ -304,12 +308,18 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
             datesKeptAsRowTitles = true;
           }
         }
+      } else if (hasAnyDate) {
+        // The row titles are the rows' names, so the dates get their own
+        // column instead of being dropped: the numeric X stays the X axis
+        // (years since the first date, as Prism stores it) and the dates
+        // sit beside it as text, which analyses and graphs skip.
+        dateColumn = { name: `${xName} (date)`, values: dates, excluded: new Set() };
       }
       if (datesKeptAsRowTitles) {
         warnings.push(`${displayName}: the X values are dates; the dates were kept as row titles.`);
-      } else if (hasRowTitles) {
+      } else if (dateColumn) {
         warnings.push(
-          `${displayName}: the X values are dates; the existing row titles were kept and the dates were dropped.`,
+          `${displayName}: the X values are dates; the existing row titles were kept and the dates were kept in a “${dateColumn.name}” column.`,
         );
       } else {
         warnings.push(`${displayName}: the X values are dates; they were imported as numbers.`);
@@ -394,6 +404,18 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
       y.subcolumns.forEach((sub, i) => pushColumn(names[i], sub));
     }
     warnings.push(`${displayName}: table type “${tableType}” isn't one Helix knows; it was imported as a Column table.`);
+  }
+
+  if (dateColumn) {
+    // Next to X for XY/Survival (after X and its error, if any); first among
+    // the data columns otherwise, since those types drop X entirely.
+    let at = 0;
+    if (helixType === "xy" || helixType === "survival") {
+      at = Math.min((xColumns.length > 0 ? 1 : 0) + (xErrorValues ? 1 : 0), columns.length);
+    }
+    let name = dateColumn.name;
+    for (let n = 2; columns.some((c) => c.name === name); n++) name = `${dateColumn.name} ${n}`;
+    columns.splice(at, 0, { ...dateColumn, name });
   }
 
   const rowCount = Math.max(0, ...columns.map((c) => c.values.length), rowTitleValues.length);
