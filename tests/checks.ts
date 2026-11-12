@@ -1255,6 +1255,64 @@ check("a two-way ANOVA of one value per cell asks nothing and runs the ordinary 
   });
 });
 
+// R2-B3: with X + 1 Y the enzyme-inhibition wizard used to dead-end — the
+// model defaulted to a global fit whose Y question needed min: 2 from a
+// single option, so Next stayed disabled with no message. Now only Morrison
+// (a single-curve fit) is offered, the question says why the global models
+// are missing, and the wizard reaches Run.
+check("the enzyme-inhibition wizard completes with X + 1 Y (Morrison only)", () => {
+  const wizard = WIZARDS["enzyme-inhibition"]!;
+  const oneY = readTable({
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "0", "10"],
+      ["", "1", "9"],
+      ["", "2", "7"],
+      ["", "5", "4"],
+      ["", "10", "2"],
+    ],
+  });
+  const modelQ = wizard.questions({}, oneY).filter(Boolean)[0] as Question;
+  if (modelQ.kind !== "choice") throw new Error("expected the model choice first");
+  deepStrictEqual(
+    modelQ.options.map((o) => o.value),
+    ["morrison"],
+  );
+  ok(/at least two Y data sets/.test(modelQ.ask), `model question should name the shortfall, got: ${modelQ.ask}`);
+  // The Y question can be satisfied: one option, min 1 — so every question
+  // in the walk has options >= min and Next is never permanently disabled.
+  const yQ = wizard.questions({ model: "morrison" }, oneY).filter(Boolean)[1] as Question;
+  if (yQ.kind !== "names") throw new Error("expected the Y names question second");
+  deepStrictEqual(yQ.options, ["Y1"]);
+  strictEqual(yQ.min, 1);
+  deepStrictEqual(wizard.finish({ model: "morrison", y: ["Y1"], enzymeConcentration: "5" }, oneY), {
+    type: "enzyme-inhibition",
+    params: { model: "morrison", y: ["Y1"], enzymeConcentration: 5 },
+  });
+  // With two Y data sets the global models are back, and the Y question
+  // says at least two are needed for a global fit.
+  const twoY = readTable({
+    columns: ["Title", "X", "Y1", "Y2"],
+    rows: [
+      ["", "0", "10", "10"],
+      ["", "1", "9", "9"],
+      ["", "2", "7", "8"],
+      ["", "5", "4", "6"],
+      ["", "10", "2", "4"],
+    ],
+  });
+  const modelQ2 = wizard.questions({}, twoY).filter(Boolean)[0] as Question;
+  if (modelQ2.kind !== "choice") throw new Error("expected the model choice first");
+  deepStrictEqual(
+    modelQ2.options.map((o) => o.value),
+    ["mixed", "competitive", "noncompetitive", "uncompetitive", "morrison"],
+  );
+  const yQ2 = wizard.questions({ model: "mixed" }, twoY).filter(Boolean)[1] as Question;
+  if (yQ2.kind !== "names") throw new Error("expected the Y names question second");
+  ok(/at least two/.test(yQ2.ask), `global Y question should state the minimum, got: ${yQ2.ask}`);
+  strictEqual(yQ2.min, 2);
+});
+
 check("a saved analysis without sphericity still assumes it (Geisser-Greenhouse compat)", async () => {
   // Geisser-Greenhouse is the default for new analyses, but a file saved
   // before 1.0.7 has no `sphericity` field — loading it must keep the
