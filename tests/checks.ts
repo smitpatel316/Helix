@@ -2919,6 +2919,75 @@ check("an analysis whose chosen column is gone says so, whatever the test", asyn
   }
 });
 
+// M8: a hand-edited or older file may carry y as one bare string — the file
+// reader's `name-or-names` kind permits it — while the runner works with a
+// list. One name must mean one series, never one character per series.
+check("a bare-string y in enzyme inhibition means one series", async () => {
+  const oneSeries: TableData = {
+    columns: ["Title", "X", "Total"],
+    rows: [
+      ["", "1", "10"],
+      ["", "2", "20"],
+      ["", "3", "30"],
+      ["", "5", "40"],
+      ["", "10", "50"],
+    ],
+  };
+  const twoSeriesError =
+    "A global inhibition fit needs at least two series — an uninhibited series ([I] = 0) and at least one inhibited series.";
+  // A global fit naming one series: the two-series error — before the fix
+  // `.find` on the string threw a TypeError instead.
+  deepStrictEqual(
+    await runAnalysis("enzyme-inhibition", oneSeries, { y: "Total", model: "competitive" } as AnalysisParams),
+    { error: twoSeriesError },
+  );
+  // A one-character name: the same error, now because one series was
+  // chosen — before the fix it came from the string's length.
+  const oneChar: TableData = {
+    columns: ["Title", "X", "A", "B"],
+    rows: [
+      ["", "1", "10", "9"],
+      ["", "2", "20", "18"],
+      ["", "3", "30", "27"],
+      ["", "5", "40", "36"],
+      ["", "10", "50", "45"],
+    ],
+  };
+  deepStrictEqual(
+    await runAnalysis("enzyme-inhibition", oneChar, { y: "A", model: "competitive" } as AnalysisParams),
+    { error: twoSeriesError },
+  );
+  // Morrison reads the whole name, not its first character: with no Et the
+  // run must reach the Et check — before the fix it looked for a column
+  // called "T", found none, and returned a phantom `{ error: undefined }`.
+  deepStrictEqual(
+    await runAnalysis("enzyme-inhibition", oneSeries, { y: "Total", model: "morrison" } as AnalysisParams),
+    { error: "Total enzyme concentration (Et) is required for the Morrison Ki fit." },
+  );
+  // And with Et it fits the "Total" column (Et = 5, Kiapp = 2, v0 = 100,
+  // noiseless — the reference Morrison numbers under a multi-letter name).
+  const morrison: TableData = {
+    columns: ["Title", "X", "Total"],
+    rows: [
+      ["", "0", "100"],
+      ["", "1", "86.3324958071"],
+      ["", "2", "74.0312423743"],
+      ["", "5", "46.3324958071"],
+      ["", "10", "24.3398113206"],
+      ["", "20", "11.3835714722"],
+      ["", "50", "4.2362280552"],
+    ],
+  };
+  const fit = await runAnalysis(
+    "enzyme-inhibition",
+    morrison,
+    { y: "Total", model: "morrison", enzymeConcentration: 5 } as AnalysisParams,
+  );
+  ok(!("error" in fit) && fit.coefficients, "bare-string y must run the Morrison fit");
+  const kiapp = fit.coefficients!.find((c) => c.term === "Kiapp")?.estimate;
+  ok(kiapp != null && Math.abs(kiapp - 2) < 0.01, `Kiapp should be ~2, got ${kiapp}`);
+});
+
 check("a wizard asks which data sets only when there is a choice", () => {
   const ids = (type: keyof typeof WIZARDS, data: TableData, a = {}) =>
     WIZARDS[type]!.questions(a, readTable(data)).flatMap((q) => (q ? [q.id] : []));
