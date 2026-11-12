@@ -23520,8 +23520,8 @@
     "value": 6.614723219
    },
    {
-    "label": "Chi-square (Yates' correction, for reference)",
-    "value": 6.4160401
+    "label": "Chi-square (for reference)",
+    "value": 8.120300752
    },
    {
     "label": "df",
@@ -23566,8 +23566,8 @@
     "value": 6.614723219
    },
    {
-    "label": "Chi-square (Yates' correction, for reference)",
-    "value": 6.4160401
+    "label": "Chi-square (for reference)",
+    "value": 8.120300752
    },
    {
     "label": "df",

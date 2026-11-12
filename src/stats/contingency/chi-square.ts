@@ -35,7 +35,7 @@ export async function runChiSquare(columns: Column[], params?: ChiSquareParams):
 
   // as.numeric() drops R's own names ("X-squared", "df"…): the keys are only ours.
   const rCode = is2x2
-    ? `m<-matrix(c(${flat.join(",")}),nrow=2,byrow=TRUE);ft<-fisher.test(m);ct<-suppressWarnings(chisq.test(m));` +
+    ? `m<-matrix(c(${flat.join(",")}),nrow=2,byrow=TRUE);ft<-fisher.test(m);ct<-suppressWarnings(chisq.test(m, correct=FALSE));` +
       `c(p=ft$p.value,odds=as.numeric(ft$estimate),oddsLo=ft$conf.int[1],oddsHi=ft$conf.int[2],` +
       `chisq=as.numeric(ct$statistic),df=as.numeric(ct$parameter),minexp=min(ct$expected),n=sum(m))`
     : `m<-matrix(c(${flat.join(",")}),nrow=${rows},byrow=TRUE);ct<-suppressWarnings(chisq.test(m));` +
@@ -49,7 +49,7 @@ export async function runChiSquare(columns: Column[], params?: ChiSquareParams):
   if (is2x2) {
     stats.push({ label: "P value (Fisher's exact test)", value: v.p ?? null, p: true });
     stats.push({ label: "Odds ratio (conditional estimate)", value: v.odds ?? null });
-    stats.push({ label: "Chi-square (Yates' correction, for reference)", value: v.chisq ?? null });
+    stats.push({ label: "Chi-square (for reference)", value: v.chisq ?? null });
     stats.push({ label: "df", value: v.df ?? null });
   } else {
     stats.push({ label: "Chi-square", value: v.chisq ?? null });
