@@ -2,7 +2,7 @@
 // the window, the project windows and what they open, and the menus. Everything else in
 // the app is plain web code.
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion, setTheme as setAppTheme } from "@tauri-apps/api/app";
 import { Image } from "@tauri-apps/api/image";
@@ -270,8 +270,11 @@ function shifted({ rgba, width, height }: Picture, by: number): Picture {
 }
 
 /** Shows a native context menu at the pointer (the call returns once it has closed). An
- *  item may show a picture before its text, in a submenu too. */
-export async function popupMenu(items: PopupItem[]) {
+ *  item may show a picture before its text, in a submenu too. With the click `event`,
+ *  the menu pops up at the click's position in this window: on macOS a position-less
+ *  popup takes muda's nil-view + mouse-location branch, which parked the main thread
+ *  inside NSMenu's tracking loop and destroyed every window (QAB-1). */
+export async function popupMenu(items: PopupItem[], event?: { clientX: number; clientY: number }) {
   if (!isNative) return;
   const images: Image[] = [];
   // Each picture becomes an image the menu can show, freed once it has closed; in a menu
@@ -295,7 +298,8 @@ export async function popupMenu(items: PopupItem[]) {
     ) as Promise<MenuItems>;
   };
   const menu = await Menu.new({ items: await withImages(items) });
-  await menu.popup();
+  if (event) await menu.popup(new LogicalPosition(event.clientX, event.clientY), getCurrentWindow());
+  else await menu.popup();
   await menu.close();
   for (const image of images) void image.close();
 }
