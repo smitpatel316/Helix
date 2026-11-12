@@ -171,8 +171,21 @@ interface PackageState {
 }
 
 const states = new Map<string, PackageState>();
-const inflight = new Map<string, Promise<void>>();
-/** Serialises install batches: two batches never download at once. */
+/** One in-flight install batch, per package it installs. `batch` is the
+ *  promise the batch settles on; `cancel` is set by a timeout eviction (B2)
+ *  so a batch that outlives its caller never starts a queued install and
+ *  its late completion writes no states; `releaseGate` frees the chain
+ *  gate so the next batch can start even while this one is still hung. */
+interface InstallTicket {
+  batch: Promise<void>;
+  cancel: { current: boolean };
+  releaseGate: () => void;
+}
+const inflight = new Map<string, InstallTicket>();
+/** Serialises install batches: two batches never download at once. Each
+ *  batch owns a gate promise; the gate resolves when the batch settles OR
+ *  when a timeout evicts it (B2) — so a hung batch can never wedge the
+ *  chain: eviction, not the batch's own settlement, advances it. */
 let chain: Promise<void> = Promise.resolve();
 /** How many install batches actually started (P-08: concurrent calls install once). */
 let installsStarted = 0;
@@ -258,32 +271,47 @@ export async function installedPackageVersions(): Promise<Record<string, string>
   return versions;
 }
 
-/** `ensurePackages` rejects when the install runs past this long. The install
- *  itself keeps running in the engine; a later call joins it.
+/** `ensurePackages` rejects when the install runs past this long. A timed-out
+ *  call EVICTS the stuck batch (B2): its packages leave `inflight`, are
+ *  marked `failed` with kind `timeout`, and the chain gate is released, so a
+ *  later call starts a fresh install instead of queueing behind the dead
+ *  one. The underlying R call itself keeps running in the engine — webR
+ *  cannot cancel it — but it can no longer poison anything: a batch evicted
+ *  while queued never starts, and its late completion writes no states, so
+ *  the retry's install is the one that counts. If the engine itself is
+ *  wedged, the retry's install queues behind the hung call in the worker
+ *  and times out the same way, bounded, until the engine frees up.
  *
- *  120 s, measured 2026-11-09 — not a guess. The old 30 s budget was
- *  unachievable for the pinned closure on this host: the largest single
- *  batch, lme4 + lmerTest (21 packages / 27 MB, because lmerTest Imports
- *  ggplot2), takes ~48 s end to end under load (71 s when a second webR
- *  process contends for the same CPUs), lme4 alone takes >30 s, and even
- *  survival alone takes 16–46 s depending on host load. The seconds go to
- *  WASM-side work, not the network: every .tgz arrives from localhost in
- *  <0.1 s, then R spends ~1–6 s per package unpacking it and building its
- *  lazy-load database, single-threaded, while the shared host runs at load
- *  6–9. No code change can shrink that — the closure is the pinned
- *  hard-dependency set, and webR cannot parallelise installs (no fork
- *  under Emscripten). 120 s covers the worst measured batch (71 s) with
- *  ~1.7x headroom; if the closure grows, re-measure before touching this
- *  again. (The missing PACKAGES.rds was a real defect too — fixed by
- *  vendoring one — but it only ever cost ~1 s once per session, so it was
- *  never the reason the suite failed; the cap was.) */
-export const PACKAGE_INSTALL_TIMEOUT_MS = 120_000;
+ *  360 s, re-measured 2026-11-12 (B2) — not a guess. The 2026-11-09
+ *  120 s budget no longer holds on this host: the largest single batch,
+ *  lme4 + lmerTest (21 packages / 27 MB, because lmerTest Imports
+ *  ggplot2), now takes 213.6 s cold end to end (base code, fresh engine,
+ *  scratch probe `scratch-time-lme4.ts`, shared host at load 6–9 with
+ *  other lanes contending) — up from the 71 s worst case measured
+ *  2026-11-09. With a 120 s cap the reference suite's mixed-effects
+ *  analyses fail even though the install is healthy and progressing;
+ *  worse, under B2 eviction the retry then queues behind the still-running
+ *  first install in the worker and times out too, so one slow batch fails
+ *  twice. The seconds go to WASM-side work, not the network: every .tgz
+ *  arrives from localhost in <0.1 s, then R spends ~1–6 s per package
+ *  unpacking it and building its lazy-load database, single-threaded,
+ *  while the shared host runs at load 6–9. No code change can shrink
+ *  that — the closure is the pinned hard-dependency set, and webR cannot
+ *  parallelise installs (no fork under Emscripten). 360 s covers the
+ *  worst measured batch (213.6 s) with ~1.7x headroom, the same rule the
+ *  old 120 s cap used; if the closure grows, re-measure before touching
+ *  this again. (A hung install still evicts on timeout — the B2 fix —
+ *  it just takes up to 360 s for the caller to learn the install is hung
+ *  rather than slow.) */
+export const PACKAGE_INSTALL_TIMEOUT_MS = 360_000;
 
 /**
  * Guarantee the named packages are installed and loadable in this engine,
  * then resolve. Concurrent calls for the same package join the one in-flight
  * install; a second call after success is a no-op; a call after failure
- * retries the install. Unknown names reject at once with `not-in-registry`
+ * retries the install — including after a timeout (B2): a timed-out call
+ * evicts the stuck batch, so the retry starts a fresh install instead of
+ * joining the dead one. Unknown names reject at once with `not-in-registry`
  * and are recorded `failed` — a typo never triggers a download.
  *
  * Installs run through the same `evalNamedVector` path analyses use, so in a
@@ -310,48 +338,69 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
   // Join in-flight installs, then install what's still missing — all decided
   // synchronously, before the first await, so concurrent callers cannot
   // start a second install of the same package.
-  const joined = wanted.filter((n) => inflight.has(n)).map((n) => inflight.get(n)!);
+  const joined = wanted.filter((n) => inflight.has(n)).map((n) => inflight.get(n)!.batch);
   const missing = wanted.filter((n) => stateOf(n).status !== "ready" && !inflight.has(n));
   let batch: Promise<void> | null = null;
   if (missing.length) {
     for (const n of missing) states.set(n, { status: "loading" });
-    batch = chain.then(() => installBatch(missing));
-    chain = batch.catch(() => {});
-    for (const n of missing) inflight.set(n, batch);
+    // The gate resolves when this batch settles OR when a timeout evicts it
+    // (B2): the next batch is released by eviction, not by the hung batch.
+    const cancel = { current: false };
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    batch = chain.then(() => {
+      // Evicted while queued behind a hung batch: never start the install —
+      // a zombie install would only contend with the retry that replaced it.
+      if (cancel.current) return;
+      return installBatch(missing, cancel);
+    });
+    batch.then(
+      () => releaseGate(),
+      () => releaseGate(),
+    );
+    chain = gate;
+    const ticket: InstallTicket = { batch, cancel, releaseGate };
+    for (const n of missing) inflight.set(n, ticket);
     const done = batch.then(
       () => {
-        for (const n of missing) if (inflight.get(n) === batch) inflight.delete(n);
+        for (const n of missing) if (inflight.get(n)?.batch === batch) inflight.delete(n);
       },
       () => {
-        for (const n of missing) if (inflight.get(n) === batch) inflight.delete(n);
+        for (const n of missing) if (inflight.get(n)?.batch === batch) inflight.delete(n);
       },
     );
     void done;
   }
   const timeoutMs = opts?.timeoutMs ?? PACKAGE_INSTALL_TIMEOUT_MS;
-  await Promise.all(joined.map((p) => p.catch(() => {})));
-  if (batch) {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        batch,
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () =>
-              reject(
-                new PackageError(
-                  "timeout",
-                  missing.join(", "),
-                  `Installing ${missing.map((n) => `“${n}”`).join(", ")} is taking longer than ${Math.round(timeoutMs / 1000)} seconds — it is still running in the background. Try again shortly.`,
-                ),
-              ),
-            timeoutMs,
+  // The timeout covers EVERYTHING this call waits on — the installs it
+  // joined as well as its own batch. (Before B2, a caller that only joined
+  // a hung install awaited it before the race and hung forever with no
+  // timeout at all.)
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  try {
+    await Promise.race([
+      Promise.all([...joined.map((p) => p.catch(() => {})), ...(batch ? [batch] : [])]),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          timedOut = true;
+          reject(
+            new PackageError(
+              "timeout",
+              wanted.join(", "),
+              `Installing ${wanted.map((n) => `“${n}”`).join(", ")} timed out after ${Math.round(timeoutMs / 1000)} seconds — the attempt was abandoned. Try again to start a fresh install.`,
+            ),
           );
-        }),
-      ]);
-    } finally {
-      clearTimeout(timer);
-    }
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (err) {
+    if (timedOut) evictTimedOut(wanted, err as PackageError);
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
   const failed = wanted.filter((n) => stateOf(n).status === "failed");
   if (failed.length) {
@@ -365,9 +414,37 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
   }
 }
 
+/** B2 — evict every package this call was waiting on after a timeout, so a
+ *  hung batch can never poison a later install:
+ *  - the batch is cancelled: a queued start is skipped, and a late
+ *    completion writes no states (the retry's install is the one that
+ *    counts — even if the evicted attempt eventually succeeds, its
+ *    packages stay `failed` until the retry installs them);
+ *  - the chain gate is released, so the next batch starts instead of
+ *    queueing behind the dead one;
+ *  - the packages leave `inflight` and are marked `failed`/`timeout`
+ *    (only while still `loading` — a package that already resolved `ready`
+ *    is never clobbered).
+ *  Idempotent: a second caller evicting the same packages finds no ticket
+ *  and does nothing, so the owning caller's own timeout is a harmless no-op. */
+function evictTimedOut(names: string[], error: PackageError): void {
+  for (const name of names) {
+    const ticket = inflight.get(name);
+    if (!ticket) continue;
+    ticket.cancel.current = true;
+    ticket.releaseGate();
+    inflight.delete(name);
+    if (stateOf(name).status === "loading") {
+      states.set(name, { status: "failed", error: error.message, kind: "timeout" });
+    }
+  }
+}
+
 /** One install batch: `webr::install` from a repo, then prove each package
- *  loads (`requireNamespace`). Never throws — failures land in `states`. */
-async function installBatch(names: string[]): Promise<void> {
+ *  loads (`requireNamespace`). Never throws — failures land in `states`.
+ *  A batch evicted by a timeout (`cancel.current`) writes no states at all:
+ *  the retry owns the packages now. */
+async function installBatch(names: string[], cancel: { current: boolean }): Promise<void> {
   installsStarted++;
   const attempts: { repos: string | null; source: "bundled" | "cdn" }[] =
     repoUrl === CDN_REPO_URL
@@ -386,7 +463,9 @@ async function installBatch(names: string[]): Promise<void> {
       const loaded = await evalNamedVector(code);
       const unloaded = names.filter((n) => loaded[n] !== 1);
       if (!unloaded.length) {
-        for (const n of names) states.set(n, { status: "ready", source });
+        // Evicted while this install was running (B2): the retry owns these
+        // packages now — write nothing, even on success.
+        if (!cancel.current) for (const n of names) states.set(n, { status: "ready", source });
         return;
       }
       // Installed (or partially) but the namespace will not load. Diagnose
@@ -402,7 +481,10 @@ async function installBatch(names: string[]): Promise<void> {
     }
   }
   const message = lastError?.message ?? `The R packages ${names.map((n) => `“${n}”`).join(", ")} could not be installed.`;
-  for (const n of names) states.set(n, { status: "failed", error: message, kind: lastError?.kind ?? "install-failed" });
+  // As above: an evicted batch never overwrites the retry's states.
+  if (!cancel.current) {
+    for (const n of names) states.set(n, { status: "failed", error: message, kind: lastError?.kind ?? "install-failed" });
+  }
 }
 
 /** An R/eval error while installing: network (retryable, CDN fallback) or a

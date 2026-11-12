@@ -14,6 +14,7 @@
 // assumed value, the measured value is pinned and the disagreement is
 // recorded, not forced (plan 00's rule).
 import { createServer } from "node:http";
+import type { ServerResponse } from "node:http";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
@@ -104,7 +105,17 @@ check("repo includes codetools", repoVersions.has("codetools"), "multcomp Import
 // ── Serve the bundled repo on localhost ────────────────────────────────
 
 const MIME: Record<string, string> = { ".tgz": "application/gzip", ".gz": "application/gzip" };
+// P-12 (B2) black-hole switch: while `hangRepo` is set, the server accepts
+// requests and never answers them, so an install's download hangs forever
+// in the engine — the hung-install scenario, without touching R. Held
+// responses are destroyed on release, which fails the hung download at once.
+let hangRepo = false;
+const heldResponses: ServerResponse[] = [];
 const server = createServer((req, res) => {
+  if (hangRepo) {
+    heldResponses.push(res);
+    return;
+  }
   const path = decodeURIComponent(req.url!.split("?")[0]).replace(/^\/+/, "");
   const file = `${REPO_DIR}/${path}`;
   if (!path || !existsSync(file) || !statSync(file).isFile()) {
@@ -118,6 +129,12 @@ const server = createServer((req, res) => {
 });
 await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
 const repoUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+/** P-12: end the black-hole — the repo serves again and every held
+ *  download fails at once, freeing the engine for the retries. */
+const releaseHungRepo = () => {
+  hangRepo = false;
+  for (const res of heldResponses.splice(0)) res.socket?.destroy();
+};
 // No CDN fallback in tests: every install must come from the bundled repo.
 setPackageRepo(repoUrl, { allowCdnFallback: false });
 
@@ -274,6 +291,62 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
   check("P-09 bogus name status is failed", packageStatus("not-a-real-package").status === "failed");
   await ensurePackages(["nlme"]);
   check("P-09 good package still installs", packageStatus("nlme").status === "ready");
+}
+
+// P-12 (B2) — a hung install batch must not poison later installs. The repo
+// server black-holes (accepts, never answers), so `webr::install` hangs in
+// the engine past the caller's timeout. Before the fix this wedged
+// everything: the timed-out call left the package `loading`, its batch sat
+// in `inflight` and on the chain forever, a retry for the same package
+// joined the dead batch and hung with no timeout at all, and a different
+// package queued behind the dead chain and never started. After the fix the
+// timed-out call evicts the batch (status `failed`/`timeout`, chain gate
+// released), so a retry after the repo recovers succeeds. deming + mvtnorm
+// are the victims: neither is installed anywhere earlier in this file.
+{
+  // "resolved" / the PackageError kind / "other" / "WATCHDOG" (the call
+  // never settled — the pre-fix joiner hang — so the suite fails instead
+  // of hanging; process.exit() at the end still exits with it pending).
+  const timedKind = async (names: string[], timeoutMs: number, watchdogMs = 10_000): Promise<string> => {
+    const outcome = await Promise.race([
+      ensurePackages(names, { timeoutMs }).then(
+        () => "resolved",
+        (err: unknown) => (err instanceof PackageError ? err.kind : "other"),
+      ),
+      new Promise<"WATCHDOG">((resolve) => setTimeout(() => resolve("WATCHDOG"), watchdogMs)),
+    ]);
+    return outcome;
+  };
+  hangRepo = true;
+  // Two concurrent callers for the same hung install: the owner times out,
+  // and the joiner must time out too — before B2 it hung forever in the
+  // joined-await, before ever reaching its own timeout race.
+  const [kindOwner, kindJoiner] = await Promise.all([
+    timedKind(["deming"], 2000),
+    timedKind(["deming"], 2000),
+  ]);
+  check("P-12 hung install rejects as timeout", kindOwner === "timeout", `kind=${kindOwner}`);
+  check("P-12 concurrent joiner times out too", kindJoiner === "timeout", `kind=${kindJoiner}`);
+  check("P-12 timed-out package is failed, not loading", packageStatus("deming").status === "failed");
+  // A different package must not queue behind the dead chain: its batch
+  // starts (gate released on eviction) and times out on its own.
+  const startedBefore = packageDiagnostics().installsStarted;
+  const kindOther = await timedKind(["mvtnorm"], 2000);
+  check("P-12 other package times out, not hangs", kindOther === "timeout", `kind=${kindOther}`);
+  check("P-12 other package is failed, not loading", packageStatus("mvtnorm").status === "failed");
+  check(
+    "P-12 queued batch starts after eviction (chain advances)",
+    packageDiagnostics().installsStarted === startedBefore + 1,
+    `started ${packageDiagnostics().installsStarted - startedBefore}`,
+  );
+  // The repo recovers: both retries start fresh installs and succeed.
+  releaseHungRepo();
+  const retryDeming = await timedKind(["deming"], PACKAGE_INSTALL_TIMEOUT_MS, 110_000);
+  check("P-12 retry after timeout succeeds", retryDeming === "resolved", `kind=${retryDeming}`);
+  check("P-12 retried package is ready", packageStatus("deming").status === "ready");
+  const retryMvt = await timedKind(["mvtnorm"], PACKAGE_INSTALL_TIMEOUT_MS, 110_000);
+  check("P-12 other-package retry succeeds", retryMvt === "resolved", `kind=${retryMvt}`);
+  check("P-12 retried other package is ready", packageStatus("mvtnorm").status === "ready");
 }
 
 // P-05 — Deming on exact linear data y = 2x (error ratio 1). The plan
