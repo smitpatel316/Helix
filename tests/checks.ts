@@ -3640,6 +3640,21 @@ check("menus and pickers name things in title case, as macOS does", () => {
   );
 });
 
+// QAB-1: a position-less native popup parked macOS's main thread in NSMenu's tracking
+// loop and destroyed every window. This pins the CHANGE only — an explicit position +
+// window at the click, passed through from the Match button, with a re-entrancy guard —
+// not the bug itself: no popupMenu call has ever been observed working on the Mac GUI,
+// so only the Mac repro proves the fix.
+check("the Match popup menu passes an explicit position and window, with a re-entrancy guard", () => {
+  const native = readFileSync(fileURLToPath(new URL("../src/native.ts", import.meta.url)), "utf8");
+  ok(native.includes("menu.popup(new LogicalPosition(event.clientX, event.clientY), getCurrentWindow())"));
+  ok(native.includes("popupMenu(items: PopupItem[], event?: { clientX: number; clientY: number })"));
+  const match = readFileSync(fileURLToPath(new URL("../src/views/graphs/match-graph.tsx", import.meta.url)), "utf8");
+  ok(match.includes("const choose = async (event: React.MouseEvent) => {"));
+  ok(match.includes("if (popupOpen.current) return;"));
+  ok(match.includes("await choose(event);"));
+});
+
 check("Open Recent reads only a list of paths", () => {
   const stored: Record<string, string> = {};
   const storage = {

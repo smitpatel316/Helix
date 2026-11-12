@@ -135,6 +135,8 @@ export function MatchSection({
   const { tables } = useOutline();
   const [exampleId, setExampleId] = React.useState<string | null>(null);
   const [ticked, setTicked] = React.useState(readTicked);
+  // A popup already open ignores further clicks (QAB-1 re-entrancy guard).
+  const popupOpen = React.useRef(false);
 
   const others = examplesFor(graphId, tables, nodes);
   if (!others.length) return null;
@@ -163,14 +165,22 @@ export function MatchSection({
       // Not kept: the next time starts from the usual ones.
     }
   };
-  const choose = () =>
-    popupMenu(
-      others.flatMap(({ table, graphs }, i) => [
-        ...(i > 0 ? [separator] : []),
-        { text: table, enabled: false },
-        ...graphs.map((g) => ({ text: g.name, checked: g.id === exampleId, action: () => setExampleId(g.id) })),
-      ]),
-    );
+  const choose = async (event: React.MouseEvent) => {
+    if (popupOpen.current) return;
+    popupOpen.current = true;
+    try {
+      await popupMenu(
+        others.flatMap(({ table, graphs }, i) => [
+          ...(i > 0 ? [separator] : []),
+          { text: table, enabled: false },
+          ...graphs.map((g) => ({ text: g.name, checked: g.id === exampleId, action: () => setExampleId(g.id) })),
+        ]),
+        event,
+      );
+    } finally {
+      popupOpen.current = false;
+    }
+  };
 
   return (
     <Section title="Match" icon={<MagicWandIcon />} {...fold}>
@@ -178,7 +188,9 @@ export function MatchSection({
         <button
           type="button"
           className="flex h-7 w-full items-center gap-2 rounded-md bg-control px-2 text-regular"
-          onClick={() => void choose()}
+          onClick={async (event) => {
+            await choose(event);
+          }}
         >
           <span className="truncate">{exampleNode?.name ?? "Choose…"}</span>
           <span className="flex-1" />
