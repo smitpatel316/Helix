@@ -3,11 +3,11 @@
 // trusted, table edits keeping every value where it belongs, graphs drawing each
 // setting and following renamed columns, selected points, exports, analyses on the
 // data asked, Undo, and the app's menus, recents and update check. `npm test` runs them.
-import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
+import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert/strict";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
-import { setPackageRepo, startR } from "../src/stats/webr";
+import { evalNamedVector, setPackageRepo, startR } from "../src/stats/webr";
 import { parseProjectFile, readPalette, serializeProjectFile, type ProjectFilePayload } from "../src/lib/project-file";
 import {
   DEFAULT_GRAPH_OPTIONS,
@@ -4800,6 +4800,23 @@ check("parseInhibitorConcentration takes the unit-adjacent number, not the first
   ];
   for (const [title, want] of cases)
     strictEqual(parseInhibitorConcentration(title), want, `${JSON.stringify(title)} should parse as ${want}`);
+});
+
+// R2-B1: a hung R evaluation must not strand the run on "Running…" forever.
+// The watchdog stops it with a clear error, the interrupt frees R (no engine
+// restart — the message says nothing about one), and the next evaluation on
+// the same engine works — that is the retry.
+check("hung R eval times out, is interrupted, and retry works", async () => {
+  const started = Date.now();
+  await rejects(
+    evalNamedVector("while(TRUE){}", { timeoutMs: 1_000, graceMs: 1_000 }),
+    (err: unknown) =>
+      err instanceof Error && /took longer than 1 second/.test(err.message) && !/restarted/.test(err.message),
+  );
+  const elapsed = Date.now() - started;
+  ok(elapsed < 10_000, `hung eval took ${elapsed} ms to fail`);
+  const v = await evalNamedVector("c(a=1)");
+  deepStrictEqual(v, { a: 1 });
 });
 
 // ── Run ──────────────────────────────────────────────────────────────────

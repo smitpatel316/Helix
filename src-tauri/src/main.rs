@@ -581,6 +581,19 @@ fn r_result(engine: State<REngine>, id: u64, values: Option<HashMap<String, Opti
     }
 }
 
+/// Stop the R running in the engine window, from a project window (its
+/// watchdog fired, or the user hit Cancel). The waiting requests are dropped
+/// — their project windows' own watchdogs reject instead of waiting forever —
+/// and the engine is told to interrupt its R. The engine is the app's one R,
+/// so this stops it for every window at once. If the interrupt does not free
+/// R, the engine window's own watchdog restarts it (dropping its waiters here
+/// first, so the hung code is not re-sent when the engine says it is ready).
+#[tauri::command]
+fn cancel_r(app: AppHandle, engine: State<'_, REngine>) {
+    engine.0.lock().unwrap().waiting.clear();
+    let _ = app.emit_to("engine", "r-interrupt", ());
+}
+
 #[tauri::command]
 fn r_ready(app: AppHandle, engine: State<REngine>) {
     let mut requests = engine.0.lock().unwrap();
@@ -627,7 +640,8 @@ fn main() {
             open_link,
             eval_r,
             r_result,
-            r_ready
+            r_ready,
+            cancel_r
         ])
         .build(tauri::generate_context!())
         .expect("failed to start Helix")

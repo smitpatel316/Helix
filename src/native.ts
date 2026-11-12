@@ -9,6 +9,7 @@ import { Image } from "@tauri-apps/api/image";
 import { Menu, Submenu, type MenuOptions } from "@tauri-apps/api/menu";
 import { message, save } from "@tauri-apps/plugin-dialog";
 import type { RVector } from "./stats/webr";
+import { interruptR } from "./stats/webr";
 
 /** False when the UI runs in a plain browser (`npm run web`, for development) or in the tests. */
 export const isNative = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -85,6 +86,20 @@ export function evalR(code: string): Promise<RVector> {
   });
 }
 
+/** From a project window: stop the R running in the engine, if one is. The
+ *  shell drops the waiting requests and tells the engine window to interrupt
+ *  its R; a dropped request never resolves — the caller's own watchdog
+ *  rejects with the timeout/cancel error instead. Best effort, never throws. */
+export async function cancelR(): Promise<void> {
+  if (!isNative) return;
+  try {
+    await invoke("cancel_r");
+  } catch {
+    // Best effort: the caller's watchdog rejects with the timeout/cancel
+    // error either way.
+  }
+}
+
 /** In the engine window: answers every request with `evaluate`. */
 export async function serveR(evaluate: (code: string) => Promise<RVector>) {
   await getCurrentWebviewWindow().listen<[number, string]>("r-eval", ({ payload: [id, code] }) =>
@@ -93,6 +108,10 @@ export async function serveR(evaluate: (code: string) => Promise<RVector>) {
       (err: unknown) => invoke("r_result", { id, error: err instanceof Error ? err.message : String(err) }),
     ),
   );
+  // A project window asked R to stop (its watchdog fired, or the user hit
+  // Cancel): interrupt this window's R. If the channel cannot be
+  // interrupted, the evaluation's own watchdog restarts the engine.
+  await getCurrentWebviewWindow().listen("r-interrupt", () => interruptR());
   await invoke("r_ready");
 }
 
