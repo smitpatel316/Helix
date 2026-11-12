@@ -418,6 +418,9 @@ export function GraphView({ node }: { node: ProjectNode }) {
   // has its new size. A non-passive listener, so the page itself doesn't zoom.
   const sheetRef = React.useRef<HTMLDivElement>(null);
   const anchor = React.useRef<{ x: number; y: number; fx: number; fy: number } | null>(null);
+  // Reset (below) also re-centres the desk: the zoom gesture's leftover scroll
+  // would otherwise leave the sheet off-centre at the fit.
+  const resetScroll = React.useRef(false);
   React.useEffect(() => {
     const el = canvasRef.current!;
     const onWheel = (e: WheelEvent) => {
@@ -437,9 +440,19 @@ export function GraphView({ node }: { node: ProjectNode }) {
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
   React.useLayoutEffect(() => {
+    const view = canvasRef.current;
+    // Resetting the zoom returns to the fit — and to the fit's centred scroll:
+    // the sheet fits the pane at the fit, so 0,0 is its centred position.
+    if (resetScroll.current) {
+      resetScroll.current = false;
+      if (view) {
+        view.scrollLeft = 0;
+        view.scrollTop = 0;
+      }
+      return;
+    }
     const a = anchor.current;
     const r = sheetRef.current?.getBoundingClientRect();
-    const view = canvasRef.current;
     anchor.current = null;
     if (!a || !r || !view) return;
     view.scrollLeft += r.left + a.fx * r.width - a.x;
@@ -799,7 +812,16 @@ export function GraphView({ node }: { node: ProjectNode }) {
         {explicitZoom !== null && (
           <button
             type="button"
-            onClick={() => setExplicitZoom(null)}
+            onClick={() => {
+              // The layout effect above re-centres once the fit re-renders; if
+              // the zoom is already the fit, no re-render follows, so re-centre now.
+              resetScroll.current = true;
+              setExplicitZoom(null);
+              if (explicitZoom === fit && canvasRef.current) {
+                canvasRef.current.scrollLeft = 0;
+                canvasRef.current.scrollTop = 0;
+              }
+            }}
             title="Reset zoom to fit"
             className="absolute right-3 bottom-3 z-20 rounded-full bg-black/70 px-2.5 py-1 text-small text-white hover:bg-black/80"
           >
