@@ -53,6 +53,9 @@ export type Question = { id: string; ask: string } & (
       options: { value: string; label: string }[];
       /** Adds "Not sure — check for normality first", answered "yes" or "no" by Shapiro-Wilk. */
       normality?: boolean;
+      /** What the wizard says when this choice has no options (M18): the step
+       *  is blocked with this message instead of throwing. */
+      emptyMessage?: string;
     }
   | {
       kind: "number";
@@ -207,12 +210,19 @@ export interface Wizard {
   finish: (a: Answers, table: Dataset, tableType?: TableType) => { type: AnalysisType; params?: AnalysisParams };
 }
 
-const choice = (id: string, ask: string, options: [string, string][], normality = false): Question => ({
+const choice = (
+  id: string,
+  ask: string,
+  options: [string, string][],
+  normality = false,
+  emptyMessage?: string,
+): Question => ({
   id,
   ask,
   kind: "choice",
   options: options.map(([value, label]) => ({ value, label })),
   normality,
+  ...(emptyMessage ? { emptyMessage } : {}),
 });
 
 const names = (list: string[]) => list.map((n): [string, string] => [n, n]);
@@ -724,6 +734,8 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           "second",
           "Which column is the second method? The difference is computed as first − second.",
           names(methods.filter((n) => n !== a.first)),
+          false,
+          "This table has only one numeric column, so there is no second method to choose. Add another numeric column first.",
         ),
       ];
     },
@@ -751,7 +763,13 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           "Which column holds the known outcome (e.g. diseased / healthy)?",
           names(table.columns.map((c) => c.name)),
         ),
-        choice("score", "Which column holds the test score?", names(dataNames(table).filter((n) => n !== a.truth))),
+        choice(
+          "score",
+          "Which column holds the test score?",
+          names(dataNames(table).filter((n) => n !== a.truth)),
+          false,
+          "The truth column is the table's only numeric column, so no column is left to hold the test score. Go back and choose a text column as the truth, or add another numeric column.",
+        ),
         distinct.length > 0 &&
           choice(
             "positive",
@@ -941,19 +959,26 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
   correlation: {
     questions: (a, table) => {
       const ys = yNames(table);
+      // "Two chosen data sets" needs two Y series to choose from (M18):
+      // with one Y it would ask for a second data set that does not exist.
+      const modes: [string, string][] = [["x-vs-every-y", "X against every Y data set"]];
+      if (ys.length >= 2) modes.push(["two-datasets", "Two chosen data sets"]);
+      modes.push(["matrix", "Correlation matrix among the Y data sets"]);
       return [
         choice("method", "Which correlation coefficient should be computed?", [
           ["pearson", "Pearson (parametric)"],
           ["spearman", "Spearman (non-parametric)"],
         ]),
-        choice("mode", "What do you want to correlate?", [
-          ["x-vs-every-y", "X against every Y data set"],
-          ["two-datasets", "Two chosen data sets"],
-          ["matrix", "Correlation matrix among the Y data sets"],
-        ]),
+        choice("mode", "What do you want to correlate?", modes),
         a.mode === "two-datasets" && choice("first", "Which is the first data set?", names(ys)),
         a.mode === "two-datasets" &&
-          choice("second", "Which is the second data set?", names(ys.filter((n) => n !== a.first))),
+          choice(
+            "second",
+            "Which is the second data set?",
+            names(ys.filter((n) => n !== a.first)),
+            false,
+            "This table has only one Y data set, so there is no second data set to choose. Go back and choose “X against every Y data set” instead.",
+          ),
       ];
     },
     finish: (a) => ({
@@ -1271,20 +1296,35 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
   },
 
   "binding-saturation": {
-    questions: (a, table) => [
-      choice("y", "Which Y data set is the total binding?", names(yNames(table))),
-      choice("model", "Which saturation model should be fitted?", [
+    questions: (a, table) => {
+      const ys = yNames(table);
+      // The two-series models fit a second Y series jointly (M18): with one
+      // Y there is no nonspecific-binding series to choose, so they are not offered.
+      const models: [string, string][] = [
         ["one-site-total", "One site — Total binding"],
         ["two-site-specific", "Two sites — Specific binding"],
-        ["one-site-total-and-ns", "One site — Total and nonspecific"],
-        ["two-site-total-and-ns", "Two sites — Total and nonspecific"],
-      ]),
-      // Two-series models fit a second Y series jointly, with NS and
-      // Background shared — the first option after the total series is the
-      // second Y column, so it defaults to the second Y data set.
-      (a.model === "one-site-total-and-ns" || a.model === "two-site-total-and-ns") &&
-        choice("y2", "Which Y data set is the nonspecific binding?", names(yNames(table).filter((n) => n !== a.y))),
-    ],
+      ];
+      if (ys.length >= 2)
+        models.push(
+          ["one-site-total-and-ns", "One site — Total and nonspecific"],
+          ["two-site-total-and-ns", "Two sites — Total and nonspecific"],
+        );
+      return [
+        choice("y", "Which Y data set is the total binding?", names(ys)),
+        choice("model", "Which saturation model should be fitted?", models),
+        // Two-series models fit a second Y series jointly, with NS and
+        // Background shared — the first option after the total series is the
+        // second Y column, so it defaults to the second Y data set.
+        (a.model === "one-site-total-and-ns" || a.model === "two-site-total-and-ns") &&
+          choice(
+            "y2",
+            "Which Y data set is the nonspecific binding?",
+            names(ys.filter((n) => n !== a.y)),
+            false,
+            "This table has only one Y data set, so there is no nonspecific-binding series to choose. Go back and choose a one-site model, or add another Y column.",
+          ),
+      ];
+    },
     finish: (a) => ({
       type: "binding-saturation",
       params: {
