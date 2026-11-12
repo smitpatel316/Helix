@@ -54,7 +54,11 @@
     "category": "Education",
     "copyright": "© 2026 mickaphd",
     "icon": ["icons/icon.png", "icons/icon.icns"],
-    "resources": { "../samples/Helix Sample.hlx": "Helix Sample.hlx" },
+    "resources": {
+      "../samples/Helix Sample.hlx": "Helix Sample.hlx",
+      "../LICENSE": "LICENSE",
+      "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md"
+    },
     "fileAssociations": [{ "ext": ["hlx"], "name": "Helix Project", "role": "Editor" }],
     "macOS": {
       "minimumSystemVersion": "13.3",

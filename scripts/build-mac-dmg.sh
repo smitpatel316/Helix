@@ -64,6 +64,15 @@ for TARGET in $TARGETS; do
     find "$BUNDLE" -name 'rw.*.dmg' -delete || true
     [ -f "$BUNDLE/dmg/$DMG_NAME" ] || { echo "ERROR: no DMG produced for $TARGET" >&2; exit 1; }
   fi
+  # License audit (2026-11-10): every distributed copy must carry the GPL
+  # text. Tauri's bundle.resources copies LICENSE + THIRD-PARTY-NOTICES.md
+  # into the .app; bundle_dmg.sh packages the .app as-is, so a LICENSE in
+  # the .app is a LICENSE in the DMG whichever DMG path ran. Fail loudly
+  # if it is missing — check bundle.resources in src-tauri/tauri.conf.json.
+  APP="$BUNDLE/macos/Helix.app"
+  for LICENSE_FILE in LICENSE THIRD-PARTY-NOTICES.md; do
+    [ -f "$APP/Contents/Resources/$LICENSE_FILE" ] || { echo "ERROR: $LICENSE_FILE missing from $APP/Contents/Resources" >&2; exit 1; }
+  done
   ls -lh "$BUNDLE/dmg/$DMG_NAME"
   shasum -a 256 "$BUNDLE/dmg/$DMG_NAME"
 done

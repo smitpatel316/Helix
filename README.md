@@ -11,12 +11,26 @@ statistics (through [webR](https://github.com/r-wasm/webr), R compiled to WebAss
 
 ![Helix: a table, its analyses and a graph](docs/screenshot.png)
 
+## About this fork
+
+This is a modified fork of [mickaphd/Helix](https://github.com/mickaphd/Helix),
+the original Helix by mickaphd (© 2026 mickaphd). On top of upstream it adds
+Prism-file import, a wider analysis catalogue, multi-panel figures, and bug
+fixes — see the [release notes](https://github.com/smitpatel316/Helix/releases)
+and the git history for what changed and when. Like upstream, it is licensed
+under the [GNU General Public License](LICENSE), version 3 or later.
+
 ## Download
 
-Get the latest version from the [Releases page](https://github.com/mickaphd/Helix/releases/latest):
+Get the latest version from the [Releases page](https://github.com/smitpatel316/Helix/releases):
 
 - `Helix_…_aarch64.dmg` for Macs with Apple Silicon (M1 and later)
 - `Helix_…_x64.dmg` for Macs with an Intel processor
+
+Each release is cut from a tagged commit — the release notes name the exact
+commit the DMGs were built from, so the source for any download is retrievable
+from this repo. Every DMG also includes a copy of the GNU GPL (`LICENSE`) and
+the third-party notices (`THIRD-PARTY-NOTICES.md`).
 
 Requires macOS 13.3 (Ventura) or later. Open the DMG and drag **Helix** into the
 **Applications** folder. Helix is signed and notarized by Apple, so it opens like any other app.
