@@ -62,6 +62,7 @@ import { isGrouped, isNested, readTable, setColumns, type Dataset } from "../src
 import { adjustComparisonRows, adjustPValues, incompleteRows, missingColumn } from "../src/stats/column/base";
 import { dagostinoPearson } from "../src/stats/column/shapiro-wilk";
 import { parseGroupLevels, toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
+import { initialAnswer } from "../src/views/analyses/analysis-wizard";
 import { addNote, movedText, paintOf, vectorTraces, visibleOutline, withCaps } from "../src/views/graphs/plot-helpers";
 import {
   drawnKeys,
@@ -856,6 +857,101 @@ check("the nested ANOVA wizard asks only for a post-hoc choice", () => {
     type: "nested-anova",
     params: { posthoc: "tukey" },
   });
+});
+
+// Round 2 M18: a choice question with zero options used to throw `TypeError`
+// (`q.options[0].value` in the wizard's `initialAnswer`) — e.g. Correlation
+// "Two chosen data sets" on X + 1 Y, a two-series binding-saturation model on
+// X + 1 Y, or ROC when the truth column is the table's only numeric column.
+check("a choice question with zero options has no answer instead of throwing (M18)", () => {
+  const empty: Question = { id: "second", ask: "Which is the second data set?", kind: "choice", options: [] };
+  strictEqual(initialAnswer(empty, undefined), null);
+  const two: Question = {
+    id: "mode",
+    ask: "Which?",
+    kind: "choice",
+    options: [
+      { value: "a", label: "A" },
+      { value: "b", label: "B" },
+    ],
+  };
+  strictEqual(initialAnswer(two, undefined), "a");
+  strictEqual(initialAnswer(two, "b"), "b");
+  strictEqual(initialAnswer(two, "gone"), "a");
+});
+
+check("the correlation and binding wizards hide their two-series paths on X + 1 Y (M18)", () => {
+  const oneY = readTable({
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "0", "1.1"],
+      ["", "1", "2.9"],
+      ["", "2", "5.2"],
+    ],
+  });
+  const choiceValues = (q: Question) => {
+    if (q.kind !== "choice") throw new Error(`${q.id} is not a choice question`);
+    return q.options.map((o) => o.value);
+  };
+  const mode = WIZARDS["correlation"]!
+    .questions({}, oneY)
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "mode") as Question;
+  deepStrictEqual(choiceValues(mode), ["x-vs-every-y", "matrix"]);
+  const model = WIZARDS["binding-saturation"]!
+    .questions({}, oneY)
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "model") as Question;
+  deepStrictEqual(choiceValues(model), ["one-site-total", "two-site-specific"]);
+  // With two Y series both paths are offered again.
+  const twoY = readTable({
+    columns: ["Title", "X", "Y1", "Y2"],
+    rows: [
+      ["", "0", "1.1", "0.9"],
+      ["", "1", "2.9", "2.1"],
+      ["", "2", "5.2", "4.0"],
+    ],
+  });
+  const mode2 = WIZARDS["correlation"]!
+    .questions({}, twoY)
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "mode") as Question;
+  deepStrictEqual(choiceValues(mode2), ["x-vs-every-y", "two-datasets", "matrix"]);
+  const model2 = WIZARDS["binding-saturation"]!
+    .questions({}, twoY)
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "model") as Question;
+  deepStrictEqual(choiceValues(model2), [
+    "one-site-total",
+    "two-site-specific",
+    "one-site-total-and-ns",
+    "two-site-total-and-ns",
+  ]);
+  // A stale "two-datasets" answer on X + 1 Y still reaches the second
+  // question — with no options and a message for the blocked step, never a throw.
+  const second = WIZARDS["correlation"]!
+    .questions({ method: "pearson", mode: "two-datasets", first: "Y1" }, oneY)
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "second") as Question;
+  if (second.kind !== "choice") throw new Error("second is not a choice question");
+  deepStrictEqual(second.options, []);
+  ok(second.emptyMessage?.includes("only one Y data set"));
+  strictEqual(initialAnswer(second, undefined), null);
+});
+
+check("the ROC wizard's score question carries a message when the truth is the only numeric column (M18)", () => {
+  const table = readTable({
+    columns: ["Title", "Score"],
+    rows: [["", "1"], ["", "2"], ["", "3"]],
+  });
+  const score = WIZARDS["roc-curve"]!
+    .questions({ truth: "Score" }, table)
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "score") as Question;
+  if (score.kind !== "choice") throw new Error("score is not a choice question");
+  deepStrictEqual(score.options, []);
+  ok(score.emptyMessage?.includes("only numeric column"));
+  strictEqual(initialAnswer(score, undefined), null);
 });
 
 // ── Row groups (a grouped table's third factor, plan 03) ─────────────────
