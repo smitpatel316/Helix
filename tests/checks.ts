@@ -9,7 +9,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { EvalCancelledError, evalNamedVector, resetR, setPackageRepo, startR } from "../src/stats/webr";
+import { EvalCancelledError, ensurePackages, evalNamedVector, packageDiagnostics, packageStatus, resetR, setPackageRepo, startR } from "../src/stats/webr";
 import {
   createEvalQueue,
   getRQueueSnapshot,
@@ -7465,6 +7465,50 @@ check("a cancel drops only its own window's requests, and the engine dequeues th
   ok(/queue\.cancel\(ids\)\.runningCancelled/.test(native), "serveR must interrupt only when the running evaluation was cancelled");
   const queue = readFileSync("src/stats/r-queue.ts", "utf8");
   ok(/cancel\(ids: Iterable<unknown>\)/.test(queue), "the FIFO must drop queued entries by id");
+});
+
+// R3-02: resetR() used to leave installed packages marked "ready" while the
+// fresh engine's VFS was empty, so ensurePackages() became a permanent
+// no-op and the next package-backed analysis failed with `there is no
+// package called 'survival'`. resetR() now clears the states (and cancels
+// any install in flight), and the shell broadcasts the engine restart so
+// project windows — which keep their own states — clear theirs too.
+check("an engine restart clears package states, so the next analysis reinstalls (R3-02)", async () => {
+  // The broadcast wiring: the shell tells every window the engine
+  // (re)started, project windows listen for it, and the listener clears
+  // the states through resetR.
+  const main = readFileSync("src-tauri/src/main.rs", "utf8");
+  ok(/app\.emit\("r-reset", \(\)\)/.test(main), "r_ready must broadcast the engine restart");
+  const native = readFileSync("src/native.ts", "utf8");
+  ok(/listen\("r-reset"/.test(native), "project windows must listen for the engine restart");
+  ok(/onEngineReset/.test(native), "native.ts must expose the engine-restart listener");
+  const entry = readFileSync("src/main.tsx", "utf8");
+  ok(/onEngineReset\(\)/.test(entry), "project windows must wire the engine-restart listener");
+  // The runtime proof: survival installed, engine restarted, survival
+  // analysis re-run — it must reinstall instead of failing with
+  // `there is no package called 'survival'`.
+  await ensurePackages(["survival"]);
+  strictEqual(packageStatus("survival").status, "ready", "survival must install before the restart");
+  const started = packageDiagnostics().installsStarted;
+  resetR();
+  strictEqual(
+    packageStatus("survival").status,
+    "not-loaded",
+    "resetR must clear installed-package states",
+  );
+  // The restart drops the booted engine, so the re-run boots a fresh one —
+  // and a fresh boot needs the tests' baseUrl: the eval path's `startR()`
+  // defaults to the app's "/webr/", which does not exist here (same
+  // re-boot the suite does after a failed boot below).
+  await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
+  const { table } = importedTable("survival");
+  const out = await runAnalysis("survival", table.data!, { curveTest: "logrank", correction: "holm" });
+  ok(!("error" in out), `survival after an engine restart should reinstall and run, got ${JSON.stringify(out)}`);
+  strictEqual(packageStatus("survival").status, "ready", "survival must be ready again after the re-run");
+  ok(
+    packageDiagnostics().installsStarted > started,
+    "the re-run must have started a fresh install",
+  );
 });
 
 // ── Open-format nudge (prism-format-work (f)) ─────────────────────────────

@@ -9,7 +9,7 @@ import { Image } from "@tauri-apps/api/image";
 import { Menu, Submenu, type MenuOptions } from "@tauri-apps/api/menu";
 import { message, save } from "@tauri-apps/plugin-dialog";
 import type { RVector } from "./stats/webr";
-import { interruptR } from "./stats/webr";
+import { interruptR, resetR } from "./stats/webr";
 import {
   createEvalQueue,
   setRQueueSnapshot,
@@ -151,6 +151,19 @@ export async function serveR(evaluate: (code: string) => Promise<RVector>) {
 export async function onRQueue() {
   if (!isNative) return () => {};
   return getCurrentWebviewWindow().listen<RQueueSnapshot>("r-queue", ({ payload }) => setRQueueSnapshot(payload));
+}
+
+/** In a project window: the engine window (re)started, so its R is fresh
+ *  with an empty VFS — this window's installed-package states are void
+ *  with it (R3-02). Clear them (`resetR`), or the next analysis would see
+ *  its packages `ready`, skip the install, and fail with `there is no
+ *  package called '…'` in the fresh engine. The shell broadcasts
+ *  "r-reset" from `r_ready` (main.rs) on every engine start, including
+ *  the first boot (when there is nothing to clear). No-op outside the app.
+ *  Returns the unlisten function. */
+export async function onEngineReset() {
+  if (!isNative) return () => {};
+  return getCurrentWebviewWindow().listen("r-reset", () => resetR());
 }
 
 // ── Window ─────────────────────────────────────────────────────────────

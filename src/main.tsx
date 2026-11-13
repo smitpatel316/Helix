@@ -4,7 +4,7 @@ import { ProjectProvider } from "./store/use-project-store";
 import { LayoutProvider } from "./store/use-layout";
 import { AppShell } from "./components/app-shell";
 import { connectR } from "./stats/webr";
-import { accentColor, cancelR, evalR, isNative, onFocusChange } from "./native";
+import { accentColor, cancelR, evalR, isNative, onEngineReset, onFocusChange } from "./native";
 import { checkForUpdatesDaily } from "./updates";
 import "./styles.css";
 
@@ -18,6 +18,10 @@ onFocusChange((focused) => focused && syncAccent());
 // browser (`npm run web`), this page starts its own R at the first analysis.
 // `cancelR` is the watchdog's / Cancel button's way to stop that R.
 if (isNative) connectR(evalR, cancelR);
+// The engine window (re)starting voids this window's installed-package
+// states (R3-02): listen for its broadcast, so the next analysis
+// reinstalls instead of failing with `there is no package called '…'`.
+void onEngineReset();
 
 // Whether a newer Titer is out, at most once a day.
 checkForUpdatesDaily();
