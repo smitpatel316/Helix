@@ -355,7 +355,9 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
   let dateColumn: { name: string; values: (string | null)[]; excluded: Set<number> } | null = null;
   if (xFormat === "date") {
     if (xAdvanced) {
-      const dates = readColumn(xAdvanced).subcolumns[0]?.values ?? [];
+      const dateSub = readColumn(xAdvanced).subcolumns[0];
+      const dates = dateSub?.values ?? [];
+      const dateExcluded = dateSub?.excluded ?? new Set<number>();
       const hasAnyDate = dates.some((v) => v !== null && v !== "");
       let datesKeptAsRowTitles = false;
       if (!hasRowTitles) {
@@ -370,8 +372,10 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
         // The row titles are the rows' names, so the dates get their own
         // column instead of being dropped: the numeric X stays the X axis
         // (years since the first date, as Prism stores it) and the dates
-        // sit beside it as text, which analyses and graphs skip.
-        dateColumn = { name: `${xName} (date)`, values: dates, excluded: new Set() };
+        // sit beside it as text, which analyses and graphs skip. A
+        // struck-through date stays struck through: its Excluded marker
+        // rides along, the same as the X / X error columns (#20).
+        dateColumn = { name: `${xName} (date)`, values: dates, excluded: dateExcluded };
       }
       if (datesKeptAsRowTitles) {
         warnings.push(`${displayName}: the X values are dates; the dates were kept as row titles.`);

@@ -6065,6 +6065,33 @@ check(".pzfx import keeps Excluded markers on the X column and its X error colum
   deepStrictEqual(node.data!.excluded, ["1,1", "1,2"]);
 });
 
+check(".pzfx import keeps a struck-through date X value excluded in its date column (#20 follow-up)", () => {
+  // Same drop as #20, one column over: the X-date path pushed the dates
+  // with a fresh empty excluded set, so a struck-through date imported as
+  // live text. The dates sit in their own column here (row titles exist),
+  // so the marker must land on that column — row 1, col 2.
+  const text = `<?xml version="1.0" encoding="UTF-8"?><GraphPadPrismFile PrismXMLVersion="5.00">
+<Table ID="Table0" XFormat="date" YFormat="replicates" Replicates="1" TableType="XY" EVFormat="AsteriskAfterNumber">
+<Title>Sample Data</Title>
+<RowTitlesColumn Width="41"><Subcolumn><d>Sample A</d><d>Sample B</d><d>Sample C</d></Subcolumn></RowTitlesColumn>
+<XColumn Width="114" Subcolumns="1" Decimals="14"><Title>Date X</Title>
+<Subcolumn><d>0</d><d>5.22929500342231</d><d>8.12320328542094</d></Subcolumn>
+</XColumn>
+<XAdvancedColumn Version="1" Width="114" Decimals="0" Subcolumns="1"><Title>Date X</Title>
+<Subcolumn><d>16-Jan-2004</d><d Excluded="1">9-Apr-2009</d><d>1-Mar-2012</d></Subcolumn>
+</XAdvancedColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Observation</Title><Subcolumn><d>120</d><d>64</d><d>46</d></Subcolumn></YColumn>
+</Table>
+</GraphPadPrismFile>`;
+  const imported = parsePzfx(text);
+  strictEqual(imported.tables.length, 1);
+  const node = imported.project.nodes[imported.project.rootOrder[0]];
+  if (!node || node.type !== "table") throw new Error("no table node");
+  deepStrictEqual(node.data!.columns, ["Title", "Date X", "Date X (date)", "Observation"]);
+  deepStrictEqual(node.data!.rows[1], ["Sample B", "5.22929500342231", "9-Apr-2009", "64"]);
+  deepStrictEqual(node.data!.excluded, ["1,2"]);
+});
+
 check(".pzfx import names summary subcolumns and warns they aren't replicates", () => {
   const { imported, table } = importedTable("column_sdn");
   strictEqual(table.tableType, "column");
