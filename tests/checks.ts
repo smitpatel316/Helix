@@ -2108,6 +2108,31 @@ check("closed-form inverses read unknowns off the fitted curve", async () => {
   strictEqual(invertModel("quadratic", dose.coefficients, 50), null);
 });
 
+// R2-m10: band inversion on a non-monotonic standard curve can return an
+// inverted 95% CI (low > high), which reads as a valid interval. An
+// inverted-U quadratic (Y = −x² + 6x over X 0..7, noisy so the band has
+// width) with an unknown Y = 5 on the rising limb inverts on unfixed code
+// (low 1.096 > high 0.847): the fix drops the CI and says so in the notes,
+// keeping the point estimate.
+check("an inverted band-inversion CI is dropped, never shown as an interval", async () => {
+  const xs = [0, 1, 2, 3, 4, 5, 6, 7];
+  const noise = [0.3, -0.2, 0.4, -0.3, 0.2, -0.4, 0.3, -0.2];
+  const quad: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ...xs.map((x, i) => ["", String(x), String(-x * x + 6 * x + noise[i])]),
+      ["", "", "5"],
+    ],
+  };
+  const out = await runAnalysis("nonlinear-regression", quad, { y: "Y1", model: "quadratic", interpolate: true });
+  ok(!("error" in out) && out.interpolated?.length === 1);
+  const u = out.interpolated[0];
+  ok(u.x != null && Math.abs(u.x - 0.973) < 0.01);
+  strictEqual(u.low, null);
+  strictEqual(u.high, null);
+  ok(!("error" in out) && out.notes.includes("comes back inverted"));
+});
+
 check("data sets ticked again keep the table's order", () => {
   const options = ["A", "B", "C"];
   deepStrictEqual(toggled(options, ["A", "C"], "B", true), ["A", "B", "C"]);
