@@ -2625,6 +2625,38 @@ check("a survival curve runs on to the last subject followed", () => {
   deepStrictEqual([curve.x.slice(-2), curve.y.at(-1)], [[2, 5], curve.y.at(-2)]);
 });
 
+check("a survival counts curve never plots above 100% from a zero initial count", () => {
+  // R2-G-F11: the old `|| 1` fallback divided by 1 when the initial count
+  // was 0, so counts [0, 5] plotted as [0%, 500%] presented as fact.
+  const options: GraphOptions = { ...newGraphOptions("survival"), survivalMode: "counts" };
+  const data = {
+    columns: ["Title", "X", "A", "B", "C"],
+    rows: [
+      [null, "0", "0", "10", "10"],
+      [null, "1", "5", "12", "8"],
+    ],
+  };
+  const fig = GRAPHS.survival.build(readTable(data).columns, options, paintOf(options, 3));
+  const traces = fig.data as { name?: string; y: number[] }[];
+  // A has no starting population: no curve, named on the figure instead.
+  deepStrictEqual(
+    traces.map((t) => t.name),
+    ["B", "C"],
+  );
+  // B's later count exceeds its initial count: clamped to 100%, not 120%.
+  deepStrictEqual(
+    traces.map((t) => t.y),
+    [
+      [100, 100],
+      [100, 80],
+    ],
+  );
+  ok(traces.every((t) => t.y.every((v) => v >= 0 && v <= 100)), "every plotted percent is within 0–100%");
+  const notes = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+  ok(notes.some((n) => n.text?.includes("“A” omitted")), "names the omitted zero-initial group");
+  ok(notes.some((n) => n.text?.includes("“B” clamped to 0–100%")), "names the clamped group");
+});
+
 check("texts moved by hand stay where they were dropped", () => {
   // What Plotly reports of a move: the legend, a color legend, a named text; a
   // significance label has no name, so it isn't one.

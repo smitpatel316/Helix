@@ -10,7 +10,7 @@ import type { CoxPHParams } from "../../stats/types";
 import type { GraphModule, GraphFigure } from ".";
 import { pairUp, readTable, type Column } from "../../lib/dataset";
 import { num } from "../../lib/format";
-import { xyLayout, type Paint } from "./plot-helpers";
+import { addNote, xyLayout, type Paint } from "./plot-helpers";
 import { withOpacity } from "../../lib/palettes";
 import { kaplanMeier } from "../../lib/kaplan-meier";
 
@@ -18,11 +18,25 @@ import { kaplanMeier } from "../../lib/kaplan-meier";
 // version returns the same steps plus the 95% band (lower/upper).
 export { kaplanMeier };
 
-/** "counts" mode: cells are survivors remaining, plotted directly as percent-of-initial. */
-function survivorCountsStep(x: number[], counts: number[]): { t: number[]; s: number[] } {
+/** "counts" mode: cells are survivors remaining, plotted directly as percent-of-initial.
+ *  Returns null when the initial count (at the earliest time) is not a positive
+ *  number: percent survival is undefined with no starting population, and the
+ *  old `|| 1` fallback divided by 1 instead, so a later nonzero count plotted
+ *  above 100% as fact. Percentages are clamped to [0, 100]; `clamped` says a
+ *  count fell outside [0, initial] (a later count above the initial, or a
+ *  negative count) so the caller can say so on the figure. */
+function survivorCountsStep(x: number[], counts: number[]): { t: number[]; s: number[]; clamped: boolean } | null {
   const order = x.map((_, i) => i).sort((a, b) => x[a] - x[b]);
-  const initial = counts[order[0]] || 1;
-  return { t: order.map((i) => x[i]), s: order.map((i) => (counts[i] / initial) * 100) };
+  const initial = counts[order[0]];
+  if (!Number.isFinite(initial) || initial <= 0) return null;
+  let clamped = false;
+  const s = order.map((i) => {
+    const pct = (counts[i] / initial) * 100;
+    const c = Math.min(100, Math.max(0, pct));
+    if (c !== pct) clamped = true;
+    return c;
+  });
+  return { t: order.map((i) => x[i]), s, clamped };
 }
 
 function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFigure {
@@ -31,6 +45,11 @@ function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFig
   if (!xCol || ySeries.length === 0) return { data: [], layout };
 
   const byCodes = options.survivalMode !== "counts";
+  // Counts mode: a group with no starting population has no curve, and a
+  // count outside [0, initial] is clamped to 0–100% — both named on the
+  // figure, so no group is silently dropped or silently re-scaled.
+  const omitted: string[] = [];
+  const clampedGroups: string[] = [];
   const data = ySeries.flatMap((y, i) => {
     const { x, y: values } = pairUp(xCol, y);
     const color = paint.color(y.name, i);
@@ -46,7 +65,13 @@ function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFig
       showlegend: false,
     });
     if (!byCodes) {
-      const { t, s } = survivorCountsStep(x, values);
+      const step = survivorCountsStep(x, values);
+      if (!step) {
+        omitted.push(y.name);
+        return [];
+      }
+      if (step.clamped) clampedGroups.push(y.name);
+      const { t, s } = step;
       return [{ ...steps(t, s, paint.line(y.name, i)), name: y.name, hoverinfo: "x+y", showlegend: true }];
     }
     const km = kaplanMeier(x, values);
@@ -83,7 +108,16 @@ function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFig
   });
 
   // The groups in table order: Plotly would list them backwards once a band fills.
-  return { data, layout: { ...layout, legend: { ...(layout.legend as object), traceorder: "normal" } } };
+  const fig: GraphFigure = { data, layout: { ...layout, legend: { ...(layout.legend as object), traceorder: "normal" } } };
+  const notes: string[] = [];
+  if (omitted.length)
+    notes.push(`${omitted.map((n) => `“${n}”`).join(", ")} omitted: the initial count is 0, so percent survival is undefined.`);
+  if (clampedGroups.length)
+    notes.push(
+      `${clampedGroups.map((n) => `“${n}”`).join(", ")} clamped to 0–100%: a count fell outside 0 and the initial count.`,
+    );
+  if (notes.length) addNote(fig, notes.join(" "), options);
+  return fig;
 }
 
 export const survival: GraphModule = { label: "Survival curve", family: "xy", lines: () => true, build };
