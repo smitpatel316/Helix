@@ -3631,6 +3631,40 @@ check("the forest plot drops non-finite or non-positive hazard ratios instead of
   );
 });
 
+check("the forest plot names a covariate whose CI bound came back null (R2-M14)", () => {
+  const options = newGraphOptions("forest-plot");
+  const fig = GRAPHS["forest-plot"].build([], options, paintOf(options, 1));
+  // The real separation signature: R's exp(confint(m)) upper bound
+  // overflows to +Inf and evalNamedVector maps it to null (headless repro
+  // on the GUI fixture: Safe HR 1.226e-9, low 0, high null). A null bound
+  // must be omitted WITH a note, not silently filtered out first.
+  const outcome: AnalysisResult = {
+    testType: "cox-proportional-hazards",
+    stats: [],
+    groups: [],
+    notes: "",
+    coefficients: [
+      { term: "Trt", estimate: null, stdError: null, t: null, p: null, hazardRatio: 0.4164, low: 0.1149, high: 1.5091 },
+      { term: "Age", estimate: null, stdError: null, t: null, p: null, hazardRatio: 1.012, low: 0.909, high: 1.1267 },
+      { term: "Safe", estimate: null, stdError: null, t: null, p: null, hazardRatio: 1.226e-9, low: 0, high: null },
+    ],
+  };
+  addForestPlot(fig, outcome, paintOf(options, 1), options);
+  const traces = fig.data as { mode?: string; x?: number[]; y?: string[] }[];
+  const row = traces.find((t) => t.mode === "markers");
+  deepStrictEqual(row?.y, ["Trt", "Age"]);
+  const xaxis = fig.layout.xaxis as { range?: number[] };
+  ok(
+    xaxis.range?.every((v) => Number.isFinite(v)),
+    `forest-plot range must be finite, got ${JSON.stringify(xaxis.range)}`,
+  );
+  const notes = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+  ok(
+    notes.some((n) => n.text?.includes("“Safe”")),
+    `the null-bound covariate must be named on the figure, got ${JSON.stringify(notes.map((n) => n.text))}`,
+  );
+});
+
 check("the PCA wizard asks scale then components, defaulting to the correlation matrix and all components", () => {
   const data: TableData = {
     columns: ["Title", "Var1", "Var2", "Var3"],

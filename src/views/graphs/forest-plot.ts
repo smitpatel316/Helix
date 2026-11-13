@@ -55,16 +55,18 @@ export function addForestPlot(
   _paint: Paint,
   options: GraphOptions,
 ): void {
-  const rows = (outcome.coefficients ?? []).filter(
-    (c) => c.hazardRatio != null && c.low != null && c.high != null,
-  );
+  const rows = outcome.coefficients ?? [];
   if (!rows.length) return;
   // Under separation R's exp(confint(m)) underflows a CI bound to 0 or
   // overflows it to Inf (and the hazard ratio itself can underflow to 0);
   // log10(0) = -Infinity / log10(Inf) = Infinity is an invalid Plotly range
   // that blanks the whole plot, and a whisker to 0 or Inf has no place on a
-  // log scale anyway. Keep only drawable rows, so the range below is finite
-  // by construction, and name the omitted covariates on the figure.
+  // log scale anyway. The overflow case usually arrives as a null bound,
+  // not Inf: evalNamedVector maps every non-finite R value to null, so a
+  // null hazard ratio or CI bound is an omittable-with-note row too — it
+  // must reach the guard below, not be silently filtered out first.
+  // Keep only drawable rows, so the range below is finite by construction,
+  // and name the omitted covariates on the figure.
   const kept = rows.filter(
     (c) =>
       Number.isFinite(c.hazardRatio!) &&
