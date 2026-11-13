@@ -349,26 +349,48 @@ const READ_OPTION = {
 type TableColors = { series?: Record<string, PaletteColor>; cells?: Record<string, PaletteColor> };
 
 /** A table's row groups as a file holds them: every band a non-empty, distinct
- *  name with a positive whole-row count — anything else reads as no third
- *  factor (a broken band is left out on its own, like any broken item). */
-function readRowGroups(v: unknown): RowGroup[] | undefined {
-  if (!Array.isArray(v)) return undefined;
-  const bands = v.map((b) =>
-    isObj(b) && typeof b.name === "string" && b.name.trim() !== "" && isCount(b.count)
-      ? { name: b.name, count: b.count }
-      : null,
-  );
-  if (bands.some((b) => b === null)) return undefined;
-  const kept = bands as RowGroup[];
-  if (new Set(kept.map((b) => b.name)).size !== kept.length) return undefined;
-  return kept.length ? kept : undefined;
+ *  name with a positive whole-row count. A broken band is left out on its own —
+ *  the valid bands stay, and each dropped band is named so the user is told
+ *  (a file whose every band is broken reads as no third factor). */
+function readRowGroups(v: unknown): { groups: RowGroup[] | undefined; dropped: string[] } {
+  if (!Array.isArray(v)) return { groups: undefined, dropped: [] };
+  const groups: RowGroup[] = [];
+  const dropped: string[] = [];
+  const seen = new Set<string>();
+  for (const b of v) {
+    if (!isObj(b) || typeof b.name !== "string" || b.name.trim() === "" || !isCount(b.count)) {
+      dropped.push(describeDroppedBand(b));
+      continue;
+    }
+    if (seen.has(b.name)) {
+      dropped.push(`“${b.name}” (a second band with this name)`);
+      continue;
+    }
+    seen.add(b.name);
+    groups.push({ name: b.name, count: b.count });
+  }
+  return { groups: groups.length ? groups : undefined, dropped };
+}
+
+/** How a dropped row-group band is named in the warning: its name and count
+ *  when it has them, so the user can tell which band went. */
+function describeDroppedBand(b: unknown): string {
+  if (!isObj(b)) return "an unreadable band";
+  const name = typeof b.name === "string" && b.name.trim() !== "" ? `“${b.name}”` : "a band with no name";
+  if (isCount(b.count)) return name;
+  return typeof b.count === "number" ? `${name} (count ${b.count})` : `${name} (no count)`;
 }
 
 /** A table's data, and the colors it kept for its graphs. */
 /** A table's data, put straight: no value beyond its last column (`beyond` counts those left
  *  out), exclusions and widths only on cells and columns it has, and a grouped table's
  *  groups and sub-columns those of its columns ("A:Y1"…). */
-function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: number } | null {
+function readData(raw: Obj): {
+  data: TableData;
+  colors: TableColors;
+  beyond: number;
+  rowGroupsDropped: string[];
+} | null {
   const { seriesColors, pointColors, ...d } = canonical(raw, [...DATA_KEYS, "seriesColors", "pointColors"]);
   if (!Array.isArray(d.columns) || !Array.isArray(d.rows)) return null;
   const columns = d.columns.map((c) => cellText(c) ?? "");
@@ -389,6 +411,7 @@ function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: num
         Object.entries(d.widths).filter(([name, w]) => columns.includes(name) && isFiniteNumber(w) && w > 0),
       )
     : {};
+  const rowGroups = readRowGroups(d.rowGroups);
   let data = defined({
     ...d,
     columns,
@@ -396,7 +419,7 @@ function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: num
     groups: isCount(d.groups) && isCount(d.replicates) ? d.groups : undefined,
     replicates: isCount(d.groups) && isCount(d.replicates) ? d.replicates : undefined,
     subgroups: isCount(d.groups) && isCount(d.replicates) && isCount(d.subgroups) ? d.subgroups : undefined,
-    rowGroups: readRowGroups(d.rowGroups),
+    rowGroups: rowGroups.groups,
     excluded: excluded.length ? excluded : undefined,
     widths: Object.keys(widths).length ? (widths as Record<string, number>) : undefined,
     freezeTitle: d.freezeTitle === true || undefined,
@@ -427,7 +450,7 @@ function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: num
     if (groups.length !== data.groups || subgroups !== data.subgroups || replicates !== data.replicates)
       data = defined(renestTable(data, groups.length, subgroups, replicates));
   }
-  return { data, colors: { series: colors(seriesColors), cells: colors(pointColors) }, beyond };
+  return { data, colors: { series: colors(seriesColors), cells: colors(pointColors) }, beyond, rowGroupsDropped: rowGroups.dropped };
 }
 
 /** Every option, of the right type, one of its choices and within its limits: a missing
@@ -571,6 +594,13 @@ function readNode(
       issues.push({
         severity: "warning",
         message: `Table “${node.name}” had ${values} beyond its last column; they were left out.`,
+      });
+    }
+    if (read.rowGroupsDropped.length) {
+      const dropped = read.rowGroupsDropped;
+      issues.push({
+        severity: "warning",
+        message: `Table “${node.name}” left out ${dropped.length === 1 ? "a row group" : `${dropped.length} row groups`} it couldn't read: ${dropped.join(", ")}.`,
       });
     }
     node.parentId = null;
