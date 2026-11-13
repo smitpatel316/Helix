@@ -4,10 +4,12 @@
 // setting and following renamed columns, selected points, exports, analyses on the
 // data asked, Undo, and the app's menus, recents and update check. `npm test` runs them.
 import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert/strict";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { evalNamedVector, setPackageRepo, startR } from "../src/stats/webr";
+import { evalNamedVector, resetR, setPackageRepo, startR } from "../src/stats/webr";
 import { parseProjectFile, readPalette, serializeProjectFile, type ProjectFilePayload } from "../src/lib/project-file";
 import {
   DEFAULT_GRAPH_OPTIONS,
@@ -5400,6 +5402,45 @@ check("a failed analysis is not cached: fixing the data and re-running works", a
   };
   const second = await runAnalysis("binding-kinetics", fixed, params);
   ok(!("error" in second), `fixed data should fit, got ${JSON.stringify(second)}`);
+// R2-M15: a hung R boot must not strand the run — or the runAnalysis cache —
+// forever. The boot watchdog stops it with a clear error, the boot memo is
+// reset, and the next startR boots fresh — that is the retry. The hung boot
+// is a worker that starts but never becomes ready: a scratch dir symlinks
+// the real runtime and replaces only the worker with a never-responding
+// stub, so init() waits on it forever; without the watchdog this check
+// would hang with it. resetR() first: the suite already booted R at the
+// top, and startR returns the live engine while one exists — the hung boot
+// only happens on a fresh boot. The timed-out boot is what `runAnalysis`
+// then surfaces and evicts from its cache, so a retry starts a fresh run
+// instead of returning the same hung promise.
+check("hung R boot times out and retry boots fresh", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "helix-hung-webr-"));
+  try {
+    const real = fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url));
+    for (const name of readdirSync(real)) {
+      if (name === "webr-worker.js") continue;
+      symlinkSync(join(real, name), join(dir, name));
+    }
+    writeFileSync(
+      join(dir, "webr-worker.js"),
+      "// Never responds: the worker starts but never becomes ready.\nsetInterval(() => {}, 3_600_000);\n",
+    );
+    resetR();
+    const started = Date.now();
+    await rejects(
+      startR(`${dir}/`, { timeoutMs: 1_000 }),
+      (err: unknown) =>
+        err instanceof Error && /took longer than 1 second to start/.test(err.message),
+    );
+    const elapsed = Date.now() - started;
+    ok(elapsed < 10_000, `hung boot took ${elapsed} ms to fail`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  // The memo was reset: a good boot works on the same engine slot, and the
+  // evaluation that follows it proves R itself is healthy.
+  await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
+  deepStrictEqual(await evalNamedVector("c(a=1)"), { a: 1 });
 });
 
 // ── Run ──────────────────────────────────────────────────────────────────
