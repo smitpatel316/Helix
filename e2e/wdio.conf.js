@@ -22,7 +22,7 @@ const E2E_HOME = path.resolve(__dirname, ".e2e-home");
 
 export const config = {
   runner: "local",
-  specs: ["./e2e/specs/**/*.e2e.js"],
+  specs: ["./specs/**/*.e2e.js"], // relative to THIS config file (e2e/), not the cwd,
   maxInstances: 1,
   services: [
     [
