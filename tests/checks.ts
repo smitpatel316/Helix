@@ -495,6 +495,63 @@ check("a file from Helix 1.0 keeps its colors, now each graph's own", () => {
   ok(!("volcanoPointSize" in again.project.nodes.g4.graphOptions));
 });
 
+// M11: a missing palette alone must not rewrite a graph's own options —
+// the Helix 1.0 rebuild only fills in what the file never saved. A graph
+// that saved its fill, point size, outline and bar gap keeps them (and its
+// series), while one that saved only its fill still takes its type's
+// point size, outline and bar gap.
+check("a graph without a palette keeps the options it saved", () => {
+  const file = {
+    app: "helix",
+    project: {
+      nodes: {
+        t1: {
+          id: "t1",
+          type: "table",
+          name: "T",
+          parentId: null,
+          tableType: "xy",
+          data: { columns: ["Title", "X", "Y1", "Y2"], rows: [] },
+        },
+        g1: {
+          id: "g1",
+          type: "graph",
+          name: "Box",
+          parentId: "t1",
+          graphType: "box-violin",
+          graphOptions: {
+            showPoints: true,
+            fill: 0.9,
+            pointFill: 0.8,
+            pointSize: 9,
+            outline: 1,
+            barGap: 0.3,
+            series: { Y1: { color: "#D55E00" } },
+          },
+        },
+        g2: {
+          id: "g2",
+          type: "graph",
+          name: "Box 2",
+          parentId: "t1",
+          graphType: "box-violin",
+          graphOptions: { fill: 0.9 },
+        },
+      },
+    },
+  };
+  const { project } = read(JSON.stringify(file));
+  const o1 = project.nodes.g1.graphOptions!;
+  deepStrictEqual(
+    [o1.fill, o1.pointFill, o1.pointSize, o1.outline, o1.barGap],
+    [0.9, 0.8, 9, 1, 0.3],
+  );
+  deepStrictEqual(o1.series, { Y1: { color: "#D55E00" } });
+  strictEqual(o1.palette!.name, "helix"); // the missing palette is still rebuilt
+  const o2 = project.nodes.g2.graphOptions!;
+  deepStrictEqual([o2.fill, o2.pointSize, o2.outline, o2.barGap], [0.9, 5, 2, 0]);
+});
+
 check("cell colors from older files become their graphs' point colors", () => {
   const file = JSON.parse(serializeProjectFile(payload));
   file.project.nodes.t1.data.pointColors = { "Y1#1": "Green" };

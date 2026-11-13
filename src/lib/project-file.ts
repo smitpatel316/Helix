@@ -704,7 +704,13 @@ export function parseProjectFile(
       continue;
     }
     if (node.type === "graph") {
-      if (!node.graphOptions!.palette) colorsFromHelix1(node, tableColors[node.parentId!]?.series);
+      if (!node.graphOptions!.palette) {
+        // The file's own options, as saved — the rebuild only fills in what they lack.
+        const rawNodes = isObj(project.nodes) ? project.nodes : undefined;
+        const rawNodeObj = rawNodes?.[node.id];
+        const rawNode = isObj(rawNodeObj) ? canonical(rawNodeObj, NODE_KEYS) : undefined;
+        colorsFromHelix1(node, tableColors[node.parentId!]?.series, rawNode?.graphOptions);
+      }
       pointsFromCells(node, tableColors[node.parentId!]?.cells);
     }
     const tableType = nodeOf(node.parentId)?.tableType;
@@ -854,7 +860,16 @@ function resample(stops: [number, string][]): string[] {
 
 const LEGACY_OPTIONS = ["heatmapColorScale", "volcanoColorUp", "volcanoColorDown", "volcanoPointSize"];
 
-function colorsFromHelix1(node: ProjectNode, tableColors: Record<string, PaletteColor> | undefined) {
+/** A graph without a palette gets Helix 1.0's colors back as its own — but only
+ *  for what the file never saved (`saved`: its options as the file held them).
+ *  A graph that saved its fill, point size, outline, bar gap or series keeps
+ *  them; the rebuild fills in the rest, so a missing palette alone never
+ *  rewrites a graph's own options. */
+function colorsFromHelix1(
+  node: ProjectNode,
+  tableColors: Record<string, PaletteColor> | undefined,
+  saved: unknown,
+) {
   const all = node.graphOptions as unknown as Obj;
   const old = canonical(all, LEGACY_OPTIONS);
   const named = (v: unknown, fallback: PaletteColor) => (isNamed(lower(v)) ? (lower(v) as PaletteColor) : fallback);
@@ -879,15 +894,24 @@ function colorsFromHelix1(node: ProjectNode, tableColors: Record<string, Palette
   const { defaults } = isIn(GRAPHS, node.graphType) ? GRAPHS[node.graphType!] : {};
   const pointSize = within(old.volcanoPointSize, GRAPH_LIMITS.pointSize);
   const fills = { fill: defaults?.fill ?? 0.5, pointFill: defaults?.pointFill ?? 0.5 };
-  const helix1 = {
-    ...options,
-    ...defaults,
-    ...(pointSize === undefined ? {} : { pointSize }),
-    palette,
-    series,
-    ...fills,
-  };
-  node.graphOptions = defined({ ...helix1, barGap: 0 }) as unknown as GraphOptions;
+  // What the file saved, spelled as Helix writes it: the options above already
+  // hold the global defaults for what it didn't, so only this tells the two apart.
+  const savedKeys = new Set(
+    isObj(saved)
+      ? Object.keys(
+          canonical(saved, [...Object.keys(DEFAULT_GRAPH_OPTIONS), ...Object.keys(OPTIONAL_OPTIONS)]),
+        )
+      : [],
+  );
+  const helix1: Obj = { ...options };
+  for (const [key, value] of Object.entries({ ...defaults, ...fills })) {
+    if (!savedKeys.has(key)) helix1[key] = value;
+  }
+  if (pointSize !== undefined && !savedKeys.has("pointSize")) helix1.pointSize = pointSize;
+  if (!savedKeys.has("barGap")) helix1.barGap = 0;
+  if (series && !savedKeys.has("series")) helix1.series = series;
+  helix1.palette = palette;
+  node.graphOptions = defined(helix1) as unknown as GraphOptions;
 }
 
 /** Points colored in their table's cells (before Helix 1.0.3) keep their color on
