@@ -85,7 +85,7 @@ import { AnalysisResultsView, headline } from "../src/views/analyses/analysis-re
 import { fitWidths, fitZoom } from "../src/store/use-layout";
 import { computeGroupedDEG } from "../src/lib/deg";
 import { logisticCurveNote } from "../src/views/graphs/logistic-curve";
-import { runAnalysis } from "../src/stats";
+import { ANALYSES, runAnalysis } from "../src/stats";
 import {
   computeFrequencyBins,
   niceWidthUp,
@@ -4918,15 +4918,12 @@ check("hung R eval times out, is interrupted, and retry works", async () => {
 // stay cached under the table version, so Retry replayed the stale error
 // instead of re-running.
 check("a failed analysis is not cached: fixing the data and re-running works", async () => {
+  // The Y series follows a one-phase association curve (Kobs ≈ 1, plateau 5)
+  // at times 0–6 — but the X column was mistyped: every time reads 5.
+  const ys = ["0.03", "3.12", "4.35", "4.71", "4.95", "4.93", "4.98"];
   const table: TableData = {
     columns: ["Title", "X", "Y"],
-    rows: [
-      ["", "5", "1"],
-      ["", "5", "2"],
-      ["", "5", "3"],
-      ["", "5", "4"],
-      ["", "5", "5"],
-    ],
+    rows: ys.map((y) => ["", "5", y]),
   };
   const params = { y: "Y", model: "association-one-phase" } as AnalysisParams;
   const first = await runAnalysis("binding-kinetics", table, params);
@@ -4934,15 +4931,36 @@ check("a failed analysis is not cached: fixing the data and re-running works", a
     "error" in first && /two different times/.test(first.error),
     `expected the equal-times error, got ${JSON.stringify(first)}`,
   );
-  // Same table object, fixed in place: without eviction the stale error replays.
-  table.rows.forEach((row, i) => {
-    row[1] = String(i);
-  });
-  const second = await runAnalysis("binding-kinetics", table, params);
-  ok(
-    !("error" in second) || !/two different times/.test(second.error),
-    `stale equal-times error replayed: ${JSON.stringify(second)}`,
-  );
+  // Retry on the same table re-runs the runner for real instead of replaying
+  // the cached error outcome: count invocations through the registry. (The
+  // data is unchanged, so the retry fails the same way — what matters is
+  // that it ran again.)
+  let runs = 0;
+  const entry = ANALYSES["binding-kinetics"];
+  const orig = entry.run;
+  entry.run = (...args: Parameters<typeof orig>) => {
+    runs++;
+    return orig(...args);
+  };
+  try {
+    const retried = await runAnalysis("binding-kinetics", table, params);
+    strictEqual(runs, 1, `retry should re-run the runner once, ran ${runs} times`);
+    ok(
+      "error" in retried && /two different times/.test(retried.error),
+      `retry on unchanged data should fail the same way, got ${JSON.stringify(retried)}`,
+    );
+  } finally {
+    entry.run = orig;
+  }
+  // Fixing the data — an edit makes a NEW TableData — and re-running fits.
+  // (Mutating the same object in place would NOT do: readTable caches the
+  // parsed table per TableData, by design — an edit makes a new one.)
+  const fixed: TableData = {
+    columns: table.columns,
+    rows: ys.map((y, i) => ["", String(i), y]),
+  };
+  const second = await runAnalysis("binding-kinetics", fixed, params);
+  ok(!("error" in second), `fixed data should fit, got ${JSON.stringify(second)}`);
 });
 
 // ── Run ──────────────────────────────────────────────────────────────────
