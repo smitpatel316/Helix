@@ -334,13 +334,17 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
   // error, kept as its own series so no data is silently dropped.
   let xValues: (string | null)[] = [];
   let xErrorValues: (string | null)[] | null = null;
+  let xExcluded: Set<number> = new Set();
+  let xErrorExcluded: Set<number> = new Set();
   let xName = "X";
   if (xColumns.length > 0) {
     const x = xColumns[0];
     xName = x.title === "" ? "X" : x.title;
     xValues = x.subcolumns[0]?.values ?? [];
+    xExcluded = x.subcolumns[0]?.excluded ?? new Set();
     if (x.subcolumns.length > 1) {
       xErrorValues = x.subcolumns[1].values;
+      xErrorExcluded = x.subcolumns[1].excluded ?? new Set();
       warnings.push(
         `${displayName}: the X error values were imported as a “${xName} error” series — Titer XY tables hold one X column.`,
       );
@@ -475,9 +479,12 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
   } else if (tableType === "XY" || tableType === "Survival") {
     titerType = tableType === "Survival" ? "survival" : "xy";
     if (xValues.length > 0 || xColumns.length > 0) {
-      columns.push({ name: xName, values: xValues.map((v) => normalizeNumber(v, groupingSeparators)), excluded: new Set() });
+      // A struck-through X value (`Excluded="1"`) stays excluded: readSubcolumn
+      // already parsed it into the X subcolumn's excluded set, and dropping it
+      // here would turn an excluded point into active data.
+      columns.push({ name: xName, values: xValues.map((v) => normalizeNumber(v, groupingSeparators)), excluded: xExcluded });
       if (xErrorValues) {
-        columns.push({ name: `${xName} error`, values: xErrorValues.map((v) => normalizeNumber(v, groupingSeparators)), excluded: new Set() });
+        columns.push({ name: `${xName} error`, values: xErrorValues.map((v) => normalizeNumber(v, groupingSeparators)), excluded: xErrorExcluded });
       }
     }
     for (const y of yColumns) {

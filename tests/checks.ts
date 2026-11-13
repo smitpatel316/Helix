@@ -5902,6 +5902,34 @@ check(".pzfx import keeps struck-through values as excluded cells", () => {
   deepStrictEqual(table.data!.excluded, ["1,2", "1,3", "1,4"]);
 });
 
+check(".pzfx import keeps Excluded markers on the X column and its X error column", () => {
+  // Before the fix the XY/Survival branch pushed the X and X error columns
+  // with `excluded: new Set()`, so a struck-through X value (row 1 here, in
+  // both X and X error) silently became an active data point.
+  const text = `<?xml version="1.0" encoding="UTF-8"?><GraphPadPrismFile PrismXMLVersion="5.00">
+<Table ID="Table0" XFormat="error" TableType="XY" YFormat="replicates">
+<Title>XY strike</Title>
+<RowTitlesColumn Width="89"><Subcolumn><d>A</d><d>B</d><d>C</d></Subcolumn></RowTitlesColumn>
+<XColumn Width="89" Decimals="0" Subcolumns="2"><Title>X</Title><Subcolumn><d>1.</d><d Excluded="1">2.</d><d>3.</d></Subcolumn><Subcolumn><d>0.1</d><d Excluded="1">0.2</d><d>0.3</d></Subcolumn></XColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>A</Title><Subcolumn><d>10.</d><d>20.</d><d>30.</d></Subcolumn></YColumn>
+</Table>
+</GraphPadPrismFile>`;
+  const imported = parsePzfx(text);
+  strictEqual(imported.tables.length, 1);
+  const node = imported.project.nodes[imported.project.rootOrder[0]];
+  if (!node || node.type !== "table") throw new Error("no table node");
+  strictEqual(node.tableType, "xy");
+  deepStrictEqual(node.data!.columns, ["Title", "X", "X error", "A"]);
+  deepStrictEqual(node.data!.rows, [
+    ["A", "1.", "0.1", "10."],
+    ["B", "2.", "0.2", "20."],
+    ["C", "3.", "0.3", "30."],
+  ]);
+  // Row 1 is excluded in the X column (index 1) and the X error column
+  // (index 2); the values stay visible, only their excluded state survives.
+  deepStrictEqual(node.data!.excluded, ["1,1", "1,2"]);
+});
+
 check(".pzfx import names summary subcolumns and warns they aren't replicates", () => {
   const { imported, table } = importedTable("column_sdn");
   strictEqual(table.tableType, "column");
