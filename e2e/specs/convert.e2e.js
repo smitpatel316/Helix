@@ -76,8 +76,20 @@ async function dismissUpdateDialog() {
 }
 
 async function openConverter() {
-  const hook = await browser.tauri.execute(() => typeof window.__titerE2E?.openConverter);
-  assert.equal(hook, "function", "e2e hook window.__titerE2E.openConverter is missing");
+  // The update check is async — the "1.0.9 available" dialog can pop after
+  // before() dismissed it (or after the first Convert). Re-dismiss here; no-op
+  // if it is not there.
+  await dismissUpdateDialog();
+  // The hook is installed by a React useEffect in AppShell, so on a slow cold
+  // start (Linux, 1.5 CPU, webR booting) it may not exist yet when the spec
+  // runs. Poll for it instead of asserting immediately — the Mac run passed
+  // without this, but Linux boots slower and the hook is the spec's entry
+  // point; a missing hook here would be a harness race, not a product failure.
+  await browser.waitUntil(
+    async () =>
+      (await browser.tauri.execute(() => typeof window.__titerE2E?.openConverter)) === "function",
+    { timeout: 60000, timeoutMsg: "e2e hook window.__titerE2E.openConverter never appeared" },
+  );
   await browser.tauri.execute(() => window.__titerE2E.openConverter());
   await $("button*=Choose .prism file").waitForExist({ timeout: 15000 });
 }
