@@ -2832,18 +2832,22 @@ check("renaming a Y column follows y2, ys, globalY, truth, score and record keys
     {
       ...analysis,
       analysisType: "dose-response-special",
-      analysisParams: { ys: ["Y1", "Y2"], antagonistConcentrations: { Y1: 10, Y2: 20 } },
+      analysisParams: { model: "schild", ys: ["Y1", "Y2"], antagonistConcentrations: { Y1: 10, Y2: 20 } },
     },
     { renamed: { Y2: "High" } },
     [],
   );
-  deepStrictEqual(special.analysisParams, { ys: ["Y1", "High"], antagonistConcentrations: { Y1: 10, High: 20 } });
+  deepStrictEqual(special.analysisParams, {
+    model: "schild",
+    ys: ["Y1", "High"],
+    antagonistConcentrations: { Y1: 10, High: 20 },
+  });
   const global = followTable(
-    { ...analysis, analysisType: "nonlinear-regression", analysisParams: { globalY: ["Y1", "Y2"] } },
+    { ...analysis, analysisType: "nonlinear-regression", analysisParams: { model: "sigmoidal-4pl-logx", globalY: ["Y1", "Y2"] } },
     { renamed: { Y1: "Response" } },
     [],
   );
-  deepStrictEqual(global.analysisParams, { globalY: ["Response", "Y2"] });
+  deepStrictEqual(global.analysisParams, { model: "sigmoidal-4pl-logx", globalY: ["Response", "Y2"] });
   const roc = followTable(
     { ...analysis, analysisType: "roc-curve", analysisParams: { truth: "Disease", score: "Marker" } },
     { renamed: { Marker: "Score" } },
@@ -2851,11 +2855,11 @@ check("renaming a Y column follows y2, ys, globalY, truth, score and record keys
   );
   deepStrictEqual(roc.analysisParams, { truth: "Disease", score: "Score" });
   const enzyme = followTable(
-    { ...analysis, analysisType: "enzyme-inhibition", analysisParams: { inhibitorConcentrations: { Drug: 5 } } },
+    { ...analysis, analysisType: "enzyme-inhibition", analysisParams: { model: "competitive", inhibitorConcentrations: { Drug: 5 } } },
     { renamed: { Drug: "Inhibitor" } },
     [],
   );
-  deepStrictEqual(enzyme.analysisParams, { inhibitorConcentrations: { Inhibitor: 5 } });
+  deepStrictEqual(enzyme.analysisParams, { model: "competitive", inhibitorConcentrations: { Inhibitor: 5 } });
   // A subgroup rename hands its renamed columns to followTable, so per-point
   // styles in that subgroup move with the column instead of being dropped.
   const before = nested();

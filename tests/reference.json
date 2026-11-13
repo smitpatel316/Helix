@@ -12506,7 +12506,7 @@
   "error": "All substrate concentrations are equal — Km cannot be estimated."
  },
  "nonlinear-regression enzymeTooFew {\"model\":\"michaelis-menten\"}": {
-  "error": "Not enough complete points (2) to fit this curve; need at least 3."
+  "error": "Not enough complete points with X ≥ 0 (2) to fit this curve; need at least 3."
  },
  "binding-saturation bindTotal {\"model\":\"one-site-total\"}": {
   "testType": "binding-saturation",
