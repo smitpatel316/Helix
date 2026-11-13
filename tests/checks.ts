@@ -342,6 +342,58 @@ check("a dropped param value falls back to its default, and says so", () => {
   deepStrictEqual(paramsOf(outliers, "m5f"), { method: "rout" });
 });
 
+// R2 FF-F16: a saved param outside its limits was silently rewritten on load
+// (500 bins became 100) and the analysis re-ran on different parameters than
+// the file specifies — with no warning. The clamp stays, but it says so; and
+// `spar`/`df: null` (an explicit "choose automatically") round-trips instead
+// of being dropped.
+check("an out-of-range saved param warns when it is brought within its limits", () => {
+  const withAnalysis = (id: string, type: string, params: unknown) => {
+    const file = JSON.parse(serializeProjectFile(payload)) as { project: ProjectFilePayload };
+    file.project.nodes[id] = {
+      id,
+      type: "analysis",
+      name: id,
+      parentId: "t1",
+      analysisType: type,
+      analysisParams: params,
+    } as ProjectNode;
+    file.project.childOrder.t1 = [...file.project.childOrder.t1, id];
+    return read(JSON.stringify(file));
+  };
+  const paramsOf = (result: ReturnType<typeof read>, id: string) =>
+    (result.project.nodes[id] as ProjectNode).analysisParams as Record<string, unknown>;
+
+  const freq = withAnalysis("ff16a", "frequency-distribution", { binMode: "count", binCount: 500, startAt: 0 });
+  strictEqual(paramsOf(freq, "ff16a").binCount, 100);
+  ok(
+    freq.issues.some((i) => i.message.includes("“binCount”") && i.message.includes("500") && i.message.includes("100")),
+    "warns about the binCount clamp",
+  );
+
+  const outliers = withAnalysis("ff16b", "outliers", { method: "rout", q: 99 });
+  strictEqual(paramsOf(outliers, "ff16b").q, 50);
+  ok(
+    outliers.issues.some((i) => i.message.includes("“q”") && i.message.includes("99") && i.message.includes("50")),
+    "warns about the q clamp",
+  );
+
+  // In-range values stay silent.
+  const inRange = withAnalysis("ff16c", "frequency-distribution", { binMode: "count", binCount: 10, startAt: 0 });
+  strictEqual(paramsOf(inRange, "ff16c").binCount, 10);
+  strictEqual(inRange.issues.length, 0);
+
+  // `spar`/`df: null` is an explicit auto-choice, not a missing value: it
+  // survives the round-trip instead of being dropped on load.
+  const spline = withAnalysis("ff16d", "spline-lowess", { method: "spline", f: 0.5, spar: null, df: null });
+  strictEqual(paramsOf(spline, "ff16d").spar, null);
+  strictEqual(paramsOf(spline, "ff16d").df, null);
+  const resaved = parseProjectFile(JSON.parse(serializeProjectFile(spline.project)));
+  if ("error" in resaved) throw new Error(resaved.error);
+  strictEqual(paramsOf(resaved, "ff16d").spar, null);
+  strictEqual(paramsOf(resaved, "ff16d").df, null);
+});
+
 // R2 M6: one bad entry in an array/map param leaves the rest out on its own —
 // the whole value used to be dropped, so the analysis silently ran on all
 // columns instead of the chosen subset, or lost every wizard-entered

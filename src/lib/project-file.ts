@@ -598,6 +598,27 @@ function readParams(
   // A param this version doesn't know is kept as a plain word.
   const read = (k: string, v: unknown) => {
     if (!isIn(PARAMS, k)) return isWord(lower(v)) ? lower(v) : undefined;
+    const kind = PARAMS[k as ParamKey];
+    // FF-F16: a saved number outside its limits is brought within them on
+    // load — warn, so the analysis doesn't silently re-run on different
+    // parameters than the file specifies. The clamp itself stays: the
+    // runner's range is the honest one, the file's value isn't.
+    const limits =
+      isObj(kind) && isFiniteNumber(kind.min) && isFiniteNumber(kind.max)
+        ? { min: kind.min, max: kind.max }
+        : undefined;
+    if (limits && isFiniteNumber(v)) {
+      const clamped = clamp(v, limits);
+      if (clamped !== v) {
+        issues.push({
+          severity: "warning",
+          message: `Analysis “${label}”: “${k}” was ${v}, outside ${limits.min}–${limits.max}, so it was brought to ${clamped}.`,
+        });
+      }
+    }
+    // `spar`/`df: null` is an explicit "choose automatically" (spline-lowess),
+    // not a missing value: keep it, so a save keeps the file as it was.
+    if ((k === "spar" || k === "df") && v === null) return null;
     let dropped = 0;
     const value = readParam(PARAMS[k as ParamKey], v, (n) => {
       dropped = n;
