@@ -12,7 +12,11 @@
 //   TwoWay      → Grouped   when the Y values are replicates (groups = Y columns,
 //                 replicates = subcolumns); otherwise Column, with the summary
 //                 subcolumns named (MEAN, SD, N…) and a warning — summary values
-//                 are not raw replicates, so they must not be analysed as if they were
+//                 are not raw replicates, so they must not be analysed as if they were.
+//                 An empty or missing YFormat is never assumed to be replicates:
+//                 it imports as Column with a warning (FF-F7 — a mean/SD/N table
+//                 with no YFormat would otherwise be analysed as raw replicates,
+//                 giving wrong F/p/N).
 //   XY          → XY        (X, then one Y series per subcolumn)
 //   Survival    → Survival  (X = time, Y = event codes 1/0 per group; the survival
 //                 graph and the survival analysis apply to it)
@@ -346,8 +350,12 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
   let helixType: TableType;
   let groups: number | undefined;
   let replicates: number | undefined;
+  // Only an explicit "replicates" YFormat is replicates. An empty or missing
+  // YFormat must not default to replicates: a summary table (mean/SD/N) whose
+  // YFormat wasn't recorded would otherwise import as grouped replicates,
+  // and a group comparison would treat the means as raw values (FF-F7).
   const isGroupedReplicates =
-    tableType === "TwoWay" && (yFormat === "replicates" || yFormat === "");
+    tableType === "TwoWay" && yFormat === "replicates";
   if (tableType === "OneWay" || tableType === "PartsOfWhole" || tableType === "Contingency") {
     helixType = tableType === "Contingency" ? "contingency" : "column";
     for (const y of yColumns) {
@@ -377,8 +385,12 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
       const names = subcolumnNames(y.title, yFormat, y.subcolumns.length);
       y.subcolumns.forEach((sub, i) => pushColumn(names[i], sub));
     }
+    // An empty YFormat records no format at all, so the subcolumns can't be
+    // named as summaries — say so plainly instead of guessing "mean and error".
     warnings.push(
-      `${displayName}: the values are summaries (${yFormat === "" ? "mean and error" : yFormat}), not raw replicates — don't run group comparisons on them as if they were.`,
+      yFormat === ""
+        ? `${displayName}: the Y format wasn't recorded (empty YFormat), so the subcolumns were imported as named columns, not replicates — don't run group comparisons on them as if they were.`
+        : `${displayName}: the values are summaries (${yFormat}), not raw replicates — don't run group comparisons on them as if they were.`,
     );
   } else if (tableType === "XY" || tableType === "Survival") {
     helixType = tableType === "Survival" ? "survival" : "xy";
