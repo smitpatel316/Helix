@@ -4659,6 +4659,18 @@ check("the observed-vs-fitted plot drops overflowed fitted counts with a note in
   // too. The overflowed rows are the worst misfits; they must be named on
   // the figure, not silently hidden, and the line must span the drawable
   // points only.
+  // NOTE — synthetic coefficients only, by design: no live GLM can ever
+  // produce this note. A converging Poisson glm can never yield an infinite
+  // fitted count, because R's glm.fit IRLS overflows mu/weights to Inf/NaN
+  // and errors ("NA/NaN/Inf in 'x'") before converging whenever a linear
+  // predictor would pass ~709. The live stretch fixture built on the
+  // opposite assumption (poisson-overflow.hlx: Dose 0–0.003, Count 1 /
+  // 1e150 / 1e300 / 1) failed deterministically in the 2026-11-13 final GUI
+  // session (reproduced via Retry): the analysis errored, so the graph had
+  // no coefficients and showed empty axes with no note. That fixture is
+  // retired — do not re-add a live-GLM expectation for this note. The
+  // overflow path is reachable only when coefficients arrive without a live
+  // fit (as below), and that is what this check verifies.
   const { columns } = readTable({
     columns: ["Title", "Count", "Dose"],
     rows: [
