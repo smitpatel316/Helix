@@ -2429,6 +2429,57 @@ check("series take their own dashes and patterns, and a palette can be reversed"
   deepStrictEqual(read(JSON.stringify(file)).project.nodes.g1.graphOptions!.palette, reversed);
 });
 
+check("the pie drops a negative slice and names it, instead of showing inflated percentages (R2-G-F12)", () => {
+  const options = newGraphOptions("pie");
+  const notesOf = (fig: GraphFigure) =>
+    ((fig.layout.annotations as { text?: string }[] | undefined) ?? []).map((n) => n.text ?? "");
+  // Plotly 4.1.2 silently drops the -10 slice and recomputes the rest
+  // over the remaining total: A 75% + C 50% = 125%, no error (runtime
+  // check). The guard drops it first and says so on the figure.
+  const mixed = { columns: ["Title", "A", "B", "C"], rows: [[null, "30", "-10", "20"]] };
+  const fig = GRAPHS.pie.build(readTable(mixed).numeric, options, paintOf(options, 3));
+  const [trace] = fig.data as { labels?: string[]; values?: number[] }[];
+  deepStrictEqual(trace.labels, ["A", "C"]);
+  deepStrictEqual(trace.values, [30, 20]);
+  ok(
+    notesOf(fig).some((t) => t.includes("“B”") && t.includes("-10") && t.includes("cannot be negative")),
+    `the dropped slice must be named with its value, got ${JSON.stringify(notesOf(fig))}`,
+  );
+  // A zero slice is fine as-is: 0%, and the rest still sum to 100%.
+  const withZero = { columns: ["Title", "A", "B", "C"], rows: [[null, "10", "0", "5"]] };
+  const zeroFig = GRAPHS.pie.build(readTable(withZero).numeric, options, paintOf(options, 3));
+  const [zeroTrace] = zeroFig.data as { labels?: string[]; values?: number[] }[];
+  deepStrictEqual(zeroTrace.labels, ["A", "B", "C"]);
+  deepStrictEqual(zeroTrace.values, [10, 0, 5]);
+  strictEqual(notesOf(zeroFig).length, 0);
+  // Nothing drawable (all zero, or all negative): no trace, but the
+  // figure still explains why instead of drawing a silent empty pie.
+  const allZero = GRAPHS.pie.build(
+    readTable({ columns: ["Title", "A", "B"], rows: [[null, "0", "0"]] }).numeric,
+    options,
+    paintOf(options, 2),
+  );
+  strictEqual(allZero.data.length, 0);
+  ok(
+    notesOf(allZero).some((t) => t.includes("No positive slices")),
+    `the all-zero pie must explain itself, got ${JSON.stringify(notesOf(allZero))}`,
+  );
+  const allNeg = GRAPHS.pie.build(
+    readTable({ columns: ["Title", "A", "B"], rows: [[null, "-5", "-10"]] }).numeric,
+    options,
+    paintOf(options, 2),
+  );
+  strictEqual(allNeg.data.length, 0);
+  ok(
+    notesOf(allNeg).some((t) => t.includes("“A”") && t.includes("“B”") && t.includes("cannot be negative")),
+    `the all-negative pie must name both slices, got ${JSON.stringify(notesOf(allNeg))}`,
+  );
+  // The donut shares the guard (same builder).
+  const donutFig = GRAPHS.donut.build(readTable(mixed).numeric, options, paintOf(options, 3));
+  const [donutTrace] = donutFig.data as { labels?: string[]; values?: number[] }[];
+  deepStrictEqual(donutTrace.labels, ["A", "C"]);
+});
+
 check("Match Another Graph… takes only what is ticked, series in order", () => {
   const graph = (type: GraphType, table: string, series: string[], over: Partial<GraphOptions>): Matched => ({
     type,
