@@ -924,7 +924,8 @@ export interface FitRow {
 /** An unknown read off a standard curve: its row, its Y, the X the curve gives it (null when
  *  the curve never reaches that Y), 10^X when X is a log, and whether X lies beyond the
  *  standards' X. `low`/`high` are the 95% CI of the interpolated X, from inverting the
- *  curve's 95% confidence band (null where the band never reaches the Y). */
+ *  curve's 95% confidence band (null where the band never reaches the Y, and null where
+ *  the inversion comes back inverted, low above high, on a non-monotonic curve). */
 export interface InterpolatedRow {
   label: string;
   y: number;

@@ -1256,19 +1256,28 @@ export async function runNonlinearRegression(
         high: null,
       });
   }
+  let invertedCI = false;
   const interpolated: InterpolatedRow[] = unknowns.map((r, i) => {
     const x = v[`ix_${i}`] ?? null;
+    const low = v[`il_${i}`] ?? null;
+    const high = v[`ih_${i}`] ?? null;
+    // R2-m10: band inversion on a non-monotonic curve can return the bounds
+    // the wrong way round (low > high) — the first band-edge crossing on a
+    // limb whose slope disagrees with the curve's overall trend. Never
+    // present that as a valid interval: drop the CI (the notes say so).
+    const inverted = low != null && high != null && low > high;
+    if (inverted) invertedCI = true;
     return {
       label: rowName(titles, r),
       y: yCol.byRow[r]!,
       x,
       ...(logX ? { concentration: v[`ic_${i}`] ?? null } : {}),
       extrapolated: x != null && (x < lo || x > hi),
-      low: v[`il_${i}`] ?? null,
-      high: v[`ih_${i}`] ?? null,
+      low: inverted ? null : low,
+      high: inverted ? null : high,
     };
   });
-  return assembleResult(model, spec, xCol, yCol, other, sets, parsed, interpolated, v, titles, first, retried, params);
+  return assembleResult(model, spec, xCol, yCol, other, sets, parsed, interpolated, v, titles, first, retried, params, [], "", invertedCI);
 }
 
 /** The notes' weighting / fixed-parameter / bounds sentences (plan 26): a
@@ -1317,7 +1326,9 @@ function frameworkNotes(
  *  the exponential/enzyme extras (equation, starting values, warnings) and
  *  the comparison F test / interpolation sentences when they apply.
  *  `parsed` is one parsed fit per set; `v` the raw vector (comparison F/p).
- *  `extraStats`/`comparisonNotes` carry a model comparison's rows and verdict. */
+ *  `extraStats`/`comparisonNotes` carry a model comparison's rows and verdict.
+ *  `invertedCI` says a band-inversion CI came back inverted (low > high) and
+ *  was dropped — the notes say so instead of showing a bogus interval. */
 async function assembleResult(
   model: NonlinearModel,
   spec: ModelSpec,
@@ -1334,6 +1345,7 @@ async function assembleResult(
   params: NonlinearRegressionParams | undefined,
   extraStats: StatRow[] = [],
   comparisonNotes = "",
+  invertedCI = false,
 ): Promise<AnalysisOutcome> {
   const other = sets.length > 1;
   // Plan 29: the segmental breakpoint is a derived value, not a fitted
@@ -1389,6 +1401,9 @@ async function assembleResult(
         (interpolated.some((u) => u.x == null) ? " “—”: the curve never reaches that Y." : "") +
         (interpolated.some((u) => u.low != null || u.high != null)
           ? " Interpolated X 95% CIs invert the curve's 95% confidence band."
+          : "") +
+        (invertedCI
+          ? " No 95% CI is shown for an unknown whose band inversion comes back inverted (lower bound above the upper bound): on a non-monotonic curve the band can cross its Y in the wrong order, so no valid interval exists for it."
           : "");
   const notes =
     `Least-squares fit ("${MODEL_LABEL[model]}") of ${sets.map((s) => `“${s.name}”`).join(" and ")} on “${xCol.name}”. ` +
