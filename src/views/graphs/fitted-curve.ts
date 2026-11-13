@@ -3,7 +3,7 @@
 // no re-fitting here: an XY scatter draws the curve of a nonlinear regression of its table.
 import type { GraphOptions } from "../../store/types";
 import type { AnalysisResult, NonlinearModel, RegressionCoefficient } from "../../stats/types";
-import { positiveXOnly, coefficientsForSet, termLabel } from "../../stats/xy/nonlinear-regression";
+import { nonNegativeXOnly, positiveXOnly, coefficientsForSet, termLabel } from "../../stats/xy/nonlinear-regression";
 import { pairUp, type Column } from "../../lib/dataset";
 import type { GraphFigure } from ".";
 import { num } from "../../lib/format";
@@ -152,6 +152,11 @@ export function addFittedCurve(
   options: GraphOptions,
   paint: Paint,
 ) {
+/** The X values a fitted curve draws over: log-X curves need X > 0, raw
+ *  ratio curves need X ≥ 0 (X = 0 is their Bottom), everything else any X. */
+const keepCurveX = (model: NonlinearModel, v: number) =>
+  positiveXOnly(model) ? v > 0 : nonNegativeXOnly(model) ? v >= 0 : true;
+
   const coefficients = fit.coefficients ?? [];
   if (!coefficients.length) return;
   // The homologous curve needs [L], which the fit carries — without it,
@@ -161,7 +166,7 @@ export function addFittedCurve(
   if (sets.length > 1) {
     for (const setName of sets) {
       const yCol = ys.find((c) => c.name === setName) ?? y;
-      const xs = pairUp(x, yCol).x.filter((v) => !positiveXOnly(model) || v > 0);
+      const xs = pairUp(x, yCol).x.filter((v) => keepCurveX(model, v));
       if (!xs.length) continue;
       const curve = fittedCurve(model, coefficientsForSet(coefficients, setName, sets), ...extent(xs));
       fig.data = [
@@ -179,7 +184,7 @@ export function addFittedCurve(
     }
     return;
   }
-  const xs = pairUp(x, y).x.filter((v) => !positiveXOnly(model) || v > 0);
+  const xs = pairUp(x, y).x.filter((v) => keepCurveX(model, v));
   if (!xs.length) return;
   const curve = fittedCurve(model, coefficients, ...extent(xs), 100, fit.ligandConcentration);
   fig.data = [

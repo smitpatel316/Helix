@@ -138,6 +138,10 @@ export function useAppMenu(doc: DocumentActions) {
             () => latest.current.doc.clearRecents(),
           ),
           { text: "Import Prism File…", action: () => void latest.current.doc.importPrism() },
+          {
+            text: "Convert…",
+            action: () => latest.current.store.openSelector({ kind: "converter" }),
+          },
           sep,
           { text: "Save", accelerator: "CmdOrCtrl+S", enabled: isDirty, action: () => latest.current.doc.save() },
           { text: "Save As…", accelerator: "CmdOrCtrl+Shift+S", action: () => latest.current.doc.save(true) },

@@ -13,13 +13,14 @@
     "web": "vite",
     "check": "tsc --noEmit",
     "sample": "node --import tsx tests/sample-project.ts",
-    "test": "node --import tsx tests/checks.ts && node --import tsx tests/reference.ts && node --import tsx tests/packages.ts",
+    "test": "node --import tsx tests/checks.ts && node --import tsx tests/prism.ts && node --import tsx tests/prism-write.ts && node --import tsx tests/reference.ts && node --import tsx tests/parity.ts && node --import tsx tests/packages.ts",
     "format": "prettier --write ."
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.3",
+    "jszip": "^3.10.1",
     "plotly.js-dist-min": "^4.1.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

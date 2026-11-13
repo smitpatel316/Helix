@@ -8,6 +8,8 @@ import { useLayout } from "../store/use-layout";
 import { onFullscreenChange } from "../native";
 import { UniversalModal } from "./universal-modal";
 import { Dialog } from "../ui/dialog";
+import { ConverterDialog } from "./converter-dialog";
+import { SavePromptDialog } from "./save-prompt-dialog";
 import { TABLE_TYPE_OPTIONS } from "../views/tables";
 import { TableDetail } from "../views/tables/table-detail";
 import { analysisOptionsForTable } from "../views/analyses";
@@ -89,6 +91,10 @@ export function AppShell() {
         title="Project Updated"
         description="This project was made with an older Titer, or part of it couldn't be read as it was. Titer brought it up to date; save it to keep the update."
       />
+
+      <ConverterDialog />
+
+      <SavePromptDialog onChoose={(choice, remember) => documentActions.resolveSavePrompt(choice, remember)} />
 
       <UniversalModal
         open={selector?.kind === "new-graph"}
