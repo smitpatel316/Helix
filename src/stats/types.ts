@@ -155,6 +155,14 @@ export const BIN_MODES = ["auto", "width", "count"] as const;
 /** ROUT's Q, in percent. */
 export const ROUT_Q = { min: 0.01, max: 50 };
 
+/** ROUT's Q (%) must lie in 0.01–50: at 0 (or below) no point's FDR-adjusted P
+ *  can ever fall below Q, so nothing is ever flagged; above 50 nearly every
+ *  point with P < 1 is flagged. Shared by the wizard question and the runner
+ *  so both reject the same values with the same message. */
+export function routQError(q: number): string | undefined {
+  return q >= 0.01 && q <= 50 ? undefined : "Q must be between 0.01 and 50.";
+}
+
 /** Params for "compare-two-groups": resolves to Student/Welch t-test, paired
  *  t-test, ratio t-test, Mann-Whitney, or Wilcoxon signed-rank, Prism-wizard style. */
 export interface CompareTwoGroupsParams {

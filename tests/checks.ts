@@ -74,6 +74,7 @@ import { compareTwoGroupsSpec } from "../src/stats/column/compare-two-groups";
 import { kruskalWallisSpec } from "../src/stats/column/kruskal-wallis";
 import { anovaSpec } from "../src/stats/column/anova";
 import { dagostinoPearson } from "../src/stats/column/shapiro-wilk";
+import { runRout } from "../src/stats/column/rout";
 import { parseGroupLevels, toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
 import { initialAnswer } from "../src/views/analyses/analysis-wizard";
 import { addNote, groupedBarLayout, groupedScatterLayout, heatmapLayout, legendRightMargin, legendWidthPx, movedText, paintOf, vectorTraces, visibleOutline, withCaps, xyLayout } from "../src/views/graphs/plot-helpers";
@@ -4169,6 +4170,40 @@ check("the K-means wizard asks clusters then standardisation, defaulting to 2 cl
     type: "k-means",
     params: { clusters: 2, standardise: true },
   });
+});
+
+check("the outliers wizard rejects an out-of-range ROUT Q, and the runner refuses it too", async () => {
+  const data: TableData = {
+    columns: ["Title", "A", "B"],
+    rows: [
+      [null, "1.2", "2.1"],
+      [null, "1.5", "2.4"],
+      [null, "1.1", "2.0"],
+      [null, "1.4", "2.2"],
+      [null, "9.8", "2.3"],
+    ],
+  };
+  const qs = WIZARDS["outliers"]!.questions({}, readTable(data)).filter(
+    (q): q is Question => q !== false,
+  );
+  const q = qs.find((x) => x.id === "q");
+  ok(q && q.kind === "number");
+  if (q?.kind === "number") {
+    // Q = 0 (or below) can never flag anything; above 50 flags nearly
+    // everything — both are degenerate, not just unusual.
+    strictEqual(q.validate?.(0), "Q must be between 0.01 and 50.");
+    strictEqual(q.validate?.(100), "Q must be between 0.01 and 50.");
+    strictEqual(q.validate?.(0.01), undefined);
+    strictEqual(q.validate?.(1), undefined);
+    strictEqual(q.validate?.(50), undefined);
+  }
+  // The runner refuses the same values: saved projects and direct
+  // runAnalysis calls bypass the wizard, so the guard lives there too.
+  const columns = readTable(data).columns;
+  deepStrictEqual(await runRout(columns, { q: 0 }), { error: "Q must be between 0.01 and 50." });
+  deepStrictEqual(await runRout(columns, { q: 100 }), { error: "Q must be between 0.01 and 50." });
+  ok(!("error" in (await runRout(columns, { q: 1 }))));
+  ok(!("error" in (await runRout(columns, { q: 50 }))));
 });
 
 check("the multiple logistic regression wizard offers only 0/1 columns as the outcome", () => {
