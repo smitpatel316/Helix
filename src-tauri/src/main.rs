@@ -606,7 +606,14 @@ fn r_result(engine: State<REngine>, id: u64, values: Option<HashMap<String, Opti
 fn cancel_r(app: AppHandle, window: WebviewWindow, engine: State<'_, REngine>) {
     let caller = window.label().to_string();
     if caller == "engine" {
-        engine.0.lock().unwrap().waiting.clear();
+        let mut requests = engine.0.lock().unwrap();
+        requests.waiting.clear();
+        // The engine is about to reload, so it is not ready for direct
+        // sends any more (R3-03): a request arriving during the reload
+        // must only be queued, and re-sent once by `r_ready` — with the
+        // stale `true` it was emitted straight away and then re-sent,
+        // reaching the engine twice.
+        requests.ready = false;
         let _ = app.emit_to("engine", "r-interrupt", ());
         return;
     }
@@ -626,6 +633,18 @@ fn cancel_r(app: AppHandle, window: WebviewWindow, engine: State<'_, REngine>) {
     if !dropped.is_empty() {
         let _ = app.emit_to("engine", "r-cancel", dropped);
     }
+}
+
+/// The engine window (re)started and is about to listen for requests: it is
+/// not ready for direct sends until it says so (`r_ready`). Clears the flag
+/// `cancel_r` already clears on the reload it triggers — this one covers a
+/// reload the shell never saw coming (Tauri reloading a page whose process
+/// macOS ended), so a request arriving between the new page's listeners
+/// attaching and `r_ready` is queued once and re-sent once, never twice
+/// (R3-03).
+#[tauri::command]
+fn r_starting(engine: State<REngine>) {
+    engine.0.lock().unwrap().ready = false;
 }
 
 #[tauri::command]
@@ -676,6 +695,7 @@ fn main() {
             eval_r,
             r_result,
             r_ready,
+            r_starting,
             cancel_r
         ])
         .build(tauri::generate_context!())

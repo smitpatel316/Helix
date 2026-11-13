@@ -9,7 +9,7 @@ import { Image } from "@tauri-apps/api/image";
 import { Menu, Submenu, type MenuOptions } from "@tauri-apps/api/menu";
 import { message, save } from "@tauri-apps/plugin-dialog";
 import type { RVector } from "./stats/webr";
-import { interruptR } from "./stats/webr";
+import { cancelActiveEvals, interruptR } from "./stats/webr";
 import {
   createEvalQueue,
   setRQueueSnapshot,
@@ -117,6 +117,11 @@ export async function cancelR(): Promise<void> {
  *  once when it reaches the front — the shell discards its late result —
  *  so a cancelled caller never wedges the queue. */
 export async function serveR(evaluate: (code: string) => Promise<RVector>) {
+  // The engine (re)started: until it says it is ready, no request may be
+  // sent straight to it (R3-03). The shell clears its `ready` flag here,
+  // so a request arriving between this window's listeners attaching and
+  // `r_ready` is queued once and re-sent once — never emitted twice.
+  await invoke("r_starting");
   const queue = createEvalQueue((snapshot) => {
     setRQueueSnapshot(snapshot);
     // Best effort: project windows listen for "r-queue" and show the depth.
@@ -135,12 +140,27 @@ export async function serveR(evaluate: (code: string) => Promise<RVector>) {
   // used to clear every window's waiting requests and restart the engine,
   // killing another window's in-flight install (FL-F14).
   await getCurrentWebviewWindow().listen<number[]>("r-cancel", ({ payload: ids }) => {
-    if (queue.cancel(ids).runningCancelled) interruptR();
+    if (queue.cancel(ids).runningCancelled) {
+      // A bare interrupt is a no-op on Tauri's PostMessage channel, so it
+      // alone would leave the engine wedged until the 5-minute watchdog
+      // budget ran out (R3-03): abort this window's live evaluations too,
+      // which starts their watchdog's 5-second grace — if R is still stuck
+      // after it, the engine is abandoned and reloaded (onEngineStuck).
+      // The queue runs one evaluation at a time, and `runningCancelled`
+      // means that one is the canceller's, so no other window's work is
+      // touched.
+      interruptR();
+      cancelActiveEvals();
+    }
   });
-  // A project window asked R to stop (its watchdog fired, or the user hit
-  // Cancel): interrupt this window's R. If the channel cannot be
-  // interrupted, the evaluation's own watchdog restarts the engine.
-  await getCurrentWebviewWindow().listen("r-interrupt", () => interruptR());
+  // The engine window itself asked R to stop (its stuck-engine recovery,
+  // before the reload): interrupt this window's R, and abort its live
+  // evaluations so the watchdog's grace / reload escalation runs even
+  // where the interrupt itself is a no-op (R3-03).
+  await getCurrentWebviewWindow().listen("r-interrupt", () => {
+    interruptR();
+    cancelActiveEvals();
+  });
   await invoke("r_ready");
 }
 
