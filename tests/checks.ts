@@ -2584,6 +2584,37 @@ check("a smoothing spline fits tied X values, one fitted value per observation (
   });
 });
 
+// R3-10: standard-curve interpolation on enzyme models. Their formulas
+// are defined at X = 0, so they set neither positiveX nor nonNegativeX —
+// and the interpolation grid extended a full width BELOW zero, into
+// negative concentrations. On allosteric-sigmoidal that made x^h NaN for
+// non-integer h, so `inc` was NA and R crashed on `if (inc)` for every
+// unknown; on Michaelis-Menten the pole at X = −Km sat inside the grid and
+// the band inversion converged onto −Km instead of a positive X.
+check("enzyme standard curves interpolate unknowns to positive X with positive CIs", async () => {
+  const noise = [0, 0.4, -0.3, 0.5, -0.4, 0.3, -0.5, 0.4, -0.3];
+  const xs = [0, 1, 2, 3, 5, 7, 10, 15, 20];
+  const mm = (x: number) => (100 * x) / (5 + x);
+  const allo = (x: number) => (100 * x ** 1.5) / (5 ** 1.5 + x ** 1.5);
+  const table = (f: (x: number) => number): TableData => ({
+    columns: ["Title", "X", "Y1"],
+    rows: [...xs.map((x, i) => ["", String(x), String(f(x) + noise[i])]), ["", "", "50"]],
+  });
+  // Allosteric-sigmoidal: Y = 50 sits at X = Khalf = 5.
+  const a = await runAnalysis("nonlinear-regression", table(allo), { y: "Y1", model: "allosteric-sigmoidal", interpolate: true });
+  ok(!("error" in a) && a.interpolated?.length === 1, `allosteric interpolation failed: ${"error" in a ? a.error : "no interpolated row"}`);
+  const ua = a.interpolated[0];
+  ok(ua.x != null && Math.abs(ua.x - 5) < 0.75, `allosteric X should be ~5, got ${ua.x}`);
+  ok(ua.low != null && ua.high != null && ua.low > 0 && ua.low < ua.x && ua.x < ua.high, `allosteric CI should be positive and bracket X, got [${ua.low}, ${ua.high}]`);
+  // Michaelis-Menten: Y = 50 sits at X = Km = 5; the pole at −Km must not
+  // capture the CI.
+  const m = await runAnalysis("nonlinear-regression", table(mm), { y: "Y1", model: "michaelis-menten", interpolate: true });
+  ok(!("error" in m) && m.interpolated?.length === 1, `Michaelis-Menten interpolation failed: ${"error" in m ? m.error : "no interpolated row"}`);
+  const um = m.interpolated[0];
+  ok(um.x != null && Math.abs(um.x - 5) < 0.75, `Michaelis-Menten X should be ~5, got ${um.x}`);
+  ok(um.low != null && um.high != null && um.low > 0 && um.low < um.x && um.x < um.high, `Michaelis-Menten CI should be positive and bracket X, got [${um.low}, ${um.high}]`);
+});
+
 check("data sets ticked again keep the table's order", () => {
   const options = ["A", "B", "C"];
   deepStrictEqual(toggled(options, ["A", "C"], "B", true), ["A", "B", "C"]);

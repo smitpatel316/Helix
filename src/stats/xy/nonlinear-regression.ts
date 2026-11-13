@@ -641,9 +641,15 @@ const R_INTERP =
  *  in `u` — `xi` the interpolated X, `li`/`hi` its 95% CI (NA when the curve
  *  or band never reaches the unknown). The grid covers the same extended
  *  range the point-estimate search covers, so extrapolated unknowns get a CI
- *  too. (Plan 02's band inversion, kept from our fork: upstream has no CIs.) */
+ *  too. (Plan 02's band inversion, kept from our fork: upstream has no CIs.)
+ *  The root search runs the standards' own range [`slo`, `shi`] first, then
+ *  the extrapolated ranges below and above it — the same order R_INTERP
+ *  searches, so the CI inverts the same crossing the point estimate found.
+ *  `inc` is read off the finite curve values on [`slo`, `shi`]: a NaN at a
+ *  grid end (a curve undefined there) used to make `inc` NA and crash R on
+ *  `if (inc)` (R3-10). */
 function interpolationCode(spec: ModelSpec, unknowns: number[], lo: number, hi: number): string {
-  const u = `u<-c(${unknowns.join(",")});`;
+  const u = `u<-c(${unknowns.join(",")});slo<-${lo};shi<-${hi};`;
   const w = hi - lo;
   const [gLo, gHi] = spec.positiveX || spec.nonNegativeX ? [lo / 10, hi * 10] : [lo - w, hi + w];
   const grid = `xg<-seq(${gLo},${gHi},length.out=200);`;
@@ -664,22 +670,28 @@ function interpolationCode(spec: ModelSpec, unknowns: number[], lo: number, hi: 
         `fg<-g(xg,cf);se_g<-sapply(xg,se);lo<-fg-tc*se_g;up<-fg+tc*se_g;` +
         `fu<-function(xv) f(xv)+tc*se(xv);` +
         `fl<-function(xv) f(xv)-tc*se(xv);`;
-  // First root of h on the grid, scanning from the lowest X upward and refined by
-  // uniroot — so a non-monotonic curve reports its first crossing. NA when the
-  // curve (or band edge) never reaches the value on the grid.
-  const root = `firstRoot<-function(vals,fn){for(i in 1:(length(xg)-1)){a<-vals[i];b<-vals[i+1];if(is.na(a)||is.na(b)) next;if(a==0) return(xg[i]);if(a*b<0) return(uniroot(fn,c(xg[i],xg[i+1]))$root)};NA_real_};`;
+  // First root of h on the grid indices `idx`, scanning from the lowest X
+  // upward and refined by uniroot — so a non-monotonic curve reports its
+  // first crossing. NA when the curve (or band edge) never reaches the value
+  // on those indices. `rootIn` searches the standards' range first, then
+  // below it, then above it (R_INTERP's order); each extrapolated range
+  // shares its boundary grid point with the middle range, so a crossing
+  // straddling a boundary is not missed.
+  const root =
+    `firstRoot<-function(vals,fn,idx){if(length(idx)<2) return(NA_real_);for(j in 1:(length(idx)-1)){i<-idx[j];k<-idx[j+1];a<-vals[i];b<-vals[k];if(is.na(a)||is.na(b)) next;if(a==0) return(xg[i]);if(a*b<0) return(uniroot(fn,c(xg[i],xg[k]))$root)};NA_real_};` +
+    `rootIn<-function(vals,fn){im<-which(xg>=slo&xg<=shi);r<-firstRoot(vals,fn,im);if(is.na(r))r<-firstRoot(vals,fn,c(which(xg<slo),im[1]));if(is.na(r))r<-firstRoot(vals,fn,c(im[length(im)],which(xg>shi)));r};`;
   const loop =
     `xi<-rep(NA_real_,length(u));li<-rep(NA_real_,length(u));hi<-rep(NA_real_,length(u));` +
-    `inc<-fg[length(fg)]>fg[1];` +
+    `fin<-which(is.finite(fg)&xg>=slo&xg<=shi);if(length(fin)<2)fin<-which(is.finite(fg));inc<-if(length(fin)>=2) fg[fin[length(fin)]]>fg[fin[1]] else TRUE;` +
     `for(k in seq_along(u)){y0<-u[k];` +
-    `xi[k]<-firstRoot(fg-y0,function(xv) f(xv)-y0);` +
+    `xi[k]<-rootIn(fg-y0,function(xv) f(xv)-y0);` +
     // A band edge can cross a Y the curve itself never reaches — only invert
     // the band when the point estimate exists. On a rising curve the upper
     // band reaches Y first (the CI's lower bound); on a falling curve the
     // reverse. A bound the band never reaches stays NA (unbounded in range).
     // (The trailing `;`: R needs a separator after a `}`-closed loop before
     // the next expression — `}c(...)` is a parse error.)
-    `if(!is.na(xi[k])){rUp<-firstRoot(up-y0,function(xv) fu(xv)-y0);rLo<-firstRoot(lo-y0,function(xv) fl(xv)-y0);` +
+    `if(!is.na(xi[k])){rUp<-rootIn(up-y0,function(xv) fu(xv)-y0);rLo<-rootIn(lo-y0,function(xv) fl(xv)-y0);` +
     `if(inc){li[k]<-rUp;hi[k]<-rLo}else{li[k]<-rLo;hi[k]<-rUp}}};`;
   return u + grid + band + root + loop;
 }
@@ -1204,7 +1216,7 @@ export async function runNonlinearRegression(
     // the interpolation too, so the unknowns are read off the same fit.
     const rCode =
       `${fitStatementsForSpec(first.xs, first.ys, effSpec, undefined, extraAssignments, !!weights)}${R_INTERP}\n` +
-      `ix<-interp(m,${rVec(unknownY)},${lo},${hi},${spec.positiveX ? "TRUE" : "FALSE"})\n` +
+      `ix<-interp(m,${rVec(unknownY)},${lo},${hi},${spec.positiveX || spec.nonNegativeX ? "TRUE" : "FALSE"})\n` +
       `${interpolationCode(effSpec, unknownY, lo, hi)}c(${fitEntries(effSpec)},${interpNames})`;
     try {
       v = await evalNamedVector(rCode);
