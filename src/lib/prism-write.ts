@@ -1,18 +1,18 @@
 // `.hlx` → `.prism` writer (in-app).
 //
-// Builds a Prism 10 `.prism` file (a ZIP of JSON + CSVs) from a Helix
-// project: data tables with their values, and the analyses Helix offers,
+// Builds a Prism 10 `.prism` file (a ZIP of JSON + CSVs) from a Titer
+// project: data tables with their values, and the analyses Titer offers,
 // with their parameters. Graphs and layouts are NEVER written — Prism
 // stores them in an undocumented binary blob, and writing a fake
 // `data.bin` is forbidden. Fitted results are never written either:
-// Helix stores params, never results, and whether Prism recomputes on
+// Titer stores params, never results, and whether Prism recomputes on
 // open is unknown until a Prism/Viewer read-back (test C-07, still open).
 //
 // The spec is the vault note `Research/.prism write spec (1C).md` — this
 // file implements it. Anything the spec marks unknown is left out, never
 // guessed. Clean-room: written from files Prism wrote, never from Prism's
 // program. Every UUID is fresh per write; `createdBy.name` is honestly
-// "Helix", never "Prism".
+// "Titer", never "Prism".
 //
 // Table emission is the reverse of src/lib/prism.ts's import mapping:
 //   xy         → format "xy", X dataset + Y datasets (replicates regrouped
@@ -49,7 +49,7 @@ export interface PrismWriteResult {
   report: PrismWriteReport;
 }
 
-/** Prism nonlinear equation name → Helix model is in src/lib/prism.ts
+/** Prism nonlinear equation name → Titer model is in src/lib/prism.ts
  *  (NONLINEAR_MODELS); this is the reverse map, for writing. Only models
  *  whose Prism equation + definition + parameters were seen in a real file
  *  (demo or corpus) are here. The log-X definition is Prism's
@@ -83,7 +83,7 @@ const PRISM_EQUATION: Partial<Record<NonlinearModel, { name: string; definition:
   },
 };
 
-/** Summary subcolumn shapes, by the Helix column-name suffixes the importer
+/** Summary subcolumn shapes, by the Titer column-name suffixes the importer
  *  produces for them (src/lib/prism.ts SUBCOLUMN_SUFFIXES). A group of
  *  columns sharing a base with exactly these suffixes becomes one dataset
  *  in that dataFormat; anything else is replicates or singles. */
@@ -99,7 +99,7 @@ const SUMMARY_FORMATS: { suffixes: string[]; dataFormat: string }[] = [
   { suffixes: ["_MEAN", "_PLUSERROR", "_MINUSERROR"], dataFormat: "y_plus_minus" },
 ];
 
-/** One Helix data column's values, as text, per row. */
+/** One Titer data column's values, as text, per row. */
 interface WriteColumn {
   name: string;
   values: (string | null)[];
@@ -128,7 +128,7 @@ const csvEncode = (rows: (string | null)[][]): string =>
     )
     .join("\n") + (rows.length ? "\n" : "");
 
-/** Split Helix Y columns into Prism datasets. `columns` are the data columns
+/** Split Titer Y columns into Prism datasets. `columns` are the data columns
  *  (Title and X already removed). Grouping rules, in order:
  *  1. summary suffix groups (`T_MEAN`/`T_SD`/`T_N` → one y_sd_n dataset);
  *  2. replicate groups (`T_1`…`T_n` → one y_replicates dataset);
@@ -393,11 +393,11 @@ export async function writePrism(project: ProjectFilePayload, appVersion: string
   }
 
   if (report.tables.length === 0) {
-    throw new Error("This project has no data tables Helix can write — nothing was written.");
+    throw new Error("This project has no data tables Titer can write — nothing was written.");
   }
 
-  // Analyses: one Prism analysis per Helix node (the importer splits one
-  // Prism 4PL analysis over two datasets into two Helix nodes; the writer
+  // Analyses: one Prism analysis per Titer node (the importer splits one
+  // Prism 4PL analysis over two datasets into two Titer nodes; the writer
   // reverses per node — the report says the written file has one analysis
   // per node, not per source analysis).
   for (const table of tables) {
@@ -464,7 +464,7 @@ export async function writePrism(project: ProjectFilePayload, appVersion: string
                 intermediateVariables: [],
                 // Initial-value rules and transforms are emitted only where
                 // they were seen in a real file (the demo's 4PL); other
-                // equations omit them — Helix's runner sets its own
+                // equations omit them — Titer's runner sets its own
                 // starting values.
                 ...(is4PLx
                   ? {
@@ -537,13 +537,13 @@ export async function writePrism(project: ProjectFilePayload, appVersion: string
     }
   }
 
-  // One Prism analysis per Helix node, not per source analysis (the importer
+  // One Prism analysis per Titer node, not per source analysis (the importer
   // splits one Prism 4PL over two datasets into two nodes) — say so plainly.
   const analysisNodes = report.analyses.length;
   if (analysisNodes > 0) {
     issues.push({
       severity: "warning",
-      message: `Analyses are written one per Helix node (${analysisNodes} written) — a Prism analysis over two datasets becomes two Helix nodes on import, and each writes back as its own analysis.`,
+      message: `Analyses are written one per Titer node (${analysisNodes} written) — a Prism analysis over two datasets becomes two Titer nodes on import, and each writes back as its own analysis.`,
     });
   }
   issues.push({
@@ -555,7 +555,7 @@ export async function writePrism(project: ProjectFilePayload, appVersion: string
   setJson("document.json", {
     "@class": "Document",
     creationDate: new Date().toISOString(),
-    createdBy: { name: "Helix", version: appVersion },
+    createdBy: { name: "Titer", version: appVersion },
     formatVersion: "1-4-1",
     minFormatVersion: "1-4-0",
     minPrismVersion: "10.3.0",

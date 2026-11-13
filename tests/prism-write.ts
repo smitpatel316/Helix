@@ -2,7 +2,7 @@
 // (round-trip .prism → .hlx → .prism) plus the writer's identity rules.
 //
 //   C-06  tables cell-identical, analyses present with identical parameters
-//   W3    the written file is honestly Helix's: fresh UUIDs, createdBy Helix,
+//   W3    the written file is honestly Titer's: fresh UUIDs, createdBy Titer,
 //         no graphs/layouts, no results.json
 //   W4    a minimal one-table project writes exactly the required entries
 //   W5    a Nested table refuses the whole write, naming the table
@@ -56,8 +56,8 @@ const analyses = Object.values(project.nodes).filter((n) => n.type === "analysis
     backAnalyses.length === analyses.length && analyses.every(paramsMatch),
     `${backAnalyses.length} nodes: ${backAnalyses.map((a) => `${a.name} (${a.analysisType})`).join("; ")}`,
   );
-  // W3: the written file is honestly Helix's — fresh UUIDs, createdBy Helix,
-  // no graphs/layouts, no results.json (Helix stores params, never results).
+  // W3: the written file is honestly Titer's — fresh UUIDs, createdBy Titer,
+  // no graphs/layouts, no results.json (Titer stores params, never results).
   const writtenZip = await JSZip.loadAsync(written.bytes);
   const writtenDoc = JSON.parse((await writtenZip.file("document.json")!.async("string")) as string) as {
     createdBy?: { name?: string; version?: string };
@@ -77,7 +77,7 @@ const analyses = Object.values(project.nodes).filter((n) => n.type === "analysis
   const uuidsFresh = [...writtenUuids].every((u) => !sourceUuids.has(u));
   check(
     "W3 written file identity",
-    writtenDoc.createdBy?.name === "Helix" &&
+    writtenDoc.createdBy?.name === "Titer" &&
       writtenDoc.createdBy?.version === "1.0.7" &&
       writtenDoc.formatVersion === "1-4-1" &&
       uuidsFresh &&

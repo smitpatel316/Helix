@@ -313,9 +313,9 @@ export function useDocument() {
   };
 
   /** Imports a Prism `.prism` file (Prism 10's ZIP format) as a new untitled
-   *  project. Tables and the analyses Helix offers come across; graphs and
+   *  project. Tables and the analyses Titer offers come across; graphs and
    *  layouts don't — Prism stores them in a binary format it doesn't
-   *  document — and fitted results aren't carried: Helix recomputes every
+   *  document — and fitted results aren't carried: Titer recomputes every
    *  analysis from the table when the file opens. The transfer report says
    *  exactly what came across and what didn't, in plain language. */
   const importPrismBytes = async (data: Uint8Array, name: string) => {
@@ -337,7 +337,7 @@ export function useDocument() {
     setUntitled(name);
     await native.alert(
       "Prism File Imported",
-      formatReport(converted.report) + "\n\nSave the project to keep it as a Helix project.",
+      formatReport(converted.report) + "\n\nSave the project to keep it as a Titer project.",
       converted.report.issues.length ? "warning" : "info",
     );
   };

@@ -2,14 +2,14 @@
 // both ways between Prism and the open `.hlx` format, with an honest
 // transfer report — what came across, and what didn't.
 //
-//   Prism → Helix: pick a `.prism` file, convert it, save the result as
-//     `.hlx` or open it in Helix. Tables and the analyses Helix offers
+//   Prism → Titer: pick a `.prism` file, convert it, save the result as
+//     `.hlx` or open it in Titer. Tables and the analyses Titer offers
 //     come across; graphs and layouts don't (Prism stores them in a binary
 //     format it doesn't document), and fitted results aren't carried —
-//     Helix recomputes every analysis from the table when the file opens.
-//   Helix → Prism: write the current project as `.prism` (Save As Prism).
+//     Titer recomputes every analysis from the table when the file opens.
+//   Titer → Prism: write the current project as `.prism` (Save As Prism).
 //     A collaborator who needs `.pzfx` can open the `.prism` in Prism and
-//     re-save it there — Helix doesn't write `.pzfx`.
+//     re-save it there — Titer doesn't write `.pzfx`.
 //
 // The source file is only ever read, never written. The picker is the
 // non-blocking one (the Nov 9 deadlock fix): `pick_file`, never
@@ -31,7 +31,7 @@ interface Done {
   direction: Direction;
   sourceName: string;
   reportText: string;
-  /** The converted project (Prism → Helix), or the written bytes (Helix → Prism). */
+  /** The converted project (Prism → Titer), or the written bytes (Titer → Prism). */
   project?: ConvertResult["project"];
   bytes?: Uint8Array;
   savedPath?: string;
@@ -152,7 +152,7 @@ export function ConverterDialog() {
       const target = await native.pickSavePath(
         done.direction === "prism-to-hlx" ? "Save Converted Project" : "Save as Prism",
         fallback,
-        done.direction === "prism-to-hlx" ? "Helix Project" : "GraphPad Prism File",
+        done.direction === "prism-to-hlx" ? "Titer Project" : "GraphPad Prism File",
         done.direction === "prism-to-hlx" ? "hlx" : "prism",
       );
       if (!target) return;
@@ -183,7 +183,7 @@ export function ConverterDialog() {
     setDone({ ...done, savedPath: fallback });
   };
 
-  const openInHelix = async () => {
+  const openInTiter = async () => {
     if (!done?.project) return;
     const current = get();
     if (current.isDirty) {
@@ -212,7 +212,7 @@ export function ConverterDialog() {
       open={open}
       onClose={closeSelector}
       title="Convert"
-      description="Convert between Prism files and the open Helix format. The original file is never changed. Graphs and layouts don't transfer — Prism stores them in a binary format it doesn't document."
+      description="Convert between Prism files and the open Titer format. The original file is never changed. Graphs and layouts don't transfer — Prism stores them in a binary format it doesn't document."
     >
       <RadioList
         value={direction}
@@ -222,13 +222,13 @@ export function ConverterDialog() {
           setDone(null);
         }}
         options={[
-          { value: "prism-to-hlx", label: "Prism (.prism) → Helix (.hlx)" },
-          { value: "hlx-to-prism", label: "Helix (this project) → Prism (.prism)" },
+          { value: "prism-to-hlx", label: "Prism (.prism) → Titer (.hlx)" },
+          { value: "hlx-to-prism", label: "Titer (this project) → Prism (.prism)" },
         ]}
       />
       {direction === "prism-to-hlx" ? (
         <p className="text-regular text-secondary">
-          Tables and the analyses Helix offers come across. Fitted results aren&apos;t carried — Helix recomputes every
+          Tables and the analyses Titer offers come across. Fitted results aren&apos;t carried — Titer recomputes every
           analysis from the table when the file opens.
         </p>
       ) : (
@@ -249,7 +249,7 @@ export function ConverterDialog() {
             <Button variant="accent" onClick={() => void saveDone()}>
               {done.direction === "prism-to-hlx" ? "Save .hlx…" : "Save .prism…"}
             </Button>
-            {done.direction === "prism-to-hlx" && <Button onClick={() => void openInHelix()}>Open in Helix</Button>}
+            {done.direction === "prism-to-hlx" && <Button onClick={() => void openInTiter()}>Open in Titer</Button>}
             <Button onClick={() => void copyReport()}>{copied ? "Copied" : "Copy report"}</Button>
           </div>
         </div>

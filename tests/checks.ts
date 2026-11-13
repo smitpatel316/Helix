@@ -6353,6 +6353,49 @@ check("a multi-file Prism drop names the skipped files", () => {
   );
 });
 
+// ── FL-rebrand: the prism-format surface says Titer, never Helix ────────
+// The rebrand branch was cut before the prism-format code landed, so
+// user-visible "Helix" strings survived in the converter dialog, the save
+// prompt, the import alert and the import/write reports. This pins the
+// rebranded strings and fails if "Helix" ever creeps back into the surface.
+// src/lib/version.ts is deliberately NOT covered: its GitHub URLs point at
+// the repo, which is still named smitpatel316/Helix.
+check("prism-format surface strings say Titer, not Helix (FL-rebrand)", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const surface = [
+    "src/components/converter-dialog.tsx",
+    "src/components/save-prompt-dialog.tsx",
+    "src/store/use-document.ts",
+    "src/lib/prism.ts",
+    "src/lib/prism-write.ts",
+    "src/lib/dataset.ts",
+  ];
+  for (const rel of surface) {
+    const text = readFileSync(join(root, rel), "utf8");
+    ok(!text.includes("Helix"), `${rel} still mentions Helix`);
+  }
+  const converter = readFileSync(join(root, "src/components/converter-dialog.tsx"), "utf8");
+  for (const s of [
+    "the open Titer format",
+    "Prism (.prism) → Titer (.hlx)",
+    "Titer (this project) → Prism (.prism)",
+    "the analyses Titer offers",
+    "Open in Titer",
+    "Titer Project",
+  ]) {
+    ok(converter.includes(s), `converter dialog is missing ${JSON.stringify(s)}`);
+  }
+  const savePrompt = readFileSync(join(root, "src/components/save-prompt-dialog.tsx"), "utf8");
+  ok(savePrompt.includes("Save it as the open Titer format"), "save prompt is missing the Titer format string");
+  const useDocument = readFileSync(join(root, "src/store/use-document.ts"), "utf8");
+  ok(
+    useDocument.includes("Save the project to keep it as a Titer project."),
+    "import alert is missing the Titer project string",
+  );
+  const writer = readFileSync(join(root, "src/lib/prism-write.ts"), "utf8");
+  ok(writer.includes('createdBy: { name: "Titer"'), "written .prism files must claim createdBy Titer");
+});
+
 // ── Replicate pooling (prism-format-work (b)/(g)) ─────────────────────────
 // An imported Prism analysis names its Y data set ("Control"), not a column
 // — the fit pools the data set's replicate columns, as Prism does.
@@ -6440,7 +6483,11 @@ if (existsSync(`${REPO_DIR}MANIFEST.json`)) {
 await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
 
 let failed = 0;
-for (const [name, fn] of checks) {
+// CHECK=<substring> runs only the matching checks (e.g. CHECK=FL-rebrand
+// for the rebrand regression check alone, without the full suite).
+const only = process.env.CHECK;
+const selected = only ? checks.filter(([name]) => name.includes(only)) : checks;
+for (const [name, fn] of selected) {
   try {
     await fn();
   } catch (err) {
@@ -6448,7 +6495,7 @@ for (const [name, fn] of checks) {
     console.log(`✗ ${name}\n  ${err instanceof Error ? err.message.split("\n").join("\n  ") : err}`);
   }
 }
-console.log(failed ? `${failed} of ${checks.length} checks failed.` : `All ${checks.length} checks pass.`);
+console.log(failed ? `${failed} of ${selected.length} checks failed.` : `All ${selected.length} checks pass.`);
 process.exitCode = failed ? 1 : 0;
 // Shut down the repo server and exit explicitly (same as reference.ts /
 // packages.ts): otherwise the listening server + webR workers keep the

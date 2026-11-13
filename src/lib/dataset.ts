@@ -99,7 +99,7 @@ export function splitXY(columns: Column[]): { x?: Column; ys: Column[] } {
 
 /** The columns of one Y data set: the column itself, or its replicate
  *  columns ("Control" → "Control_1", "Control_2", …). Prism stores
- *  replicates as one data set and fits every replicate point; a Helix fit
+ *  replicates as one data set and fits every replicate point; a Titer fit
  *  that names the data set does the same, so an imported Prism analysis
  *  runs on the points Prism fitted. A plain column name is unchanged. */
 export function datasetColumns(columns: Column[], name: string): Column[] {
