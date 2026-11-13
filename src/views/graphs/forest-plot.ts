@@ -8,7 +8,7 @@
 import type { GraphOptions } from "../../store/types";
 import type { AnalysisResult } from "../../stats/types";
 import type { Column } from "../../lib/dataset";
-import { GUIDE, INK, xyLayout, type Paint } from "./plot-helpers";
+import { addNote, GUIDE, INK, xyLayout, type Paint } from "./plot-helpers";
 import { num } from "../../lib/format";
 import type { GraphFigure, GraphModule } from ".";
 
@@ -46,16 +46,49 @@ function build(_columns: Column[], options: GraphOptions, _paint: Paint): GraphF
 
 /** Draw the hazard-ratio rows of a Cox result onto a forest-plot figure (its
  *  build's axes + reference line). No-op when the result has no hazard ratios
- *  (not a Cox result, or the fit failed). */
-export function addForestPlot(fig: GraphFigure, outcome: AnalysisResult, _paint: Paint): void {
-  const rows = (outcome.coefficients ?? []).filter(
-    (c) => c.hazardRatio != null && c.low != null && c.high != null,
-  );
+ *  (not a Cox result, or the fit failed). Rows whose hazard ratio or CI bound
+ *  is not finite and positive are omitted with a note: a log axis cannot draw
+ *  them (see below), and silently hiding a covariate would be worse. */
+export function addForestPlot(
+  fig: GraphFigure,
+  outcome: AnalysisResult,
+  _paint: Paint,
+  options: GraphOptions,
+): void {
+  const rows = outcome.coefficients ?? [];
   if (!rows.length) return;
-  const terms = rows.map((c) => c.term);
-  const hrs = rows.map((c) => c.hazardRatio!);
-  const los = rows.map((c) => c.low!);
-  const his = rows.map((c) => c.high!);
+  // Under separation R's exp(confint(m)) underflows a CI bound to 0 or
+  // overflows it to Inf (and the hazard ratio itself can underflow to 0);
+  // log10(0) = -Infinity / log10(Inf) = Infinity is an invalid Plotly range
+  // that blanks the whole plot, and a whisker to 0 or Inf has no place on a
+  // log scale anyway. The overflow case usually arrives as a null bound,
+  // not Inf: evalNamedVector maps every non-finite R value to null, so a
+  // null hazard ratio or CI bound is an omittable-with-note row too — it
+  // must reach the guard below, not be silently filtered out first.
+  // Keep only drawable rows, so the range below is finite by construction,
+  // and name the omitted covariates on the figure.
+  const kept = rows.filter(
+    (c) =>
+      Number.isFinite(c.hazardRatio!) &&
+      c.hazardRatio! > 0 &&
+      Number.isFinite(c.low!) &&
+      c.low! > 0 &&
+      Number.isFinite(c.high!) &&
+      c.high! > 0,
+  );
+  if (kept.length < rows.length) {
+    const dropped = rows.filter((c) => !kept.includes(c)).map((c) => `“${c.term}”`);
+    addNote(
+      fig,
+      `${dropped.join(", ")} omitted: the hazard ratio or 95% CI is not finite and positive, so it cannot be drawn on a log scale.`,
+      options,
+    );
+  }
+  if (!kept.length) return;
+  const terms = kept.map((c) => c.term);
+  const hrs = kept.map((c) => c.hazardRatio!);
+  const los = kept.map((c) => c.low!);
+  const his = kept.map((c) => c.high!);
   const layout = fig.layout as Record<string, unknown>;
   // The range covers every whisker plus the reference line at 1, with room
   // for the labels: a log axis takes data units, not log units.
@@ -96,7 +129,7 @@ export function addForestPlot(fig: GraphFigure, outcome: AnalysisResult, _paint:
         thickness: 1.5,
         width: 6,
       },
-      text: rows.map((c) => forestRowLabel(c.hazardRatio!, c.low!, c.high!)),
+      text: kept.map((c) => forestRowLabel(c.hazardRatio!, c.low!, c.high!)),
       hoverinfo: "text+x",
       showlegend: false,
     },

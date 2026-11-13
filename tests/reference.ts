@@ -4288,7 +4288,7 @@ async function disagreements(): Promise<string[]> {
         paintOf(forestOpts, 1),
         readTable(coxTable).titles,
       );
-      addForestPlot(fig, coxB, paintOf(forestOpts, 1));
+      addForestPlot(fig, coxB, paintOf(forestOpts, 1), forestOpts);
       const traces = fig.data as {
         mode?: string;
         x?: number[];

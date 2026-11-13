@@ -537,7 +537,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
           if (note) addNote(fig, note, options);
         }
       }
-      if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint);
+      if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint, options);
       if (type === "observed-fitted" && poissonResult)
         addObservedFitted(fig, columns, poissonResult, poissonParams, paint);
       if (type === "scree-plot") {
