@@ -22,12 +22,38 @@ let remote: ((code: string) => Promise<RVector>) | null = null;
 let remoteCancel: (() => Promise<void>) | null = null;
 
 /** Start (or reuse) the R runtime. A failed boot is retried on the next call.
- *  `baseUrl` locates the R files: served by the app, or a folder when run by the tests. */
-export function startR(baseUrl = "/webr/"): Promise<WebR> {
+ *  `baseUrl` locates the R files: served by the app, or a folder when run by the tests.
+ *  The boot races its watchdog (`BOOT_TIMEOUT_MS`): a hung WASM load used to
+ *  leave `engine` pending forever, stranding every later evaluation — and, in
+ *  `runAnalysis`, the cached run itself (M15) — because the boot is awaited
+ *  before the evaluation watchdog starts. A timed-out boot is abandoned (the
+ *  WASM load cannot be cancelled) and the memo reset, so the next call boots
+ *  fresh; the caller gets a timeout error, which `runAnalysis` surfaces and
+ *  evicts from its cache, so a retry works. */
+export function startR(baseUrl = "/webr/", opts?: { timeoutMs?: number }): Promise<WebR> {
+  const timeoutMs = opts?.timeoutMs ?? BOOT_TIMEOUT_MS;
   return (engine ??= (async () => {
     const { WebR } = await import("webr");
     const webR = new WebR({ baseUrl });
-    await webR.init();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        webR.init(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new BootTimeoutError(
+                  `R took longer than ${formatBudget(timeoutMs)} to start and was stopped. Try running the analysis again.`,
+                ),
+              ),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
     liveWebR = webR;
     return webR;
   })().catch((err) => {
@@ -65,6 +91,20 @@ export class EvalTimeoutError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "EvalTimeoutError";
+  }
+}
+
+/** How long an R boot may take before it is treated as hung. Five minutes,
+ *  like `EVAL_TIMEOUT_MS`: a cold boot measured 29.6 s on this host
+ *  (2026-11-12, loaded box) — a boot past this is hung, not slow. A caller
+ *  that must wait longer passes `timeoutMs` to `startR`. */
+export const BOOT_TIMEOUT_MS = 300_000;
+
+/** The watchdog stopped an R boot that ran past its budget. */
+export class BootTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BootTimeoutError";
   }
 }
 
