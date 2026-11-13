@@ -224,6 +224,21 @@ export const extent = (v: number[]): [number, number] => [
   v.reduce((a, b) => Math.max(a, b), -Infinity),
 ];
 
+/** Pairs in ascending X order, so a connecting line (or the area beneath it)
+ *  follows the data's trend instead of the table's row order: unsorted X
+ *  draws a zigzag / self-overlapping fill, and disagrees in shape with the
+ *  fitted overlays, which are plotted on a sorted grid. `rows`, when given,
+ *  is permuted with the pairs, so point keys stay on their own points.
+ *  The sort is stable, so equal X values keep their table order. */
+export function sortPairsByX(
+  x: number[],
+  y: number[],
+  rows: number[] = x.map((_, i) => i),
+): { x: number[]; y: number[]; rows: number[] } {
+  const order = x.map((_, i) => i).sort((a, b) => x[a] - x[b]);
+  return { x: order.map((i) => x[i]), y: order.map((i) => y[i]), rows: order.map((i) => rows[i]) };
+}
+
 /** The graphs' font. */
 const FONT = "system-ui, -apple-system, sans-serif";
 // Texts are measured in it before drawing; where there is no page (the tests), estimated.
