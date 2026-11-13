@@ -168,7 +168,7 @@ const keepCurveX = (model: NonlinearModel, v: number) =>
       const yCol = ys.find((c) => c.name === setName) ?? y;
       const xs = pairUp(x, yCol).x.filter((v) => keepCurveX(model, v));
       if (!xs.length) continue;
-      const curve = fittedCurve(model, coefficientsForSet(coefficients, setName, sets), ...extent(xs));
+      const curve = fittedCurve(model, coefficientsForSet(coefficients, setName, sets), ...extent(xs), 100, fit.ligandConcentration);
       fig.data = [
         {
           type: "scatter",
