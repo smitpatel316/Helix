@@ -40,7 +40,7 @@
         "style-src": "'self' 'unsafe-inline'",
         "img-src": "'self' data: blob:",
         "font-src": "'self' data:",
-        "connect-src": "'self' ipc: http://ipc.localhost data: blob: https://api.github.com https://raw.githubusercontent.com",
+        "connect-src": "'self' ipc: http://ipc.localhost data: blob: https://api.github.com https://raw.githubusercontent.com https://repo.r-wasm.org",
         "worker-src": "'self' blob:",
         "object-src": "'none'",
         "base-uri": "'self'"

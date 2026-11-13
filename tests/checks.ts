@@ -6618,6 +6618,56 @@ check("prism-format surface strings say Titer, not Helix (FL-rebrand)", () => {
   ok(writer.includes('createdBy: { name: "Titer"'), "written .prism files must claim createdBy Titer");
 });
 
+// ── R3-01: the release pipeline ships the vendored webR repo ─────────────
+// webr-repo/ is gitignored, so a fresh checkout (CI, or a clean clone) has
+// no bundled repo: vite build warns and omits it from dist/, and the CDN
+// fallback was blocked by the CSP (connect-src had no repo.r-wasm.org) —
+// every package-backed analysis broke in release builds. The pipeline now
+// builds the repo before the tests and before the Tauri build, the build
+// scripts build it too, and the CSP allows the CDN fallback. This pins all
+// three, plus the Mac DMG flow that already built it.
+check("the release pipeline builds webr-repo/, and the CSP allows the CDN fallback (R3-01)", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const release = readFileSync(join(root, ".github/workflows/release.yml"), "utf8");
+  // Both CI jobs (check and build) run the script, each before the step
+  // that needs the repo: npm test in check, tauri-action in build.
+  const occurrences = release.split("build-webr-repo.sh").length - 1;
+  ok(occurrences >= 2, `release.yml runs build-webr-repo.sh ${occurrences} time(s), want >= 2 (check + build jobs)`);
+  ok(
+    release.indexOf("build-webr-repo.sh") < release.indexOf("npm test"),
+    "release.yml must build webr-repo/ before npm test (or packages.ts skips)",
+  );
+  ok(
+    release.lastIndexOf("build-webr-repo.sh") < release.indexOf("tauri-apps/tauri-action"),
+    "release.yml must build webr-repo/ before tauri-action (or vite build omits it from dist/)",
+  );
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+    scripts: Record<string, string>;
+  };
+  for (const script of ["build", "build:linux"]) {
+    ok(
+      pkg.scripts[script]?.includes("./scripts/build-webr-repo.sh"),
+      `package.json ${script} must run build-webr-repo.sh first`,
+    );
+  }
+  // The Mac DMG flow already built the repo — keep it that way.
+  ok(
+    readFileSync(join(root, "scripts/build-mac-dmg.sh"), "utf8").includes("./scripts/build-webr-repo.sh"),
+    "scripts/build-mac-dmg.sh must keep running build-webr-repo.sh",
+  );
+  // The CSP must allow the same CDN origin the code falls back to.
+  const webr = readFileSync(join(root, "src/stats/webr.ts"), "utf8");
+  const cdn = /export const CDN_REPO_URL = "(https:\/\/[^"]+)"/.exec(webr)?.[1];
+  ok(cdn, "src/stats/webr.ts must define CDN_REPO_URL");
+  const conf = JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8")) as {
+    app: { security: { csp: Record<string, string> } };
+  };
+  ok(
+    conf.app.security.csp["connect-src"]?.includes(cdn!),
+    `tauri.conf.json connect-src must allow the CDN fallback ${cdn}`,
+  );
+});
+
 // ── Replicate pooling (prism-format-work (b)/(g)) ─────────────────────────
 // An imported Prism analysis names its Y data set ("Control"), not a column
 // — the fit pools the data set's replicate columns, as Prism does.
