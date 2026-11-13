@@ -312,10 +312,17 @@ export function regroupTable(data: TableData, groups: number, replicates: number
   };
 }
 
+/** The valued columns regrouping to these counts would drop (a group or
+ *  sub-column beyond them holding a value) — the names, so a load can warn
+ *  about them instead of losing them silently. */
+export function regroupDropped(data: TableData, groups: number, replicates: number): string[] {
+  const kept = new Set(regroupTable(data, groups, replicates).columns);
+  return data.columns.filter((name, c) => !kept.has(name) && data.rows.some((row) => row[c]));
+}
+
 /** Whether regrouping to these counts deletes a value (a group or sub-column beyond them holding one). */
 export function regroupLoses(data: TableData, groups: number, replicates: number): boolean {
-  const kept = new Set(regroupTable(data, groups, replicates).columns);
-  return data.columns.some((name, c) => !kept.has(name) && data.rows.some((row) => row[c]));
+  return regroupDropped(data, groups, replicates).length > 0;
 }
 
 /** Changes how many groups, subgroups and replicates a nested table has. Every
@@ -345,11 +352,18 @@ export function renestTable(data: TableData, groups: number, subgroups: number, 
   };
 }
 
+/** The valued columns renesting to these counts would drop (a group, subgroup
+ *  or replicate beyond them holding a value) — the names, so a load can warn
+ *  about them instead of losing them silently. */
+export function renestDropped(data: TableData, groups: number, subgroups: number, replicates: number): string[] {
+  const kept = new Set(renestTable(data, groups, subgroups, replicates).columns);
+  return data.columns.filter((name, c) => !kept.has(name) && data.rows.some((row) => row[c]));
+}
+
 /** Whether renesting to these counts deletes a value (a group, subgroup or
  *  replicate beyond them holding one). */
 export function renestLoses(data: TableData, groups: number, subgroups: number, replicates: number): boolean {
-  const kept = new Set(renestTable(data, groups, subgroups, replicates).columns);
-  return data.columns.some((name, c) => !kept.has(name) && data.rows.some((row) => row[c]));
+  return renestDropped(data, groups, subgroups, replicates).length > 0;
 }
 
 // ── Row groups (a grouped table's third factor) ─────────────────────────
