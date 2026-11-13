@@ -27,6 +27,9 @@ use tauri::{
 };
 use tauri_plugin_dialog::DialogExt;
 
+// v3 Phase 1: the in-process MCP server (off by default; see mcp.rs).
+mod mcp;
+
 // ── Project windows ──────────────────────────────────────────────────────
 
 /// A project file for a window to open once its page is ready. `untitled`: shown as a
@@ -676,6 +679,7 @@ fn main() {
         )
         .manage(Projects::default())
         .manage(REngine::default())
+        .manage(mcp::McpState::default())
         .setup(|app| {
             ask_before_quitting(app.handle());
             show_menu_pictures();
@@ -704,7 +708,15 @@ fn main() {
             r_result,
             r_ready,
             r_starting,
-            cancel_r
+            cancel_r,
+            mcp::mcp_status,
+            mcp::mcp_set_enabled,
+            mcp::mcp_token,
+            mcp::mcp_regenerate_token,
+            mcp::mcp_claude_code_command,
+            mcp::mcp_activity,
+            mcp::mcp_publish_snapshot,
+            mcp::mcp_publish_result
         ])
         .build(tauri::generate_context!())
         .expect("failed to start Titer")
