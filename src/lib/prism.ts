@@ -18,8 +18,18 @@
 //   2. Prism `survival` tables import as Helix tableType `"survival"` —
 //      as `.pzfx` import does, and as the analysis picker expects — not
 //      `"xy"` as the pre-rebase CLI wrote.
-// Keep this file and the CLI in step when either changes; the CLI branch
-// itself is owned by its own lane and is never edited from here.
+// D1 (single converter source of truth, decided 2026-11-12): THIS file is
+// the canonical converter. The standalone CLI (`feat/prism-converter-cli`,
+// `converter/src/prism.ts`) still carries its own copy with the two deltas
+// above unapplied — it must be migrated to import this file (a Buffer IS a
+// Uint8Array, so the CLI can pass one straight through) and then
+// `converter/src/prism.ts` + `converter/src/csv.ts` deleted, with the
+// CLI's corpus tests (510/510) + synthetic (41/41) + unit (326) re-run
+// against this file. Until that migration lands, the two copies must not
+// drift: the two deltas are pinned by tests/prism.ts (the post-rebase
+// survival-type regression check), so a drift that touches them fails the
+// suite. This file is never edited from the CLI lane, and the CLI copy is
+// never edited from here.
 //
 // The field-by-field mapping lives in the vault:
 //   ~/workspace/helix-vault/Research/Prism 10 to hlx mapping.md

@@ -385,11 +385,22 @@ export function useDocument() {
     const projects = paths.filter(isProjectFile);
     const prism = paths.filter((p) => p.toLowerCase().endsWith(".pzfx") || p.toLowerCase().endsWith(".prism"));
     if (paths.length > projects.length + prism.length) {
-      void native.alert("Can't Open File", "Helix can only open .hlx project files and import .pzfx / .prism Prism files.");
+      void native.alert(
+        "Can't Open File",
+        "Helix can only open .hlx project files and import .pzfx / .prism Prism files. To convert a Prism file without opening it, use File ▸ Convert….",
+      );
     }
     if (projects.length) openProjectsOrSay(projects);
     // One Prism file at a time: each imports as its own untitled project.
-    if (prism.length) void importPrismFile(prism[0]);
+    // (FF-F15) If several were dropped, import the first and name the rest —
+    // never silently swallow files.
+    if (prism.length) {
+      void importPrismFile(prism[0]);
+      if (prism.length > 1) {
+        const base = (p: string) => p.split(/[\\/]/).pop() ?? p;
+        void native.alert("Imported One Prism File", prismDropSkippedMessage(base(prism[0]), prism.slice(1).map(base)));
+      }
+    }
   };
 
   // Subscribed once; the handlers reach the current versions through this ref.
@@ -402,6 +413,14 @@ export function useDocument() {
   React.useEffect(() => native.onOpening(({ path, untitled }) => void handlers.current.load(path, untitled)), []);
 
   return { save, recents, forgetRecent, clearRecents, importPrism, projectUpdated, dismissProjectUpdated, resolveSavePrompt };
+}
+
+/** (FF-F15) Message for a multi-file Prism drop: the first file imports,
+ *  the rest are named, never silently swallowed. Pure, so checks.ts pins
+ *  the exact wording. */
+export function prismDropSkippedMessage(firstName: string, skippedNames: string[]): string {
+  const skipped = skippedNames.join(", ");
+  return `Imported ${firstName}; ${skipped} ${skippedNames.length === 1 ? "was" : "were"} not imported — drop one file at a time, or use File ▸ Convert….`;
 }
 
 export type DocumentActions = ReturnType<typeof useDocument>;

@@ -105,6 +105,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AnalysisResultsView, headline } from "../src/views/analyses/analysis-results-view";
 import { loadPrismSaveChoice, nextSaveAction } from "../src/lib/prism-nudge";
 import { fitWidths, fitZoom } from "../src/store/use-layout";
+import { prismDropSkippedMessage } from "../src/store/use-document";
 import { computeGroupedDEG } from "../src/lib/deg";
 import { logisticCurveNote } from "../src/views/graphs/logistic-curve";
 import { ANALYSES, runAnalysis } from "../src/stats";
@@ -6282,6 +6283,18 @@ check("the save prompt asks once per Prism project, and a remembered choice appl
   strictEqual(nextSaveAction({ prismOrigin: true, prompted: true, remembered: "prism" }), "save-prism");
   // No localStorage under Node: reads as "no remembered choice", never throws.
   strictEqual(loadPrismSaveChoice(), null);
+});
+
+// ── FF-F15: a multi-file Prism drop imports the first and names the rest ──
+check("a multi-file Prism drop names the skipped files", () => {
+  strictEqual(
+    prismDropSkippedMessage("a.prism", ["b.prism"]),
+    "Imported a.prism; b.prism was not imported — drop one file at a time, or use File ▸ Convert….",
+  );
+  strictEqual(
+    prismDropSkippedMessage("a.prism", ["b.prism", "c.pzfx"]),
+    "Imported a.prism; b.prism, c.pzfx were not imported — drop one file at a time, or use File ▸ Convert….",
+  );
 });
 
 // ── Replicate pooling (prism-format-work (b)/(g)) ─────────────────────────
