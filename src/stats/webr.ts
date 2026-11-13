@@ -529,6 +529,103 @@ export async function installedPackageVersions(): Promise<Record<string, string>
  *  rather than slow.) */
 export const PACKAGE_INSTALL_TIMEOUT_MS = 360_000;
 
+// ── M16 — cross-window install dedup ────────────────────────────────────
+// `states`/`inflight`/`chain` above are module-level per project window,
+// but installs execute in the one shared engine window — so two windows
+// running a package-dependent analysis at once both saw "not-loaded" and
+// both started an install batch (measured 2026-11-12: each window's batch
+// ran, `installsStarted` counted 2; the second batch's `webr::install` was
+// a 0.3 s no-op only because webR skips already-installed packages — the
+// redundant batch, the divergent states, and the spurious timeout when one
+// window's call outlived the other's install were the real defect, not a
+// double 48 s install). The engine's R session is the one shared truth
+// every window already reaches (via `evalNamedVector`), and it is
+// single-threaded — so the claim lives there, not in JS: one R eval,
+// atomic in the worker, claims the missing packages (or reports them
+// installed / claimed by another window). No new channel, no Rust change.
+
+/** A claim older than this is treated as abandoned (its holder died or its
+ *  install was evicted) and may be stolen. Longer than the install timeout
+ *  (360 s) so a live holder is never robbed mid-install. */
+export const CLAIM_STALE_MS = 400_000;
+
+/** R code: for each wanted package, 2 = installed at the pinned version,
+ *  1 = this caller wins the claim, 0 = another window holds the claim.
+ *  One eval, atomic in the single-threaded worker. */
+function claimInstallCode(names: string[]): string {
+  const pkgs = `c(${names.map((n) => JSON.stringify(n)).join(",")})`;
+  const vers = `c(${names.map((n) => JSON.stringify(registryByName.get(n)!.version)).join(",")})`;
+  return (
+    `pkgs<-${pkgs};vers<-${vers};` +
+    `claims<-get0(".helix_install_claims",envir=.GlobalEnv,ifnotfound=list());` +
+    `now<-as.numeric(Sys.time());codes<-numeric(length(pkgs));` +
+    `for(i in seq_along(pkgs)){p<-pkgs[i];` +
+    `ok<-requireNamespace(p,quietly=TRUE)&&packageVersion(p)==package_version(vers[i]);` +
+    `if(ok){codes[i]<-2}else{held<-claims[[p]];` +
+    `if(is.null(held)||now-held>${CLAIM_STALE_MS / 1000}){claims[[p]]<-now;codes[i]<-1}else{codes[i]<-0}}};` +
+    `assign(".helix_install_claims",claims,envir=.GlobalEnv);` +
+    `setNames(codes,pkgs)`
+  );
+}
+
+/** R code: drop this caller's claims (on failure, so another window's retry
+ *  can claim at once instead of waiting out the steal window). Best effort. */
+function releaseClaimCode(names: string[]): string {
+  return (
+    `claims<-get0(".helix_install_claims",envir=.GlobalEnv,ifnotfound=list());` +
+    `claims[c(${names.map((n) => JSON.stringify(n)).join(",")})]<-NULL;` +
+    `assign(".helix_install_claims",claims,envir=.GlobalEnv);c(released=1)`
+  );
+}
+
+/** The timeout PackageError, shared by the claim wait and the install race. */
+function timeoutError(names: string[], timeoutMs: number): PackageError {
+  return new PackageError(
+    "timeout",
+    names.join(", "),
+    `Installing ${names.map((n) => `“${n}”`).join(", ")} timed out after ${Math.round(timeoutMs / 1000)} seconds — the attempt was abandoned. Try again to start a fresh install.`,
+  );
+}
+
+/** Resolve the wanted packages against the engine's R: installed ones are
+ *  marked ready locally; won ones are left for the batch step below;
+ *  ones another window is installing are re-claimed until they resolve.
+ *  Returns the packages this caller won the claim for. Throws a timeout
+ *  PackageError (and marks the unresolved failed) if the caller's budget
+ *  runs out while another window's install is still going. */
+async function resolveInEngine(names: string[], deadline: number, timeoutMs: number): Promise<string[]> {
+  const won: string[] = [];
+  let pending = [...names];
+  while (pending.length) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      const error = timeoutError(pending, timeoutMs);
+      for (const n of pending) states.set(n, { status: "failed", error: error.message, kind: "timeout" });
+      throw error;
+    }
+    let codes: RVector;
+    try {
+      codes = await evalNamedVector(claimInstallCode(pending), { timeoutMs: remaining });
+    } catch (err) {
+      if (err instanceof EvalTimeoutError) {
+        const error = timeoutError(pending, timeoutMs);
+        for (const n of pending) states.set(n, { status: "failed", error: error.message, kind: "timeout" });
+        throw error;
+      }
+      throw err;
+    }
+    const next: string[] = [];
+    for (const n of pending) {
+      if (codes[n] === 2) states.set(n, { status: "ready" });
+      else if (codes[n] === 1) won.push(n);
+      else next.push(n);
+    }
+    pending = next;
+    if (pending.length) await new Promise((r) => setTimeout(r, 1000));
+  }
+  return won;
+}
+
 /**
  * Guarantee the named packages are installed and loadable in this engine,
  * then resolve. Concurrent calls for the same package join the one in-flight
@@ -544,6 +641,13 @@ export const PACKAGE_INSTALL_TIMEOUT_MS = 360_000;
  * fall back once to the CDN (unless disabled) — a package missing from the
  * bundled repo is a build error and never falls back, so versions cannot
  * drift silently.
+ *
+ * Two project windows share the one engine, so before starting a batch the
+ * caller claims the missing packages in the engine's R (M16): a package
+ * already installed at the pinned version resolves at once, a package
+ * another window is installing waits for it, and only the claim's winner
+ * installs — the per-window `states`/`inflight` above cannot see the
+ * other window, but the engine's R can.
  */
 export async function ensurePackages(names: string[], opts?: { timeoutMs?: number }): Promise<void> {
   const wanted = [...new Set(names)];
@@ -559,6 +663,13 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
     }
   }
   if (!wanted.length) return;
+  const timeoutMs = opts?.timeoutMs ?? PACKAGE_INSTALL_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  // M16: resolve against the engine before deciding what's missing — the
+  // local state above cannot see another window's install. Installed ones
+  // come back marked ready; won ones are left for the batch below.
+  const toResolve = wanted.filter((n) => stateOf(n).status !== "ready" && !inflight.has(n));
+  const won = toResolve.length ? await resolveInEngine(toResolve, deadline, timeoutMs) : [];
   // Join in-flight installs, then install what's still missing — all decided
   // synchronously, before the first await, so concurrent callers cannot
   // start a second install of the same package.
@@ -597,7 +708,6 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
     );
     void done;
   }
-  const timeoutMs = opts?.timeoutMs ?? PACKAGE_INSTALL_TIMEOUT_MS;
   // The timeout covers EVERYTHING this call waits on — the installs it
   // joined as well as its own batch. (Before B2, a caller that only joined
   // a hung install awaited it before the race and hung forever with no
@@ -610,13 +720,7 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           timedOut = true;
-          reject(
-            new PackageError(
-              "timeout",
-              wanted.join(", "),
-              `Installing ${wanted.map((n) => `“${n}”`).join(", ")} timed out after ${Math.round(timeoutMs / 1000)} seconds — the attempt was abandoned. Try again to start a fresh install.`,
-            ),
-          );
+          reject(timeoutError(wanted, timeoutMs));
         }, timeoutMs);
       }),
     ]);
@@ -628,6 +732,18 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
   }
   const failed = wanted.filter((n) => stateOf(n).status === "failed");
   if (failed.length) {
+    // M16: release the claims this caller won, so another window's retry can
+    // claim at once instead of waiting out the steal window. Awaited briefly
+    // (a prompt retry must see it); if the engine is busy the steal window
+    // is the backstop. Only this caller's won claims — never another
+    // window's live claim.
+    const toRelease = failed.filter((n) => won.includes(n));
+    if (toRelease.length) {
+      await Promise.race([
+        evalNamedVector(releaseClaimCode(toRelease), { timeoutMs: PACKAGE_INSTALL_TIMEOUT_MS }).catch(() => {}),
+        new Promise((r) => setTimeout(r, 2000)),
+      ]);
+    }
     const first = failed[0];
     const state = stateOf(first);
     throw new PackageError(

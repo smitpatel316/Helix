@@ -105,6 +105,10 @@ check("repo includes codetools", repoVersions.has("codetools"), "multcomp Import
 // ── Serve the bundled repo on localhost ────────────────────────────────
 
 const MIME: Record<string, string> = { ".tgz": "application/gzip", ".gz": "application/gzip" };
+// P-13 (M16): .tgz downloads served, by package — the double-install
+// observable. A second window's redundant batch would download the .tgz
+// again; the claim protocol must hold it to exactly one per package.
+const tgzDownloads = new Map<string, number>();
 // P-12 (B2) black-hole switch: while `hangRepo` is set, the server accepts
 // requests and never answers them, so an install's download hangs forever
 // in the engine — the hung-install scenario, without touching R. Held
@@ -122,6 +126,10 @@ const server = createServer((req, res) => {
     res.writeHead(404);
     res.end();
     return;
+  }
+  if (path.endsWith(".tgz")) {
+    const name = path.split("/").pop()!.replace(/_.*\.tgz$/, "");
+    tgzDownloads.set(name, (tgzDownloads.get(name) ?? 0) + 1);
   }
   const ext = path.slice(path.lastIndexOf("."));
   res.writeHead(200, { "Content-Type": MIME[ext] ?? "text/plain" });
@@ -201,6 +209,30 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
   relClose(r.p, 1.826019849993088e-06, 1e-6, "P-04 Grubbs p");
 }
 
+// P-13 (M16) — two project windows sharing one engine install a package
+// once. A second copy of the module is a second project window: its own
+// `states`/`inflight`/`chain`, sharing this engine via `remote`. The query
+// string forces a second module record (the 2026-11-12 probe measured the
+// pre-fix behaviour: two batches, `installsStarted` 2, one .tgz — the
+// second batch's install was a 0.3 s no-op only because webR skips
+// installed packages). The specifier is typed `string` so tsc does not try
+// to resolve it (it would fail the check); the runtime import is the same
+// file. nortest is still fresh here (P-06 runs later): the race is real.
+{
+  const secondWindowUrl: string = "../src/stats/webr.ts?m16-second-window";
+  const W2 = (await import(secondWindowUrl)) as typeof import("../src/stats/webr");
+  W2.setPackageRepo(repoUrl, { allowCdnFallback: false });
+  W2.connectR((code: string) => evalNamedVector(code));
+  const a0 = packageDiagnostics().installsStarted;
+  const b0 = W2.packageDiagnostics().installsStarted;
+  const tgz0 = tgzDownloads.get("nortest") ?? 0;
+  await Promise.all([ensurePackages(["nortest"]), W2.ensurePackages(["nortest"])]);
+  check("P-13 both windows ready", packageStatus("nortest").status === "ready" && W2.packageStatus("nortest").status === "ready");
+  const started = packageDiagnostics().installsStarted - a0 + (W2.packageDiagnostics().installsStarted - b0);
+  check("P-13 two windows install once", started === 1, `installs started: ${started}`);
+  check("P-13 nortest downloaded once", (tgzDownloads.get("nortest") ?? 0) - tgz0 === 1, `downloads: ${(tgzDownloads.get("nortest") ?? 0) - tgz0}`);
+}
+
 // P-06 — Anderson–Darling on a seeded normal sample. Pinned from this webR
 // (R 4.6.0, nortest 1.0-4): A 0.3090447325819383, p 0.5461174681840957.
 // Note (plan 23): `nortest::pearson.test` is NOT the D'Agostino–Pearson
@@ -254,6 +286,22 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
   const after = packageDiagnostics().installsStarted;
   check("P-08 concurrent calls all resolve", packageStatus("multcomp").status === "ready");
   check("P-08 package installed once", after - before === 1, `installs started: ${after - before}`);
+}
+
+// P-13b (M16) — a fresh window resolves a package already installed in the
+// engine without starting a batch: the claim reports it installed at the
+// pinned version. multcomp was just installed by P-08; this window has
+// never seen it (empty local state), so without the claim it would install.
+{
+  const secondWindowUrl: string = "../src/stats/webr.ts?m16-second-window";
+  const W2 = (await import(secondWindowUrl)) as typeof import("../src/stats/webr");
+  const b0 = W2.packageDiagnostics().installsStarted;
+  const t0 = Date.now();
+  await W2.ensurePackages(["multcomp"]);
+  const ms = Date.now() - t0;
+  check("P-13b fresh window resolves engine-installed package", W2.packageStatus("multcomp").status === "ready");
+  check("P-13b fresh window starts zero batches", W2.packageDiagnostics().installsStarted - b0 === 0, `started=${W2.packageDiagnostics().installsStarted - b0}`);
+  check("P-13b fresh window resolves fast", ms < 5000, `${ms}ms`);
 }
 
 // P-10 — offline simulation: the repo URL is unreachable (connection
