@@ -982,18 +982,39 @@ check("row groups survive a save and reload; a broken band is left out", () => {
   const reopened = read(JSON.stringify(old));
   strictEqual(reopened.project.nodes.t1.data!.rowGroups, undefined);
   strictEqual(reopened.updated, false);
-  // A band with an empty name, a duplicate name or a bad count drops the field.
-  for (const rowGroups of [
-    [{ name: "", count: 1 }, { name: "KO", count: 1 }],
-    [{ name: "WT", count: 1 }, { name: "WT", count: 1 }],
-    [{ name: "WT", count: 0 }, { name: "KO", count: 2 }],
-    [{ name: "WT", count: 1.5 }, { name: "KO", count: 1 }],
-    "WT/KO",
-  ]) {
+  // A broken band is left out on its own: the valid bands stay, and the
+  // warning names the band that went.
+  for (const [rowGroups, kept, dropped] of [
+    [[{ name: "", count: 1 }, { name: "KO", count: 1 }], [{ name: "KO", count: 1 }], "a band with no name"],
+    [
+      [{ name: "WT", count: 1 }, { name: "WT", count: 1 }],
+      [{ name: "WT", count: 1 }],
+      "a second band with this name",
+    ],
+    [[{ name: "WT", count: 0 }, { name: "KO", count: 2 }], [{ name: "KO", count: 2 }], "“WT” (count 0)"],
+    [[{ name: "WT", count: 1.5 }, { name: "KO", count: 1 }], [{ name: "KO", count: 1 }], "“WT” (count 1.5)"],
+  ] as const) {
     const broken = JSON.parse(serializeProjectFile(project));
     broken.project.nodes.t1.data.rowGroups = rowGroups;
-    strictEqual(read(JSON.stringify(broken)).project.nodes.t1.data!.rowGroups, undefined);
+    const result = read(JSON.stringify(broken));
+    deepStrictEqual(result.project.nodes.t1.data!.rowGroups, kept);
+    ok(
+      result.issues.some((i) => i.message.includes("left out a row group") && i.message.includes(dropped)),
+      `expected a warning naming ${dropped}, got ${JSON.stringify(result.issues)}`,
+    );
   }
+  // Every band broken reads as no third factor — still with a warning.
+  const allBroken = JSON.parse(serializeProjectFile(project));
+  allBroken.project.nodes.t1.data.rowGroups = [{ name: "", count: 0 }];
+  const allBrokenResult = read(JSON.stringify(allBroken));
+  strictEqual(allBrokenResult.project.nodes.t1.data!.rowGroups, undefined);
+  ok(allBrokenResult.issues.some((i) => i.message.includes("left out a row group")));
+  // A rowGroups that isn't a list at all reads as no third factor, silently,
+  // like a missing field.
+  const notAList = JSON.parse(serializeProjectFile(project));
+  notAList.project.nodes.t1.data.rowGroups = "WT/KO";
+  strictEqual(read(JSON.stringify(notAList)).project.nodes.t1.data!.rowGroups, undefined);
+  strictEqual(read(JSON.stringify(notAList)).issues.length, 0);
   // A three-way analysis's posthocTerm survives the same round-trip; a bogus
   // term falls back (the runner takes its default).
   const withAnalysis: ProjectFilePayload = {
@@ -1022,6 +1043,49 @@ check("row groups survive a save and reload; a broken band is left out", () => {
       ?.posthocTerm,
     undefined,
   );
+});
+
+check("a malformed row-group band no longer blocks the three-way ANOVA", async () => {
+  const project: ProjectFilePayload = {
+    nodes: {
+      t1: {
+        id: "t1",
+        type: "table",
+        name: "T",
+        parentId: null,
+        tableType: "grouped",
+        data: {
+          columns: ["Title", "A:Y1", "A:Y2", "B:Y1", "B:Y2"],
+          rows: [
+            ["Day 1", "1", "2", "3", "4"],
+            ["Day 2", "5", "6", "7", "8"],
+            ["Day 1", "9", "10", "11", "12"],
+            ["Day 2", "13", "14", "15", "16"],
+          ],
+          groups: 2,
+          replicates: 2,
+          rowGroups: [
+            { name: "WT", count: 2 },
+            { name: "KO", count: 2 },
+            { name: "", count: 2 },
+          ],
+        },
+      },
+    },
+    rootOrder: ["t1"],
+    childOrder: { t1: [] },
+    activeNodeId: "t1",
+  };
+  const result = read(serializeProjectFile(project));
+  deepStrictEqual(result.project.nodes.t1.data!.rowGroups, [
+    { name: "WT", count: 2 },
+    { name: "KO", count: 2 },
+  ]);
+  ok(result.issues.some((i) => i.message.includes("a band with no name")));
+  // Before this fix the whole third factor was dropped on load, so the run
+  // failed with the misleading "needs row groups" error.
+  const out = await runAnalysis("three-way-anova", result.project.nodes.t1.data!);
+  if ("error" in out) throw new Error(`three-way ANOVA should run, got ${out.error}`);
 });
 
 check("the three-way ANOVA is offered only with at least 2 row bands", () => {
