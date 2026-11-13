@@ -5386,7 +5386,7 @@ async function disagreements(): Promise<string[]> {
       paintOf(poisOpts, 1),
       readTable(poissonCounts).titles,
     );
-    addObservedFitted(poisFig, poisCols, poisA, poisParams, paintOf(poisOpts, 1));
+    addObservedFitted(poisFig, poisCols, poisA, poisParams, paintOf(poisOpts, 1), poisOpts);
     const pTraces = poisFig.data as { mode?: string; x?: number[]; y?: number[]; line?: { dash?: string } }[];
     const line = pTraces.find((t) => t.mode === "lines");
     const pts = pTraces.find((t) => t.mode === "markers");
