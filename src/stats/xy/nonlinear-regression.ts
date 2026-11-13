@@ -874,11 +874,13 @@ async function runGlobalNonlinear(
     series.push({ name, xs: p.xs, ys: p.ys });
     yCols.push(p.yCol);
   }
-  // A series that will not fit alone will not fit globally either.
+  // A series that will not fit alone will not fit globally either. The
+  // starts come from the same constrained fits (fixed/bounded parameters
+  // applied), so a held parameter's value shapes the other starts too.
   const singles: { coefficients: RegressionCoefficient[] }[] = [];
   for (const s of series) {
     try {
-      singles.push(await fitModelSpec(s.xs, s.ys, spec, "", termLabel));
+      singles.push(await fitModelSpec(s.xs, s.ys, spec, "", termLabel, { fixed, bounds }));
     } catch (err) {
       return {
         error: `The “${s.name}” curve could not be fitted on its own (${err instanceof Error ? err.message : String(err)}). Fit each data set separately first.`,
@@ -938,7 +940,21 @@ async function runGlobalNonlinear(
             perSeries.push({ ...c, term: termLabel(termOfVar.get(m[1]) ?? m[1]) });
         } else perSeries.push({ ...c, term: termLabel(termOfVar.get(c.term) ?? c.term) });
       }
-      return evaluateCurve(model, perSeries, x);
+      // Fixed parameters are not fitted, so they are absent from the
+      // coefficients — but the curve still needs their values: without
+      // them every point evaluates NaN and the per-series R² is NaN.
+      for (const [name, value] of Object.entries(fixed))
+        perSeries.push({
+          term: termLabel(name),
+          estimate: value,
+          stdError: null,
+          t: null,
+          p: null,
+          low: null,
+          high: null,
+        });
+      // The homologous curve needs [L] (a constant of its equation).
+      return evaluateCurve(model, perSeries, x, params?.ligandConcentration);
     },
   };
   let result;
@@ -959,6 +975,19 @@ async function runGlobalNonlinear(
     if (m) return { ...c, term: `${termLabel(termOfVar.get(m[1]) ?? m[1])} (${m[2]})` };
     return { ...c, term: termLabel(termOfVar.get(c.term) ?? c.term) };
   });
+  // Fixed parameters are not in the fit — report them as coefficient rows
+  // with no standard error (the single-curve paths' precedent), so Span,
+  // the notes and the overlay all see what was held.
+  for (const name of Object.keys(fixed))
+    coefficients.push({
+      term: termLabel(name),
+      estimate: fixed[name]!,
+      stdError: null,
+      t: null,
+      p: null,
+      low: null,
+      high: null,
+    });
   const sets = series.map((s) => s.name);
   const coefFor = (term: string, setName: string): number | null => {
     const suffixed = coefficients.find((c) => c.term === `${termLabel(term)} (${setName})`)?.estimate ?? null;
@@ -1027,6 +1056,9 @@ async function runGlobalNonlinear(
     groups,
     notes,
     coefficients,
+    // The homologous curve needs [L] to draw (the overlay reads it off
+    // the result) — without it the curve is undefined.
+    ...(params?.ligandConcentration != null ? { ligandConcentration: params.ligandConcentration } : {}),
   };
 }
 

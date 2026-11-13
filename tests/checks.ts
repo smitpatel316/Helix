@@ -140,6 +140,7 @@ import { crc32 } from "node:zlib";
 import type { AnalysisOutcome, AnalysisParams, AnalysisResult, DoseResponseSpecialParams, MonteCarloParams, RegressionCoefficient, SimulationSpec } from "../src/stats/types";
 import { simulationRCode, validateSimulationSpec } from "../src/stats/simulation/simulate";
 import { aicc, coefficientsForSet, invertMethod, invertModel, nestedPair } from "../src/stats/xy/nonlinear-regression";
+import { evaluate as evaluateCurve } from "../src/views/graphs/fitted-curve";
 import { parseInhibitorConcentration } from "../src/stats/xy/enzyme-inhibition";
 import { monteCarloRCode, percentile } from "../src/stats/simulation/monte-carlo";
 import { addMonteCarloHistogram } from "../src/views/graphs/monte-carlo-histogram";
@@ -2445,6 +2446,71 @@ check("a global fit's coefficients split per series for the overlay", () => {
     coefficientsForSet(coefs, "Treated", ["Control", "Treated"]).map((c) => c.term),
     ["LogEC50", "Bottom", "Asymmetry (S)"],
   );
+});
+
+// R3-11: a global fit with a fixed parameter, and a global homologous fit.
+// Fixed parameters were filtered out of the global fit's coefficients, so
+// the per-series evaluator got NaN for them: every per-series R² was NaN,
+// Span vanished, and the overlay drew nothing. The homologous curve also
+// lost [L] on the way through (evaluateCurve, the returned result, and
+// the multi-series overlay branch), so its R² was NaN too.
+check("a global fit with a fixed parameter keeps finite R², Span and curves", async () => {
+  const xs = [-9, -8.5, -8, -7.5, -7, -6.5, -6, -5.5, -5, -4.5, -4];
+  const noise = [0, 0.4, -0.3, 0.5, -0.4, 0.3, -0.5, 0.4, -0.3, 0.2, -0.2];
+  const fourPl = (top: number) => (x: number) => 0 + (top - 0) / (1 + 10 ** (-6.5 - x));
+  const table: TableData = {
+    columns: ["Title", "X", "Y1", "Y2"],
+    rows: xs.map((x, i) => ["", String(x), String(fourPl(100)(x) + noise[i]), String(fourPl(90)(x) - noise[i])]),
+  };
+  const out = await runAnalysis("nonlinear-regression", table, {
+    y: "Y1",
+    model: "sigmoidal-4pl-logx",
+    globalY: ["Y2"],
+    fixed: { Bottom: 0 },
+  });
+  ok(!("error" in out), `global fit with fixed Bottom failed: ${"error" in out ? out.error : ""}`);
+  const r2 = out.fit?.rows.find((r) => r.label === "R squared")?.values;
+  ok(r2?.length === 2 && r2.every((v) => v != null && Number.isFinite(v) && v > 0.9), `per-series R² should be finite and > 0.9, got ${r2}`);
+  const span = out.fit?.rows.find((r) => r.label === "Span")?.values;
+  ok(span?.length === 2 && span.every((v) => v != null && v > 50), `Span should be present per series, got ${span}`);
+  const bottom = out.coefficients?.find((c) => c.term === "Bottom");
+  ok(bottom?.estimate === 0, `fixed Bottom should be reported as a coefficient, got ${bottom?.estimate}`);
+  // The overlay's evaluator, per series, from the returned coefficients.
+  const sets = out.fit?.sets ?? ["Y1", "Y2"];
+  for (const [name, top] of [["Y1", 100], ["Y2", 90]] as const) {
+    const atMid = evaluateCurve("sigmoidal-4pl-logx", coefficientsForSet(out.coefficients ?? [], name, sets), -6.5);
+    ok(Number.isFinite(atMid) && Math.abs(atMid - top / 2) < 5, `${name} curve at X = -6.5 should be ~${top / 2}, got ${atMid}`);
+  }
+  // Homologous competition, globally: [L] must survive into the result
+  // and the evaluator, or its R² is NaN and no curve draws. LogKd = 0.3
+  // (Kd ≈ 2·[L]) puts the transition inside the X range; Kd = [L]
+  // exactly starts the shared fit at its optimum and port misfires with
+  // "false convergence (8)" — a pre-existing optimizer quirk, not this fix.
+  const hXs = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
+  const homo = (bmax: number) => (x: number) => (bmax * 1) / (1 + 10 ** x + 10 ** 0.3) + 10;
+  const hTable: TableData = {
+    columns: ["Title", "X", "Y1", "Y2"],
+    rows: hXs.map((x, i) => ["", String(x), String(homo(100)(x) + noise[i]), String(homo(95)(x) - noise[i])]),
+  };
+  const h = await runAnalysis("nonlinear-regression", hTable, {
+    y: "Y1",
+    model: "homologous-competition-logx",
+    globalY: ["Y2"],
+    ligandConcentration: 1,
+  });
+  ok(!("error" in h), `global homologous fit failed: ${"error" in h ? h.error : ""}`);
+  const hr2 = h.fit?.rows.find((r) => r.label === "R squared")?.values;
+  ok(hr2?.length === 2 && hr2.every((v) => v != null && Number.isFinite(v) && v > 0.9), `homologous per-series R² should be finite and > 0.9, got ${hr2}`);
+  ok(h.ligandConcentration === 1, `homologous result should carry [L], got ${h.ligandConcentration}`);
+  const hSets = h.fit?.sets ?? ["Y1", "Y2"];
+  const hAt = evaluateCurve(
+    "homologous-competition-logx",
+    coefficientsForSet(h.coefficients ?? [], "Y1", hSets),
+    0,
+    h.ligandConcentration,
+  );
+  // At X = 0 the curve is Bmax/(2 + 10^0.3) + Bottom ≈ 35.0.
+  ok(Number.isFinite(hAt) && Math.abs(hAt - 35) < 5, `homologous curve at X = 0 should be ~35, got ${hAt}`);
 });
 
 // Plan 26: the closed-form inverses agree with R — the plan's pinned
