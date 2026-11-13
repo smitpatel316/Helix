@@ -281,7 +281,17 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
     }
     if (!cancel && ed.kind === "group")
       update(renameGroup(data, ed.key, value), "Rename Group", { renamed: { [ed.key]: value } });
-    if (!cancel && ed.kind === "subgroup") update(renameSubgroup(data, ed.group, ed.key, value), "Rename Subgroup");
+    if (!cancel && ed.kind === "subgroup") {
+      // Pass the renamed columns through, so per-point styles in the subgroup
+      // follow the rename instead of being dropped with their old column names.
+      const next = renameSubgroup(data, ed.group, ed.key, value);
+      const renamed = Object.fromEntries(
+        data.columns
+          .map((n, i) => [n, next.columns[i]] as const)
+          .filter(([from, to]) => from !== to),
+      );
+      update(next, "Rename Subgroup", { renamed });
+    }
     setEditing(null);
     focusGrid();
   };

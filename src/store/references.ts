@@ -18,6 +18,11 @@ export interface TableMove {
 // The params and options holding names (a name, or a list of names).
 const PARAM_NAMES = [
   "y",
+  "y2",
+  "ys",
+  "globalY",
+  "truth",
+  "score",
   "dependent",
   "reference",
   "control",
@@ -48,7 +53,9 @@ export function followTable(node: ProjectNode, { renamed = {}, rows }: TableMove
     const params = withNames<AnalysisParams>(node.analysisParams, PARAM_NAMES);
     // Monte Carlo's per-column simulated means/SDs are keyed BY column name,
     // so a rename must rename the keys (not the values, which are numbers).
-    for (const key of ["groupMeans", "groupSds"] as const) {
+    // Enzyme inhibition's inhibitor concentrations and dose-response-special's
+    // antagonist concentrations are keyed the same way (by inhibitor/antagonist).
+    for (const key of ["groupMeans", "groupSds", "inhibitorConcentrations", "antagonistConcentrations"] as const) {
       const map = (params as Record<string, unknown>)[key];
       if (map && typeof map === "object" && !Array.isArray(map)) {
         (params as Record<string, unknown>)[key] = Object.fromEntries(
