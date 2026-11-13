@@ -80,6 +80,45 @@ export function writeFile(path: string, data: string | Uint8Array) {
 export const readMyPalettes = () => invoke<string>("read_my_palettes");
 export const writeMyPalettes = (text: string) => invoke("write_my_palettes", { text });
 
+// ── AI connections (v3 Phase 1: the in-process MCP server) ─────────────
+// The server is off by default and starts only from Settings → AI
+// connections. These are the app's own commands — no MCP tool can call
+// them, so an agent can never change the safety settings (roadmap §3).
+
+/** Whether the server is on, where it listens, and whether a token exists. */
+export interface McpStatus {
+  enabled: boolean;
+  running: boolean;
+  port: number | null;
+  endpoint: string | null;
+  has_token: boolean;
+}
+
+export const mcpStatus = () => invoke<McpStatus>("mcp_status");
+export const mcpSetEnabled = (enabled: boolean) => invoke<McpStatus>("mcp_set_enabled", { enabled });
+/** The local bearer token, for Settings to show (never for an agent). */
+export const mcpToken = () => invoke<string>("mcp_token");
+/** Rotates the token; only while the server is stopped. */
+export const mcpRegenerateToken = () => invoke<string>("mcp_regenerate_token");
+/** The `claude mcp add …` command for Claude Code, for Settings to copy. */
+export const mcpClaudeCodeCommand = () => invoke<string>("mcp_claude_code_command");
+/** The Activity log's last lines (newest last). */
+export const mcpActivity = (limit: number) => invoke<string[]>("mcp_activity", { limit });
+
+/** This window's project, for the MCP server to serve. Published on every
+ *  revision change (debounced, see store/mcp-publish.ts). A no-op where
+ *  there is no native shell (web preview, tests). */
+export function mcpPublishSnapshot(snapshot: unknown) {
+  if (!isNative) return Promise.resolve();
+  return invoke("mcp_publish_snapshot", { snapshot });
+}
+
+/** An analysis outcome computed in-session, for `titer_read_results`. */
+export function mcpPublishResult(analysisId: string, outcome: unknown) {
+  if (!isNative) return Promise.resolve();
+  return invoke("mcp_publish_result", { analysisId, outcome });
+}
+
 // ── R engine ───────────────────────────────────────────────────────────
 // One R for the whole app, in the hidden "engine" window. The native shell
 // passes each request there and its answer back (see main.rs, `REngine`).
