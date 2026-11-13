@@ -13,6 +13,7 @@ import {
   figureExportSize,
   hasEmptyCell,
   missingPanels,
+  panelPlotSize,
   panelRects,
   PT_PER_INCH,
   sharedLegendCheck,
@@ -45,10 +46,16 @@ async function panelImage(
   document.body.appendChild(el);
   try {
     const Plotly = await loadPlotly();
+    // `size` is the panel's rectangle in DPI pixels; Plotly lays out in its
+    // own 96-DPI units and `toImage` scales by dpi/96 on top, so the panel
+    // is drawn at the 96-DPI size and the image lands exactly on the
+    // rectangle (F-#7: handing Plotly the rectangle scaled twice, and at
+    // 600 DPI the 18750×28125 canvas is past what WebKit draws).
+    const plotSize = panelPlotSize(size, Number(dpi));
     await Plotly.react(
       el,
       fig.data,
-      { ...fig.layout, ...size },
+      { ...fig.layout, ...plotSize },
       { displayModeBar: false, scrollZoom: false, doubleClick: false },
     );
     const drawn = el as unknown as { data: unknown[]; layout: object };
@@ -56,7 +63,7 @@ async function panelImage(
       format === "jpeg" ? { ...drawn.layout, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff" } : drawn.layout;
     const figure = { data: vectorTraces(withoutSelection(drawn.data)), layout };
     const scale = format === "svg" ? 1 : Number(dpi) / PX_PER_INCH;
-    const url = await Plotly.toImage(figure, { format, ...size, scale });
+    const url = await Plotly.toImage(figure, { format, ...plotSize, scale });
     const image = await (await fetch(url)).blob();
     return format === "svg" ? image : withDpi(new Uint8Array(await image.arrayBuffer()), format, Number(dpi));
   } finally {
