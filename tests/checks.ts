@@ -78,6 +78,7 @@ import { dagostinoPearson } from "../src/stats/column/shapiro-wilk";
 import { runRout } from "../src/stats/column/rout";
 import { parseGroupLevels, toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
 import { initialAnswer } from "../src/views/analyses/analysis-wizard";
+import { checkNormality } from "../src/views/analyses/normality-check";
 import { addNote, groupedBarLayout, groupedScatterLayout, heatmapLayout, legendRightMargin, legendWidthPx, movedText, paintOf, vectorTraces, visibleOutline, withCaps, xyLayout } from "../src/views/graphs/plot-helpers";
 import {
   drawnKeys,
@@ -5512,6 +5513,57 @@ check("hung R eval times out, is interrupted, and retry works", async () => {
   ok(elapsed < 10_000, `hung eval took ${elapsed} ms to fail`);
   const v = await evalNamedVector("c(a=1)");
   deepStrictEqual(v, { a: 1 });
+});
+
+// R2-F14: the "Not sure" Shapiro-Wilk check must be cancellable while it
+// runs — aborting its signal stops the in-flight R evaluation (the same
+// `cancelActiveEvals` the analysis view's Cancel button uses) and the check
+// resolves null with no verdict/error alert, so the wizard returns to the
+// question instead of stranding the user until the 5-minute eval watchdog.
+// `alert` is a native dialog in the app; under tsx there is no `window`, so
+// the check records it through a stubbed `window.alert` instead.
+check("cancelling the Shapiro-Wilk check stops R and reports nothing", async () => {
+  const alerts: string[] = [];
+  const prevWindow = (globalThis as { window?: unknown }).window;
+  (globalThis as { window?: unknown }).window = { alert: (msg: string) => alerts.push(msg) };
+  try {
+    // A pre-aborted signal never starts the run — and shows no alert.
+    // (The first column is the row-title column: data starts at "A".)
+    const table: TableData = {
+      columns: ["Title", "A"],
+      rows: [["", "1"], ["", "2"], ["", "3"], ["", "4"], ["", "5"], ["", "6"], ["", "7"], ["", "8"]],
+    };
+    strictEqual(await checkNormality(table, undefined, { signal: AbortSignal.abort() }), null);
+    strictEqual(alerts.length, 0, `expected no alert, got ${JSON.stringify(alerts)}`);
+    // The live flow: R is busy in an infinite loop (the R2-B1 occupier), the
+    // check queues behind it, and aborting the signal mid-flight stops the
+    // run and returns null promptly — no alert, and the engine is usable
+    // afterwards (that is the retry).
+    const busy: TableData = {
+      columns: ["Title", "A"],
+      rows: [["", "1.1"], ["", "2.3"], ["", "1.9"], ["", "3.2"], ["", "2.8"], ["", "1.5"], ["", "2.1"], ["", "3.0"]],
+    };
+    const hung = evalNamedVector("while(TRUE){}", { timeoutMs: 120_000, graceMs: 1_000 }).catch(() => {});
+    const controller = new AbortController();
+    const started = Date.now();
+    const pending = checkNormality(busy, undefined, { signal: controller.signal });
+    await new Promise((r) => setTimeout(r, 500));
+    controller.abort();
+    strictEqual(await pending, null);
+    const elapsed = Date.now() - started;
+    ok(elapsed < 10_000, `cancelled check took ${elapsed} ms to return`);
+    strictEqual(alerts.length, 0, `expected no alert, got ${JSON.stringify(alerts)}`);
+    await hung;
+    // The cancel may have escalated to restarting the engine (the
+    // watchdog's grace expiry abandons a stuck engine): re-boot explicitly,
+    // as the R2-M15 check does, so the retry below proves R itself is
+    // healthy either way.
+    await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
+    deepStrictEqual(await evalNamedVector("c(a=1)"), { a: 1 });
+  } finally {
+    if (prevWindow === undefined) delete (globalThis as { window?: unknown }).window;
+    else (globalThis as { window?: unknown }).window = prevWindow;
+  }
 });
 
 // R2-B1: a failed run is not cached — Retry runs it for real. A runner
