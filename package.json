@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
-    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "jszip": "^3.10.1",
     "plotly.js-dist-min": "^4.1.2",
