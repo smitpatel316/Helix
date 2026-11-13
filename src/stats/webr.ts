@@ -590,10 +590,23 @@ function timeoutError(names: string[], timeoutMs: number): PackageError {
 /** Resolve the wanted packages against the engine's R: installed ones are
  *  marked ready locally; won ones are left for the batch step below;
  *  ones another window is installing are re-claimed until they resolve.
- *  Returns the packages this caller won the claim for. Throws a timeout
- *  PackageError (and marks the unresolved failed) if the caller's budget
- *  runs out while another window's install is still going. */
-async function resolveInEngine(names: string[], deadline: number, timeoutMs: number): Promise<string[]> {
+ *  Returns the packages this caller won the claim for, plus any the engine
+ *  never answered for. A claim eval that cannot even start — its Shelter
+ *  queues behind a hung install in the single-threaded engine, so the
+ *  eval's own watchdog never gets a chance to fire — must never block the
+ *  B2 timeout path: on expiry those packages fall back to the per-window
+ *  install below instead of throwing, so the batch still starts and times
+ *  out on the caller's own timer. The abandoned eval may still win a claim
+ *  once the engine frees, so a release is queued behind it (same engine
+ *  queue order) to drop whatever it won, instead of poisoning a retry.
+ *  Throws a timeout PackageError (and marks the unresolved failed) if the
+ *  caller's budget runs out while another window's install is still going
+ *  and the engine IS answering. */
+async function resolveInEngine(
+  names: string[],
+  deadline: number,
+  timeoutMs: number,
+): Promise<{ won: string[]; unresolved: string[] }> {
   const won: string[] = [];
   let pending = [...names];
   while (pending.length) {
@@ -603,9 +616,9 @@ async function resolveInEngine(names: string[], deadline: number, timeoutMs: num
       for (const n of pending) states.set(n, { status: "failed", error: error.message, kind: "timeout" });
       throw error;
     }
-    let codes: RVector;
+    let codes: RVector | null;
     try {
-      codes = await evalNamedVector(claimInstallCode(pending), { timeoutMs: remaining });
+      codes = await claimEvalWithBudget(pending, remaining);
     } catch (err) {
       if (err instanceof EvalTimeoutError) {
         const error = timeoutError(pending, timeoutMs);
@@ -613,6 +626,15 @@ async function resolveInEngine(names: string[], deadline: number, timeoutMs: num
         throw error;
       }
       throw err;
+    }
+    if (codes === null) {
+      // The engine never answered within budget (its worker is busy behind
+      // a hung install): fall back to the per-window install below — the
+      // B2 batch must start and time out on the caller's own timer, not
+      // hang here. Queue a release behind the abandoned eval so a claim
+      // it wins later cannot poison a retry.
+      void evalNamedVector(releaseClaimCode(pending), { timeoutMs: PACKAGE_INSTALL_TIMEOUT_MS }).catch(() => {});
+      return { won, unresolved: pending };
     }
     const next: string[] = [];
     for (const n of pending) {
@@ -623,7 +645,19 @@ async function resolveInEngine(names: string[], deadline: number, timeoutMs: num
     pending = next;
     if (pending.length) await new Promise((r) => setTimeout(r, 1000));
   }
-  return won;
+  return { won, unresolved: [] };
+}
+
+/** One claim eval, raced against the caller's remaining budget. The eval
+ *  itself has a watchdog, but that only starts once its Shelter is built —
+ *  and Shelter creation queues behind a hung install in the engine, so
+ *  without this race the wait would be unbounded. `null` = the engine
+ *  never answered; the eval stays queued and is abandoned. */
+function claimEvalWithBudget(names: string[], budgetMs: number): Promise<RVector | null> {
+  return Promise.race([
+    evalNamedVector(claimInstallCode(names), { timeoutMs: budgetMs }),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
+  ]);
 }
 
 /**
@@ -647,7 +681,10 @@ async function resolveInEngine(names: string[], deadline: number, timeoutMs: num
  * already installed at the pinned version resolves at once, a package
  * another window is installing waits for it, and only the claim's winner
  * installs — the per-window `states`/`inflight` above cannot see the
- * other window, but the engine's R can.
+ * other window, but the engine's R can. The claim is best-effort: if the
+ * engine never answers it (its worker is busy behind a hung install),
+ * the caller installs anyway — the claim must never block B2's timeout
+ * and eviction path.
  */
 export async function ensurePackages(names: string[], opts?: { timeoutMs?: number }): Promise<void> {
   const wanted = [...new Set(names)];
@@ -669,7 +706,12 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
   // local state above cannot see another window's install. Installed ones
   // come back marked ready; won ones are left for the batch below.
   const toResolve = wanted.filter((n) => stateOf(n).status !== "ready" && !inflight.has(n));
-  const won = toResolve.length ? await resolveInEngine(toResolve, deadline, timeoutMs) : [];
+  // Unresolved packages (the engine never answered the claim eval) fall
+  // through to the batch below exactly like won ones — the claim is
+  // best-effort and never gates the install.
+  const { won }: { won: string[]; unresolved: string[] } = toResolve.length
+    ? await resolveInEngine(toResolve, deadline, timeoutMs)
+    : { won: [], unresolved: [] };
   // Join in-flight installs, then install what's still missing — all decided
   // synchronously, before the first await, so concurrent callers cannot
   // start a second install of the same package.
