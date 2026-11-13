@@ -43,6 +43,9 @@ interface Content {
 
 interface ProjectState extends Content {
   activeNodeId: string | null;
+  /** Unknown keys from a newer/hand-edited file's envelopes (FF-F12), carried through save. */
+  fileUnknowns?: Record<string, unknown>;
+  projectUnknowns?: Record<string, unknown>;
   selector: Selector | null;
   /** Path of the `.hlx` file this project was opened from / last saved to. */
   filePath: string | null;
@@ -101,6 +104,8 @@ type Action =
       rootOrder: string[];
       childOrder: Record<string, string[]>;
       activeNodeId: string | null;
+      fileUnknowns?: Record<string, unknown>;
+      projectUnknowns?: Record<string, unknown>;
       filePath: string | null;
       /** Changed as it was read (repaired, or from an older Helix): to be saved. */
       edited?: boolean;
@@ -281,6 +286,8 @@ function applyAction(state: ProjectState, action: Action): ProjectState {
         rootOrder: action.rootOrder,
         childOrder: action.childOrder,
         activeNodeId: action.activeNodeId,
+        ...(action.fileUnknowns ? { fileUnknowns: action.fileUnknowns } : {}),
+        ...(action.projectUnknowns ? { projectUnknowns: action.projectUnknowns } : {}),
         selector: null,
         filePath: action.filePath,
         isDirty: action.edited ?? false,
@@ -405,6 +412,8 @@ interface ProjectActions {
     rootOrder: string[];
     childOrder: Record<string, string[]>;
     activeNodeId: string | null;
+    fileUnknowns?: Record<string, unknown>;
+    projectUnknowns?: Record<string, unknown>;
     /** null: a project not saved anywhere yet (the sample project). */
     filePath: string | null;
     /** Changed as it was read: it opens edited, so saving keeps it as it is now. */

@@ -226,6 +226,43 @@ check("a file Helix had to repair or bring up to date opens to be saved; a sound
   strictEqual(read(JSON.stringify(older)).updated, true);
 });
 
+// R2 FF-F12: a newer (or hand-edited) file's unknown keys and params survive a
+// save instead of being dropped or lowercased — the file header's forward-compat
+// promise. Before the fix the top-level and project keys were dropped outright,
+// and an unknown param survived only as a lowercase word: "My Column" and an
+// object value were dropped, "MyColumn" came back "mycolumn". Carrying them
+// through is not a repair, so the file still opens unedited.
+check("unknown file and project keys and unknown params survive a save, verbatim", () => {
+  const file = JSON.parse(serializeProjectFile(payload)) as { project: ProjectFilePayload } & Record<string, unknown>;
+  file.futureFileKey = { note: "from a newer Helix" };
+  (file.project as unknown as Record<string, unknown>).futureProjectKey = "keep me";
+  const a1 = file.project.nodes.a1 as ProjectNode;
+  a1.analysisParams = {
+    ...a1.analysisParams,
+    futureParam: "My Column",
+    futureFlag: { nested: [1, 2] },
+    futureList: ["A", "B"],
+    futureUpper: "MyColumn",
+    futureWord: "spline",
+  } as unknown as AnalysisParams;
+  const { project, updated } = read(JSON.stringify(file));
+  const kept = {
+    y: "Y1",
+    forceOrigin: true,
+    futureParam: "My Column",
+    futureFlag: { nested: [1, 2] },
+    futureList: ["A", "B"],
+    futureUpper: "MyColumn",
+    futureWord: "spline",
+  };
+  deepStrictEqual(project.nodes.a1.analysisParams, kept);
+  const again = JSON.parse(serializeProjectFile(project));
+  strictEqual(again.futureFileKey.note, "from a newer Helix");
+  strictEqual(again.project.futureProjectKey, "keep me");
+  deepStrictEqual(again.project.nodes.a1.analysisParams, kept);
+  strictEqual(updated, false);
+});
+
 // R2 M5: a dropped/invalid param value falls back to its runner default, and
 // says so — a hand-edited or cross-version value must not silently change the
 // test on re-run. Before the fix the reader left the key out and the runner
