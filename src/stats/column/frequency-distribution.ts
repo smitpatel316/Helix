@@ -47,10 +47,23 @@ export function prettyBreaks(lo: number, hi: number, n: number): number[] {
   const step = [1, 2, 5, 10].map((m) => m * base).find((s) => target <= 1.4 * s) ?? 10 * base;
   // R treats a ratio a hair's breadth from a whole number as that number
   // (0.3 / 0.1 is 2.9999999999999996 in doubles, yet pretty() starts at 0.3):
-  // round the ratio to 12 significant digits before flooring/ceiling.
-  const ratio = (v: number) => Number((v / step).toPrecision(12));
+  // snap a ratio to the nearest whole number when it is within a few ULPs
+  // of one. The tolerance must stay at float-error scale (~1e-15 relative):
+  // a 1e-12-relative tolerance exceeds 0.5 once |ratio| > 5e11, so it would
+  // snap EVERY ratio at large magnitudes — e.g. prettyBreaks(1e9,
+  // 1e9+0.0005, 2) snapped the top ratio 5000000000002.5 to 5000000000003
+  // and could round a break past the data. Double division error is ~1e-16
+  // relative, so 4 ULPs catches the dust and nothing else.
+  const ratio = (v: number) => {
+    const r = v / step;
+    const nearest = Math.round(r);
+    return Math.abs(r - nearest) <= 4 * Number.EPSILON * Math.max(1, Math.abs(r)) ? nearest : r;
+  };
   const start = Math.floor(ratio(lo)) * step;
-  const end = Math.ceil(ratio(hi)) * step;
+  let end = Math.ceil(ratio(hi)) * step;
+  // A range far tinier than the step can still snap both ends onto one
+  // break; never return fewer than two breaks (one bin).
+  if (end <= start) end = start + step;
   const intervals = Math.round((end - start) / step);
   return Array.from({ length: intervals + 1 }, (_, i) => clean(start + i * step));
 }
@@ -68,8 +81,12 @@ export function floorToWidth(value: number, width: number): number {
   return clean(Math.floor(value / width) * width);
 }
 
-/** A number without float dust (6.800000000000001 → 6.8), for edges and labels. */
-const clean = (v: number): number => Number(v.toPrecision(12));
+/** A number without float dust (6.800000000000001 → 6.8), for edges and labels.
+ * 15 significant digits: doubles carry ~15.95, so dust (16th digit) is
+ * stripped while genuine differences survive — toPrecision(12) collapsed
+ * real 0.0001-scale steps at 1e9 (14 digits needed) back onto 1e9, making
+ * prettyBreaks() return identical breaks and the bins zero-width. */
+const clean = (v: number): number => Number(v.toPrecision(15));
 
 const fmt = (v: number): string => String(clean(v));
 
@@ -85,8 +102,20 @@ function binEdges(values: number[], p: FrequencyDistributionParams): {
   if (p.binMode === "width") {
     const width = p.binWidth!;
     const start = Math.min(p.startAt ?? min, min);
-    const edges = [clean(start)];
-    while (edges.at(-1)! < max) edges.push(clean(edges.at(-1)! + width));
+    // Count the bins first, then build the edges by index multiplication
+    // (start + i * width). Repeated addition — clean(prev + width) in a
+    // `while (last < max)` loop — never terminates when the width is below
+    // the rounding resolution at the start's magnitude: clean(1e9 + 0.0002)
+    // rounds back to 1e9, so the loop pushes 1e9 forever (OOM/hang). Index
+    // multiplication advances by construction, and the count is bounded.
+    const count = Math.ceil((max - start) / width);
+    if (count > 10000) {
+      throw new Error("Bin width is too small for this range (more than 10,000 bins).");
+    }
+    const edges = Array.from({ length: count + 1 }, (_, i) => clean(start + i * width));
+    // Float error in start + count * width can leave the last edge a hair
+    // below max; pin it to the maximum so the last bin covers the range.
+    edges[count] = Math.max(edges[count], clean(max));
     return { edges, binWidth: width };
   }
   if (p.binMode === "count") {
@@ -121,7 +150,13 @@ export function computeFrequencyBins(
   for (const v of values) {
     // Equal-width edges: the index is arithmetic, with the maximum clamped
     // into the last (closed) bin. A value exactly on an edge goes above it.
-    const i = width > 0 ? Math.min(Math.floor((v - edges[0]) / width), counts.length - 1) : 0;
+    // Math.floor alone mis-bins at exact boundaries: (0.3 - 0.1) / 0.1 is
+    // 1.9999999999999998, so it would put 0.3 in the "0.2 to <0.3" bin.
+    // Nudge the index until the value lies inside [edges[i], edges[i+1]]
+    // (last bin closed), so the binning agrees with the actual edges.
+    let i = width > 0 ? Math.min(Math.floor((v - edges[0]) / width), counts.length - 1) : 0;
+    while (i > 0 && v < edges[i]) i--;
+    while (i < counts.length - 1 && v >= edges[i + 1]) i++;
     counts[Math.max(i, 0)]++;
   }
   let cumulative = 0;
