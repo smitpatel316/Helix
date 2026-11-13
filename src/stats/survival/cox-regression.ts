@@ -22,11 +22,11 @@ export async function runCox(columns: Column[], params: CoxParams | undefined): 
   const r = await evalNamedVector(
     `t<-${rVec(ordered.flatMap((g) => g.x))};s<-${rVec(ordered.flatMap((g) => g.y))}
 g<-factor(${rVec(ordered.flatMap((g, i) => g.x.map(() => i + 1)))},levels=1:${ordered.length})
-w<-0;f<-withCallingHandlers(survival::coxph(survival::Surv(t,s)~g,ties="efron"),warning=function(e){w<<-1;invokeRestart("muffleWarning")});m<-summary(f);z<-survival::cox.zph(f)$table
+w<-0;f<-withCallingHandlers(survival::coxph(survival::Surv(t,s)~g,ties="efron"),warning=function(e){w<<-1;invokeRestart("muffleWarning")});m<-summary(f);ph<-tryCatch(if(any(is.na(stats::coef(f)))) NA_real_ else survival::cox.zph(f)$table["GLOBAL","p"],error=function(e) NA_real_)
 c(${others.map((_, i) => `hr_${i}=m$conf.int[${i + 1},1],lo_${i}=m$conf.int[${i + 1},3],hi_${i}=m$conf.int[${i + 1},4],p_${i}=m$coefficients[${i + 1},5]`).join(",")},
 lr=unname(m$logtest[1]),df=unname(m$logtest[2]),lrp=unname(m$logtest[3]),
 wald=unname(m$waldtest[1]),waldp=unname(m$waldtest[3]),score=unname(m$sctest[1]),scorep=unname(m$sctest[3]),
-cindex=unname(m$concordance[1]),ph=z["GLOBAL","p"],warned=w)`,
+cindex=unname(m$concordance[1]),ph=ph,warned=w)`,
   );
 
   const stats: StatRow[] = [
@@ -61,6 +61,10 @@ cindex=unname(m$concordance[1]),ph=z["GLOBAL","p"],warned=w)`,
       (r.warned
         ? " Warning: the model did not converge (a group without an event, or with only events, has no " +
           "finite hazard ratio): its ratios, intervals and Wald test can't be relied on."
+        : "") +
+      (r.ph == null
+        ? " The proportional hazards test could not be computed — a group with no event at risk leaves " +
+          "a coefficient the test cannot use, so its P is open."
         : ""),
   };
 }

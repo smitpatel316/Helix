@@ -33,7 +33,7 @@ gehan<-function(t,s,g,k){u<-sort(unique(t[s==1]));Z<-numeric(k);V<-matrix(0,k,k)
 for(x in u){n<-tabulate(g[t>=x],k);d<-tabulate(g[t==x&s==1],k);N<-sum(n);D<-sum(d)
 Z<-Z+N*(d-n*D/N);if(N>1)V<-V+N^2*D*(N-D)/(N-1)*(diag(n/N,k)-outer(n/N,n/N))}
 list(Z=Z,V=V)}
-quad<-function(Z,V){m<-length(Z)-1;drop(Z[1:m]%*%solve(V[1:m,1:m,drop=FALSE],Z[1:m]))}
+quad<-function(Z,V){m<-length(Z)-1;tryCatch(drop(Z[1:m]%*%solve(V[1:m,1:m,drop=FALSE],Z[1:m])),error=function(e) NA_real_)}
 chi<-function(t,s,g,k,test){if(test=="gehan"){w<-gehan(t,s,g,k);return(quad(w$Z,w$V))}
 d<-survival::survdiff(survival::Surv(t,s)~factor(g,levels=1:k))
 if(test=="trend"){x<-1:k;return(sum(x*(d$obs-d$exp))^2/drop(x%*%d$var%*%x))}
@@ -54,7 +54,7 @@ export async function runSurvival(columns: Column[], params: SurvivalParams): Pr
     `${R_TESTS}
 t<-${rVec(groups.flatMap((g) => g.x))};s<-${rVec(groups.flatMap((g) => g.y))}
 g<-${rVec(groups.flatMap((g, i) => g.x.map(() => i + 1)))};k<-${k}
-x<-chi(t,s,g,k,"${test}");df<-${test === "trend" ? 1 : k - 1}
+x<-tryCatch(chi(t,s,g,k,"${test}"),error=function(e) NA_real_);df<-${test === "trend" ? 1 : k - 1}
 q<-quantile(survival::survfit(survival::Surv(t,s)~factor(g,levels=1:k),conf.type="log-log"),0.5)
 d<-survival::survdiff(survival::Surv(t,s)~factor(g,levels=1:k));v<-d$var[1,1];L<-(d$obs[1]-d$exp[1])/v
 c(chi=x,df=df,p=pchisq(x,df,lower.tail=FALSE),
@@ -66,11 +66,11 @@ lrhi=d$obs[1]/d$exp[1]/(d$obs[2]/d$exp[2])*exp(qnorm(0.975)*sqrt(1/d$exp[1]+1/d$
 ${groups.map((_, i) => `sub_${i}=sum(g==${i + 1}),ev_${i}=sum(s[g==${i + 1}])`).join(",")}${
       pairs.length
         ? `,setNames(p.adjust(c(${pairs
-            .map(([i, j]) => `${pair(i, j)};pchisq(chi(t[w],s[w],pg,2,"${pairTest}"),1,lower.tail=FALSE)}`)
+            .map(([i, j]) => `${pair(i, j)};pchisq(tryCatch(chi(t[w],s[w],pg,2,"${pairTest}"),error=function(e) NA_real_),1,lower.tail=FALSE)}`)
             .join(
               ",",
             )}),"${CORRECTION_METHOD[params.correction]}"),c(${pairs.map(([i, j]) => `"p_${i}_${j}"`).join(",")}))` +
-          pairs.map(([i, j]) => `,hr_${i}_${j}=${pair(i, j)};hr(t[w],s[w],pg)}`).join("")
+          pairs.map(([i, j]) => `,hr_${i}_${j}=${pair(i, j)};tryCatch(hr(t[w],s[w],pg),error=function(e) NA_real_)}`).join("")
         : ""
     })`,
   );
