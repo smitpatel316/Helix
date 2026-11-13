@@ -183,8 +183,8 @@ export function onCloseRequested(canClose: () => Promise<boolean>) {
 /** The accent color chosen in System Settings ▸ Appearance (#RRGGBB), or null. */
 export const accentColor = () => (isNative ? invoke<string | null>("accent_color") : Promise.resolve(null));
 
-/** Titer's GitHub page or releases, in the default browser. */
-export const openLink = (link: "github" | "releases") => void invoke("open_link", { link });
+/** Titer's GitHub page, its releases, or Buy Me a Coffee, in the default browser. */
+export const openLink = (link: "github" | "releases" | "coffee") => void invoke("open_link", { link });
 
 /** Calls `handler` now and whenever the window enters or leaves full screen. */
 export function onFullscreenChange(handler: (fullscreen: boolean) => void) {

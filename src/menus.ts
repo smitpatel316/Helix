@@ -17,13 +17,15 @@ import { version } from "../package.json";
 
 export const separator = { item: "Separator" } as const;
 
-// The icon comes from the app bundle. The website and GitHub are in the Help menu.
+// The icon comes from the app bundle. GitHub and Buy Me a Coffee are in the Help menu.
 const ABOUT = {
   name: "Titer", // spelled out: in development the process is named "titer"
   version,
   // No shortVersion: Tauri renders one as "(<short>)" after the version, so an
   // empty string showed "1.0.7 ()". Omitting it shows just the version.
-  credits: "Scientific data analysis, simplified.",
+  // The coffee address is in the credits because the About dialog has no
+  // link field on macOS (AboutMetadata.website is Windows/Linux only).
+  credits: "Scientific data analysis, simplified.\nBuy Me a Coffee: https://www.buymeacoffee.com/smitpatel316",
   copyright: "© 2026 mickaphd\nFree and open source. No warranty.",
 };
 
@@ -86,6 +88,7 @@ export function setMenuBar(menus: MenuItems) {
     [{ item: "Minimize" }, { item: "Maximize" }, separator, { item: "BringAllToFront" }],
     [
       { text: "Titer on GitHub", action: () => openLink("github") },
+      { text: "Buy Me a Coffee", action: () => openLink("coffee") },
       separator,
       { text: "Sample Project", action: () => void openSample() },
     ],
