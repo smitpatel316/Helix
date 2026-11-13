@@ -237,6 +237,20 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
+      {result.convertedColumns &&
+        result.convertedColumns.map((c) => (
+          <Table
+            key={c.column}
+            title={`Converted concentrations — ${c.column} (${c.fromUnit} → ${c.toUnit})`}
+            columns={[
+              { label: "Row", numeric: true },
+              { label: `Original (${c.fromUnit})`, numeric: true },
+              { label: `Converted (${c.toUnit})`, numeric: true },
+            ]}
+            rows={c.values.map((v) => [v.row, num(v.original), num(v.converted)])}
+          />
+        ))}
+
       {result.outlierGroups && result.outlierGroups.length > 0 && (
         <Table
           title="Outliers by column"

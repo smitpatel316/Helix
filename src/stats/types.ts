@@ -43,7 +43,8 @@ export type AnalysisType =
   | "bland-altman"
   | "roc-curve"
   | "frequency-distribution"
-  | "monte-carlo";
+  | "monte-carlo"
+  | "transform-concentrations";
 
 /** What the New Analysis picker offers: a test, or "Compare more than two groups",
  *  which its wizard resolves to one-way ANOVA, Kruskal-Wallis, repeated-measures ANOVA
@@ -579,6 +580,29 @@ export interface FrequencyDistributionParams {
   startAt?: number;
 }
 
+/** Molar concentration units (Prism's set), in descending magnitude: each
+ *  step is a factor of 1000. µ is U+00B5 MICRO SIGN, matching the bUnits in
+ *  lib/project-file.ts. Mass units (mg/mL, …) are not here — they need a
+ *  molecular weight, which this operation does not collect. */
+export const CONCENTRATION_UNITS = ["M", "mM", "µM", "nM", "pM"] as const;
+export type ConcentrationUnit = (typeof CONCENTRATION_UNITS)[number];
+/** Each unit's power of 10 in moles per litre (M = 10^0, mM = 10^-3, …). */
+export const CONCENTRATION_UNIT_EXPONENTS: Record<ConcentrationUnit, number> = {
+  M: 0,
+  mM: -3,
+  "µM": -6,
+  nM: -9,
+  pM: -12,
+};
+
+/** Params for "transform-concentrations": the one column to convert, and the
+ *  units it is in now vs. the units it should be converted to. */
+export interface TransformConcentrationsParams {
+  column: string;
+  fromUnit: ConcentrationUnit;
+  toUnit: ConcentrationUnit;
+}
+
 /** Params for "mixed-effects" (Column or Grouped table): a repeated-measures
  *  model fit with lme4::lmer + lmerTest Satterthwaite p-values (plan 20).
  *  `subjectId` says what a subject is — a table row (Column tables) or a
@@ -813,6 +837,7 @@ export type AnalysisParams = DataSetsParam &
     | FrequencyDistributionParams
     | RocParams
     | MonteCarloParams
+    | TransformConcentrationsParams
   );
 
 /** Params for "survival" (Survival table): the test comparing the curves — log-rank,
@@ -993,6 +1018,22 @@ export interface FrequencyBins {
   bins: FrequencyBinRow[];
 }
 
+/** One converted value ("transform-concentrations"): the original value and
+ *  its conversion, with the 1-based table row it came from. */
+export interface ConvertedValueRow {
+  row: number;
+  original: number;
+  converted: number;
+}
+
+/** One column's converted concentrations ("transform-concentrations"). */
+export interface ConvertedColumn {
+  column: string;
+  fromUnit: ConcentrationUnit;
+  toUnit: ConcentrationUnit;
+  values: ConvertedValueRow[];
+}
+
 /** One row of a K-means clustering's clusters table ("k-means"): one
  *  cluster's centre (in the ORIGINAL units — back-transformed when the
  *  variables were standardised), its size, and its within-cluster sum of
@@ -1116,6 +1157,9 @@ export interface AnalysisResult {
   hazardRatios?: HazardRatioRow[];
   /** Optional per-column frequency-distribution bins ("frequency-distribution"). */
   frequencyBins?: FrequencyBins[];
+  /** Optional converted concentrations ("transform-concentrations"): one
+   *  entry per converted column, each value paired with its original. */
+  convertedColumns?: ConvertedColumn[];
   /** Optional ROC points ("roc-curve"): one row per threshold (unique score
    *  values, descending); Youden's J is computed at render time. */
   rocCurve?: RocPoint[];
