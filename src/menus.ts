@@ -18,14 +18,23 @@ import { version } from "../package.json";
 export const separator = { item: "Separator" } as const;
 
 // The icon comes from the app bundle. GitHub and Buy Me a Coffee are in the Help menu.
+const COFFEE_URL = "https://www.buymeacoffee.com/smitpatel316";
+// The coffee address is in the credits because the About dialog has no
+// link field on macOS (AboutMetadata.website is Windows/Linux only).
+// Credits are macOS-only, so Linux/Windows never saw the tagline or the
+// coffee address: their native dialog renders comments and website instead
+// (muda drops credits on those platforms), hence the same text here —
+// comments as visible text, website as the clickable link.
+const ABOUT_CREDITS = `Scientific data analysis, simplified.\nBuy Me a Coffee: ${COFFEE_URL}`;
 const ABOUT = {
   name: "Titer", // spelled out: in development the process is named "titer"
   version,
   // No shortVersion: Tauri renders one as "(<short>)" after the version, so an
   // empty string showed "1.0.7 ()". Omitting it shows just the version.
-  // The coffee address is in the credits because the About dialog has no
-  // link field on macOS (AboutMetadata.website is Windows/Linux only).
-  credits: "Scientific data analysis, simplified.\nBuy Me a Coffee: https://www.buymeacoffee.com/smitpatel316",
+  credits: ABOUT_CREDITS,
+  comments: ABOUT_CREDITS,
+  website: COFFEE_URL,
+  websiteLabel: "Buy Me a Coffee",
   copyright: "© 2026 mickaphd\nFree and open source. No warranty.",
 };
 
