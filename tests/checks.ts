@@ -2418,10 +2418,90 @@ check("only nested model pairs get the F test", () => {
   strictEqual(aicc(1, 4, 3), null);
 });
 
-// Plan 26: a global fit's coefficients split per series for the overlay —
-// shared parameters as fitted, per-series ones with their suffix stripped,
-// other series' dropped (a display term ending in a parenthesis, like
-// "Asymmetry (S)", is not a series suffix).
+// R3-12: a weighted model comparison must fit both models weighted, a
+// homologous comparison model must get [L], and the comparison model must
+// be validated before R sees it. Before the fix both models were fitted
+// unweighted (only their sums of squares were weighted afterward, so the
+// F test and AICc were invalid), "homologous-competition-logx" as
+// compareModel crashed on the unbound R variable L, and a comparison model
+// needing more points — or different X — than the primary reached R.
+check("a weighted model comparison fits both models weighted", async () => {
+  const xs = [0, 1, 2, 3, 4, 5, 6, 7];
+  const ys = [2, 5.1, 7.8, 11.4, 13.2, 18.5, 17.5, 27];
+  const table: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: xs.map((x, i) => ["", String(x), String(ys[i])]),
+  };
+  const out = await runAnalysis("nonlinear-regression", table, {
+    y: "Y1",
+    model: "line",
+    compareModel: "quadratic",
+    weights: "1/y2",
+  });
+  ok(!("error" in out), `weighted comparison failed: ${"error" in out ? out.error : ""}`);
+  // Independent R: the weighted and unweighted line fits, and the weighted
+  // quadratic's weighted sum of squares.
+  const ref = await evalNamedVector(
+    `x<-c(${xs.join(",")});y<-c(${ys.join(",")});w<-1/y^2;` +
+      `mw<-lm(y~x,weights=w);mu<-lm(y~x);mq<-lm(y~x+I(x^2),weights=w);` +
+      `c(bw=as.numeric(coef(mw)[2]),bu=as.numeric(coef(mu)[2]),ssq=sum(w*residuals(mq)^2))`,
+  );
+  const slope = out.coefficients?.find((c) => c.term === "Slope")?.estimate;
+  ok(
+    slope != null && ref.bw != null && Math.abs(slope - ref.bw) < 0.05,
+    `Slope should be the weighted fit (${ref.bw}), got ${slope} (unweighted: ${ref.bu})`,
+  );
+  ok(
+    ref.bw != null && ref.bu != null && Math.abs(ref.bw - ref.bu) > 0.1,
+    `weighted and unweighted slopes should differ (weighted: ${ref.bw}, unweighted: ${ref.bu})`,
+  );
+  const ssB = out.stats?.find((s) => s.label === "Sum of squares (comparison model)")?.value;
+  ok(
+    ssB != null && ref.ssq != null && Math.abs(ssB - ref.ssq) < 0.05,
+    `comparison SS should be the weighted quadratic's (${ref.ssq}), got ${ssB}`,
+  );
+  // Homologous competition as the comparison model: [L] must reach its spec.
+  const hXs = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
+  const hNoise = [0, 0.4, -0.3, 0.5, -0.4, 0.3, -0.5, 0.4, -0.3, 0.2, -0.2];
+  const homo = (bmax: number) => (x: number) => (bmax * 1) / (1 + 10 ** x + 10 ** 0.3) + 10;
+  const hTable: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: hXs.map((x, i) => ["", String(x), String(homo(100)(x) + hNoise[i])]),
+  };
+  const h = await runAnalysis("nonlinear-regression", hTable, {
+    y: "Y1",
+    model: "inhibitor-3pl-logx",
+    compareModel: "homologous-competition-logx",
+    ligandConcentration: 1,
+  });
+  ok(!("error" in h), `homologous comparison failed: ${"error" in h ? h.error : ""}`);
+  // A comparison model needing more points than the data holds is refused
+  // up front, not left for R to choke on.
+  const few: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "0", "2"],
+      ["", "1", "5"],
+      ["", "2", "8"],
+      ["", "3", "11"],
+      ["", "4", "14"],
+    ],
+  };
+  const q = await runAnalysis("nonlinear-regression", few, {
+    y: "Y1",
+    model: "line",
+    compareModel: "quintic",
+  });
+  ok("error" in q && q.error.includes("Not enough complete points"), `quintic comparison on 5 points should be refused up front, got ${"error" in q ? q.error : "no error"}`);
+  // A comparison model needing different X than the primary (a log-X model
+  // drops X = 0) is refused up front too.
+  const s = await runAnalysis("nonlinear-regression", table, {
+    y: "Y1",
+    model: "line",
+    compareModel: "semilog-line",
+  });
+  ok("error" in s && s.error.includes("same points"), `semilog comparison on data with X = 0 should be refused up front, got ${"error" in s ? s.error : "no error"}`);
+});
 check("a global fit's coefficients split per series for the overlay", () => {
   const row = (term: string, estimate: number): RegressionCoefficient => ({
     term,

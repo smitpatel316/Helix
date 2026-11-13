@@ -778,11 +778,50 @@ async function compareModels(
   xCol: Column,
   weights: number[] | undefined,
   titles: (string | null)[],
+  columns: Column[],
 ): Promise<AnalysisOutcome> {
   const otherModel = params.compareModel!;
-  const specB = modelSpec(otherModel);
+  // Validate the comparison model before R sees it: it needs its own
+  // points (positive X, enough of them) — otherwise R fails cryptically
+  // ("subscript out of bounds", "NA/NaN/Inf in 'x'"). And both models
+  // must fit the SAME points, or the F test / AICc compare different data.
+  const preparedB = prepareFit(columns, params.y, otherModel);
+  if ("error" in preparedB) return preparedB;
+  if (
+    preparedB.xs.length !== first.xs.length ||
+    preparedB.xs.some((x, i) => x !== first.xs[i])
+  )
+    return {
+      error:
+        `“${MODEL_LABEL[otherModel]}” cannot be compared with “${MODEL_LABEL[model]}” — they need different ` +
+        `points (one drops X the other keeps), so the comparison would not be on the same points.`,
+    };
+  // The comparison model gets the same spec options as a primary fit: [L]
+  // for homologous competition (its equation leaves R variable L unbound
+  // without it) and the Cheng–Prusoff divisor for a Fit-Ki comparison.
+  const ligand = params.ligandConcentration;
+  const ligandKd = params.ligandKd;
+  const validPositive = (v: number | undefined) => v != null && Number.isFinite(v) && v > 0;
+  if (otherModel === "homologous-competition-logx" && !validPositive(ligand))
+    return {
+      error:
+        "Enter the radioligand concentration [L] (greater than 0, in the same units as X) to fit the homologous competition model.",
+    };
+  const wantsKiB =
+    params.fitKi === true && (otherModel === "inhibitor-3pl-logx" || isTwoSiteCompetition(otherModel));
+  const kiDivisorB =
+    wantsKiB && validPositive(ligand) && validPositive(ligandKd) ? 1 + ligand! / ligandKd! : undefined;
+  const specB = modelSpec(otherModel, {
+    ...(kiDivisorB != null ? { kiDivisor: kiDivisorB } : {}),
+    ...(otherModel === "homologous-competition-logx" ? { ligandConcentration: ligand } : {}),
+  });
+  // Both fits take the weights (R3-12): the summary code already weighted
+  // the sums of squares, but the lm()/nls() calls themselves were
+  // unweighted — wrong estimates and invalid F-test / AICc values.
+  const effA = applyFitOptions(spec, { weights }).spec;
+  const effB = applyFitOptions(specB, { weights }).spec;
   const nested = nestedPair(model, otherModel);
-  const dfn = nested ? Math.abs(spec.terms.length - specB.terms.length) : 0;
+  const dfn = nested ? Math.abs(effA.terms.length - effB.terms.length) : 0;
   const nestedValid = nested !== null && dfn > 0;
   let v: RVector;
   try {
@@ -790,8 +829,8 @@ async function compareModels(
       compareModelsRCode(
         first.xs,
         first.ys,
-        spec,
-        specB,
+        effA,
+        effB,
         weights,
         nestedValid ? { simplerIsA: nested!.simpler === model, dfn } : null,
       ),
@@ -799,7 +838,7 @@ async function compareModels(
   } catch (err) {
     return fitError(err, model);
   }
-  const parsedA = parseFit(v, spec, first.xs.length, termLabel, "a_");
+  const parsedA = parseFit(v, effA, first.xs.length, termLabel, "a_");
   const aiccA = v.aiccA ?? null;
   const aiccB = v.aiccB ?? null;
   const delta = aiccA != null && aiccB != null ? aiccA - aiccB : null;
@@ -1190,7 +1229,7 @@ export async function runNonlinearRegression(
 
   // Comparing two models on the same data (plan 26's `compareModel` — the
   // plan's `compareWith` name is already the other data set's column).
-  if (comparingModels) return compareModels(params, model, spec, first, xCol, weights, titles);
+  if (comparingModels) return compareModels(params, model, spec, first, xCol, weights, titles, columns);
 
   let second: { xs: number[]; ys: number[] } | undefined;
   if (other) {
