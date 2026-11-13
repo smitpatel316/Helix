@@ -143,6 +143,19 @@ npm run build     # build the two DMGs
 Building the two DMGs needs both Mac targets for Rust, once:
 `rustup target add aarch64-apple-darwin x86_64-apple-darwin`.
 
+## Clean-room note
+
+Titer's GraphPad Prism file support (`.pzfx` import and `.prism` import) was
+built clean-room: by studying the files Prism writes, together with public
+documentation and the open-source readers for those formats (R's `pzfx`
+package and Python's `pypzfx`), and implementing the importers independently
+from those observations. No part of it involved decompiling, disassembling,
+or otherwise reverse-engineering Prism's program, and no cracked or pirated
+Prism source was used. Where the internal structure of a file was unclear,
+it was probed by changing one thing at a time in a Prism-written file and
+observing what changed inside the file — never by touching the program. The
+importers are independent implementations and contain no Prism code.
+
 ## License
 
 Titer is free software: you can redistribute it and modify it under the terms of the

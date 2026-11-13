@@ -10,9 +10,62 @@ license; the full texts come with each package's source.
 | --- | --- | --- | --- |
 | [R](https://www.r-project.org) | 4.6.0 | GPL-2 or GPL-3 | Every statistical test |
 | [webR](https://github.com/r-wasm/webr) | 0.6.0 | Binaries: GPL-3; JavaScript: MIT | Runs R inside the app (R compiled to WebAssembly) |
+| jszip | 3.10.1 | MIT OR GPL-3.0-or-later |
 | [survival](https://github.com/therneau/survival) (R package) | 3.8-12 | LGPL-2 or later | Survival analysis and Cox regression |
 | [Matrix](https://cran.r-project.org/package=Matrix) (R package, needed by survival) | 1.7-6 | GPL-2 or later | — |
 | [lattice](https://cran.r-project.org/package=lattice) (R package, needed by Matrix) | 0.23-1 | GPL-2 or later | — |
+
+## Vendored R packages (webR repo)
+
+The app ships the following 45 R packages inside `dist/webr-repo` (webR 0.6.0, R 4.6.0; manifest built 2026-11-10, 59,808,134 bytes total). Source: `dist/webr-repo/MANIFEST.json`; license strings copied verbatim from the manifest. License counts: 24 GPL family, 16 MIT, 3 LGPL, 1 Apache-2.0, 1 Unlimited.
+
+| Package | Version | License |
+| --- | --- | --- |
+| MASS | 7.3-66 | GPL-2 | GPL-3 |
+| Matrix | 1.7-6 | GPL (>= 2) | file LICENCE |
+| MethComp | 1.30.2 | GPL (>= 2) |
+| R6 | 2.6.1 | MIT + file LICENSE |
+| RColorBrewer | 1.1-3 | Apache License 2.0 |
+| Rcpp | 1.1.2 | GPL (>= 2) |
+| RcppEigen | 0.3.4.0.2 | GPL (>= 2) | file LICENSE |
+| Rdpack | 2.6.6 | GPL (>= 2) |
+| S7 | 0.2.2 | MIT + file LICENSE |
+| TH.data | 1.1-5 | GPL-3 |
+| boot | 1.3-32 | Unlimited |
+| cli | 3.6.6 | MIT + file LICENSE |
+| coda | 0.19-4.1 | GPL (>= 2) |
+| codetools | 0.2-20 | GPL |
+| cpp11 | 0.5.5 | MIT + file LICENSE |
+| deming | 1.4-1 | LGPL (>= 2) |
+| farver | 2.1.2 | MIT + file LICENSE |
+| ggplot2 | 4.0.3 | MIT + file LICENSE |
+| glue | 1.8.1 | MIT + file LICENSE |
+| gtable | 0.3.6 | MIT + file LICENSE |
+| isoband | 0.3.0 | MIT + file LICENSE |
+| labeling | 0.4.3 | MIT + file LICENSE | Unlimited |
+| lattice | 0.23-1 | GPL (>= 2) |
+| lifecycle | 1.0.5 | MIT + file LICENSE |
+| lme4 | 2.0-6 | GPL (>= 2) |
+| lmerTest | 3.2-1 | GPL (>= 2) |
+| minqa | 1.2.8 | GPL-2 |
+| multcomp | 1.4-32 | GPL-2 |
+| mvtnorm | 1.2-4 | GPL-2 |
+| nlme | 3.1-171 | GPL (>= 2) |
+| nloptr | 2.2.1.9000 | LGPL (>= 3) |
+| nortest | 1.0-4 | GPL (>= 2) |
+| numDeriv | 2016.8-1.1 | GPL-2 |
+| outliers | 0.15 | GPL (>= 2) |
+| pROC | 1.19.1 | GPL (>= 3) |
+| rbibutils | 2.4.1 | GPL-2 |
+| reformulas | 0.4.4 | GPL-3 |
+| rlang | 1.3.0 | MIT + file LICENSE |
+| sandwich | 3.1-3 | GPL-2 | GPL-3 |
+| scales | 1.4.0 | MIT + file LICENSE |
+| survival | 3.8-12 | LGPL (>= 2) |
+| vctrs | 0.7.3 | MIT + file LICENSE |
+| viridisLite | 0.4.3 | MIT + file LICENSE |
+| withr | 3.0.3 | MIT + file LICENSE |
+| zoo | 1.9-1 | GPL-2 | GPL-3 |
 | [Plotly.js](https://github.com/plotly/plotly.js) | 4.1.2 | MIT | Drawing the graphs |
 | [React](https://react.dev) and React DOM | 19.3.0 | MIT | The interface |
 | [Tauri](https://tauri.app) (with its dialog and window-state plugins) | 2.11 | MIT or Apache-2.0 | The native macOS app around the interface |
@@ -21,6 +74,11 @@ license; the full texts come with each package's source.
 | [serde](https://serde.rs) | 1.0.229 | MIT or Apache-2.0 | Passing data between the windows and the native side |
 | [Phosphor Icons](https://phosphoricons.com) | 2.1.10 | MIT | Icons |
 | [Tailwind CSS](https://tailwindcss.com) | 4.3.3 | MIT | Styles (compiled into the app's stylesheet) |
+
+### Build-time only (not shipped in the app)
+
+- lightningcss — MPL-2.0 (CSS tool used by Tailwind at build time)
+- caniuse-lite — CC-BY-4.0 (browserslist data)
 
 The webR binaries bundle further open-source software, each under its own license
 (listed in webR's `LICENSE.md`): PCRE2 (BSD), XZ Utils (public domain), libgfortran
