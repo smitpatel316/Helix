@@ -70,6 +70,8 @@ function Steps({
   const [step, setStep] = React.useState(0);
   const [checking, setChecking] = React.useState(false);
   const [retrying, setRetrying] = React.useState(false);
+  // The check in flight, while one is: Cancel/Escape aborts it (F14).
+  const checkAbort = React.useRef<AbortController | null>(null);
   // Each question takes the keyboard (its chosen answer), so ↑↓ and Return go on working.
   const field = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
@@ -115,8 +117,16 @@ function Steps({
   const next = async () => {
     let answer = value!;
     if (answer === NOT_SURE.value) {
+      // F14: while the check runs the dialog used to be un-dismissable — no
+      // Cancel button, Escape a no-op — so a stalled WebR stranded the user
+      // until the 5-minute eval watchdog fired. Cancelling the check returns
+      // to this question (the "Not sure" answer stays selected); the wizard
+      // itself is closed with Cancel/Escape once the check is gone.
+      const controller = new AbortController();
+      checkAbort.current = controller;
       setChecking(true);
-      const gaussian = await checkNormality(data, chosenSets(answers));
+      const gaussian = await checkNormality(data, chosenSets(answers), { signal: controller.signal });
+      checkAbort.current = null;
       setChecking(false);
       if (gaussian == null) return;
       answer = gaussian ? "yes" : "no";
@@ -128,6 +138,14 @@ function Steps({
       if (packageGate(type, params).blocked) return; // re-checked: Run was disabled, but status can change
       onDone(type, params);
     }
+  };
+
+  // Cancelling the check (Cancel button or Escape — the Dialog renders its
+  // Cancel button whenever `onClose` is set, so one is visible while the
+  // check runs) aborts the in-flight R evaluation and returns to the
+  // question; it never closes the wizard, which would discard the answers.
+  const cancelCheck = () => {
+    checkAbort.current?.abort();
   };
 
   // A free-text answer only counts once it parses: a question with its own
@@ -149,7 +167,7 @@ function Steps({
   return (
     <Dialog
       open
-      onClose={checking ? undefined : onClose}
+      onClose={checking ? cancelCheck : onClose}
       onReturn={ready && !checking ? () => void next() : undefined}
       title={title}
       description={
