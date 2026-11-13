@@ -4796,6 +4796,37 @@ check(".pzfx import names summary subcolumns and warns they aren't replicates", 
   ok(imported.issues.some((i) => i.message.includes("not raw replicates")), "warns about summaries");
 });
 
+check(".pzfx import reads '1,000' as 1000 in a dot-decimal file — and keeps a comma decimal a decimal (FF-F8)", () => {
+  // The fixture is a dot-decimal file ("1.5", "2.5" prove the decimal
+  // separator is "."), so "1,000" can only be a thousands separator: reading
+  // it as 1.000 would be a 1000x error. The guard leg is a comma-decimal
+  // file ("7,5" proves the separator is ","): there "1,875" is 1.875, as in
+  // the real SaturationBinding.pzfx — the two readings are told apart by the
+  // file, never by the string alone.
+  const { table } = importedTable("column_thousands");
+  deepStrictEqual(table.data!.columns, ["Title", "Aa"]);
+  deepStrictEqual(table.data!.rows, [
+    [null, "1.5"],
+    [null, "1000"],
+    [null, "2.5"],
+  ]);
+  const commaDecimal = parsePzfx(
+    `<?xml version="1.0" encoding="UTF-8"?><GraphPadPrismFile PrismXMLVersion="5.00">` +
+      `<Table ID="Table0" XFormat="none" TableType="OneWay" EVFormat="AsteriskAfterNumber">` +
+      `<Title>Data 1</Title>` +
+      `<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Aa</Title><Subcolumn>` +
+      `<d>1,875</d><d>7,5</d>` +
+      `</Subcolumn></YColumn></Table></GraphPadPrismFile>`,
+  );
+  strictEqual(commaDecimal.tables.length, 1, "comma-decimal table imports");
+  const commaNode = commaDecimal.project.nodes[commaDecimal.project.rootOrder[0]];
+  if (!commaNode || commaNode.type !== "table") throw new Error("comma-decimal: no table node");
+  deepStrictEqual(commaNode.data!.rows, [
+    [null, "1.875"],
+    [null, "7.5"],
+  ]);
+});
+
 check(".pzfx import refuses files that aren't .pzfx", () => {
   for (const text of ["hello", "<GraphPadPrismFile></GraphPadPrismFile>", "<Other><Table/></Other>"]) {
     const imported = parsePzfx(text);

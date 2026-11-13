@@ -224,9 +224,59 @@ const SUBCOLUMN_SUFFIXES: Record<string, string[]> = {
   "upper-lower-limits": ["_MEAN", "_UPPERLIMIT", "_LOWERLIMIT"],
 };
 
-/** `1,5` (comma decimal) → `1.5`; anything else stays as typed. */
-function normalizeNumber(value: string | null): string | null {
-  if (value !== null && /^-?\d+,\d+$/.test(value)) return value.replace(",", ".");
+/** A `<d>` value that proves the file's decimal separator is a comma: a comma
+ *  decimal whose fraction is not exactly three digits (`0,5`, `3,75`,
+ *  `0,9375`), or a comma decimal with an exponent (`4,096e+007`). A `N,NNN`
+ *  value alone proves nothing — it is a decimal (`1,875` = 1.875 in the real
+ *  SaturationBinding.pzfx) as readily as a thousands separator. */
+const COMMA_DECIMAL_EVIDENCE = /^-?\d+,\d{1,2}$|^-?\d+,\d{4,}$|^-?\d+,\d+[eE][+-]?\d+$/;
+/** A `<d>` value that proves the file's decimal separator is a dot: a dot
+ *  decimal (`1.5`, `8887.`, `5.22929500342231`), exponent included. */
+const DOT_DECIMAL_EVIDENCE = /^-?\d+\.\d*([eE][+-]?\d+)?$|^-?\.\d+([eE][+-]?\d+)?$/;
+/** A thousands-grouped value: `1,000`, `1,000,000`, `1,000.5` — groups of
+ *  exactly three digits after the first comma. */
+const GROUPED_NUMBER = /^-?\d{1,3}(,\d{3})+(\.\d+)?([eE][+-]?\d+)?$/;
+
+/** Every `<d>` text in the parsed file (data values and row titles alike). */
+function allDValues(node: XmlNode, out: string[] = []): string[] {
+  if (node.tag === "d") out.push(childText(node));
+  for (const child of node.children) allDValues(child, out);
+  return out;
+}
+
+/**
+ * Whether this file writes thousands separators (`1,000` = 1000). Decided
+ * from the file, never from one string alone: dot-decimal evidence anywhere
+ * in the file (`1.5`, `8887.`) with no comma-decimal evidence (`0,5`,
+ * `4,096e+007`) means the file's decimals use dots, so a comma can only be
+ * a grouping separator. With no evidence either way — or any comma-decimal
+ * evidence at all — commas stay decimals: that is the only reading any real
+ * .pzfx file has yet shown (Prism writes large values ungrouped in both
+ * locales: `8887.`, `5120000`), and a `N,NNN` string in a real file is a
+ * decimal (`1,875`, `4,096` in the binding corpora).
+ */
+function usesGroupingSeparators(root: XmlNode): boolean {
+  let commaDecimal = false;
+  let dotDecimal = false;
+  for (const value of allDValues(root)) {
+    if (COMMA_DECIMAL_EVIDENCE.test(value)) commaDecimal = true;
+    else if (DOT_DECIMAL_EVIDENCE.test(value)) dotDecimal = true;
+  }
+  return dotDecimal && !commaDecimal;
+}
+
+/**
+ * `1,5` (comma decimal) → `1.5`; anything else stays as typed — except in a
+ * file whose own numbers prove dot decimals, where a grouped `1,000` is a
+ * thousands separator, not a decimal comma, and the commas are stripped
+ * (`1,000` → `1000`) instead of turning it into `1.000` (a 1000× error).
+ * A bare `1,5` in such a file still becomes `1.5`: only the grouped shape
+ * is reinterpreted, so nothing else changes.
+ */
+function normalizeNumber(value: string | null, groupingSeparators: boolean): string | null {
+  if (value === null) return null;
+  if (groupingSeparators && GROUPED_NUMBER.test(value)) return value.replace(/,/g, "");
+  if (/^-?\d+,\d+$/.test(value)) return value.replace(",", ".");
   return value;
 }
 
@@ -247,7 +297,7 @@ interface ImportedTable {
 
 const genId = (type: string) => `${type}_${Math.random().toString(36).slice(2, 10)}`;
 
-function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null {
+function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: boolean): ImportedTable | null {
   const warnings: string[] = [];
   const titleNode = firstChild(table, "Title");
   const name = titleNode ? childText(titleNode) : "";
@@ -340,7 +390,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
   }
   const columns: ImportColumn[] = [];
   const pushColumn = (name: string, sub: Subcolumn) => {
-    columns.push({ name, values: sub.values.map(normalizeNumber), excluded: sub.excluded });
+    columns.push({ name, values: sub.values.map((v) => normalizeNumber(v, groupingSeparators)), excluded: sub.excluded });
   };
 
   let helixType: TableType;
@@ -383,9 +433,9 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
   } else if (tableType === "XY" || tableType === "Survival") {
     helixType = tableType === "Survival" ? "survival" : "xy";
     if (xValues.length > 0 || xColumns.length > 0) {
-      columns.push({ name: xName, values: xValues.map(normalizeNumber), excluded: new Set() });
+      columns.push({ name: xName, values: xValues.map((v) => normalizeNumber(v, groupingSeparators)), excluded: new Set() });
       if (xErrorValues) {
-        columns.push({ name: `${xName} error`, values: xErrorValues.map(normalizeNumber), excluded: new Set() });
+        columns.push({ name: `${xName} error`, values: xErrorValues.map((v) => normalizeNumber(v, groupingSeparators)), excluded: new Set() });
       }
     }
     for (const y of yColumns) {
@@ -475,9 +525,10 @@ export function parsePzfx(text: string): PzfxImport {
   const rootOrder: string[] = [];
   const childOrder: Record<string, string[]> = {};
   // Tables live under the root (TableSequence only lists them); HugeTables too.
+  const groupingSeparators = usesGroupingSeparators(root);
   const tableNodes = root.children.filter((c) => c.tag === "Table" || c.tag === "HugeTable");
   for (const tableNode of tableNodes) {
-    const imported = importTable(tableNode, issues);
+    const imported = importTable(tableNode, issues, groupingSeparators);
     if (!imported) continue;
     nodes[imported.node.id] = imported.node;
     rootOrder.push(imported.node.id);
