@@ -21,8 +21,25 @@ let remote: ((code: string) => Promise<RVector>) | null = null;
 /** Stops the in-flight remote evaluation (the app's engine window), if one is wired. */
 let remoteCancel: (() => Promise<void>) | null = null;
 
+/** The baseUrl the last engine that booted successfully used — the re-boot
+ *  location. A fresh boot after `resetR()` (or a failed boot) used to fall
+ *  back to the app default "/webr/", which only exists in the Tauri
+ *  webview: in tests and `npm run web` the worker file is not there, so
+ *  the re-boot died with `Cannot find module '/webr/webr-worker.js'` and
+ *  killed the process (R3-MAC-PACKAGES: R3-26 threads the caller's short
+ *  timeout into the install eval, so P-12's 2 s timeout fires the eval
+ *  watchdog, the grace expires, `resetR()` abandons the engine, and the
+ *  next bare `startR()` re-booted from "/webr/"). The remembered URL is
+ *  only updated by a boot that actually succeeded — a failed boot (e.g.
+ *  the hung-boot probe's stub worker) must not overwrite the last good
+ *  location — and `resetR()` deliberately leaves it alone: the engine is
+ *  gone, the location is not. */
+let bootBaseUrl: string | null = null;
+
 /** Start (or reuse) the R runtime. A failed boot is retried on the next call.
  *  `baseUrl` locates the R files: served by the app, or a folder when run by the tests.
+ *  A bare call re-boots from where the engine last booted successfully (see
+ *  `bootBaseUrl` above); an explicit `baseUrl` always wins for that boot.
  *  The boot races its watchdog (`BOOT_TIMEOUT_MS`): a hung WASM load used to
  *  leave `engine` pending forever, stranding every later evaluation — and, in
  *  `runAnalysis`, the cached run itself (M15) — because the boot is awaited
@@ -30,11 +47,12 @@ let remoteCancel: (() => Promise<void>) | null = null;
  *  WASM load cannot be cancelled) and the memo reset, so the next call boots
  *  fresh; the caller gets a timeout error, which `runAnalysis` surfaces and
  *  evicts from its cache, so a retry works. */
-export function startR(baseUrl = "/webr/", opts?: { timeoutMs?: number }): Promise<WebR> {
+export function startR(baseUrl?: string, opts?: { timeoutMs?: number }): Promise<WebR> {
   const timeoutMs = opts?.timeoutMs ?? BOOT_TIMEOUT_MS;
+  const url = baseUrl ?? bootBaseUrl ?? "/webr/";
   return (engine ??= (async () => {
     const { WebR } = await import("webr");
-    const webR = new WebR({ baseUrl });
+    const webR = new WebR({ baseUrl: url });
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
@@ -54,6 +72,8 @@ export function startR(baseUrl = "/webr/", opts?: { timeoutMs?: number }): Promi
     } finally {
       clearTimeout(timer);
     }
+    // The boot succeeded: this is the location a later bare re-boot reuses.
+    bootBaseUrl = url;
     liveWebR = webR;
     return webR;
   })().catch((err) => {
@@ -155,7 +175,9 @@ export function interruptR(): void {
  *  no longer exists) and its packages are marked `failed`, so a caller
  *  waiting on that batch gets a provisioning error it can retry from,
  *  instead of a silent success followed by the same `no package` failure
- *  when the analysis runs. */
+ *  when the analysis runs. The remembered boot location (`bootBaseUrl`)
+ *  is deliberately left alone: the engine is gone, the location is not,
+ *  and the next bare `startR()` must re-boot from it. */
 export function resetR(): void {
   engine = null;
   liveWebR = null;

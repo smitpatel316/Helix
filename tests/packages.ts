@@ -25,6 +25,7 @@ import {
   packageStatus,
   setPackageRepo,
   startR,
+  resetR,
   PACKAGE_INSTALL_TIMEOUT_MS,
   PACKAGE_REGISTRY,
   R_VERSION,
@@ -420,7 +421,13 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
 
 // Registry smoke — every remaining pinned package proves it computes, so a
 // dependent plan starts from a verified install, not an index listing.
+// P-12's hung install abandons the engine by design (the eval watchdog
+// escalates a wedged engine to resetR, and the re-boot has an empty VFS),
+// so the packages P-07/P-08/P-09 installed are gone by now: re-ensure
+// them here — this block uses them directly, and ensurePackages is the
+// one way a package gets into the engine.
 {
+  await ensurePackages(["survival", "lme4", "lmerTest", "multcomp", "mvtnorm", "nlme"]);
   // Dunnett via multcomp::glht (plan 25), on the reference column table's
   // Control/Low/High values. Pinned from this webR (multcomp 1.4-32).
   const dunnett = await evalNamedVector(
@@ -478,6 +485,24 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
   const versions = await installedPackageVersions();
   check("installed versions report lme4", versions.lme4 === "2.0.6", versions.lme4);
   check("installed versions report multcomp", versions.multcomp === "1.4.32", versions.multcomp);
+}
+
+// P-14 (R3-MAC-PACKAGES) — a bare startR() after resetR() must re-boot from
+// the baseUrl the engine first booted from, not the app default "/webr/".
+// Regression: on 42c3f24 the P-12 watchdog escalation called resetR(), the
+// next bare startR() booted from "/webr/", and the process died with
+// `Cannot find module '/webr/webr-worker.js'` before any check printed.
+// resetR() drives the trigger directly (no timing dependence on the
+// watchdog grace): the re-boot must reuse the remembered path, and the
+// engine must stay usable — including reinstalling a package into the
+// fresh engine's empty VFS. Runs last: resetR() drops the engine, so no
+// later block may assume an earlier install is still in the VFS.
+{
+  resetR();
+  const r = await evalNamedVector("c(a=1)");
+  check("P-14 bare startR after resetR re-boots and evaluates", r.a === 1, `a=${r.a}`);
+  await ensurePackages(["survival"]);
+  check("P-14 package reinstalls into the fresh engine", packageStatus("survival").status === "ready");
 }
 
 server.close();
