@@ -43,7 +43,8 @@ export type AnalysisType =
   | "bland-altman"
   | "roc-curve"
   | "frequency-distribution"
-  | "monte-carlo";
+  | "monte-carlo"
+  | "transform-data";
 
 /** What the New Analysis picker offers: a test, or "Compare more than two groups",
  *  which its wizard resolves to one-way ANOVA, Kruskal-Wallis, repeated-measures ANOVA
@@ -108,6 +109,10 @@ export const NONLINEAR_MODELS = [
 /** What comparing two curves asks: is the EC50 different, or does one curve fit both. */
 export const CURVE_COMPARISONS = ["ec50", "all"] as const;
 export const CORRELATION_METHODS = ["pearson", "spearman"] as const;
+/** The Transform functions (Prism's documented standard set — Prism 8 User
+ *  Guide, "Transform data"): log10, ln, log2, sqrt, reciprocal, exp, square. */
+export const TRANSFORM_FUNCTIONS = ["log10", "ln", "log2", "sqrt", "reciprocal", "exp", "square"] as const;
+export type TransformFunction = (typeof TRANSFORM_FUNCTIONS)[number];
 /** Binding — Saturation models (plan 16): one-site total, two-site
  *  specific, and the two-series total+nonspecific fits (NS/Background shared). */
 export const BINDING_SATURATION_MODELS = [
@@ -579,6 +584,12 @@ export interface FrequencyDistributionParams {
   startAt?: number;
 }
 
+/** Params for "transform-data": which function to apply to the values. The
+ *  wizard always sets it; the runner defaults to log10 when it is absent. */
+export interface TransformDataParams {
+  function: TransformFunction;
+}
+
 /** Params for "mixed-effects" (Column or Grouped table): a repeated-measures
  *  model fit with lme4::lmer + lmerTest Satterthwaite p-values (plan 20).
  *  `subjectId` says what a subject is — a table row (Column tables) or a
@@ -813,6 +824,7 @@ export type AnalysisParams = DataSetsParam &
     | FrequencyDistributionParams
     | RocParams
     | MonteCarloParams
+    | TransformDataParams
   );
 
 /** Params for "survival" (Survival table): the test comparing the curves — log-rank,
@@ -993,6 +1005,20 @@ export interface FrequencyBins {
   bins: FrequencyBinRow[];
 }
 
+/** One column's transformed values ("transform-data"): `original` and
+ *  `values` are row-aligned with the source column's rows — a value that
+ *  could not be transformed (log of ≤ 0, square root of a negative, 1/0,
+ *  an overflowing exp/square) is null in `values`, never NaN, and counted
+ *  in `excluded`. Blank source rows are null in both arrays. */
+export interface TransformedColumn {
+  column: string;
+  /** The function as written in the results, e.g. "log10(Y)". */
+  label: string;
+  original: (number | null)[];
+  values: (number | null)[];
+  excluded: number;
+}
+
 /** One row of a K-means clustering's clusters table ("k-means"): one
  *  cluster's centre (in the ORIGINAL units — back-transformed when the
  *  variables were standardised), its size, and its within-cluster sum of
@@ -1116,6 +1142,9 @@ export interface AnalysisResult {
   hazardRatios?: HazardRatioRow[];
   /** Optional per-column frequency-distribution bins ("frequency-distribution"). */
   frequencyBins?: FrequencyBins[];
+  /** Optional per-column transformed values ("transform-data"), row-aligned
+   *  with the source columns. */
+  transformed?: TransformedColumn[];
   /** Optional ROC points ("roc-curve"): one row per threshold (unique score
    *  values, descending); Youden's J is computed at render time. */
   rocCurve?: RocPoint[];
