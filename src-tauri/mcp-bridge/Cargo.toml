@@ -1,0 +1,32 @@
+# titer-stdio-bridge — standalone crate (deliberately NOT a workspace member)
+#
+# This crate is a separate package with its own manifest so it does not touch
+# the app's Cargo.toml / Cargo.lock at all: the v1 build owns those files and
+# this lane must not perturb it. Build it explicitly:
+#
+#   cargo build --release --manifest-path src-tauri/mcp-bridge/Cargo.toml
+#
+# See README.md in this directory. Build verification is pending v1 clear
+# (no cargo build/check in this lane) — the code is written against the
+# reqwest 0.12 blocking API and serde_json, and must be compiled + exercised
+# against the real in-app server before the .mcpb ships.
+
+[package]
+name = "titer-stdio-bridge"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "stdio-to-Streamable-HTTP bridge between MCP clients and Titer's in-app MCP server"
+
+[[bin]]
+name = "titer-stdio-bridge"
+path = "src/main.rs"
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+strip = true
