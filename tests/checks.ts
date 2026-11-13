@@ -34,10 +34,12 @@ import {
   defaultRowGroups,
   deleteColumns,
   deleteRows,
+  fillRange,
   freshColumnNames,
   insertRows,
   newGroupedTable,
   newNestedTable,
+  newTable,
   regroupLoses,
   regroupTable,
   removeRowGroup,
@@ -49,6 +51,7 @@ import {
   rowsInserted,
   setRowGroupCount,
   setRowGroupName,
+  toggleExcluded,
   writeBlock,
 } from "../src/views/tables/table-data";
 import { flattenThreeWay, rowGroupBands } from "../src/stats/grouped/base";
@@ -1162,6 +1165,31 @@ check("fewer sub-columns keep each value in its group", () => {
   deepStrictEqual(t.columns, ["Title", "A:Y1", "A:Y2", "Treated:Y1", "Treated:Y2"]);
   deepStrictEqual(t.rows[0], ["r1", "a1", "a2", "b1", "b2"]);
   deepStrictEqual(t.excluded, ["0,3"]);
+});
+
+check("clearing an excluded cell drops its exclusion, so no phantom * and no auto-exclude (#21)", () => {
+  const t = toggleExcluded(writeBlock(newTable("xy", 2), 0, 0, [["r1", "5", "6"]], "xy"), {
+    r0: 0,
+    c0: 1,
+    r1: 0,
+    c1: 1,
+  });
+  deepStrictEqual(t.excluded, ["0,1"]);
+  // Delete/Backspace clears the exclusion with the value.
+  const cleared = fillRange(t, { r0: 0, c0: 1, r1: 0, c1: 1 }, null);
+  strictEqual(cleared.rows[0][1], null);
+  strictEqual(cleared.excluded, undefined);
+  // Typing blank over it does the same.
+  const blanked = writeBlock(t, 0, 1, [[""]], "xy");
+  strictEqual(blanked.rows[0][1], null);
+  strictEqual(blanked.excluded, undefined);
+  // A fresh value in the cleared cell is live, not auto-excluded…
+  const revalued = writeBlock(cleared, 0, 1, [["9"]], "xy");
+  strictEqual(revalued.rows[0][1], "9");
+  strictEqual(revalued.excluded, undefined);
+  // …while overwriting an excluded cell with a value keeps it excluded.
+  const kept = writeBlock(t, 0, 1, [["7"]], "xy");
+  deepStrictEqual(kept.excluded, ["0,1"]);
 });
 
 check("more groups and sub-columns add empty ones after the data", () => {

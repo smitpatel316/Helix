@@ -125,7 +125,16 @@ export function writeBlock(data: TableData, r: number, c: number, block: Cell[][
   // with it, so the bands still tile the rows exactly.
   const rowGroups =
     data.rowGroups && height > data.rows.length ? growRowGroups(data.rowGroups, height - data.rows.length) : data.rowGroups;
-  return { ...data, columns, rows, rowGroups };
+  // Clearing a cell (blank paste/typing) drops its exclusion too: otherwise the
+  // empty cell keeps a phantom `*` that ⌘E cannot toggle off (valueKeys skips
+  // empty cells) and any value typed there later is auto-excluded (#21).
+  const excluded = new Set(data.excluded);
+  block.forEach((line, i) =>
+    line.forEach((value, j) => {
+      if ((value === "" || value === null) && c + j < width) excluded.delete(`${r + i},${c + j}`);
+    }),
+  );
+  return { ...data, columns, rows, rowGroups, excluded: excluded.size ? [...excluded] : undefined };
 }
 
 /** How many of `block`'s columns, written from column `c`, a grouped table has no room
@@ -135,12 +144,19 @@ export function columnsBeyond(data: TableData, c: number, block: Cell[][]): numb
   return isGrouped(data) ? Math.max(0, c + width - data.columns.length) : 0;
 }
 
-/** Sets every stored cell of `range` to `value` (null clears). */
+/** Sets every stored cell of `range` to `value` (null clears). Clearing also
+ *  drops the cells' exclusions (#21): an excluded-but-empty cell would keep a
+ *  phantom `*` that ⌘E cannot toggle off, and auto-exclude any value typed
+ *  there later. Writing a value leaves exclusions untouched. */
 export function fillRange(data: TableData, range: Range, value: Cell): TableData {
   const rows = data.rows.map((row, r) =>
     r < range.r0 || r > range.r1 ? row : row.map((cell, c) => (c >= range.c0 && c <= range.c1 ? value : cell)),
   );
-  return { ...data, rows };
+  if (value !== null) return { ...data, rows };
+  const excluded = new Set(data.excluded);
+  for (let r = range.r0; r <= range.r1; r++)
+    for (let c = range.c0; c <= range.c1; c++) excluded.delete(`${r},${c}`);
+  return { ...data, rows, excluded: excluded.size ? [...excluded] : undefined };
 }
 
 /** Data cells (column ≥ 1) of `range` that hold a value, as "row,col" keys. */
