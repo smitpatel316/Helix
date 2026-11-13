@@ -2742,6 +2742,33 @@ check("a line or area graph draws its points in X order, not table row order", (
   deepStrictEqual(area.y, [10, 20, 30]);
 });
 
+check("a markers-only xy-scatter keeps table row order, not X order (R2-G-F9)", () => {
+  type Trace = { x: number[]; y: number[]; customdata?: string[] };
+  // Same unsorted table as the line check above: 3, 1, 2. With no connecting
+  // line there is nothing to straighten, so the points stay in table row
+  // order — the Height vs Weight reference golden is recorded that way — and
+  // each point keeps its own row's key.
+  const xy = {
+    columns: ["Title", "X", "Y"],
+    rows: [
+      [null, "3", "30"],
+      [null, "1", "10"],
+      [null, "2", "20"],
+    ],
+  };
+  const columns = readTable(xy).columns;
+  const options: GraphOptions = { ...newGraphOptions("xy-scatter"), xyStyle: "points" };
+  const [markers] = GRAPHS["xy-scatter"].build(columns, options, paintOf(options, 1)).data as Trace[];
+  deepStrictEqual(markers.x, [3, 1, 2]);
+  deepStrictEqual(markers.y, [30, 10, 20]);
+  deepStrictEqual(markers.customdata, ["Y#0", "Y#1", "Y#2"]);
+  // And the line mode still sorts, so the two modes genuinely differ.
+  const lineOptions: GraphOptions = { ...newGraphOptions("xy-scatter"), xyStyle: "points+line" };
+  const [line] = GRAPHS["xy-scatter"].build(columns, lineOptions, paintOf(lineOptions, 1)).data as Trace[];
+  deepStrictEqual(line.x, [1, 2, 3]);
+  deepStrictEqual(line.y, [10, 20, 30]);
+});
+
 check("the pie drops a negative slice and names it, instead of showing inflated percentages (R2-G-F12)", () => {
   const options = newGraphOptions("pie");
   const notesOf = (fig: GraphFigure) =>
