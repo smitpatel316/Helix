@@ -41,14 +41,22 @@ const OUT_PRISM = path.join(OUT_DIR, "converted.prism");
 const DONE_TIMEOUT = 30000;
 
 // The app is an engine window (hidden, runs webR) plus one window per project.
-// The session may start on either — find the project window by URL.
+// The session may start on either — find the project window by URL, then tell
+// the tauri service its label: the service defaults every execute/mock to the
+// window labelled "main", which this app does not have (its windows are
+// "project-1", "engine"), so without switchWindow every browser.tauri.* call
+// fails with "Window 'main' not found". switchWindow also suppresses the
+// service's auto-focus recovery — the spec must stay unfocused.
 async function switchToProjectWindow() {
   const handles = await browser.getWindowHandles();
   for (const handle of handles) {
     try {
       await browser.switchToWindow(handle);
       const url = await browser.getUrl();
-      if (!url.includes("engine")) return;
+      if (!url.includes("engine")) {
+        await browser.tauri.switchWindow(handle);
+        return;
+      }
     } catch {
       // A hidden window may refuse the switch; try the next handle.
     }
@@ -126,6 +134,10 @@ describe("Convert dialog", () => {
   });
 
   it("converts .hlx → .prism and saves a valid Prism 10 file", async () => {
+    // "Open in Titer" loads the converted project in place (loadProject in
+    // the same window — no new window), but re-target anyway in case the
+    // window changed.
+    await switchToProjectWindow();
     await openConverter();
     // Switch direction to Titer → Prism (current project is the converted one).
     await $("label*=Titer (this project)").click();
