@@ -332,6 +332,16 @@ export async function runTwoWayAnova(
   params: TwoWayAnovaParams,
   titles: (string | null)[],
 ): Promise<AnalysisOutcome> {
+  // A partial params object still runs with the missing fields defaulted
+  // (BUG-REPORT #26): without this, `{ design: "ordinary" }` was refused
+  // with a "“undefined” multiple comparisons" error, and a wholly missing
+  // params object threw. Defaults match the wizard's finish.
+  params = {
+    design: "ordinary",
+    posthoc: "none",
+    posthocTarget: "groups",
+    ...(params as Partial<TwoWayAnovaParams>),
+  };
   if (!(TWO_WAY_POSTHOCS as readonly string[]).includes(params.posthoc)) {
     return {
       error:
