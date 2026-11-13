@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useProjectStore, type ProjectNode } from "./use-project-store";
 import { parseProjectFile, serializeProjectFile, PROJECT_FILE_EXTENSION } from "../lib/project-file";
+import { parsePzfx } from "../lib/pzfx";
 import * as native from "../native";
 import { loadRecents, MAX_RECENTS, saveRecents } from "./recents";
 import { openProjectsOrSay, sayGone } from "../menus";
@@ -24,6 +25,11 @@ export function useDocument() {
     latest.current = store;
   });
   const [recents, setRecents] = React.useState(loadRecents);
+  // The "Project Updated" notice, shown in-app rather than as a native dialog:
+  // the native one's window lingered on macOS after dismissal, blocking clicks
+  // and quitting (Quirk 2). Set when a load brings a file up to date.
+  const [projectUpdated, setProjectUpdated] = React.useState(false);
+  const dismissProjectUpdated = () => setProjectUpdated(false);
   // The window's title while the project isn't saved anywhere.
   const [untitled, setUntitled] = React.useState(UNTITLED);
   // Other windows change the list too: this one reads it again when it comes to the front.
@@ -121,12 +127,9 @@ export function useDocument() {
         if (save) shown.push("", save);
         await native.alert(`Opened with ${issues.length} Issue${issues.length === 1 ? "" : "s"}`, shown.join("\n"));
       } else if (edited) {
-        await native.alert(
-          "Project Updated",
-          "This project was made with an older Helix, or part of it couldn't be read as it was. " +
-            "Helix brought it up to date; save it to keep the update.",
-          "info",
-        );
+        // In-app, not native.alert: the native dialog's window lingered on macOS
+        // after dismissal, blocking clicks and quitting (Quirk 2).
+        setProjectUpdated(true);
       }
     } catch {
       report();
@@ -134,10 +137,89 @@ export function useDocument() {
     }
   };
 
+  /** Imports a Prism `.pzfx` file as a new untitled project (File ▸ Import Prism File…,
+   *  or a dropped file). Analyses and graphs aren't in the file — only its data tables —
+   *  so the imported project opens edited: saving keeps it as a Helix project. */
+  const importPrismText = async (text: string, name: string) => {
+    const imported = parsePzfx(text);
+    if (imported.tables.length === 0) {
+      report();
+      return native.alert(
+        "Couldn't Import File",
+        imported.issues.map((i) => i.message).join("\n") || "No tables in this file could be imported.",
+        "error",
+      );
+    }
+    if (!(await confirmDiscard())) return;
+    latest.current.loadProject({ ...imported.project, filePath: null, edited: true });
+    setUntitled(name);
+    const lines = [
+      `Imported ${imported.tables.length} table${imported.tables.length === 1 ? "" : "s"} from “${name}”:`,
+      ...imported.tables.map((t) => `• ${t}`),
+    ];
+    if (imported.issues.length > 0) {
+      lines.push("", "Notes:", ...imported.issues.slice(0, 12).map((i) => `• ${i.message}`));
+      if (imported.issues.length > 12) lines.push(`…and ${imported.issues.length - 12} more.`);
+    }
+    await native.alert(
+      "Prism File Imported",
+      lines.join("\n") + "\n\nSave the project to keep it as a Helix project.",
+      imported.issues.length ? "warning" : "info",
+    );
+  };
+
+  const importPrismFile = async (path: string) => {
+    let text: string;
+    try {
+      text = await native.readPrismText(path);
+    } catch {
+      report();
+      return native.alert("Couldn't Import File", `“${fileName(path)}” couldn't be read.`, "error");
+    }
+    await importPrismText(text, fileTitle(path));
+  };
+
+  /** File ▸ Import Prism File…: pick a `.pzfx` file and import it. In the web build
+   *  (no native shell) the pick is a file input instead. */
+  const importPrism = async () => {
+    if (native.isNative) {
+      // Listen first, then open the panel: the shell emits
+      // "prism-file-picked" (path, or null on Cancel) when the user picks.
+      // The old sync invoke blocked the main thread and deadlocked the
+      // picker (Nov 9, macOS + Linux).
+      const off = await native.onPrismFilePicked((path) => {
+        off();
+        if (path) void importPrismFile(path);
+      });
+      await native.choosePrismFile();
+      return;
+    }
+    const text = await new Promise<string | null>((resolve) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".pzfx";
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return resolve(null);
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve(null);
+        reader.readAsText(file);
+      };
+      input.click();
+    });
+    if (text) await importPrismText(text, "Prism import");
+  };
+
   const openPaths = (paths: string[]) => {
     const projects = paths.filter(isProjectFile);
-    if (projects.length < paths.length) void native.alert("Can't Open File", "Helix can only open .hlx project files.");
+    const prism = paths.filter((p) => p.toLowerCase().endsWith(".pzfx"));
+    if (paths.length > projects.length + prism.length) {
+      void native.alert("Can't Open File", "Helix can only open .hlx project files and import .pzfx Prism files.");
+    }
     if (projects.length) openProjectsOrSay(projects);
+    // One Prism file at a time: each imports as its own untitled project.
+    if (prism.length) void importPrismFile(prism[0]);
   };
 
   // Subscribed once; the handlers reach the current versions through this ref.
@@ -149,7 +231,7 @@ export function useDocument() {
   React.useEffect(() => native.onDrop((paths) => handlers.current.openPaths(paths)), []);
   React.useEffect(() => native.onOpening(({ path, untitled }) => void handlers.current.load(path, untitled)), []);
 
-  return { save, recents, forgetRecent, clearRecents };
+  return { save, recents, forgetRecent, clearRecents, importPrism, projectUpdated, dismissProjectUpdated };
 }
 
 export type DocumentActions = ReturnType<typeof useDocument>;

@@ -8,9 +8,9 @@ import { projectItems, separator as sep, setMenuBar } from "./menus";
 import { useProjectStore } from "./store/use-project-store";
 import { useLayout } from "./store/use-layout";
 import { removeWithConfirm, type DocumentActions } from "./store/use-document";
-import { NODE_NAMES, type GraphType } from "./store/types";
+import { NODE_NAMES, type GraphType, type NodeType } from "./store/types";
 import { TABLE_TYPE_OPTIONS } from "./views/tables";
-import { ANALYSIS_OPTIONS_BY_TABLE } from "./views/analyses";
+import { analysisOptionsForTable } from "./views/analyses";
 import { GRAPH_OPTIONS_BY_TABLE } from "./views/graphs";
 import { useStartAnalysis } from "./views/analyses/use-analysis-launcher";
 
@@ -94,12 +94,32 @@ export function useAppMenu(doc: DocumentActions) {
   }, []);
   const tableType = activeTableId ? nodes[activeTableId]?.tableType : undefined;
   const hasTable = activeTableId !== null;
+  const tableCount = Object.values(nodes).filter((n) => n.type === "table").length;
 
   React.useEffect(() => {
     if (!isNative || !focused) return;
     const run = (fn: (l: typeof latest.current, tableId: string) => void) => () => {
       const tableId = latest.current.store.activeTableId;
       if (tableId) fn(latest.current, tableId);
+    };
+
+    // Each menu deletes what it makes: the item selected, when it is of its kind (the last
+    // table stays, so a project is never empty). ⌘⌫ goes to the one that can.
+    const deleteItem = (type: NodeType) => {
+      const enabled = activeNode?.type === type && (type !== "table" || tableCount > 1);
+      return {
+        text: `Delete ${NODE_NAMES[type]}…`,
+        ...(activeNode?.type === type ? { accelerator: "CmdOrCtrl+Backspace" } : {}),
+        enabled,
+        action: () => {
+          // In the grid ⌘⌫ clears the selected cells; it never deletes the table from there.
+          const focus = focusKind();
+          if (focus === "grid") edit("delete");
+          if (focus) return;
+          const { activeNode, removeNode } = latest.current.store;
+          if (activeNode?.type === type) void removeWithConfirm(activeNode, removeNode);
+        },
+      };
     };
 
     const themeItem = (value: Theme, text: string) => ({
@@ -117,6 +137,7 @@ export function useAppMenu(doc: DocumentActions) {
             (path) => latest.current.doc.forgetRecent(path),
             () => latest.current.doc.clearRecents(),
           ),
+          { text: "Import Prism File…", action: () => void latest.current.doc.importPrism() },
           sep,
           { text: "Save", accelerator: "CmdOrCtrl+S", enabled: isDirty, action: () => latest.current.doc.save() },
           { text: "Save As…", accelerator: "CmdOrCtrl+Shift+S", action: () => latest.current.doc.save(true) },
@@ -175,20 +196,7 @@ export function useAppMenu(doc: DocumentActions) {
             action: () => latest.current.store.createTable(o.value),
           })),
           sep,
-          {
-            // What it deletes, named as the sidebar's menu names it.
-            text: `Delete ${activeNode ? NODE_NAMES[activeNode.type] : "Table"}…`,
-            accelerator: "CmdOrCtrl+Backspace",
-            enabled: activeNodeId !== null,
-            action: () => {
-              // In the grid ⌘⌫ clears the selected cells; it never deletes the table from there.
-              const focus = focusKind();
-              if (focus === "grid") edit("delete");
-              if (focus) return;
-              const { activeNode, removeNode } = latest.current.store;
-              if (activeNode) void removeWithConfirm(activeNode, removeNode);
-            },
-          },
+          deleteItem("table"),
         ],
       },
       {
@@ -200,11 +208,23 @@ export function useAppMenu(doc: DocumentActions) {
             enabled: hasTable,
             action: run((l, id) => l.store.openSelector({ kind: "new-analysis", tableId: id })),
           },
+          {
+            // Creates data, not a result — so it sits next to New Analysis…,
+            // not inside the picker (see plan 22).
+            text: "Simulate data…",
+            enabled: hasTable,
+            action: run((l, id) => l.store.openSelector({ kind: "simulate-data", tableId: id })),
+          },
           sep,
-          ...(tableType ? ANALYSIS_OPTIONS_BY_TABLE[tableType] : []).map((o) => ({
+          ...(tableType
+            ? analysisOptionsForTable(tableType, activeTableId ? nodes[activeTableId]?.data : undefined)
+            : []
+          ).map((o) => ({
             text: o.label,
             action: run((l, id) => l.startAnalysis(id, o.value)),
           })),
+          sep,
+          deleteItem("analysis"),
         ],
       },
       {
@@ -221,6 +241,21 @@ export function useAppMenu(doc: DocumentActions) {
             text: o.label,
             action: run((l, id) => l.store.createGraph(id, o.value as GraphType)),
           })),
+          sep,
+          deleteItem("graph"),
+        ],
+      },
+      {
+        text: "Figure",
+        items: [
+          {
+            text: "New Figure…",
+            accelerator: "CmdOrCtrl+Alt+F",
+            enabled: Object.values(nodes).some((n) => n.type === "graph"),
+            action: () => latest.current.store.createFigure(),
+          },
+          sep,
+          deleteItem("figure"),
         ],
       },
       {
@@ -253,6 +288,7 @@ export function useAppMenu(doc: DocumentActions) {
     hasTable,
     activeNodeId !== null,
     activeNode?.type,
+    tableCount,
     inspectorHere,
     isDirty,
     doc.recents,

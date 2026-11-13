@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?><GraphPadPrismFile PrismXMLVersion="5.00">
+<Created>
+<OriginalVersion CreatedByProgram="GraphPad Prism" CreatedByVersion="8.0.1.145" Login="cnester" DateTime="2019-04-10T13:58:29-05:00"></OriginalVersion>
+</Created>
+<TableSequence>
+<Ref ID="Table0" Selected="1"></Ref>
+</TableSequence>
+<Table ID="Table0" XFormat="date" YFormat="replicates" Replicates="1" TableType="XY" EVFormat="AsteriskAfterNumber">
+<Title>Sample Data</Title>
+<RowTitlesColumn Width="41">
+<Subcolumn>
+<d>Sample A</d>
+<d>Sample B</d>
+<d>Sample C</d>
+<d>Sample D</d>
+<d>Sample E</d>
+</Subcolumn>
+</RowTitlesColumn>
+<XColumn Width="114" Subcolumns="1" Decimals="14">
+<Title>Date X</Title>
+<Subcolumn>
+<d>0</d>
+<d>5.22929500342231</d>
+<d>8.12320328542094</d>
+<d>8.23819301848049</d>
+<d>8.27652292950034</d>
+</Subcolumn>
+</XColumn>
+<XAdvancedColumn Version="1" Width="114" Decimals="0" Subcolumns="1">
+<Title>Date X</Title>
+<Subcolumn>
+<d>16-Jan-2004</d>
+<d>9-Apr-2009</d>
+<d>1-Mar-2012</d>
+<d>12-Apr-2012</d>
+<d>26-Apr-2012</d>
+</Subcolumn>
+</XAdvancedColumn>
+<YColumn Width="114" Decimals="0" Subcolumns="1">
+<Title>Observation</Title>
+<Subcolumn>
+<d>120</d>
+<d>64</d>
+<d>46</d>
+<d>51</d>
+<d>52</d>
+</Subcolumn>
+</YColumn>
+</Table>
+</GraphPadPrismFile>

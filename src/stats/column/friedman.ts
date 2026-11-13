@@ -4,6 +4,7 @@
 // between every pair of groups (pairwise z-tests on within-block ranks, Bonferroni-corrected).
 import type { FriedmanParams } from "../types";
 import {
+  adjustComparisonRows,
   declareGroups,
   dunnPosthocStatements,
   matchedRowsNote,
@@ -15,9 +16,15 @@ import {
 
 const DEFAULTS: FriedmanParams = { posthoc: "none" };
 
+/** Which Dunn correction a posthoc value asks for (same mapping as Kruskal-Wallis). */
+const dunnAdjustment = (method: FriedmanParams["posthoc"]) =>
+  method === "dunn-sidak" ? "sidak" : method === "dunn-holm-sidak" ? "holm-sidak" : "bonferroni";
+
 export const friedmanSpec: ColumnTestSpec<FriedmanParams> = {
   testType: "friedman",
   minGroups: 3,
+  minValues: 2,
+  matched: () => true,
   parseGroups: (columns) => pairedGroups(columns),
   rCode: (groups, params) => {
     const k = groups.length;
@@ -27,11 +34,17 @@ export const friedmanSpec: ColumnTestSpec<FriedmanParams> = {
     if ((params ?? DEFAULTS).posthoc === "none") return `${setup};c(${mainNames})`;
     // Dunn's test on within-block (row) ranks — constant SE since every block has the same k groups.
     const rbarSetup = `${setup};Rm<-t(apply(M,1,rank));Rbar<-colMeans(Rm);names(Rbar)<-paste0("G",1:${k})`;
-    const ph = dunnPosthocStatements(k, rbarSetup, () => `sqrt(${k}*(${k}+1)/(6*${n}))`);
+    const ph = dunnPosthocStatements(k, rbarSetup, () => `sqrt(${k}*(${k}+1)/(6*${n}))`, dunnAdjustment((params ?? DEFAULTS).posthoc));
     return `${ph.setup};c(${mainNames},${ph.assign})`;
   },
   rows: (v) => [{ label: "Friedman statistic (Q)", value: v.Q }, { label: "df", value: v.df }, pRow("P value", v.p)],
   posthoc: posthocOf,
+  adjustComparisons: (rows, params) =>
+    params?.posthoc === "dunn-sidak"
+      ? adjustComparisonRows(rows, "sidak")
+      : params?.posthoc === "dunn-holm-sidak"
+        ? adjustComparisonRows(rows, "holm-sidak")
+        : rows,
   notes: (_params, _groups, columns) =>
     `Non-parametric alternative to repeated-measures ANOVA for ≥3 matched groups; no normality assumption. ${matchedRowsNote(columns)}`,
   subtitle: () => "Friedman test",

@@ -1,18 +1,27 @@
 // Helix's native shell: the project windows showing the web app (src/), a hidden
 // window running R (src/engine.ts), and the few things a web page can't do on its
 // own. See src/native.ts for the other side.
+//
+// macOS-only Objective-C calls live behind #[cfg(target_os = "macos")]; the
+// Linux build (dev/test only — the Mac DMG stays the release) gets no-op or
+// xdg-open equivalents so the same commands keep their signatures.
+#[cfg(target_os = "macos")]
 use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
 use serde::Serialize;
 use std::{
     collections::HashMap,
     fs,
     path::Path,
-    sync::{Mutex, OnceLock},
+    sync::Mutex,
 };
+// OnceLock is only used by the macOS quit hook (ask_before_quitting_macos).
+#[cfg(target_os = "macos")]
+use std::sync::OnceLock;
 use tauri::{
     async_runtime::{channel, Sender},
     ipc::{InvokeBody, Request},
     utils::config::WindowConfig,
+    webview::NewWindowResponse,
     AppHandle, Emitter, LogicalPosition, Manager, RunEvent, State, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_dialog::DialogExt;
@@ -102,7 +111,12 @@ fn build_window(app: &AppHandle, label: String) -> tauri::Result<()> {
     let front = front_window(app);
     // The first window appears where the last one was; the others appear once cascaded.
     let config = WindowConfig { label, visible: front.is_none(), ..template.clone() };
-    let window = WebviewWindowBuilder::from_config(app, &config)?.build()?;
+    // A project window only ever shows Helix: a link in a text a file brought (a graph's
+    // title…) neither takes the window elsewhere nor opens another.
+    let window = WebviewWindowBuilder::from_config(app, &config)?
+        .on_navigation(|url| url.scheme() == "tauri" || (cfg!(debug_assertions) && url.host_str() == Some("localhost")))
+        .on_new_window(|_, _| NewWindowResponse::Deny)
+        .build()?;
     if let Some(front) = front {
         // A front window still being made (Helix launched by opening a file) can't say
         // where it is yet: the new one then keeps the remembered frame.
@@ -146,12 +160,17 @@ fn take_opening(window: WebviewWindow, projects: State<Projects>) -> Option<Open
 /// whether it is blank.
 #[tauri::command]
 fn set_document(window: WebviewWindow, projects: State<Projects>, path: Option<String>, edited: bool, blank: bool) {
+    // macOS only: the unsaved-changes dot in the close button. On Linux there is
+    // no NSWindow, so this is just the state update below.
+    #[cfg(target_os = "macos")]
     if let Ok(ns_window) = window.ns_window() {
         let ns_window = ns_window.cast::<AnyObject>();
         unsafe {
             let _: () = objc2::msg_send![ns_window, setDocumentEdited: edited];
         }
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = edited; // no close-button dot on Linux; kept for the Mac signature
     let mut projects = projects.0.lock().unwrap();
     if !projects.openings.contains_key(window.label()) {
         projects.documents.insert(window.label().into(), Document { path, blank });
@@ -193,6 +212,25 @@ fn choose_project(app: AppHandle, window: WebviewWindow) {
     });
 }
 
+/// File ▸ Import Prism File…: the Open panel for a Prism `.pzfx` file.
+/// Non-blocking, like choose_project: blocking_pick_file parks the main
+/// thread on a semaphore while the NSOpenPanel needs that same thread to
+/// process clicks — deadlock, Helix (not responding), 0% CPU (confirmed
+/// Nov 9 on macOS; the same bug froze the picker on Linux). pick_file's
+/// callback fires when the user picks or cancels, and the page then reads
+/// the file (read_prism_text) and imports it. The event carries the path,
+/// or null on Cancel, so the page can unsubscribe either way.
+#[tauri::command]
+fn choose_prism_file(app: AppHandle, window: WebviewWindow) {
+    let label = window.label().to_string();
+    app.dialog().file().set_title("Import Prism File").add_filter("GraphPad Prism File", &["pzfx"]).pick_file(
+        move |file| {
+            let picked = file.and_then(|file| file.into_path().ok()).map(|path| path.to_string_lossy().into_owned());
+            let _ = app.emit_to(label.as_str(), "prism-file-picked", picked);
+        },
+    );
+}
+
 /// A window refused to close (its user chose Cancel): Helix doesn't quit after all.
 #[tauri::command]
 fn cancel_quit(projects: State<Projects>) {
@@ -208,6 +246,9 @@ fn session_file(app: &AppHandle) -> Option<std::path::PathBuf> {
     app.path().app_data_dir().ok().map(|dir| dir.join("open-projects"))
 }
 
+// Only called by the macOS quit hook; on Linux there is no quit hook, so allow
+// the dead-code warning there rather than deleting shared session code.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn save_session(app: &AppHandle) {
     let state = app.state::<Projects>();
     let projects = state.0.lock().unwrap();
@@ -253,6 +294,13 @@ fn read_text(path: String) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| e.to_string())
 }
 
+/// A Prism `.pzfx` file's text, for import. Only `.pzfx`, as read_text is only `.hlx`.
+#[tauri::command]
+fn read_prism_text(path: String) -> Result<String, String> {
+    check_extension(&path, &["pzfx"])?;
+    fs::read_to_string(path).map_err(|e| e.to_string())
+}
+
 /// Writes the raw request body to the (URL-encoded) `path` header, atomically.
 #[tauri::command]
 fn write_file(request: Request) -> Result<(), String> {
@@ -293,9 +341,13 @@ fn write_my_palettes(app: AppHandle, text: String) -> Result<(), String> {
 }
 
 // ── macOS ────────────────────────────────────────────────────────────────
+// The functions in this section are macOS-only (Objective-C via objc2). Each
+// command keeps a non-macOS twin below it with the same signature so the page
+// (src/native.ts) can call it on Linux too.
 
 /// Hands Helix's recent projects (newest first) to macOS, which lists them in the
 /// Dock icon's Open Recent menu. The system list is rebuilt to match File ▸ Open Recent.
+#[cfg(target_os = "macos")]
 #[tauri::command]
 fn set_recent_documents(app: AppHandle, paths: Vec<String>) {
     let _ = app.run_on_main_thread(move || unsafe {
@@ -313,6 +365,7 @@ fn set_recent_documents(app: AppHandle, paths: Vec<String>) {
 
 /// The accent color chosen in System Settings ▸ Appearance, as `#RRGGBB`: what Helix
 /// highlights with (selections, focus, buttons), as every Mac app does.
+#[cfg(target_os = "macos")]
 #[tauri::command]
 fn accent_color() -> Option<String> {
     unsafe {
@@ -332,6 +385,7 @@ fn accent_color() -> Option<String> {
 
 /// Helix's website, GitHub page, releases or Buy Me a Coffee page, in the default
 /// browser: fixed addresses, so the page can't open anything else.
+#[cfg(target_os = "macos")]
 #[tauri::command]
 fn open_link(link: String) {
     let url = match link.as_str() {
@@ -355,6 +409,19 @@ fn open_link(link: String) {
 /// instead: each asks about its unsaved changes, and once the last one is closed
 /// Helix ends (see `main`).
 fn ask_before_quitting(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    ask_before_quitting_macos(app);
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+}
+
+/// Quitting (Helix ▸ Quit, the Dock, the app switcher, logout) asks the app delegate
+/// `applicationShouldTerminate:`, which tao doesn't answer, so Helix would quit
+/// without asking to save. This answers "not now" and closes the project windows
+/// instead: each asks about its unsaved changes, and once the last one is closed
+/// Helix ends (see `main`).
+#[cfg(target_os = "macos")]
+fn ask_before_quitting_macos(app: &AppHandle) {
     static APP: OnceLock<AppHandle> = OnceLock::new();
     extern "C-unwind" fn should_terminate(_: &AnyObject, _: Sel, _: &AnyObject) -> usize {
         let Some(app) = APP.get() else { return 1 };
@@ -386,6 +453,17 @@ fn ask_before_quitting(app: &AppHandle) {
 /// (swatches, shapes) drops the column kept for check marks, so it is no wider than
 /// they are. Set as each item is added, before any menu shows.
 fn show_menu_pictures() {
+    #[cfg(target_os = "macos")]
+    show_menu_pictures_macos();
+}
+
+/// macOS 27 hides menu items' pictures unless told to show them. Helix's own (a
+/// palette's band, a color's swatch) are what their item says, so they stay; the
+/// system's symbols (template images) keep macOS's choice. A menu of pictures alone
+/// (swatches, shapes) drops the column kept for check marks, so it is no wider than
+/// they are. Set as each item is added, before any menu shows.
+#[cfg(target_os = "macos")]
+fn show_menu_pictures_macos() {
     extern "C-unwind" fn item_added(_: &AnyObject, _: Sel, note: &AnyObject) {
         unsafe {
             let menu: *mut AnyObject = objc2::msg_send![note, object];
@@ -427,6 +505,38 @@ fn show_menu_pictures() {
         let center: *mut AnyObject = objc2::msg_send![objc2::class!(NSNotificationCenter), defaultCenter];
         let _: () = objc2::msg_send![center, addObserver: delegate, selector: objc2::sel!(helixMenuItemAdded:), name: name, object: std::ptr::null_mut::<AnyObject>()];
     }
+}
+
+// ── Non-macOS (Linux dev/test) ───────────────────────────────────────────
+// Same command signatures as the macOS versions above, with Linux behaviour:
+// no Dock recent-documents, no system accent color (the page falls back to its
+// own default when accent_color is null), links via xdg-open. The Mac code is
+// untouched — these only exist where target_os != macos.
+
+/// Linux: no recent-documents menu to update.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn set_recent_documents(_app: AppHandle, _paths: Vec<String>) {}
+
+/// Linux: no system accent color; the page uses its default.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn accent_color() -> Option<String> {
+    None
+}
+
+/// Linux: the same fixed addresses as on macOS, opened with xdg-open.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn open_link(link: String) {
+    let url = match link.as_str() {
+        "website" => "https://www.helix-desktop.com",
+        "github" => "https://github.com/mickaphd/Helix",
+        "releases" => "https://github.com/mickaphd/Helix/releases/latest",
+        "coffee" => "https://buymeacoffee.com/mickaphd",
+        _ => return,
+    };
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
 // ── R engine ─────────────────────────────────────────────────────────────
@@ -471,6 +581,19 @@ fn r_result(engine: State<REngine>, id: u64, values: Option<HashMap<String, Opti
     }
 }
 
+/// Stop the R running in the engine window, from a project window (its
+/// watchdog fired, or the user hit Cancel). The waiting requests are dropped
+/// — their project windows' own watchdogs reject instead of waiting forever —
+/// and the engine is told to interrupt its R. The engine is the app's one R,
+/// so this stops it for every window at once. If the interrupt does not free
+/// R, the engine window's own watchdog restarts it (dropping its waiters here
+/// first, so the hung code is not re-sent when the engine says it is ready).
+#[tauri::command]
+fn cancel_r(app: AppHandle, engine: State<'_, REngine>) {
+    engine.0.lock().unwrap().waiting.clear();
+    let _ = app.emit_to("engine", "r-interrupt", ());
+}
+
 #[tauri::command]
 fn r_ready(app: AppHandle, engine: State<REngine>) {
     let mut requests = engine.0.lock().unwrap();
@@ -505,8 +628,10 @@ fn main() {
             open_sample,
             new_project,
             choose_project,
+            choose_prism_file,
             cancel_quit,
             read_text,
+            read_prism_text,
             write_file,
             read_my_palettes,
             write_my_palettes,
@@ -515,12 +640,15 @@ fn main() {
             open_link,
             eval_r,
             r_result,
-            r_ready
+            r_ready,
+            cancel_r
         ])
         .build(tauri::generate_context!())
         .expect("failed to start Helix")
         .run(|app, event| match event {
             // Files opened from the Finder: a double-click, Open With, a drop on the Dock icon.
+            // macOS only: these RunEvent variants don't exist on Linux.
+            #[cfg(target_os = "macos")]
             RunEvent::Opened { urls } => {
                 let app = app.clone();
                 let paths: Vec<_> = urls.iter().filter_map(|url| url.to_file_path().ok()).collect();
@@ -549,6 +677,8 @@ fn main() {
                 }
             }
             // A click on the Dock icon while no window is open: a new project.
+            // macOS only: this RunEvent variant doesn't exist on Linux.
+            #[cfg(target_os = "macos")]
             RunEvent::Reopen { has_visible_windows: false, .. } => {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
@@ -557,4 +687,52 @@ fn main() {
             }
             _ => {}
         });
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────
+// Linux-first: these run under `cargo test` on the Hatch Linux VM (no Mac
+// needed). They cover the Prism import gate the GUI picker feeds.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("tests")
+            .join("testdata")
+            .join(name)
+    }
+
+    #[test]
+    fn read_prism_text_reads_a_pzfx_fixture() {
+        let path = fixture("column.pzfx");
+        let text = read_prism_text(path.to_string_lossy().into_owned())
+            .expect("column.pzfx should read");
+        assert!(text.contains("GraphPadPrismFile"), "fixture should be a Prism file");
+        assert!(text.contains("Data 1"), "fixture should contain the Data 1 table");
+    }
+
+    #[test]
+    fn read_prism_text_rejects_other_extensions() {
+        for bad in ["column.txt", "column.hlx", "column.pzfx.bak", "column"] {
+            let err = read_prism_text(fixture(bad).to_string_lossy().into_owned())
+                .expect_err(&format!("{bad} should be rejected"));
+            assert!(err.contains("can't access"), "error should name the refusal: {err}");
+        }
+    }
+
+    #[test]
+    fn read_prism_text_accepts_uppercase_pzfx() {
+        // check_extension lowercases, so .PZFX is a Prism file too.
+        assert!(check_extension("/tmp/x.PZFX", &["pzfx"]).is_ok());
+    }
+
+    #[test]
+    fn read_prism_text_reports_a_missing_file() {
+        let err = read_prism_text(fixture("no-such-file.pzfx").to_string_lossy().into_owned())
+            .expect_err("missing file should error");
+        assert!(!err.contains("can't access"), "missing file is an I/O error, not a refusal: {err}");
+    }
 }

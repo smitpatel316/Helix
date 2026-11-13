@@ -84,6 +84,11 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
   const groups = result.groups;
   // The 95% CI and Min/Max/Range only come from the Descriptive statistics analysis.
   const showCi = groups.some((g) => g.ciLow != null || g.ciHigh != null);
+  // The coefficient 95% CIs come from the nonlinear-fit runner — other
+  // runners leave them undefined, so the "95% CI" column only fills then.
+  // A Cox regression (plan 10) also carries a hazard ratio per coefficient —
+  // its CI above is on the hazard-ratio scale.
+  const showHr = (result.coefficients ?? []).some((c) => c.hazardRatio != null);
   const showRange = groups.some((g) => g.min != null || g.max != null || g.range != null);
   const matrix = result.matrix;
 
@@ -107,16 +112,64 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         </header>
       )}
 
-      {(result.equation || result.stats.length > 0) && (
+      {result.fit && (
+        <Table
+          title="Best-fit values"
+          columns={[{ label: "" }, ...result.fit.sets.map((s) => ({ label: s, numeric: true }))]}
+          rows={result.fit.rows.map((row) => [
+            <span className="text-secondary">{row.label}</span>,
+            ...(row.ranges?.map(([low, high]) => (low == null && high == null ? "—" : `${num(low)} to ${num(high)}`)) ??
+              row.values!.map(num)),
+          ])}
+        />
+      )}
+
+      {result.interpolated && result.interpolated.length > 0 && (
+        <Table
+          title="Interpolated values"
+          columns={[
+            { label: "" },
+            { label: "Y", numeric: true },
+            { label: "X", numeric: true },
+            ...(result.interpolated[0].concentration !== undefined
+              ? [{ label: "Concentration (10^X)", numeric: true }]
+              : []),
+            ...(result.interpolated.some((u) => u.low != null || u.high != null)
+              ? [{ label: "95% CI of X", numeric: true }]
+              : []),
+            { label: "" },
+          ]}
+          rows={result.interpolated.map((u) => [
+            u.label,
+            num(u.y),
+            num(u.x),
+            ...(u.concentration !== undefined ? [num(u.concentration)] : []),
+            ...(result.interpolated!.some((w) => w.low != null || w.high != null)
+              ? [u.low == null && u.high == null ? "—" : `${num(u.low)} to ${num(u.high)}`]
+              : []),
+            <span className="text-secondary">{u.extrapolated ? "extrapolated" : ""}</span>,
+          ])}
+        />
+      )}
+
+      {/* The equation is its own wrapping block, not a row of the stats table:
+          a long equation (the Operational model's is 183 chars) in a
+          whitespace-nowrap table stretches the table past the window and
+          pushes the right-aligned stats values off-screen (F-01). */}
+      {result.equation && (
+        <p className="break-words">
+          <span className="text-secondary">Equation: </span>
+          {result.equation}
+        </p>
+      )}
+
+      {result.stats.length > 0 && (
         <Table
           columns={[{ label: "" }, { label: "", numeric: true }]}
-          rows={[
-            ...(result.equation ? [[<span className="text-secondary">Equation</span>, result.equation]] : []),
-            ...result.stats.map((s) => [
-              <span className="text-secondary">{s.label}</span>,
-              s.p ? <P p={s.value} /> : num(s.value),
-            ]),
-          ]}
+          rows={result.stats.map((s) => [
+            <span className="text-secondary">{s.label}</span>,
+            s.p ? <P p={s.value} /> : num(s.value),
+          ])}
         />
       )}
 
@@ -125,7 +178,7 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
           title={result.comparisonsLabel ?? "Multiple comparisons"}
           columns={[
             { label: "Comparison" },
-            { label: "Difference", numeric: true },
+            { label: result.comparisonsEffect ?? "Difference", numeric: true },
             { label: "P value", numeric: true },
           ]}
           rows={result.comparisons.map((c) => [
@@ -192,9 +245,56 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
             { label: "Points", numeric: true },
             { label: "Outliers", numeric: true },
             { label: "%", numeric: true },
-            { label: "Robust mean", numeric: true },
+            {
+              label: result.outlierGroups.some((g) => g.mean != null) ? "Mean (outliers removed)" : "Robust mean",
+              numeric: true,
+            },
           ]}
-          rows={result.outlierGroups.map((g) => [g.group, g.points, g.outliers, num(g.percent), num(g.robustMean)])}
+          rows={result.outlierGroups.map((g) => [
+            g.group,
+            g.points,
+            g.outliers,
+            num(g.percent),
+            num(g.mean ?? g.robustMean),
+          ])}
+        />
+      )}
+
+      {result.survivalGroups && result.survivalGroups.length > 0 && (
+        <Table
+          title="Survival by group"
+          columns={[
+            { label: "" },
+            { label: "Subjects", numeric: true },
+            { label: "Events", numeric: true },
+            { label: "Median survival", numeric: true },
+            { label: "95% CI of median", numeric: true },
+          ]}
+          rows={result.survivalGroups.map((g) => [
+            g.group,
+            g.subjects,
+            g.events,
+            g.median == null ? "Undefined" : num(g.median),
+            `${g.low == null ? "—" : num(g.low)} to ${g.high == null ? "—" : num(g.high)}`,
+          ])}
+        />
+      )}
+
+      {result.hazardRatios && result.hazardRatios.length > 0 && (
+        <Table
+          title="Hazard ratios"
+          columns={[
+            { label: "" },
+            { label: "Hazard ratio", numeric: true },
+            { label: "95% CI", numeric: true },
+            { label: "P value", numeric: true },
+          ]}
+          rows={result.hazardRatios.map((h) => [
+            h.comparison,
+            num(h.ratio),
+            `${num(h.low)} to ${num(h.high)}`,
+            <P p={h.p} />,
+          ])}
         />
       )}
 
@@ -205,10 +305,161 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
             { label: "" },
             { label: "Estimate", numeric: true },
             { label: "Std. error", numeric: true },
-            { label: "t", numeric: true },
+            { label: result.statisticLabel ?? "t", numeric: true },
             { label: "P value", numeric: true },
+            { label: "95% CI", numeric: true },
+            ...(showHr ? [{ label: "Hazard ratio", numeric: true }] : []),
           ]}
-          rows={result.coefficients.map((c) => [c.term, num(c.estimate), num(c.stdError), num(c.t), <P p={c.p} />])}
+          rows={result.coefficients.map((c) => [
+            // Prism's wording for the Hill slope (4PL and allosteric) — kept
+            // for stored results predating the dedup rename.
+            c.term === "HillSlope" ? "Hill slope" : c.term,
+            num(c.estimate),
+            num(c.stdError),
+            num(c.t),
+            <P p={c.p} />,
+            c.low == null && c.high == null ? "—" : `${num(c.low)} to ${num(c.high)}`,
+            ...(showHr ? [num(c.hazardRatio)] : []),
+          ])}
+        />
+      )}
+
+      {result.varianceComponents && result.varianceComponents.length > 0 && (
+        <Table
+          title="Variance components"
+          columns={[
+            { label: "Group" },
+            { label: "Component" },
+            { label: "Variance", numeric: true },
+            { label: "SD", numeric: true },
+          ]}
+          rows={result.varianceComponents.map((v) => [v.group, v.component, num(v.variance), num(v.sd)])}
+        />
+      )}
+
+      {result.pcaVariance && result.pcaVariance.length > 0 && (
+        <Table
+          title="Variance explained"
+          columns={[
+            { label: "Component" },
+            { label: "SD", numeric: true },
+            { label: "Eigenvalue", numeric: true },
+            { label: "Proportion of variance", numeric: true },
+            { label: "Cumulative proportion", numeric: true },
+          ]}
+          rows={result.pcaVariance.map((v) => [
+            v.component,
+            num(v.sd),
+            num(v.eigenvalue),
+            num(v.proportion),
+            num(v.cumulative),
+          ])}
+        />
+      )}
+
+      {result.pcaLoadings && result.pcaLoadings.length > 0 && (
+        <Table
+          title="Loadings"
+          columns={[
+            { label: "Variable" },
+            ...(result.pcaVariance ?? []).map((v) => ({ label: v.component, numeric: true })),
+          ]}
+          rows={result.pcaLoadings.map((row) => [row.variable, ...row.loadings.map((l) => num(l))])}
+        />
+      )}
+
+      {result.pcaScores && result.pcaScores.length > 0 && (
+        <Table
+          title="Scores"
+          columns={[
+            { label: "Row" },
+            ...(result.pcaVariance ?? []).map((v) => ({ label: v.component, numeric: true })),
+          ]}
+          rows={result.pcaScores.map((row) => [row.row, ...row.scores.map((s) => num(s))])}
+        />
+      )}
+
+      {result.kmeansClusters && result.kmeansClusters.length > 0 && (
+        <Table
+          title="Clusters"
+          columns={[
+            { label: "Cluster" },
+            ...groups.map((g) => ({ label: g.name, numeric: true })),
+            { label: "n", numeric: true },
+            { label: "Within-cluster SS", numeric: true },
+          ]}
+          rows={result.kmeansClusters.map((row) => [
+            row.cluster,
+            ...row.centre.map((c) => num(c)),
+            row.n,
+            num(row.withinSs),
+          ])}
+        />
+      )}
+
+      {result.kmeansAssignments && result.kmeansAssignments.length > 0 && (
+        <Table
+          title="Cluster assignments"
+          columns={[{ label: "Row" }, { label: "Cluster", numeric: true }]}
+          rows={result.kmeansAssignments.map((row) => [row.row, row.cluster])}
+        />
+      )}
+
+      {result.fitted && result.fitted.length > 0 && (
+        <Table
+          title="Fitted values and residuals"
+          columns={[
+            { label: "X", numeric: true },
+            { label: "Observed Y", numeric: true },
+            { label: "Fitted Y", numeric: true },
+            { label: "Residual", numeric: true },
+          ]}
+          rows={result.fitted.map((p) => [
+            num(p.x),
+            num(p.observed),
+            num(p.y),
+            p.observed == null ? "—" : num(p.observed - p.y),
+          ])}
+        />
+      )}
+
+      {result.frequencyBins &&
+        result.frequencyBins.map((f) => (
+          <Table
+            key={f.column}
+            title={result.frequencyBins!.length > 1 ? `Frequency distribution — ${f.column}` : "Frequency distribution"}
+            columns={[
+              { label: "Bin" },
+              { label: "Count", numeric: true },
+              { label: "Relative frequency", numeric: true },
+              { label: "Cumulative count", numeric: true },
+              { label: "Cumulative frequency", numeric: true },
+            ]}
+            rows={f.bins.map((b) => [
+              b.bin,
+              b.count,
+              num(b.relativeFrequency),
+              b.cumulativeCount,
+              num(b.cumulativeFrequency),
+            ])}
+          />
+        ))}
+
+      {result.rocCurve && result.rocCurve.length > 0 && (
+        <Table
+          title="Sensitivity and specificity at each threshold"
+          columns={[
+            { label: "Threshold", numeric: true },
+            { label: "Sensitivity", numeric: true },
+            { label: "Specificity", numeric: true },
+            { label: "Youden's J", numeric: true },
+          ]}
+          rows={result.rocCurve.map((p) => [
+            num(p.threshold),
+            num(p.sensitivity),
+            num(p.specificity),
+            num(p.sensitivity + p.specificity - 1),
+          ])}
         />
       )}
 

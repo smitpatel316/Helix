@@ -5,7 +5,7 @@
 import * as React from "react";
 import { CaretUpDownIcon, MagicWandIcon } from "@phosphor-icons/react";
 import { Button } from "../../ui/controls";
-import { Row, Section } from "../../components/common/inspector";
+import { Row, Section } from "../../components/inspector";
 import { popupMenu } from "../../native";
 import { separator } from "../../menus";
 import { useOutline, useProjectStore, type OutlineNode } from "../../store/use-project-store";
@@ -135,17 +135,20 @@ export function MatchSection({
   const { tables } = useOutline();
   const [exampleId, setExampleId] = React.useState<string | null>(null);
   const [ticked, setTicked] = React.useState(readTicked);
+  // A popup already open ignores further clicks (QAB-1 re-entrancy guard).
+  const popupOpen = React.useRef(false);
 
   const others = examplesFor(graphId, tables, nodes);
   if (!others.length) return null;
 
   const asMatched = (node: ProjectNode): Matched => {
     const table = nodes[node.parentId!];
+    const options = { ...DEFAULT_GRAPH_OPTIONS, ...node.graphOptions };
     return {
       type: node.graphType!,
       table: table.id,
-      options: { ...DEFAULT_GRAPH_OPTIONS, ...node.graphOptions },
-      series: graphSeries(node.graphType!, table.data!, table.tableType!),
+      options,
+      series: graphSeries(node.graphType!, table.data!, table.tableType!, options),
     };
   };
   const target = asMatched(nodes[graphId]);
@@ -162,14 +165,22 @@ export function MatchSection({
       // Not kept: the next time starts from the usual ones.
     }
   };
-  const choose = () =>
-    popupMenu(
-      others.flatMap(({ table, graphs }, i) => [
-        ...(i > 0 ? [separator] : []),
-        { text: table, enabled: false },
-        ...graphs.map((g) => ({ text: g.name, checked: g.id === exampleId, action: () => setExampleId(g.id) })),
-      ]),
-    );
+  const choose = async (event: React.MouseEvent) => {
+    if (popupOpen.current) return;
+    popupOpen.current = true;
+    try {
+      await popupMenu(
+        others.flatMap(({ table, graphs }, i) => [
+          ...(i > 0 ? [separator] : []),
+          { text: table, enabled: false },
+          ...graphs.map((g) => ({ text: g.name, checked: g.id === exampleId, action: () => setExampleId(g.id) })),
+        ]),
+        event,
+      );
+    } finally {
+      popupOpen.current = false;
+    }
+  };
 
   return (
     <Section title="Match" icon={<MagicWandIcon />} {...fold}>
@@ -177,7 +188,9 @@ export function MatchSection({
         <button
           type="button"
           className="flex h-7 w-full items-center gap-2 rounded-md bg-control px-2 text-regular"
-          onClick={() => void choose()}
+          onClick={async (event) => {
+            await choose(event);
+          }}
         >
           <span className="truncate">{exampleNode?.name ?? "Choose…"}</span>
           <span className="flex-1" />

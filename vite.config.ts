@@ -1,4 +1,4 @@
-import { cpSync, createReadStream, statSync } from "node:fs";
+import { cpSync, createReadStream, existsSync, statSync } from "node:fs";
 import { extname, resolve, sep } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
@@ -8,9 +8,18 @@ import tailwindcss from "@tailwindcss/vite";
 // WebR loads its R runtime (WASM + worker + virtual filesystem) at run time
 // from a base URL. Serve those files at /webr/ in dev and copy them into the
 // build; the rest of the package (REPL, tests, source maps) is left out.
+// The vendored R package repo (plan 00) rides along the same way at
+// /webr-repo/: scripts/build-webr-repo.sh builds it; a build without it
+// still works, but package installs fall back to the CDN.
 const WEBR_DIST = resolve("node_modules/webr/dist");
 const WEBR_RUNTIME = ["R.js", "R.wasm", "libRblas.so", "libRlapack.so", "webr-worker.js", "vfs"];
-const MIME: Record<string, string> = { ".js": "text/javascript", ".wasm": "application/wasm" };
+const WEBR_REPO = resolve("webr-repo");
+const MIME: Record<string, string> = {
+  ".js": "text/javascript",
+  ".wasm": "application/wasm",
+  ".tgz": "application/gzip",
+  ".gz": "application/gzip",
+};
 
 function webrRuntime(): Plugin {
   return {
@@ -18,14 +27,26 @@ function webrRuntime(): Plugin {
     // Served as-is: Vite must not transform the worker script.
     configureServer(server) {
       server.middlewares.use("/webr", (req, res, next) => {
-        const file = resolve(WEBR_DIST, `.${decodeURIComponent(req.url!.split("?")[0])}`);
+        const path = decodeURIComponent(req.url!.split("?")[0]);
+        const file = resolve(WEBR_DIST, `.${path}`);
         if (!file.startsWith(WEBR_DIST + sep) || !statSync(file, { throwIfNoEntry: false })?.isFile()) return next();
+        res.setHeader("Content-Type", MIME[extname(file)] ?? "application/octet-stream");
+        createReadStream(file).pipe(res);
+      });
+      server.middlewares.use("/webr-repo", (req, res, next) => {
+        const file = resolve(WEBR_REPO, `.${decodeURIComponent(req.url!.split("?")[0])}`);
+        if (!file.startsWith(WEBR_REPO + sep) || !statSync(file, { throwIfNoEntry: false })?.isFile()) return next();
         res.setHeader("Content-Type", MIME[extname(file)] ?? "application/octet-stream");
         createReadStream(file).pipe(res);
       });
     },
     writeBundle({ dir }) {
       for (const f of WEBR_RUNTIME) cpSync(resolve(WEBR_DIST, f), resolve(dir!, "webr", f), { recursive: true });
+      if (existsSync(WEBR_REPO)) cpSync(WEBR_REPO, resolve(dir!, "webr-repo"), { recursive: true });
+      else
+        console.warn(
+          "[webr] webr-repo/ not found — run scripts/build-webr-repo.sh before building; package installs will fall back to the CDN.",
+        );
     },
   };
 }

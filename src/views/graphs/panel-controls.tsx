@@ -2,7 +2,7 @@
 import * as React from "react";
 import { CaretUpDownIcon, PaletteIcon } from "@phosphor-icons/react";
 import { Input, Segmented, Select, Switch, cn } from "../../ui/controls";
-import { Row, Stepper } from "../../components/common/inspector";
+import { Row, Stepper } from "../../components/inspector";
 import { colorName, paletteBackground, paletteNamed } from "../../lib/palettes";
 import { TINT, visibleOutline } from "./plot-helpers";
 import { PaletteDialog, draftFrom, type PaletteDraft } from "./palette-dialog";
@@ -397,21 +397,25 @@ export function NumRow({ label, value, onChange }: { label: string; value?: numb
   );
 }
 
-/** A labelled single-select row built on SegmentedControl. */
+/** A labelled single-select row built on SegmentedControl. `wrap` lets the
+ *  options flow onto more rows instead of squeezing into one (a long model
+ *  list would clip otherwise). */
 export function Choice<T extends string>({
   label,
   value,
   onChange,
   items,
+  wrap,
 }: {
   label: string;
   value: T;
   onChange: (v: T) => void;
   items: { value: T; label: string }[];
+  wrap?: boolean;
 }) {
   return (
     <Row label={label}>
-      <Segmented value={value} onChange={onChange} options={items} />
+      <Segmented value={value} onChange={onChange} options={items} wrap={wrap} />
     </Row>
   );
 }

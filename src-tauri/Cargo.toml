@@ -1,6 +1,6 @@
 [package]
 name = "helix"
-version = "1.0.6"
+version = "1.0.7"
 license = "GPL-3.0-or-later"
 edition = "2021"
 
@@ -13,6 +13,11 @@ tauri-plugin-dialog = "2"
 tauri-plugin-window-state = "2"
 percent-encoding = "2"
 serde = { version = "1", features = ["derive"] }
+
+# macOS-only: the private-API feature and the Objective-C bridge. The Linux
+# build (dev/test) compiles without them; the Mac DMG build is unchanged.
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri = { version = "2", features = ["macos-private-api"] }
 objc2 = "0.6"
 
 [profile.release]

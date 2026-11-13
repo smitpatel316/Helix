@@ -6,7 +6,7 @@ import { alert } from "../../native";
 import { useProjectActions } from "../../store/use-project-store";
 import { ANALYSES } from "../../stats";
 import type { AnalysisParams, AnalysisPickerValue, AnalysisType } from "../../stats/types";
-import { countDataColumns, countDataGroups } from ".";
+import { countDataColumns, countDataGroups, hasRowGroups } from ".";
 import { WIZARDS } from "./wizards";
 import { readTable } from "../../lib/dataset";
 
@@ -38,6 +38,16 @@ function useAnalysisPrecheck() {
       alert(`${label} needs at least 2 column groups with data.`, "Enter data into 2 groups and try again.");
       return false;
     }
+    // Three-way ANOVA needs a third factor: ≥ 2 row bands. The picker and menu
+    // hide it without them, but a stale entry point still lands here — explain
+    // how to add bands instead of offering a test that cannot run.
+    if (testType === "three-way-anova" && !hasRowGroups(get().nodes[tableId]?.data)) {
+      alert(
+        `${label} needs at least 2 row groups.`,
+        "Split the table's rows into at least 2 named bands in the Groups panel (Show Inspector), then try again.",
+      );
+      return false;
+    }
     return true;
   };
 }
@@ -61,13 +71,14 @@ export function useStartAnalysis() {
     const ready =
       picked === "compare-many-groups"
         ? columnsPrecheck(tableId, ANALYSES.anova.minColumns, "Compare more than two groups")
-        : precheck(tableId, picked);
+        : precheck(tableId, picked === "interpolate" ? "nonlinear-regression" : picked);
     if (!ready) return false;
     // A wizard with nothing to ask of this table (one data set, say) runs at once.
     const wizard = WIZARDS[picked];
     const table = readTable(get().nodes[tableId]!.data!);
-    if (!wizard?.questions({}, table).some(Boolean)) {
-      const { type, params } = wizard?.finish({}, table) ?? { type: picked as AnalysisType };
+    const tableType = get().nodes[tableId]?.tableType;
+    if (!wizard?.questions({}, table, tableType).some(Boolean)) {
+      const { type, params } = wizard?.finish({}, table, tableType) ?? { type: picked as AnalysisType };
       createAnalysis(tableId, type, params);
       return false;
     }

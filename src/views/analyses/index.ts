@@ -4,13 +4,19 @@
 import { ANALYSES } from "../../stats";
 import type { AnalysisPickerValue } from "../../stats/types";
 import type { TableData, TableType } from "../../store/types";
-import type { SelectorOption } from "../../components/common/universal-modal";
+import type { SelectorOption } from "../../components/universal-modal";
 import { groupsOf, readTable } from "../../lib/dataset";
 import { titleCase } from "../../lib/format";
 
 /** A test as the picker, the Analysis menu and its wizard name it. */
 export const analysisLabel = (value: AnalysisPickerValue) =>
-  titleCase(value === "compare-many-groups" ? "Compare more than two groups" : ANALYSES[value].label);
+  titleCase(
+    value === "compare-many-groups"
+      ? "Compare more than two groups"
+      : value === "interpolate"
+        ? "Interpolate a standard curve"
+        : ANALYSES[value].label,
+  );
 
 const optionsFor = (order: AnalysisPickerValue[]): SelectorOption<AnalysisPickerValue>[] =>
   order.map((value) => ({ value, label: analysisLabel(value) }));
@@ -20,21 +26,69 @@ const optionsFor = (order: AnalysisPickerValue[]): SelectorOption<AnalysisPicker
  *  X + Y data series — so the tests that make statistical sense differ too) and given in a fixed
  *  logical order rather than sorted by label. ANOVA/Kruskal-Wallis and Repeated-measures
  *  ANOVA/Friedman aren't listed individually — Prism-style, one meta entry cascades to whichever
- *  the wizard's Paired?/Gaussian? answers resolve to. Shapiro-Wilk isn't listed either: it is
- *  offered as "Not sure?" on every Gaussian? question (see `normality-check.ts`). */
+ *  the wizard's Paired?/Gaussian? answers resolve to. Shapiro-Wilk isn't listed
+ *  as its own entry either in the plan's reading, but the four normality tests
+ *  are selectable only through its wizard (plan 23's "that entry now leads to
+ *  the extended wizard"), so the column list offers "Normality tests" —
+ *  the "Not sure?" check on every Gaussian? question still runs Shapiro–Wilk
+ *  with defaults (see `normality-check.ts`). */
 export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<AnalysisPickerValue>[]> = {
   column: optionsFor([
     "descriptive-statistics",
+    "frequency-distribution",
     "compare-two-groups",
     "compare-many-groups",
+    "mixed-effects",
     "one-sample-t",
+    "shapiro-wilk",
+    "kolmogorov-smirnov",
     "outliers",
+    "monte-carlo",
+    "bland-altman",
+    "roc-curve",
   ]),
-  xy: optionsFor(["correlation", "linear-regression", "area-under-curve", "nonlinear-regression"]),
-  grouped: optionsFor(["two-way-anova", "multiple-t-tests"]),
-  multiple: optionsFor(["correlation-matrix", "multiple-regression"]),
-  contingency: optionsFor(["chi-square"]),
+  xy: optionsFor([
+    "correlation",
+    "linear-regression",
+    "deming-regression",
+    "simple-logistic-regression",
+    "area-under-curve",
+    "nonlinear-regression",
+    "dose-response-special",
+    "binding-saturation",
+    "binding-kinetics",
+    "enzyme-inhibition",
+    "spline-lowess",
+    "monte-carlo",
+    "bland-altman",
+    "interpolate",
+    "roc-curve",
+  ]),
+  grouped: optionsFor(["two-way-anova", "mixed-effects", "three-way-anova", "multiple-t-tests"]),
+  nested: optionsFor(["nested-t-test", "nested-anova"]),
+  multiple: optionsFor(["descriptive-statistics", "correlation-matrix", "multiple-regression", "principal-component-analysis", "k-means", "outliers", "multiple-logistic-regression", "poisson-regression", "cox-proportional-hazards"]),
+  survival: optionsFor(["survival", "cox"]),
+  contingency: [...optionsFor(["chi-square"]), { value: "mcnemar", label: "McNemar's test (paired proportions)" }],
 };
+
+/** Whether the table has the ≥ 2 row bands a three-way ANOVA needs. */
+export function hasRowGroups(data: TableData | undefined): boolean {
+  return (data?.rowGroups?.length ?? 0) >= 2;
+}
+
+/** The picker/menu options for a table: the three-way ANOVA is offered only
+ *  when the table has ≥ 2 row bands — without them it would be a dead test.
+ *  Likewise the nested tests are offered only for their group count (t test
+ *  for exactly 2 groups with data, ANOVA for 3+) — the runners validate
+ *  either way, so a stale entry point still gets a clear error. */
+export function analysisOptionsForTable(tableType: TableType, data?: TableData): SelectorOption<AnalysisPickerValue>[] {
+  return ANALYSIS_OPTIONS_BY_TABLE[tableType].filter((o) => {
+    if (o.value === "three-way-anova") return hasRowGroups(data);
+    if (o.value === "nested-t-test") return data === undefined || countDataGroups(data) === 2;
+    if (o.value === "nested-anova") return data === undefined || countDataGroups(data) >= 3;
+    return true;
+  });
+}
 
 /** Count data columns (excluding the leading Title column) that hold ≥1 numeric value. */
 export function countDataColumns(data: TableData | undefined): number {

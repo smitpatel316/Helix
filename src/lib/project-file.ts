@@ -14,6 +14,7 @@ import {
   GRAPH_CHOICES,
   GRAPH_LIMITS,
   clamp,
+  type FigurePanel,
   type Limits,
   type GraphOptions,
   type GraphPalette,
@@ -24,30 +25,50 @@ import {
   type Place,
   type PointStyle,
   type ProjectNode,
+  type RowGroup,
   SAME_AS_FILL,
   type SeriesStyle,
   type TableData,
 } from "../store/types";
 import {
   type AnalysisParams,
+  ANOVA_POSTHOCS,
+  BINDING_KINETICS_MODELS,
+  BINDING_SATURATION_MODELS,
+  BIN_MODES,
   CORRECTIONS,
+  CURVE_COMPARISONS,
   CORRELATION_METHODS,
   CORRELATION_MODES,
+  CURVE_TESTS,
+  DOSE_MODELS,
+  DOSE_RESPONSE_SPECIAL_MODELS,
+  ENZYME_INHIBITION_MODELS,
+  MONTE_CARLO_STATISTICS,
+  MONTE_CARLO_TARGETS,
   NONLINEAR_MODELS,
   POSTHOC_TARGETS,
-  POSTHOCS,
   RANK_POSTHOCS,
   ROUT_Q,
   TAILS,
+  THREE_WAY_TERMS,
   TWO_WAY_DESIGNS,
 } from "../stats/types";
 import { NAMED_COLORS, paletteNamed, savedPalette } from "./palettes";
 import { TABLES } from "../views/tables";
 import { GRAPHS, GRAPH_OPTIONS_BY_TABLE } from "../views/graphs";
 import { ANALYSES } from "../stats";
-import { isGrouped } from "./dataset";
+import { isGrouped, isNested } from "./dataset";
 import { seriesKeyOf } from "./columns";
-import { regroupTable } from "../views/tables/table-data";
+import { regroupTable, renestTable } from "../views/tables/table-data";
+import {
+  assignLabels,
+  clampPanel,
+  DEFAULT_FIGURE_SIZE,
+  DEFAULT_LABEL_STYLE,
+  figureDpi,
+  FIGURE_SIZE_LIMITS,
+} from "./figure";
 
 export const PROJECT_FILE_EXTENSION = "hlx";
 
@@ -109,11 +130,12 @@ const PROJECT_KEYS = ["nodes", "rootOrder", "childOrder", "activeNodeId"] satisf
 const NODE_KEYS = Object.keys({
   id: 1, type: 1, name: 1, parentId: 1, tableType: 1, data: 1,
   analysisType: 1, analysisParams: 1, graphType: 1, graphOptions: 1,
+  panels: 1, grid: 1, figureSize: 1, labelStyle: 1, figureTitle: 1, sharedLegend: 1, dpi: 1,
 } satisfies Record<keyof ProjectNode, 1>);
 // prettier-ignore
 const DATA_KEYS = Object.keys({
-  columns: 1, rows: 1, groups: 1, replicates: 1, excluded: 1,
-  widths: 1, freezeTitle: 1,
+  columns: 1, rows: 1, groups: 1, replicates: 1, subgroups: 1, rowGroups: 1, excluded: 1,
+  widths: 1, freezeTitle: 1, notes: 1,
 } satisfies Record<keyof TableData, 1>);
 
 // Graph options without a default, by the kind of value they hold.
@@ -123,11 +145,16 @@ type OptionalOption = {
 // prettier-ignore
 const OPTIONAL_OPTIONS = {
   yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number",
-  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", doseY: "text",
+  sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", pcaAnalysisId: "text", kmeansAnalysisId: "text", monteCarloAnalysisId: "text", xVariable: "text", yVariable: "text",
   volcanoX: "text", volcanoY: "text", volcanoLabel: "text", volcanoGroupA: "text", volcanoGroupB: "text",
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",
 } as const satisfies Record<OptionalOption, keyof typeof READ_OPTION>;
+// The retired dose-response graph's own options (before Helix 1.0.7): no
+// longer a GraphOptions field, but still read — fitsFromDoseGraphs below
+// needs them to turn an old graph into a scatter + analysis — and stripped
+// from every graph on the way out (see parseProjectFile).
+const LEGACY_DOSE_OPTIONS = ["doseY", "doseModel", "doseShowCurve", "doseShowEquation", "doseLigandConcentration"];
 // Options whose text is the user's (titles, column names), not a choice from a list.
 const FREE_TEXT_OPTIONS = new Set(["title", "xLabel", "yLabel"]);
 
@@ -143,14 +170,75 @@ GRAPH_LIMITS satisfies Record<NumberOption, Limits>;
 // limits), or the user's names (of columns). The R code is written with them: anything
 // else is left out (the test takes its default), so a file can't slip R code into it.
 type ParamKey = AnalysisParams extends infer P ? (P extends unknown ? keyof P : never) : never;
-type ParamKind = "yes/no" | "number" | "name" | "names" | readonly string[] | Limits;
+type ParamKind =
+  | "yes/no"
+  | "number"
+  | "name"
+  | "names"
+  | "name-or-names"
+  | "name-or-number"
+  | "name-and-names"
+  | "numbers-by-name"
+  | "number-pairs-by-name"
+  | readonly string[]
+  | Limits;
 // prettier-ignore
 const PARAMS = {
-  paired: "yes/no", gaussian: "yes/no", equalVariance: "yes/no", ratio: "yes/no", forceOrigin: "yes/no", pooledSd: "yes/no",
-  tails: TAILS, posthoc: [...POSTHOCS, ...RANK_POSTHOCS], model: NONLINEAR_MODELS, method: CORRELATION_METHODS,
-  mode: CORRELATION_MODES, design: TWO_WAY_DESIGNS, posthocTarget: POSTHOC_TARGETS, correction: CORRECTIONS,
-  hypotheticalValue: "number", baseline: "number", q: ROUT_Q,
-  y: "name", dependent: "name", datasets: "names", predictors: "names", sets: "names",
+  paired: "yes/no", gaussian: "yes/no", equalVariance: "yes/no", ratio: "yes/no", forceOrigin: "yes/no", pooledSd: "yes/no", quasi: "yes/no", fixHillSlope: "yes/no", trendOrdered: "yes/no", continuityCorrection: "yes/no",
+  equalSd: "yes/no", sphericity: "yes/no", interpolate: "yes/no", tails: TAILS, posthoc: [...ANOVA_POSTHOCS, ...RANK_POSTHOCS],
+  // `model` is shared by nonlinear-regression and the binding runners:
+  // the reader only sanitizes, each runner validates its own.
+  model: [...NONLINEAR_MODELS, ...BINDING_SATURATION_MODELS, ...BINDING_KINETICS_MODELS, ...ENZYME_INHIBITION_MODELS, ...DOSE_RESPONSE_SPECIAL_MODELS],
+  // `method` is shared by correlation ("pearson"/"spearman") and Spline/Lowess
+  // ("spline"/"lowess") — and now outliers ("rout"/"grubbs"): the reader only
+  // sanitizes, each runner validates its own.
+  method: [...CORRELATION_METHODS, "spline", "lowess", "rout", "grubbs"],
+  mode: CORRELATION_MODES, design: TWO_WAY_DESIGNS, posthocTarget: POSTHOC_TARGETS, correction: CORRECTIONS, curveTest: CURVE_TESTS, compare: CURVE_COMPARISONS,
+  // Nonlinear regression framework (plan 26): weighting, model comparison,
+  // global fitting, fixed parameters and bounds.
+  weights: ["none", "1/y", "1/y2", "1/x", "1/x2", "1/sd2"],
+  compareModel: [...NONLINEAR_MODELS],
+  globalY: "names",
+  sharedParams: "names",
+  fixed: "numbers-by-name",
+  bounds: "number-pairs-by-name",
+  hypotheticalValue: "number", baseline: "number", q: ROUT_Q, lambda: "number",
+  alpha: { min: 0.001, max: 0.5 }, iterate: "yes/no",
+  f: "number", spar: "number", df: "number",
+  y: "name-or-names", y2: "name", ys: "names", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names",
+  ligandConcentration: "number", ligandKd: "number", fitKi: "yes/no", koff: "number", hotNM: "number", time0: "number",
+  enzymeConcentration: "number", substrateConcentration: "number", kmForMorrison: "number",
+  inhibitorConcentrations: "numbers-by-name",
+  antagonistConcentrations: "numbers-by-name",
+  bUnits: ["M", "nM", "µM"],
+  binMode: BIN_MODES, binWidth: "number", binCount: { min: 2, max: 100 }, startAt: "number",
+  posthocTerm: THREE_WAY_TERMS,
+  truth: "name", score: "name", positive: "name-or-number",
+  time: "name", status: "name", covariates: "names", stratifyBy: "name", ties: ["efron", "breslow"],
+  // Normality tests (plan 23): which of the four tests, and whether to
+  // also test the log-transformed values.
+  test: ["shapiro-wilk", "dagostino-pearson", "anderson-darling", "kolmogorov-smirnov"],
+  lognormal: "yes/no",
+  // Principal component analysis (plan 21): the matrix, and how many
+  // components to report (0 = all).
+  scale: ["correlation", "covariance"], components: "number",
+  // K-means clustering (plan 30): how many clusters, and whether to
+  // standardise the variables first.
+  clusters: "number", standardise: "yes/no",
+  // Mixed-effects model (plan 20): the random structure and the subject
+  // identity are choices; `subjectFactor` is one name + its per-row levels.
+  randomStructure: ["intercept", "slope"], subjectId: ["row", "replicate"], interaction: "yes/no",
+  fixedFactors: "names", slopeVariable: "name", subjectFactor: "name-and-names",
+  // Monte Carlo simulation (plan 22): the target analysis + statistic are
+  // choices; repeats/seed are numbers; the per-column simulated means/SDs
+  // are numbers-by-name (the target's own options — equalVariance,
+  // hypotheticalValue, y, method — already have entries above).
+  targetAnalysis: MONTE_CARLO_TARGETS,
+  summaryStatistic: MONTE_CARLO_STATISTICS,
+  repeats: "number",
+  seed: "number",
+  groupMeans: "numbers-by-name",
+  groupSds: "numbers-by-name",
 } satisfies Record<ParamKey, ParamKind>;
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -177,8 +265,11 @@ function colors(v: unknown): Record<string, PaletteColor> | undefined {
   return out.length ? Object.fromEntries(out) : undefined;
 }
 
-/** `v` when it is one of `choices`, whatever its case. */
-const oneOf = <T extends string>(choices: readonly T[], v: unknown) => choices.find((c) => c === lower(v));
+/** `v` when it is one of `choices`, whatever their case (the choices themselves
+ *  are mostly lowercase, but a three-way ANOVA's post-hoc term is "A:B" — so
+ *  both sides are compared lowercased). */
+const oneOf = <T extends string>(choices: readonly T[], v: unknown) =>
+  choices.find((c) => c.toLowerCase() === lower(v));
 
 /** A number brought within `limits`; anything else, none. */
 const within = (v: unknown, limits: Limits) => (isFiniteNumber(v) ? clamp(v, limits) : undefined);
@@ -257,11 +348,49 @@ const READ_OPTION = {
 /** Colors a table kept for its graphs before Helix 1.0.3: its series' and its cells'. */
 type TableColors = { series?: Record<string, PaletteColor>; cells?: Record<string, PaletteColor> };
 
+/** A table's row groups as a file holds them: every band a non-empty, distinct
+ *  name with a positive whole-row count. A broken band is left out on its own —
+ *  the valid bands stay, and each dropped band is named so the user is told
+ *  (a file whose every band is broken reads as no third factor). */
+function readRowGroups(v: unknown): { groups: RowGroup[] | undefined; dropped: string[] } {
+  if (!Array.isArray(v)) return { groups: undefined, dropped: [] };
+  const groups: RowGroup[] = [];
+  const dropped: string[] = [];
+  const seen = new Set<string>();
+  for (const b of v) {
+    if (!isObj(b) || typeof b.name !== "string" || b.name.trim() === "" || !isCount(b.count)) {
+      dropped.push(describeDroppedBand(b));
+      continue;
+    }
+    if (seen.has(b.name)) {
+      dropped.push(`“${b.name}” (a second band with this name)`);
+      continue;
+    }
+    seen.add(b.name);
+    groups.push({ name: b.name, count: b.count });
+  }
+  return { groups: groups.length ? groups : undefined, dropped };
+}
+
+/** How a dropped row-group band is named in the warning: its name and count
+ *  when it has them, so the user can tell which band went. */
+function describeDroppedBand(b: unknown): string {
+  if (!isObj(b)) return "an unreadable band";
+  const name = typeof b.name === "string" && b.name.trim() !== "" ? `“${b.name}”` : "a band with no name";
+  if (isCount(b.count)) return name;
+  return typeof b.count === "number" ? `${name} (count ${b.count})` : `${name} (no count)`;
+}
+
 /** A table's data, and the colors it kept for its graphs. */
 /** A table's data, put straight: no value beyond its last column (`beyond` counts those left
  *  out), exclusions and widths only on cells and columns it has, and a grouped table's
  *  groups and sub-columns those of its columns ("A:Y1"…). */
-function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: number } | null {
+function readData(raw: Obj): {
+  data: TableData;
+  colors: TableColors;
+  beyond: number;
+  rowGroupsDropped: string[];
+} | null {
   const { seriesColors, pointColors, ...d } = canonical(raw, [...DATA_KEYS, "seriesColors", "pointColors"]);
   if (!Array.isArray(d.columns) || !Array.isArray(d.rows)) return null;
   const columns = d.columns.map((c) => cellText(c) ?? "");
@@ -282,12 +411,15 @@ function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: num
         Object.entries(d.widths).filter(([name, w]) => columns.includes(name) && isFiniteNumber(w) && w > 0),
       )
     : {};
+  const rowGroups = readRowGroups(d.rowGroups);
   let data = defined({
     ...d,
     columns,
     rows,
     groups: isCount(d.groups) && isCount(d.replicates) ? d.groups : undefined,
     replicates: isCount(d.groups) && isCount(d.replicates) ? d.replicates : undefined,
+    subgroups: isCount(d.groups) && isCount(d.replicates) && isCount(d.subgroups) ? d.subgroups : undefined,
+    rowGroups: rowGroups.groups,
     excluded: excluded.length ? excluded : undefined,
     widths: Object.keys(widths).length ? (widths as Record<string, number>) : undefined,
     freezeTitle: d.freezeTitle === true || undefined,
@@ -298,13 +430,39 @@ function readData(raw: Obj): { data: TableData; colors: TableColors; beyond: num
     if (groups.length !== data.groups || replicates !== data.replicates)
       data = defined(regroupTable(data, groups.length, replicates));
   }
-  return { data, colors: { series: colors(seriesColors), cells: colors(pointColors) }, beyond };
+  if (isNested(data) && columns.length > 1) {
+    // A nested table's groups, subgroups and replicates are those of its
+    // columns ("A:S1:R1"…), as a grouped table's are of its "A:Y1" columns.
+    const parts = columns
+      .slice(1)
+      .map((c) => c.split(":"))
+      .filter((p) => p.length === 3);
+    const groups = [...new Set(parts.map((p) => p[0]))];
+    const subgroups = Math.max(0, ...groups.map((g) => new Set(parts.filter((p) => p[0] === g).map((p) => p[1])).size));
+    const replicates = Math.max(
+      0,
+      ...groups.flatMap((g) =>
+        [...new Set(parts.filter((p) => p[0] === g).map((p) => p[1]))].map(
+          (s) => parts.filter((p) => p[0] === g && p[1] === s).length,
+        ),
+      ),
+    );
+    if (groups.length !== data.groups || subgroups !== data.subgroups || replicates !== data.replicates)
+      data = defined(renestTable(data, groups.length, subgroups, replicates));
+  }
+  return { data, colors: { series: colors(seriesColors), cells: colors(pointColors) }, beyond, rowGroupsDropped: rowGroups.dropped };
 }
 
 /** Every option, of the right type, one of its choices and within its limits: a missing
  *  or wrong one takes its default, a number beyond its limits the nearest it can be. */
 function readOptions(raw: unknown): GraphOptions {
-  const o = isObj(raw) ? canonical(raw, [...Object.keys(DEFAULT_GRAPH_OPTIONS), ...Object.keys(OPTIONAL_OPTIONS)]) : {};
+  const o = isObj(raw)
+    ? canonical(raw, [
+        ...Object.keys(DEFAULT_GRAPH_OPTIONS),
+        ...Object.keys(OPTIONAL_OPTIONS),
+        ...LEGACY_DOSE_OPTIONS,
+      ])
+    : {};
   const out: Obj = { ...o, ...DEFAULT_GRAPH_OPTIONS };
   for (const [key, fallback] of Object.entries(DEFAULT_GRAPH_OPTIONS)) {
     const v = typeof o[key] === "string" && !FREE_TEXT_OPTIONS.has(key) ? lower(o[key]) : o[key];
@@ -323,6 +481,22 @@ function readParam(kind: ParamKind, v: unknown): unknown {
   if (kind === "yes/no") return typeof v === "boolean" ? v : undefined;
   if (kind === "number") return isFiniteNumber(v) ? v : undefined;
   if (kind === "name") return typeof v === "string" ? v : undefined;
+  if (kind === "name-or-number") return typeof v === "string" || isFiniteNumber(v) ? v : undefined;
+  if (kind === "name-or-names")
+    return typeof v === "string" ? v : Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
+  if (kind === "numbers-by-name") return isObj(v) && Object.values(v).every(isFiniteNumber) ? v : undefined;
+  if (kind === "number-pairs-by-name")
+    return isObj(v) &&
+      Object.values(v).every((p) => Array.isArray(p) && p.length === 2 && p.every(isFiniteNumber))
+      ? v
+      : undefined;
+  if (kind === "name-and-names")
+    return isObj(v) &&
+      typeof v.name === "string" &&
+      Array.isArray(v.levels) &&
+      v.levels.every((s) => typeof s === "string")
+      ? v
+      : undefined;
   if (kind === "names") return Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
   return Array.isArray(kind) ? oneOf(kind, v) : within(v, kind as Limits);
 }
@@ -336,7 +510,60 @@ function readParams(raw: unknown): AnalysisParams | undefined {
   return defined(Object.fromEntries(Object.entries(p).map(([k, v]) => [k, read(k, v)]))) as unknown as AnalysisParams;
 }
 
-const NODE_TYPES: NodeType[] = ["table", "analysis", "graph"];
+const NODE_TYPES: NodeType[] = ["table", "analysis", "graph", "figure"];
+
+/** A figure's fields as a file holds them, forgivingly: a missing or empty
+ *  `panels` opens as an empty figure (not an error); a panel out of range is
+ *  clamped into the grid; a `dpi` Helix doesn't offer falls back to 600; a
+ *  size outside 1–20 in is brought within, and an aspect beyond 4:1 is
+ *  reined in by shrinking the longer side. Unknown figure fields are kept
+ *  by the node's spread in `readNode` and written back on save. */
+function readFigure(raw: Obj): Pick<
+  ProjectNode,
+  "panels" | "grid" | "figureSize" | "labelStyle" | "figureTitle" | "sharedLegend" | "dpi"
+> {
+  const panels = (Array.isArray(raw.panels) ? raw.panels : [])
+    .filter((p): p is Obj => isObj(p) && typeof p.graphId === "string" && p.graphId !== "")
+    .map((p) => {
+      const n = (k: string) => (isFiniteNumber(p[k]) ? Math.floor(p[k] as number) : undefined);
+      return defined({
+        graphId: p.graphId as string,
+        graphName: typeof p.graphName === "string" ? (p.graphName as string) : undefined,
+        label: typeof p.label === "string" ? (p.label as string) : "",
+        labelManual: p.labelManual === true || undefined,
+        title: typeof p.title === "string" ? (p.title as string) : "",
+        row: n("row") ?? 0,
+        col: n("col") ?? 0,
+        rowSpan: Math.max(1, n("rowSpan") ?? 1),
+        colSpan: Math.max(1, n("colSpan") ?? 1),
+      }) as FigurePanel;
+    });
+  const gridRaw = isObj(raw.grid) ? raw.grid : {};
+  const cols = isCount(gridRaw.cols)
+    ? (gridRaw.cols as number)
+    : Math.max(1, Math.min(panels.length || 1, 4));
+  const rows = isCount(gridRaw.rows) ? (gridRaw.rows as number) : Math.max(1, Math.ceil(panels.length / cols));
+  const grid = { rows, cols };
+  const clamped = assignLabels(panels.map((p) => clampPanel(p, grid)));
+  const sizeRaw = isObj(raw.figureSize) ? raw.figureSize : {};
+  const { min, max } = FIGURE_SIZE_LIMITS;
+  let widthIn = within(sizeRaw.widthIn, { min, max }) ?? DEFAULT_FIGURE_SIZE.widthIn;
+  let heightIn = within(sizeRaw.heightIn, { min, max }) ?? DEFAULT_FIGURE_SIZE.heightIn;
+  if (widthIn / heightIn > 4) widthIn = heightIn * 4;
+  if (heightIn / widthIn > 4) heightIn = widthIn * 4;
+  const styleRaw = isObj(raw.labelStyle) ? raw.labelStyle : {};
+  const position = oneOf(["top-left", "top-right", "above-panel"] as const, styleRaw.position) ?? "top-left";
+  const fontSizePt = within(styleRaw.fontSizePt, { min: 8, max: 28 }) ?? DEFAULT_LABEL_STYLE.fontSizePt;
+  return {
+    panels: clamped,
+    grid,
+    figureSize: { widthIn, heightIn },
+    labelStyle: { position, fontSizePt, bold: styleRaw.bold !== false },
+    figureTitle: typeof raw.figureTitle === "string" ? raw.figureTitle : "",
+    sharedLegend: oneOf(["none", "shared"] as const, raw.sharedLegend) ?? "none",
+    dpi: figureDpi(raw.dpi),
+  };
+}
 
 /** `tableColors`: where a table leaves the colors it kept for its graphs. */
 function readNode(
@@ -369,6 +596,13 @@ function readNode(
         message: `Table “${node.name}” had ${values} beyond its last column; they were left out.`,
       });
     }
+    if (read.rowGroupsDropped.length) {
+      const dropped = read.rowGroupsDropped;
+      issues.push({
+        severity: "warning",
+        message: `Table “${node.name}” left out ${dropped.length === 1 ? "a row group" : `${dropped.length} row groups`} it couldn't read: ${dropped.join(", ")}.`,
+      });
+    }
     node.parentId = null;
     node.tableType = lower(n.tableType) as ProjectNode["tableType"];
     if (!isIn(TABLES, node.tableType)) {
@@ -384,10 +618,14 @@ function readNode(
     if (!isIn(ANALYSES, node.analysisType)) {
       issues.push({ severity: "error", message: `Analysis “${node.name}” uses a test this version doesn't know.` });
     }
+  } else if (type === "figure") {
+    // A figure may span tables, so it lives at the project root, never under one table.
+    node.parentId = null;
+    Object.assign(node, readFigure(n));
   } else {
     node.graphType = lower(n.graphType) as ProjectNode["graphType"];
     node.graphOptions = readOptions(n.graphOptions);
-    if (!isIn(GRAPHS, node.graphType)) {
+    if (!isIn(GRAPHS, node.graphType) && (node.graphType as string) !== DOSE_GRAPH) {
       issues.push({ severity: "error", message: `Graph “${node.name}” uses a chart this version doesn't know.` });
     }
   }
@@ -423,14 +661,19 @@ export function parseProjectFile(
   const nodes: Record<string, ProjectNode> = {};
   const tableColors: Record<string, TableColors> = {};
   let skipped = 0;
+  // `__proto__` can't be an item's id: set on an object, it would change what the object is.
   for (const [id, raw] of Object.entries(project.nodes)) {
-    const node = readNode(id, raw, issues, tableColors);
+    const node = id === "__proto__" ? null : readNode(id, raw, issues, tableColors);
     if (node) nodes[id] = node;
     else skipped++;
   }
+  /** The item with this id: one of the file's own, never a name every object has ("constructor"). */
+  const nodeOf = (id: unknown) => (isIn(nodes, id) ? nodes[id as string] : undefined);
   // Analyses and graphs belong to a table: drop those whose table didn't survive.
+  // Figures live at the project root (they may span tables), so they stay.
   for (const node of Object.values(nodes)) {
-    if (node.type !== "table" && nodes[node.parentId ?? ""]?.type !== "table") {
+    if (node.type === "figure") continue;
+    if (node.type !== "table" && nodeOf(node.parentId)?.type !== "table") {
       delete nodes[node.id];
       skipped++;
     }
@@ -442,12 +685,26 @@ export function parseProjectFile(
     });
   }
 
+  const fits = fitsFromDoseGraphs(nodes);
+  // The retired graph's options, on any graph that still carries them, go:
+  // the migration above already took them off the graphs it converted.
+  for (const node of Object.values(nodes)) {
+    if (node.type !== "graph" || !node.graphOptions) continue;
+    for (const key of LEGACY_DOSE_OPTIONS) delete (node.graphOptions as unknown as Obj)[key];
+  }
   const ids = (v: unknown) => (Array.isArray(v) ? v.filter((id): id is string => typeof id === "string") : []);
   const tables = Object.values(nodes).filter((n) => n.type === "table");
   if (tables.length === 0) return { error: "This project file has no readable data tables." };
-  // Saved order first, then anything the order missed.
+  // Saved order first, then anything the order missed: tables, then figures
+  // (figures live at the project root, after the tables, in creation order).
+  const figures = Object.values(nodes).filter((n) => n.type === "figure");
   const rootOrder = [
-    ...new Set([...ids(project.rootOrder).filter((id) => nodes[id]?.type === "table"), ...tables.map((t) => t.id)]),
+    ...new Set([
+      ...ids(project.rootOrder).filter((id) => nodeOf(id)?.type === "table"),
+      ...tables.map((t) => t.id),
+      ...ids(project.rootOrder).filter((id) => nodeOf(id)?.type === "figure"),
+      ...figures.map((f) => f.id),
+    ]),
   ];
   const savedChildren = isObj(project.childOrder) ? project.childOrder : {};
   const childOrder = Object.fromEntries(
@@ -455,19 +712,32 @@ export function parseProjectFile(
       const children = Object.values(nodes)
         .filter((n) => n.parentId === tableId)
         .map((n) => n.id);
-      const saved = ids(savedChildren[tableId]).filter((id) => children.includes(id));
+      // A dose-response graph's fit, now an analysis, comes just before it.
+      const saved = ids(savedChildren[tableId])
+        .flatMap((id) => (fits[id] ? [fits[id], id] : [id]))
+        .filter((id) => children.includes(id));
       return [tableId, [...new Set([...saved, ...children])]];
     }),
   );
-  const activeNodeId =
-    typeof project.activeNodeId === "string" && nodes[project.activeNodeId] ? project.activeNodeId : rootOrder[0];
+  const activeNodeId = nodeOf(project.activeNodeId) ? (project.activeNodeId as string) : rootOrder[0];
 
   for (const node of Object.values(nodes)) {
+    if (node.type === "figure") {
+      // A panel whose graph is gone stays as a placeholder naming the graph;
+      // the figure still opens, and export leaves that cell blank.
+      const missing = (node.panels ?? []).filter((p) => !nodeOf(p.graphId) || nodeOf(p.graphId)?.type !== "graph");
+      if (missing.length)
+        issues.push({
+          severity: "warning",
+          message: `Figure “${node.name}” refers to ${missing.length === 1 ? "a graph" : `${missing.length} graphs`} that no longer exist.`,
+        });
+      continue;
+    }
     if (node.type === "graph") {
       if (!node.graphOptions!.palette) colorsFromHelix1(node, tableColors[node.parentId!]?.series);
       pointsFromCells(node, tableColors[node.parentId!]?.cells);
     }
-    const tableType = node.parentId ? nodes[node.parentId]?.tableType : undefined;
+    const tableType = nodeOf(node.parentId)?.tableType;
     if (node.type !== "graph" || !node.graphType || !tableType) continue;
     if (isIn(GRAPHS, node.graphType) && !GRAPH_OPTIONS_BY_TABLE[tableType].some((o) => o.value === node.graphType)) {
       issues.push({
@@ -476,7 +746,15 @@ export function parseProjectFile(
       });
     }
     const o = node.graphOptions!;
-    if ((o.sigAnalysisId && !nodes[o.sigAnalysisId]) || (o.regAnalysisId && !nodes[o.regAnalysisId])) {
+    if (
+      (o.sigAnalysisId && !nodeOf(o.sigAnalysisId)) ||
+      (o.regAnalysisId && !nodeOf(o.regAnalysisId)) ||
+      (o.demingAnalysisId && !nodeOf(o.demingAnalysisId)) ||
+      (o.coxAnalysisId && !nodeOf(o.coxAnalysisId)) ||
+      (o.poissonAnalysisId && !nodeOf(o.poissonAnalysisId)) ||
+      (o.pcaAnalysisId && !nodeOf(o.pcaAnalysisId)) ||
+      (o.smoothAnalysisId && !nodeOf(o.smoothAnalysisId))
+    ) {
       issues.push({
         severity: "warning",
         message: `Graph “${node.name}” refers to an analysis that no longer exists.`,
@@ -486,6 +764,59 @@ export function parseProjectFile(
 
   const read = { nodes, rootOrder, childOrder, activeNodeId };
   return { project: read, issues, updated: contents(read) !== contents(file.project) };
+}
+
+// ── Dose-response graphs (before Helix 1.0.7) ───────────────────────────
+// A "Dose-response curve" graph fitted its own curve. A curve now always comes from an
+// analysis, as in Prism: each becomes an XY scatter drawing the curve of a new
+// "Nonlinear regression" of the same data set and model, so it looks as it did.
+
+const DOSE_GRAPH = "dose-response";
+
+/** Turns each dose-response graph into a scatter and its fit into an analysis of its
+ *  table; returns the new analyses' ids, by graph. */
+function fitsFromDoseGraphs(nodes: Record<string, ProjectNode>): Record<string, string> {
+  const fits: Record<string, string> = {};
+  for (const graph of Object.values(nodes)) {
+    if (graph.type !== "graph" || (graph.graphType as string) !== DOSE_GRAPH) continue;
+    const { doseY, doseModel, doseShowCurve, doseShowEquation, doseLigandConcentration, ...options } =
+      graph.graphOptions as unknown as Obj;
+    let id = `analysis_fit_${graph.id}`;
+    while (isIn(nodes, id)) id += "_";
+    const siblings = Object.values(nodes)
+      .filter((n) => n.parentId === graph.parentId)
+      .map((n) => n.name);
+    let name = "Nonlinear regression";
+    for (let i = 2; siblings.includes(name); i++) name = `Nonlinear regression ${i}`;
+    nodes[id] = {
+      id,
+      type: "analysis",
+      name,
+      parentId: graph.parentId,
+      analysisType: "nonlinear-regression",
+      // Helix's default then: a 4PL with X as the concentration.
+      analysisParams: defined({
+        y: typeof doseY === "string" ? doseY : undefined,
+        model: oneOf(DOSE_MODELS, doseModel) ?? "sigmoidal-4pl-x",
+        // The homologous model needs [L] (plan 28) — the graph carries it in
+        // doseLigandConcentration; without it the created analysis errors
+        // and the migrated scatter draws points only.
+        ...(typeof doseLigandConcentration === "number" && Number.isFinite(doseLigandConcentration)
+          ? { ligandConcentration: doseLigandConcentration }
+          : {}),
+      }),
+    };
+    graph.graphType = "xy-scatter";
+    graph.graphOptions = {
+      ...(options as unknown as GraphOptions),
+      xyStyle: "points",
+      regAnalysisId: id,
+      regShowLine: doseShowCurve !== false,
+      regShowEquation: doseShowEquation !== false,
+    };
+    fits[graph.id] = id;
+  }
+  return fits;
 }
 
 // ── Files from Helix 1.0 ─────────────────────────────────────────────────

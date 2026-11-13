@@ -9,11 +9,11 @@ import {
   type TableData,
   type TableType,
 } from "../../store/types";
-import type { SelectorOption } from "../../components/common/universal-modal";
-import { seriesOf, splitXY, type Column, type Dataset } from "../../lib/dataset";
+import type { SelectorOption } from "../../components/universal-modal";
+import { readTable, seriesOf, splitXY, type Column, type Dataset } from "../../lib/dataset";
 import { paletteNamed, savedPalette } from "../../lib/palettes";
 import { titleCase } from "../../lib/format";
-import type { Paint } from "./plot-helpers";
+import { centerColumn, type Paint } from "./plot-helpers";
 import { individual } from "./individual";
 import { boxViolin } from "./box-violin";
 import { meanError } from "./mean-error";
@@ -22,14 +22,26 @@ import { xyBar } from "./xy-bar";
 import { xyArea } from "./xy-area";
 import { groupedBars } from "./grouped-bars";
 import { groupedScatter } from "./grouped-scatter";
+import { groupedBox } from "./grouped-box";
 import { groupedLines } from "./grouped-lines";
 import { groupedStacked } from "./grouped-stacked";
 import { groupedHbars } from "./grouped-hbars";
 import { pie, donut } from "./pie";
-import { doseResponse } from "./dose-response";
+import { schildPlot } from "./schild-plot";
+import { smoothCurve } from "./smooth-curve";
+import { logisticCurveGraph } from "./logistic-curve";
 import { heatmap } from "./heatmap";
 import { survival } from "./survival";
+import { forestPlot } from "./forest-plot";
 import { volcano, VOLCANO_SERIES } from "./volcano";
+import { blandAltmanGraph } from "./bland-altman";
+import { rocCurveGraph } from "./roc-curve";
+import { observedFitted, OBSERVED_FITTED_SERIES } from "./observed-fitted";
+import { screePlot, SCREE_SERIES } from "./scree-plot";
+import { pcaBiplot, PCA_BIPLOT_SERIES } from "./pca-biplot";
+import { kmeansScatter } from "./kmeans-scatter";
+import { histogram } from "./histogram";
+import { monteCarloHistogram, MONTE_CARLO_HISTOGRAM_SERIES } from "./monte-carlo-histogram";
 
 /** A Plotly figure (untyped traces/layout — built as plain objects per module). */
 export interface GraphFigure {
@@ -37,8 +49,11 @@ export interface GraphFigure {
   layout: Record<string, unknown>;
 }
 
-/** What a graph's columns and axes mean — decides its data and its Format sections. */
-type GraphFamily = "column" | "xy" | "grouped" | "pie" | "heatmap" | "volcano";
+/** What a graph's columns and axes mean — decides its data and its Format sections.
+ *  "multiple" plots a Multiple Variables table's numeric columns (its graphs
+ *  read a sibling analysis, not the columns directly — shared with plan 05's
+ *  ROC work, not a one-off). */
+type GraphFamily = "column" | "xy" | "grouped" | "pie" | "heatmap" | "volcano" | "multiple";
 
 export interface GraphModule {
   label: string;
@@ -75,30 +90,86 @@ export const GRAPHS: Record<GraphType, GraphModule> = {
   "grouped-lines": groupedLines,
   "grouped-stacked": groupedStacked,
   "grouped-hbars": groupedHbars,
+  "grouped-box": groupedBox,
   pie,
   donut,
-  "dose-response": doseResponse,
+  "schild-plot": schildPlot,
+  "smooth-curve": smoothCurve,
+  "logistic-curve": logisticCurveGraph,
   heatmap,
   survival,
+  "forest-plot": forestPlot,
   volcano,
+  "bland-altman": blandAltmanGraph,
+  "roc-curve": rocCurveGraph,
+  "observed-fitted": observedFitted,
+  "scree-plot": screePlot,
+  "pca-biplot": pcaBiplot,
+  "kmeans-scatter": kmeansScatter,
+  histogram,
+  "monte-carlo-histogram": monteCarloHistogram,
 };
 
+/** The two variables a scatter of a Multiple Variables table plots, X then Y: the ones
+ *  chosen, else (none, or gone) the first two holding numbers. */
+function variablePair(numeric: Column[], options: GraphOptions): [Column?, Column?] {
+  const byName = (name?: string) => numeric.find((c) => c.name === name);
+  const x = byName(options.xVariable) ?? numeric[0];
+  return [x, byName(options.yVariable) ?? numeric.find((c) => c !== x)];
+}
+
 /** The columns a graph plots: every column for the volcano (it maps text labels
- *  too), X then the Y series for the XY family (none while X is empty), else the
+ *  too), one per data set holding numbers for the heatmap (a grouped table's
+ *  replicates as their `center` on each row), X then the Y series for the XY family
+ *  (none while X is empty; a Multiple Variables table's two variables), else the
  *  columns holding numbers. */
-export function plotColumns({ columns, numeric }: Dataset, type: GraphType): Column[] {
+export function plotColumns(
+  { columns, numeric, sets }: Dataset,
+  type: GraphType,
+  options: GraphOptions,
+  tableType: TableType,
+): Column[] {
   const { family } = GRAPHS[type];
+  // The ROC curve plots a text-or-numeric truth column against its score:
+  // the first two data columns, whatever they hold (the graph errors empty
+  // when the truth has other than two classes or the score has no numbers).
+  if (type === "roc-curve") return columns.slice(0, 2);
   if (family === "volcano") return columns;
+  if (family === "heatmap")
+    return sets.filter((s) => s.columns.some((c) => c.values.length)).map((s) => centerColumn(s, options.center));
   if (family !== "xy") return numeric;
+  if (tableType === "multiple") {
+    const [x, y] = variablePair(numeric, options);
+    return x && y ? [x, y] : [];
+  }
   const { x, ys } = splitXY(columns);
   return x ? [x, ...ys] : [];
 }
 
 /** The series a graph colors, in order: a volcano's "down" and "up", none for a
- *  heatmap (its cells follow the palette), else the table's series. */
-export function graphSeries(type: GraphType, data: TableData, tableType: TableType): string[] {
+ *  heatmap (its cells follow the palette), one "Observed vs fitted" series for
+ *  that graph (its points are one series, not the table's columns), a Multiple
+ *  Variables scatter's Y variable, else the table's series. */
+export function graphSeries(type: GraphType, data: TableData, tableType: TableType, options: GraphOptions): string[] {
   const { family } = GRAPHS[type];
-  return family === "volcano" ? Object.keys(VOLCANO_SERIES) : family === "heatmap" ? [] : seriesOf(data, tableType);
+  if (type === "observed-fitted") return [OBSERVED_FITTED_SERIES];
+  if (type === "monte-carlo-histogram") return [MONTE_CARLO_HISTOGRAM_SERIES];
+  // The PCA graphs draw one series each (the scree bars, the score points),
+  // not the table's variables — the Series section styles that series.
+  if (type === "scree-plot") return [SCREE_SERIES];
+  if (type === "pca-biplot") return [PCA_BIPLOT_SERIES];
+  // The cluster scatter's series are its clusters, whose count lives in the
+  // linked analysis's result — not in the table or the options — so there is
+  // no fixed list to offer; the traces take the palette's colours in order
+  // (see graph-view.tsx, which sizes the paint by the result's clusters).
+  if (type === "kmeans-scatter") return [];
+  if (family === "volcano") return Object.keys(VOLCANO_SERIES);
+  if (family === "heatmap") return [];
+  if (family === "xy" && tableType === "multiple") {
+    const y = variablePair(readTable(data).numeric, options)[1];
+    return y ? [y.name] : [];
+  }
+  return seriesOf(data, tableType);
 }
 
 /** A new graph's options: the defaults, with its type's palette and own defaults. */
@@ -114,21 +185,53 @@ const optionsFor = (types: GraphType[]): SelectorOption<GraphType>[] =>
  *  groups (bars/box/points), an XY table's are X + Y data series (scatter/line/
  *  bar/area against a shared X) — so the graphs that make sense differ too.
  *  Grouped tables (groups × replicates, rows = X categories) plot one series per
- *  group across the rows: interleaved scatter / bars / stacked / horizontal.
- *  Multiple Variables (rows = subjects, columns = variables) plots as a heatmap.
+ *  group across the rows: interleaved scatter / box and violin / bars / stacked /
+ *  horizontal.
+ *  Grouped (one cell per group and row), Multiple Variables (rows = subjects, columns =
+ *  variables) and Contingency (counts) plot as a heatmap too.
  *  Mirrors `ANALYSIS_OPTIONS_BY_TABLE`. */
 export const GRAPH_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<GraphType>[]> = {
-  column: optionsFor(["individual", "box-violin", "mean-error", "pie", "donut"]),
-  xy: optionsFor(["xy-scatter", "xy-bar", "xy-area", "dose-response", "survival"]),
+  column: optionsFor([
+    "individual",
+    "box-violin",
+    "mean-error",
+    "histogram",
+    "pie",
+    "donut",
+    "bland-altman",
+    "roc-curve",
+    "monte-carlo-histogram",
+  ]),
+  xy: optionsFor([
+    "xy-scatter",
+    "xy-bar",
+    "xy-area",
+    "schild-plot",
+    "smooth-curve",
+    "logistic-curve",
+    "survival",
+    "volcano",
+    "bland-altman",
+    "roc-curve",
+    "monte-carlo-histogram",
+  ]),
   grouped: optionsFor([
     "grouped-scatter",
+    "grouped-box",
     "grouped-bars",
     "grouped-lines",
     "grouped-stacked",
     "grouped-hbars",
+    "heatmap",
     "volcano",
   ]),
-  multiple: optionsFor(["heatmap", "volcano"]),
+  // A nested table's groups plot one series per group across the rows, as a
+  // grouped table's do — the grouped builders read the groups through
+  // `groupsOf`, which takes a nested column's group prefix ("A" for
+  // "A:S1:R1"), so bars, scatter and lines all draw from nested columns.
+  nested: optionsFor(["grouped-bars", "grouped-scatter", "grouped-lines"]),
+  multiple: optionsFor(["xy-scatter", "heatmap", "volcano", "forest-plot", "observed-fitted", "scree-plot", "pca-biplot", "kmeans-scatter", "survival"]),
   // Outcomes as series across the row categories, as Prism graphs contingency tables.
-  contingency: optionsFor(["grouped-bars", "grouped-stacked", "grouped-hbars"]),
+  contingency: optionsFor(["grouped-bars", "grouped-stacked", "grouped-hbars", "heatmap"]),
+  survival: optionsFor(["survival"]),
 };

@@ -2,7 +2,7 @@
 // share, so they always agree on the data: excluded cells read as blank, each cell
 // is parsed once (numeric.ts decides what a number is), and the reading is cached
 // per table version. An edit makes a new TableData, so the cache is never stale.
-import type { TableData, TableType } from "../store/types";
+import { hasXColumn, type TableData, type TableType } from "../store/types";
 import { excludedKey, seriesKeyOf } from "./columns";
 import { parseCell } from "./numeric";
 
@@ -27,18 +27,40 @@ export interface Dataset {
   /** The data columns holding at least one number. */
   numeric: Column[];
   /** What an analysis runs on, in table order: each column, or a grouped table's groups
-   *  (holding numbers or not). */
+   *  (holding numbers or not). A nested table's sets are its groups, each holding
+   *  every column of every subgroup — so `params.sets` scopes a nested test to
+   *  the groups named, as it does for grouped tables. */
   sets: DataSet[];
+  /** A nested table's groups with their subgroups (empty for other tables) —
+   *  the structure the nested tests read, alongside `sets`. */
+  nested: NestedGroup[];
 }
 
 /** A column, or a grouped table's group with its sub-columns. */
-interface DataSet {
+export interface DataSet {
   name: string;
   columns: Column[];
 }
 
-/** Whether a table is a grouped one (groups × sub-columns). */
-export const isGrouped = (data: TableData) => Boolean(data.groups && data.replicates);
+/** A nested table's group, with its subgroups (animals/subjects) in table order. */
+export interface NestedGroup {
+  name: string;
+  subgroups: NestedSubgroup[];
+}
+
+/** One subgroup of a nested table's group, with its replicate columns. */
+export interface NestedSubgroup {
+  name: string;
+  columns: Column[];
+}
+
+/** Whether a table is a grouped one (groups × sub-columns) — not a nested one,
+ *  which carries `subgroups` too and reads through `nestedGroupsOf`. */
+export const isGrouped = (data: TableData) => Boolean(data.groups && data.replicates && !data.subgroups);
+
+/** Whether a table is a nested one (groups × subgroups × replicates). A table
+ *  is nested iff all three counts are set — a grouped table never sets `subgroups`. */
+export const isNested = (data: TableData) => Boolean(data.groups && data.subgroups && data.replicates);
 
 const cache = new WeakMap<TableData, Dataset>();
 
@@ -56,7 +78,12 @@ export function readTable(data: TableData): Dataset {
       titles: data.rows.map((row) => row[0] ?? null),
       columns,
       numeric: columns.filter((c) => c.values.length > 0),
-      sets: isGrouped(data) ? byGroup(columns) : columns.map((c) => ({ name: c.name, columns: [c] })),
+      sets: isNested(data)
+        ? nestedGroupsOf(columns).map((g) => ({ name: g.name, columns: g.subgroups.flatMap((s) => s.columns) }))
+        : isGrouped(data)
+          ? byGroup(columns)
+          : columns.map((c) => ({ name: c.name, columns: [c] })),
+      nested: isNested(data) ? nestedGroupsOf(columns) : [],
     };
     cache.set(data, dataset);
   }
@@ -109,17 +136,41 @@ function byGroup(columns: Column[]): DataSet[] {
   return [...groups].map(([name, cols]) => ({ name, columns: cols }));
 }
 
+/** A nested table's groups ("A" for "A:S1:R1"…), each with its subgroups
+ *  ("S1" for "A:S1:R1"…), in table order. A column whose name doesn't split
+ *  into exactly three parts belongs to no subgroup and is left out — a nested
+ *  table's columns are all "group:subgroup:replicate" by construction, so this
+ *  only bites on a hand-edited name. Subgroups without a single number are
+ *  kept here (the nested runners must see them to name the ones they drop);
+ *  callers that only want data pass the numeric columns. */
+export function nestedGroupsOf(columns: Column[]): NestedGroup[] {
+  const groups = new Map<string, Map<string, Column[]>>();
+  for (const c of columns) {
+    const parts = c.name.split(":");
+    if (parts.length !== 3) continue;
+    const [group, subgroup] = parts;
+    let subs = groups.get(group);
+    if (!subs) groups.set(group, (subs = new Map()));
+    subs.set(subgroup, [...(subs.get(subgroup) ?? []), c]);
+  }
+  return [...groups].map(([name, subs]) => ({
+    name,
+    subgroups: [...subs].map(([sub, cols]) => ({ name: sub, columns: cols })),
+  }));
+}
+
 /** The columns of the data sets named, in their order. */
 export function setColumns(table: Dataset, names: string[]): Column[] {
   return names.flatMap((name) => table.sets.find((s) => s.name === name)?.columns ?? []);
 }
 
-/** The series a table's graphs draw, in order: an XY table's Y series, a grouped
+/** The series a table's graphs draw, in order: the Y series of a table with an X, a grouped
  *  table's groups, else its columns holding numbers. A series' default color is
  *  the palette color at its position here, in the table and in every graph. */
 export function seriesOf(data: TableData, type: TableType): string[] {
   const { columns, numeric } = readTable(data);
-  if (type === "xy") return splitXY(columns).ys.map((c) => c.name);
+  if (hasXColumn(type)) return splitXY(columns).ys.map((c) => c.name);
   if (type === "grouped") return groupsOf(numeric).map((g) => g.name);
+  if (type === "nested") return nestedGroupsOf(numeric).map((g) => g.name);
   return numeric.map((c) => c.name);
 }

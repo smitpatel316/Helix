@@ -9,9 +9,9 @@
 // Excluded cells ("row,col" keys) follow the cells around: structural edits remap
 // them so they stay attached to their values. (Graphs follow on their own: see
 // store/references.ts.)
-import type { TableData, TableType } from "../../store/types";
+import type { RowGroup, TableData, TableType } from "../../store/types";
 import { seriesKeyOf } from "../../lib/columns";
-import { isGrouped } from "../../lib/dataset";
+import { isGrouped, isNested } from "../../lib/dataset";
 
 type Cell = string | null;
 
@@ -33,17 +33,20 @@ function columnLetter(index: number): string {
 /** Default name of the `i`-th data column (0-based) for a table type. */
 function columnLabel(type: TableType, i: number): string {
   if (type === "xy") return i === 0 ? "X" : `Y${i}`;
+  if (type === "survival") return i === 0 ? "Time" : `Group ${columnLetter(i - 1)}`;
   if (type === "multiple") return `Var ${i + 1}`;
   if (type === "contingency") return `Outcome ${columnLetter(i)}`;
   return columnLetter(i);
 }
 
-/** The next `count` default column names not already taken, in order. An XY table
- *  already holding its X (column 1, whatever its name) only gets Y names. */
+/** The default names of the next `count` columns after `columns` (the Title column
+ *  first), each named for its place ("D" for the 4th, as a grouped table's groups are),
+ *  or the next one free when that is taken: a renamed column never frees its name for a
+ *  new one. A table with an X (its 1st data column, whatever its name) gets Y names after it. */
 export function freshColumnNames(columns: string[], type: TableType, count: number): string[] {
   const taken = new Set(columns);
   const names: string[] = [];
-  for (let i = type === "xy" && columns.length > 1 ? 1 : 0; names.length < count; i++) {
+  for (let i = columns.length - 1; names.length < count; i++) {
     const name = columnLabel(type, i);
     if (!taken.has(name)) names.push(name);
   }
@@ -55,7 +58,7 @@ const emptyRows = (count: number, width: number): Cell[][] =>
 
 /** A new table: the Title column, then `count` data columns named for `type`. */
 export function newTable(type: TableType, count: number): TableData {
-  return { columns: ["Title", ...freshColumnNames([], type, count)], rows: [] };
+  return { columns: ["Title", ...freshColumnNames(["Title"], type, count)], rows: [] };
 }
 
 /** A grouped table's sub-column names: "A:Y1", "A:Y2"… for each group key. */
@@ -65,6 +68,21 @@ const subColumns = (keys: string[], replicates: number) =>
 export function newGroupedTable(groups: number, replicates: number): TableData {
   const keys = Array.from({ length: groups }, (_, g) => columnLetter(g));
   return { columns: ["Title", ...subColumns(keys, replicates)], rows: [], groups, replicates };
+}
+
+/** A nested table's sub-column names: "A:S1:R1", "A:S1:R2"… for each group and
+ *  subgroup. Subgroups are "S1", "S2"… (renamable in the grid, as groups are). */
+const nestedSubColumns = (keys: string[], subgroups: string[], replicates: number) =>
+  keys.flatMap((key) =>
+    subgroups.flatMap((sub) => Array.from({ length: replicates }, (_, r) => `${key}:${sub}:R${r + 1}`)),
+  );
+
+/** A nested table: `groups` groups × `subgroups` subgroups per group ×
+ *  `replicates` replicate sub-columns per subgroup. */
+export function newNestedTable(groups: number, subgroups: number, replicates: number): TableData {
+  const keys = Array.from({ length: groups }, (_, g) => columnLetter(g));
+  const subs = Array.from({ length: subgroups }, (_, s) => `S${s + 1}`);
+  return { columns: ["Title", ...nestedSubColumns(keys, subs, replicates)], rows: [], groups, subgroups, replicates };
 }
 
 // ── Annotation remapping ───────────────────────────────────────────────
@@ -89,7 +107,7 @@ function remapExcluded(data: TableData, fn: (r: number, c: number) => [number, n
  */
 export function writeBlock(data: TableData, r: number, c: number, block: Cell[][], type: TableType): TableData {
   const blockWidth = block.reduce((w, row) => Math.max(w, row.length), 0);
-  const needCols = isGrouped(data) ? 0 : c + blockWidth - data.columns.length;
+  const needCols = isGrouped(data) || isNested(data) ? 0 : c + blockWidth - data.columns.length;
   const columns = needCols > 0 ? [...data.columns, ...freshColumnNames(data.columns, type, needCols)] : data.columns;
   const width = columns.length;
   const height = Math.max(data.rows.length, r + block.length);
@@ -103,7 +121,18 @@ export function writeBlock(data: TableData, r: number, c: number, block: Cell[][
     });
     return row;
   });
-  return { ...data, columns, rows };
+  // Typing or pasting past the last row grows the table — the last band grows
+  // with it, so the bands still tile the rows exactly.
+  const rowGroups =
+    data.rowGroups && height > data.rows.length ? growRowGroups(data.rowGroups, height - data.rows.length) : data.rowGroups;
+  return { ...data, columns, rows, rowGroups };
+}
+
+/** How many of `block`'s columns, written from column `c`, a grouped table has no room
+ *  for (its columns come from its groups: `writeBlock` adds none). */
+export function columnsBeyond(data: TableData, c: number, block: Cell[][]): number {
+  const width = block.reduce((w, row) => Math.max(w, row.length), 0);
+  return isGrouped(data) ? Math.max(0, c + width - data.columns.length) : 0;
 }
 
 /** Sets every stored cell of `range` to `value` (null clears). */
@@ -155,7 +184,12 @@ export function insertRows(data: TableData, at: number, count: number): TableDat
   if (at >= data.rows.length) return data; // the grid already shows empty rows there
   const rows = [...data.rows.slice(0, at), ...emptyRows(count, data.columns.length), ...data.rows.slice(at)];
   const shift = rowsInserted(at, count);
-  return { ...data, rows, excluded: remapExcluded(data, (r, c) => [shift(r), c]) };
+  return {
+    ...data,
+    rows,
+    excluded: remapExcluded(data, (r, c) => [shift(r), c]),
+    rowGroups: shiftRowGroupsForInsert(data.rowGroups, at, count),
+  };
 }
 
 export function deleteRows(data: TableData, at: number, count: number): TableData {
@@ -165,6 +199,7 @@ export function deleteRows(data: TableData, at: number, count: number): TableDat
     ...data,
     rows,
     excluded: remapExcluded(data, (r, c) => (shift(r) === null ? null : [shift(r)!, c])),
+    rowGroups: shiftRowGroupsForDelete(data.rowGroups, at, count),
   };
 }
 
@@ -233,6 +268,29 @@ export function renameGroup(data: TableData, oldKey: string, newKey: string): Ta
   };
 }
 
+/** Renames one subgroup of one group of a nested table ("A:S1:R1" → "A:Mouse 1:R1"):
+ *  the subgroup's name within its group only — every group has its own "S1". */
+export function renameSubgroup(data: TableData, groupKey: string, oldSub: string, newSub: string): TableData {
+  const parts = (n: string) => n.split(":");
+  const isSub = (n: string) => parts(n).length === 3 && parts(n)[0] === groupKey;
+  if (
+    !newSub ||
+    newSub === oldSub ||
+    newSub.includes(":") ||
+    data.columns.some((n) => isSub(n) && parts(n)[1] === newSub)
+  ) {
+    return data;
+  }
+  const rename = (n: string) =>
+    isSub(n) && parts(n)[1] === oldSub ? `${groupKey}:${newSub}:${parts(n)[2]}` : n;
+  const widths = data.widths && Object.fromEntries(Object.entries(data.widths).map(([n, w]) => [rename(n), w]));
+  return {
+    ...data,
+    columns: data.columns.map(rename),
+    widths,
+  };
+}
+
 /** Changes how many groups and sub-columns a grouped table has. Every value stays
  *  in its group and sub-column (with its exclusion); groups keep their
  *  names; only groups or sub-columns beyond the new counts are dropped. */
@@ -258,6 +316,142 @@ export function regroupTable(data: TableData, groups: number, replicates: number
 export function regroupLoses(data: TableData, groups: number, replicates: number): boolean {
   const kept = new Set(regroupTable(data, groups, replicates).columns);
   return data.columns.some((name, c) => !kept.has(name) && data.rows.some((row) => row[c]));
+}
+
+/** Changes how many groups, subgroups and replicates a nested table has. Every
+ *  value stays in its group and subgroup (with its exclusion); groups and
+ *  subgroups keep their names; only groups, subgroups or replicates beyond the
+ *  new counts are dropped. Mirrors `regroupTable`, one level deeper. */
+export function renestTable(data: TableData, groups: number, subgroups: number, replicates: number): TableData {
+  const keys = [...new Set(data.columns.slice(1).map(seriesKeyOf))].slice(0, groups);
+  // A new group takes the letter of its place (C for the third), or the next free one.
+  for (let i = keys.length; keys.length < groups; i++) if (!keys.includes(columnLetter(i))) keys.push(columnLetter(i));
+  // Subgroups keep their names (per group they are the same "S1"… by default);
+  // a new subgroup takes the next free "S<n>".
+  const subs = [...new Set(data.columns.slice(1).map((n) => n.split(":")[1] ?? ""))].filter(Boolean).slice(0, subgroups);
+  for (let i = subs.length; subs.length < subgroups; i++) if (!subs.includes(`S${i + 1}`)) subs.push(`S${i + 1}`);
+  const columns = ["Title", ...nestedSubColumns(keys, subs, replicates)];
+  const from = columns.map((name, c) => (c === 0 ? 0 : data.columns.indexOf(name)));
+  const to = (c: number) => (c === 0 ? 0 : columns.indexOf(data.columns[c]));
+  return {
+    ...data,
+    columns,
+    rows: data.rows.map((row) => from.map((c) => (c < 0 ? null : (row[c] ?? null)))),
+    groups,
+    subgroups,
+    replicates,
+    excluded: remapExcluded(data, (r, c) => (to(c) < 0 ? null : [r, to(c)])),
+    widths: widthsOf(data.widths, columns),
+  };
+}
+
+/** Whether renesting to these counts deletes a value (a group, subgroup or
+ *  replicate beyond them holding one). */
+export function renestLoses(data: TableData, groups: number, subgroups: number, replicates: number): boolean {
+  const kept = new Set(renestTable(data, groups, subgroups, replicates).columns);
+  return data.columns.some((name, c) => !kept.has(name) && data.rows.some((row) => row[c]));
+}
+
+// ── Row groups (a grouped table's third factor) ─────────────────────────
+
+/** The bands a grouped table shows before the user edits them: one band
+ *  covering every stored row (a single band disables the three-way ANOVA —
+ *  it needs at least 2). */
+export function defaultRowGroups(data: TableData): RowGroup[] {
+  return [{ name: "All rows", count: data.rows.length }];
+}
+
+/** The rows the bands cover, in total. */
+export const rowGroupTotal = (bands: RowGroup[]): number => bands.reduce((sum, b) => sum + b.count, 0);
+
+/** Renames one band (the runner rejects empty or duplicate names). */
+export function setRowGroupName(bands: RowGroup[], index: number, name: string): RowGroup[] {
+  return bands.map((b, i) => (i === index ? { ...b, name } : b));
+}
+
+/** Sets one band's row count, taking the difference from the next band (or the
+ *  previous one, for the last band) so the bands still tile the rows exactly.
+ *  Every band keeps at least 1 row. */
+export function setRowGroupCount(bands: RowGroup[], index: number, count: number): RowGroup[] {
+  const total = rowGroupTotal(bands);
+  const next = bands.map((b) => ({ ...b }));
+  next[index].count = Math.min(Math.max(1, count), total - (bands.length - 1));
+  const delta = next[index].count - bands[index].count;
+  const neighbour = index + 1 < bands.length ? index + 1 : index - 1;
+  if (neighbour >= 0) next[neighbour].count -= delta;
+  return next;
+}
+
+/** Splits the last band holding more than 1 row, adding a 1-row band after it
+ *  (unchanged when every band is already 1 row — there is nothing to split). */
+export function addRowGroup(bands: RowGroup[]): RowGroup[] {
+  const at = bands.findLastIndex((b) => b.count > 1);
+  if (at < 0) return bands;
+  let n = bands.length + 1;
+  while (bands.some((b) => b.name === `Row group ${n}`)) n++;
+  const next = bands.map((b) => ({ ...b }));
+  next[at] = { ...next[at], count: next[at].count - 1 };
+  next.splice(at + 1, 0, { name: `Row group ${n}`, count: 1 });
+  return next;
+}
+
+/** Removes one band, giving its rows to the previous band (or the next one,
+ *  for the first band). Returns [] for the last band — the table then has no
+ *  third factor. */
+export function removeRowGroup(bands: RowGroup[], index: number): RowGroup[] {
+  if (bands.length <= 1) return [];
+  const next = bands.map((b) => ({ ...b }));
+  const [gone] = next.splice(index, 1);
+  const into = index > 0 ? index - 1 : 0;
+  next[into].count += gone.count;
+  return next;
+}
+
+/** Grows the band holding row `at` (the last band, when `at` is past the end)
+ *  by `count` inserted rows — so inserted rows keep the bands tiling. */
+export function shiftRowGroupsForInsert(
+  bands: RowGroup[] | undefined,
+  at: number,
+  count: number,
+): RowGroup[] | undefined {
+  if (!bands) return undefined;
+  const next = bands.map((b) => ({ ...b }));
+  let start = 0;
+  for (const b of next) {
+    if (at < start + b.count) {
+      b.count += count;
+      return next;
+    }
+    start += b.count;
+  }
+  next[next.length - 1].count += count;
+  return next;
+}
+
+/** Takes `count` deleted rows (from row `at`) out of the bands they fall in,
+ *  dropping bands left with no rows — so deleted rows keep the bands tiling.
+ *  Returns undefined when no band is left. */
+export function shiftRowGroupsForDelete(
+  bands: RowGroup[] | undefined,
+  at: number,
+  count: number,
+): RowGroup[] | undefined {
+  if (!bands) return undefined;
+  let start = 0;
+  const next: RowGroup[] = [];
+  for (const b of bands) {
+    const overlap = Math.max(0, Math.min(start + b.count, at + count) - Math.max(start, at));
+    if (b.count - overlap > 0) next.push({ ...b, count: b.count - overlap });
+    start += b.count;
+  }
+  return next.length ? next : undefined;
+}
+
+/** Grows the last band by `extra` rows (a paste or type that extends the table). */
+export function growRowGroups(bands: RowGroup[], extra: number): RowGroup[] {
+  const next = bands.map((b) => ({ ...b }));
+  next[next.length - 1].count += extra;
+  return next;
 }
 
 /** Stored cells whose text contains `query` (any case), row by row. */

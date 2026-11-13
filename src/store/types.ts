@@ -3,10 +3,12 @@
 
 import type { AnalysisParams, AnalysisType } from "../stats/types";
 
-export type NodeType = "table" | "analysis" | "graph";
+export type NodeType = "table" | "analysis" | "graph" | "figure";
 /** What an item is, as menus name it ("Delete Graph…"). */
-export const NODE_NAMES: Record<NodeType, string> = { table: "Table", analysis: "Analysis", graph: "Graph" };
-export type TableType = "column" | "xy" | "grouped" | "multiple" | "contingency";
+export const NODE_NAMES: Record<NodeType, string> = { table: "Table", analysis: "Analysis", graph: "Graph", figure: "Figure" };
+export type TableType = "column" | "xy" | "grouped" | "nested" | "multiple" | "contingency" | "survival";
+/** Tables whose first data column is X (a Survival table's is the time). */
+export const hasXColumn = (type: TableType) => type === "xy" || type === "survival";
 // Every graph type; views/graphs/index.ts says what each draws and for which tables.
 export type GraphType =
   | "individual"
@@ -17,15 +19,27 @@ export type GraphType =
   | "xy-area"
   | "grouped-bars"
   | "grouped-scatter"
+  | "grouped-box"
   | "grouped-lines"
   | "grouped-stacked"
   | "grouped-hbars"
   | "pie"
   | "donut"
-  | "dose-response"
+  | "schild-plot"
+  | "logistic-curve"
   | "heatmap"
   | "survival"
-  | "volcano";
+  | "forest-plot"
+  | "volcano"
+  | "bland-altman"
+  | "roc-curve"
+  | "observed-fitted"
+  | "smooth-curve"
+  | "scree-plot"
+  | "pca-biplot"
+  | "kmeans-scatter"
+  | "monte-carlo-histogram"
+  | "histogram";
 
 /** The choices of a graph's options, one list each: the types come from them, and a
  *  file's value outside them is read as the option's default. */
@@ -38,7 +52,6 @@ export const GRAPH_CHOICES = {
   pieValue: ["sum", "mean"],
   groupLayout: ["interleaved", "separated"],
   sigDisplay: ["stars", "pvalue"],
-  doseModel: ["sigmoidal-4pl-logx", "sigmoidal-4pl-x"],
   survivalMode: ["codes", "counts"],
   volcanoEffect: ["log2ratio", "difference"],
   volcanoSignificance: ["pvalue", "fdr"],
@@ -76,6 +89,10 @@ export const GRAPH_LIMITS = {
   volcanoLabelCount: { min: 0, max: 50 },
   volcanoFcThreshold: { min: 0, max: Infinity },
   volcanoPThreshold: { min: 0, max: Infinity },
+  /** The biplot's plotted components, 1-based (PC1 vs PC2 by default);
+   *  clamped to the components the linked PCA actually reported. */
+  pcaX: { min: 1, max: 20 },
+  pcaY: { min: 1, max: 20 },
 } as const;
 
 /**
@@ -125,27 +142,65 @@ export interface GraphOptions {
   sigAnalysisId?: string;
   sigPairs?: string[];
   sigDisplay: Choice<"sigDisplay">;
-  // Linear-regression overlay (XY scatter only): draw a sibling "Linear regression"
-  // analysis's OLS fit line + 95% confidence band, computed directly from the plotted
-  // x/y pairs (see regression-overlay.ts) — no WebR round-trip, since OLS has one
-  // unique solution and always matches the sibling analysis's R-computed fit exactly.
+  // A regression of the table drawn on an XY scatter: a linear one's line and 95% band,
+  // computed from the plotted pairs (regression-overlay.ts, checked against R's), or a
+  // nonlinear one's curve from its result (fitted-curve.ts); and its note.
   regAnalysisId?: string;
   regShowLine: boolean;
   regShowBand: boolean;
   regShowEquation: boolean;
-  // Dose-response curve (XY family only): a one-click sigmoidal 4PL fit of the
-  // chosen Y series against X, run via WebR (see dose-response-curve.ts) — no
-  // sibling analysis node needed, unlike the Linear-regression overlay above.
-  // `doseY` omitted defaults to the first Y data column.
-  doseY?: string;
-  doseModel: Choice<"doseModel">;
-  doseShowCurve: boolean;
-  doseShowEquation: boolean;
-  // Heatmap (Multiple Variables only): each column is a variable, each row a
-  // subject; cell color encodes magnitude along the graph's gradient palette.
+  // Deming-regression overlay (XY scatter only): draw a sibling "Deming regression"
+  // analysis's fit line (solid) plus the OLS line (dashed) for comparison, both
+  // computed directly from the plotted x/y pairs (see deming-overlay.ts) — no
+  // WebR round-trip, since the closed form has one unique solution and always
+  // matches the sibling analysis's R-computed fit exactly.
+  demingAnalysisId?: string;
+  demingShowLine: boolean;
+  demingShowOls: boolean;
+  demingShowEquation: boolean;
+  // Cox proportional-hazards regression (Multiple Variables only): the sibling
+  // "Cox proportional-hazards regression" analysis a forest plot draws its
+  // hazard ratios from, or a survival curve stratifies by (see forest-plot.ts
+  // and survival.ts) — the graph runs the same cached runAnalysis result.
+  coxAnalysisId?: string;
+  // Poisson regression (Multiple Variables only): the sibling
+  // "Poisson regression" analysis an observed-vs-fitted graph draws its
+  // fitted counts from (see observed-fitted.ts) — the graph runs the same
+  // cached runAnalysis result.
+  poissonAnalysisId?: string;
+  // Principal component analysis (Multiple Variables only): the sibling
+  // "Principal component analysis" a scree plot or scores biplot draws from
+  // (see scree-plot.ts and pca-biplot.ts) — the graph runs the same cached
+  // runAnalysis result. `pcaX`/`pcaY` are the biplot's plotted components,
+  // 1-based (PC1 vs PC2 by default).
+  pcaAnalysisId?: string;
+  pcaX: number;
+  pcaY: number;
+  // K-means clustering (Multiple Variables only): the sibling
+  // "K-means clustering" analysis a cluster scatter draws its assignments
+  // and centres from (see kmeans-scatter.ts) — the graph runs the same
+  // cached runAnalysis result. It plots the first two variables.
+  kmeansAnalysisId?: string;
+  // A Multiple Variables table's scatter: its X and Y variables (column names); omitted,
+  // the first two holding numbers.
+  xVariable?: string;
+  yVariable?: string;
+  // Smooth curve (XY family only): the fitted curve of a sibling "Spline and
+  // Lowess" analysis, drawn over the scatter (see smooth-curve.ts) — the graph
+  // runs the same cached runAnalysis result, no extra R call. Without a linked
+  // analysis it draws the points only.
+  smoothAnalysisId?: string;
+  smoothShowCurve: boolean;
+  // Monte Carlo histogram (Column and XY family): the simulated-statistic
+  // distribution of a sibling "Monte Carlo simulation" analysis (see
+  // monte-carlo-histogram.ts) — the graph runs the same cached runAnalysis
+  // result, no extra R call. Without a linked analysis it draws only its axes.
+  monteCarloAnalysisId?: string;
+  // Heatmap: each cell's value colored along the graph's gradient palette (a Grouped
+  // table's cells, each group's center on its row).
   heatmapShowValues: boolean;
   heatmapShowScale: boolean;
-  // Survival curve (XY family only) — see survival.ts. Two data entry modes:
+  // Survival curve (Survival and XY tables) — see survival.ts. Two data entry modes:
   // "codes" = one row per subject, cell is an event code (1 = event, 0 = censored)
   // at the paired X (time); computed via Kaplan-Meier. "counts" = cell is the
   // number of survivors remaining in that group at the paired X; plotted directly
@@ -153,19 +208,21 @@ export interface GraphOptions {
   // mark subjects removed from a group without an event.
   survivalMode: Choice<"survivalMode">;
   survivalShowCensors: boolean;
-  // Volcano plot of a Multiple Variables table: it plots columns the user already
+  survivalShowBand: boolean; // each Kaplan-Meier curve's 95% confidence band (event codes)
+  // Volcano plot of a Multiple Variables or XY table: it plots columns the user already
   // has. `volcanoX`/`volcanoY`/`volcanoLabel` are column names:
-  // X = effect size (e.g. log2 fold change), Y = a significance value (raw p,
-  // adjusted p, FDR, …), label = optional gene-name column. `volcanoYIsPValue`
-  // applies a -log10 transform to Y (default on, so a p/FDR column becomes the
-  // usual vertical axis). Thresholds color points up/down/NS + draw dashed guides;
+  // X = effect size (e.g. log2 fold change; an XY table's X column), Y = a significance
+  // value (raw p, adjusted p, FDR, …), label = optional gene-name column (else the row
+  // titles name the genes). `volcanoYIsPValue`:
+  // Y holds P values (or FDR…), plotted as their -log10; off, values that are -log10
+  // already, plotted as they are. Higher is more significant either way. Thresholds color points up/down/NS + draw dashed guides;
   // `volcanoLabelCount` annotates that many of the most significant genes.
   volcanoX?: string;
   volcanoY?: string;
   volcanoLabel?: string;
   volcanoYIsPValue: boolean;
   volcanoFcThreshold: number; // |X| cutoff (log2FC scale)
-  volcanoPThreshold: number; // cutoff on the PLOTTED Y scale (e.g. 1.3 when Y is −log10)
+  volcanoPThreshold: number; // cutoff on the plotted (−log10) scale: 1.3 is P = 0.05
   volcanoShowThresholds: boolean;
   volcanoLabelCount: number;
   // Grouped-table volcano (Helix computes the DEGs): compare two groups (by column
@@ -242,13 +299,15 @@ export const DEFAULT_GRAPH_OPTIONS: GraphOptions = {
   regShowLine: true,
   regShowBand: true,
   regShowEquation: true,
-  doseModel: "sigmoidal-4pl-x",
-  doseShowCurve: true,
-  doseShowEquation: true,
+  demingShowLine: true,
+  demingShowOls: true,
+  demingShowEquation: true,
+  smoothShowCurve: true,
   heatmapShowValues: false,
   heatmapShowScale: true,
   survivalMode: "codes",
   survivalShowCensors: true,
+  survivalShowBand: false,
   volcanoYIsPValue: true,
   volcanoFcThreshold: 1,
   volcanoPThreshold: 1.3,
@@ -256,6 +315,8 @@ export const DEFAULT_GRAPH_OPTIONS: GraphOptions = {
   volcanoLabelCount: 10,
   volcanoEffect: "log2ratio",
   volcanoSignificance: "pvalue",
+  pcaX: 1,
+  pcaY: 2,
   title: "",
   xLabel: "",
   yLabel: "",
@@ -347,8 +408,26 @@ export const SAME_AS_FILL = "fill";
 /** Helix 1.0's named colors (see `NAMED_COLORS`), as its files may hold them. */
 export type PaletteColor = "blue" | "red" | "green" | "purple" | "orange" | "black";
 
-/** How many groups and sub-columns a grouped table has: its Groups panel and a file alike. */
-export const GROUPED_LIMITS = { groups: { min: 1, max: 200 }, replicates: { min: 1, max: 20 } };
+/** How many groups, subgroups and sub-columns a grouped or nested table has:
+ *  its Groups panel and a file alike. A 200×50×20 nested table is 200,000 cells
+ *  and the grid must not be asked to render it all — it only renders the
+ *  visible columns, and the default new nested table is 2×3×3. */
+export const GROUPED_LIMITS = {
+  groups: { min: 1, max: 200 },
+  replicates: { min: 1, max: 20 },
+  nested: {
+    groups: { min: 1, max: 200 },
+    subgroups: { min: 1, max: 50 },
+    replicates: { min: 1, max: 20 },
+  },
+};
+
+/** One band of a grouped table's rows, carrying one level of a third factor
+ *  (see `TableData.rowGroups`). */
+export interface RowGroup {
+  name: string;
+  count: number;
+}
 
 export interface TableData {
   columns: string[];
@@ -357,6 +436,14 @@ export interface TableData {
   groups?: number;
   /** Grouped tables only: replicate sub-columns per group. */
   replicates?: number;
+  /** Nested tables only: subgroups per group (each subgroup is one animal /
+   *  subject, whose replicate measurements sit in its sub-columns). */
+  subgroups?: number;
+  /** Grouped tables only: factor-C bands — consecutive rows sharing one level of a
+   *  third factor, e.g. [{ name: "WT", count: 2 }, { name: "KO", count: 2 }].
+   *  Omitted (or empty) = no third factor; existing files read as before. Bands
+   *  must tile the table's rows exactly (see the three-way ANOVA runner). */
+  rowGroups?: RowGroup[];
   /**
    * Prism-style excluded cells: `"row,col"` keys in full-grid coords (col 0 holds
    * the row titles and is never excluded). Excluded values stay in the table + the
@@ -368,6 +455,9 @@ export interface TableData {
   widths?: Record<string, number>;
   /** Keep column 0 (the row titles) visible while scrolling right. */
   freezeTitle?: boolean;
+  /** Provenance note (e.g. a simulated table's distribution + seed) — kept
+   *  with the table in the .hlx file so the data's origin stays auditable. */
+  notes?: string;
 }
 
 export interface ProjectNode {
@@ -384,4 +474,56 @@ export interface ProjectNode {
   /** Graph nodes only: which chart this node draws + its display options. */
   graphType?: GraphType;
   graphOptions?: GraphOptions;
+  /** Figure nodes only: the panels it composes (see src/lib/figure.ts). */
+  panels?: FigurePanel[];
+  grid?: FigureGrid;
+  figureSize?: FigureSize;
+  labelStyle?: FigureLabelStyle;
+  figureTitle?: string;
+  sharedLegend?: SharedLegend;
+  dpi?: Resolution;
 }
+
+/** One panel of a multi-panel figure: a reference to an existing graph node,
+ *  never a copy of it — editing the graph updates the panel automatically. */
+export interface FigurePanel {
+  graphId: string;
+  /** The graph's name when the panel was saved: a hint for the placeholder
+   *  shown when the graph is gone ("Graph 'Dose-response' is missing").
+   *  Never trusted for lookup — ids are the reference. */
+  graphName?: string;
+  label: string;
+  /** True when the label was typed by hand: it sticks to the panel when
+   *  panels move, instead of being reassigned in reading order. */
+  labelManual?: boolean;
+  title: string;
+  row: number;
+  col: number;
+  rowSpan: number;
+  colSpan: number;
+}
+
+export interface FigureGrid {
+  rows: number;
+  cols: number;
+}
+
+/** A figure's page size, in inches (papers are in inches). */
+export interface FigureSize {
+  widthIn: number;
+  heightIn: number;
+}
+
+/** Where a panel's label sits, and how it looks at export scale. */
+export type LabelPosition = "top-left" | "top-right" | "above-panel";
+export interface FigureLabelStyle {
+  position: LabelPosition;
+  fontSizePt: number;
+  bold: boolean;
+}
+
+/** Whether the figure draws one legend for all its panels, below the grid. */
+export type SharedLegend = "none" | "shared";
+
+/** An export resolution, in dots per inch (same choices as a single graph). */
+export type Resolution = "150" | "300" | "600";
