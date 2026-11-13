@@ -21,6 +21,7 @@ import { Dialog } from "../ui/dialog";
 import * as native from "../native";
 import { useProjectStore } from "../store/use-project-store";
 import { convertPrism, formatReport, type ConvertResult } from "../lib/prism";
+import { yieldToPaint } from "../lib/yield-to-paint";
 import { formatWriteReport, writePrism, type PrismWriteResult } from "../lib/prism-write";
 import { serializeProjectFile } from "../lib/project-file";
 import { fileTitle } from "../lib/paths";
@@ -40,7 +41,7 @@ interface Done {
 const baseName = (name: string) => name.replace(/\.(prism|hlx)$/i, "");
 
 /** Let the progress line paint before the conversion starts. */
-const paint = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+const paint = yieldToPaint;
 
 export function ConverterDialog() {
   const { selector, closeSelector, get, loadProject } = useProjectStore();
