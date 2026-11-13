@@ -7761,6 +7761,41 @@ check("the engine window grants dialog:default, so Check for Updates and missing
   ok(menus.includes("sayGone"), "the windowless menu bar must report a missing recent file");
 });
 
+// ── R3-27: linux-smoke boots webR; the Mac DMG script reads its version ───
+// BUG-REPORT #27, two legs. (a) build-mac-dmg.sh hardcoded 1.0.6 while the
+// project was 1.0.7 — already fixed by the rebrand (Batch D), which reads
+// VERSION from package.json; this pins the derivation so a hardcoded
+// version can never creep back. (b) linux-smoke.ts called runAnalysis
+// without startR, so the survival leg crashed in Node with
+// `Cannot find module '/webr/webr-worker.js'`; it now boots from the
+// filesystem webr/dist path and serves webr-repo/ on localhost, as this
+// file does. This pins the init statically — the smoke script itself is
+// the runtime proof (it is not part of `npm test`).
+check("linux-smoke boots webR from the filesystem path, and build-mac-dmg.sh reads its version from package.json (R3-27)", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const smoke = readFileSync(join(root, "tests/linux-smoke.ts"), "utf8");
+  ok(smoke.includes('from "../src/stats/webr"'), "linux-smoke.ts must import the engine from src/stats/webr");
+  ok(smoke.includes("setPackageRepo("), "linux-smoke.ts must point the package repo at the bundled webr-repo/");
+  ok(
+    smoke.includes('await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)))'),
+    "linux-smoke.ts must boot webR from the filesystem webr/dist path before running analyses",
+  );
+  ok(
+    smoke.indexOf("await startR(") < smoke.indexOf('runAnalysis("survival"'),
+    "linux-smoke.ts must boot the engine before the survival analysis runs",
+  );
+  const dmg = readFileSync(join(root, "scripts/build-mac-dmg.sh"), "utf8");
+  ok(
+    dmg.includes("require('./package.json').version"),
+    "build-mac-dmg.sh must derive its version from package.json",
+  );
+  ok(!/Titer_\d+\.\d+\.\d+/.test(dmg), "build-mac-dmg.sh must not hardcode a version in the DMG name");
+  ok(
+    dmg.includes('DMG_NAME="Titer_${VERSION}_aarch64.dmg"'),
+    "the DMG name must use the derived version",
+  );
+});
+
 // ── Replicate pooling (prism-format-work (b)/(g)) ─────────────────────────
 // An imported Prism analysis names its Y data set ("Control"), not a column
 // — the fit pools the data set's replicate columns, as Prism does.
