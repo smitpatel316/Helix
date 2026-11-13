@@ -7,6 +7,7 @@
 // is closed-form arithmetic (mean, SD, max deviation) and the P value comes
 // from the t distribution (src/lib/student-t), so it needs no R package.
 import type { AnalysisOutcome, Column, OutliersParams } from "../types";
+import { routQError } from "../types";
 import { describe, rVec } from "./base";
 import { evalNamedVector } from "../webr";
 import { tCrit, tTwoSidedP } from "../../lib/student-t";
@@ -22,6 +23,12 @@ export async function runRout(columns: Column[], params?: OutliersParams): Promi
   const groups = columns.filter((c) => c.values.length > 0);
   if (groups.length < 1) return { error: "This needs at least 1 column containing numeric data." };
   const qPercent = params?.q ?? 1;
+  // An out-of-range Q is degenerate, not just unusual: Q ≤ 0 can never flag
+  // anything (no adjusted P falls below it) and Q > 50 flags nearly every
+  // point — so refuse it here too, not only in the wizard (saved projects
+  // and direct runAnalysis calls bypass the wizard).
+  const qError = routQError(qPercent);
+  if (qError) return { error: qError };
 
   // Per column: its robust mean, points, outliers and their share; each point's adjusted P;
   // then the totals.
