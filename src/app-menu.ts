@@ -146,9 +146,15 @@ export function useAppMenu(doc: DocumentActions) {
         items: [
           ...projectItems(
             doc.recents,
-            (path) => latest.current.doc.forgetRecent(path),
+            (entry) => latest.current.doc.forgetRecent(entry),
             () => latest.current.doc.clearRecents(),
+            (entry) => latest.current.doc.openRemoteEntry(entry),
           ),
+          { text: "Open from Cloud…", action: () => latest.current.doc.openRemotePicker() },
+          {
+            text: "Connected Storage…",
+            action: () => latest.current.store.openSelector({ kind: "cloud-settings" }),
+          },
           { text: "Import Prism File…", action: () => void latest.current.doc.importPrism() },
           {
             text: "Convert…",

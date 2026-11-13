@@ -10,6 +10,10 @@ import { UniversalModal } from "./universal-modal";
 import { Dialog } from "../ui/dialog";
 import { ConverterDialog } from "./converter-dialog";
 import { SavePromptDialog } from "./save-prompt-dialog";
+import { ConflictDialog } from "./conflict-dialog";
+import { RemotePickerDialog } from "./remote-picker";
+import { CloudSettingsDialog } from "./cloud-settings";
+import { Button } from "../ui/controls";
 import { TABLE_TYPE_OPTIONS } from "../views/tables";
 import { TableDetail } from "../views/tables/table-detail";
 import { analysisOptionsForTable } from "../views/analyses";
@@ -95,6 +99,39 @@ export function AppShell() {
       <ConverterDialog />
 
       <SavePromptDialog onChoose={(choice, remember) => documentActions.resolveSavePrompt(choice, remember)} />
+
+      <ConflictDialog
+        conflict={documentActions.conflict}
+        onChoose={(choice) => void documentActions.resolveConflict(choice)}
+      />
+
+      <RemotePickerDialog onPick={(handle) => documentActions.openRemoteHandle(handle)} onClose={closeSelector} />
+
+      <CloudSettingsDialog onClose={closeSelector} />
+
+      {/* Offline: the open document stays editable from its cache copy — a
+          failed save never discards it. "Try Again" re-saves from the
+          current project; "Save a Local Copy" saves to disk instead. */}
+      <Dialog
+        open={documentActions.offlineNotice !== null}
+        onClose={() => void documentActions.resolveOfflineNotice("dismiss")}
+        title={documentActions.offlineNotice?.mode === "open" ? "You're offline" : "Couldn't save — you're offline"}
+        description={
+          documentActions.offlineNotice?.mode === "open"
+            ? "You're editing the copy saved on this computer. Your changes will upload when you reconnect."
+            : "The save didn't reach the cloud — you're offline. Your edits are still here."
+        }
+        footer={
+          <>
+            {documentActions.offlineNotice?.mode === "save" && (
+              <Button variant="accent" onClick={() => void documentActions.resolveOfflineNotice("retry")}>
+                Try Again
+              </Button>
+            )}
+            <Button onClick={() => void documentActions.resolveOfflineNotice("local-copy")}>Save a Local Copy</Button>
+          </>
+        }
+      />
 
       <UniversalModal
         open={selector?.kind === "new-graph"}

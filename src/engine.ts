@@ -3,7 +3,7 @@
 import { evalNamedVector, onEngineStuck, startR } from "./stats/webr";
 import { cancelR, onNoWindows, serveR } from "./native";
 import { projectItems, setMenuBar } from "./menus";
-import { loadRecents, saveRecents } from "./store/recents";
+import { loadRecents, saveRecents, recentKey, type RecentEntry } from "./store/recents";
 
 startR().catch(() => {}); // a failed boot is retried by the first request, which reports it
 void serveR(evalNamedVector);
@@ -20,12 +20,16 @@ onEngineStuck(() => {
 
 /** With no project open, Titer stays open (as Pages does) with a menu bar to open one. */
 function setWindowlessMenuBar() {
-  const keepRecents = (paths: string[]) => {
-    saveRecents(paths);
+  const keepRecents = (entries: RecentEntry[]) => {
+    saveRecents(entries);
     setWindowlessMenuBar();
   };
   const recents = loadRecents();
-  const forgetRecent = (path: string) => keepRecents(recents.filter((p) => p !== path));
-  void setMenuBar([{ text: "File", items: projectItems(recents, forgetRecent, () => keepRecents([])) }]);
+  const forgetRecent = (entry: RecentEntry) => keepRecents(recents.filter((e) => recentKey(e) !== recentKey(entry)));
+  // Local files only: a remote file needs a project window to load into,
+  // and there is none while this menu is showing. Remote recents open from
+  // a project window's File menu instead.
+  const local = recents.filter((e): e is Extract<RecentEntry, { kind: "local" }> => e.kind === "local");
+  void setMenuBar([{ text: "File", items: projectItems(local, forgetRecent, () => keepRecents([])) }]);
 }
 onNoWindows(setWindowlessMenuBar);
