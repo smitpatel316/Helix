@@ -632,6 +632,13 @@ fn cancel_r(app: AppHandle, window: WebviewWindow, engine: State<'_, REngine>) {
 fn r_ready(app: AppHandle, engine: State<REngine>) {
     let mut requests = engine.0.lock().unwrap();
     requests.ready = true;
+    // The engine window (re)started, so its R is fresh with an empty VFS:
+    // every project window's installed-package state is void with it
+    // (R3-02). Broadcast before re-sending the waiting requests, so no
+    // window re-runs an analysis against the stale "ready" state and fails
+    // with `there is no package called '…'`. Harmless on the first boot,
+    // when no window has installed anything yet.
+    let _ = app.emit("r-reset", ());
     for (id, (code, _, _)) in &requests.waiting {
         let _ = app.emit_to("engine", "r-eval", (id, code));
     }

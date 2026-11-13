@@ -144,10 +144,35 @@ export function interruptR(): void {
 
 /** Drop the cached engine, so the next evaluation boots a fresh R. The
  *  wedged worker is abandoned with it; in the app the engine window reloads
- *  so it dies too (see `onEngineStuck`). */
+ *  so it dies too (see `onEngineStuck`).
+ *
+ *  A fresh engine has an empty VFS, so every package state is void with
+ *  the old one (R3-02): installed packages are cleared back to
+ *  `not-loaded`, or the next `ensurePackages` would see them `ready` and
+ *  skip the install — and the analysis would fail with `there is no
+ *  package called '…'` in the fresh engine. An install still in flight is
+ *  cancelled (its late completion must write no states for an engine that
+ *  no longer exists) and its packages are marked `failed`, so a caller
+ *  waiting on that batch gets a provisioning error it can retry from,
+ *  instead of a silent success followed by the same `no package` failure
+ *  when the analysis runs. */
 export function resetR(): void {
   engine = null;
   liveWebR = null;
+  const installing = [...inflight.keys()];
+  for (const ticket of inflight.values()) {
+    ticket.cancel.current = true;
+    ticket.releaseGate();
+  }
+  inflight.clear();
+  states.clear();
+  for (const name of installing) {
+    states.set(name, {
+      status: "failed",
+      error: `The R engine was restarted while “${name}” was installing — try running the analysis again.`,
+      kind: "install-failed",
+    });
+  }
 }
 
 /** Called when an evaluation stays stuck after the interrupt — the engine
