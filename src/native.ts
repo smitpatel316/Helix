@@ -91,10 +91,12 @@ export function evalR(code: string): Promise<RVector> {
   });
 }
 
-/** From a project window: stop the R running in the engine, if one is. The
- *  shell drops the waiting requests and tells the engine window to interrupt
- *  its R; a dropped request never resolves — the caller's own watchdog
- *  rejects with the timeout/cancel error instead. Best effort, never throws. */
+/** From a project window: stop this window's own R work in the engine, if
+ *  any is. The shell drops only this window's waiting requests and tells
+ *  the engine window which ones, so a queued evaluation is dequeued
+ *  without touching R — another window's in-flight install is left alone
+ *  (FL-F14). From the engine window (its stuck-engine recovery) it drops
+ *  every waiting request instead. Best effort, never throws. */
 export async function cancelR(): Promise<void> {
   if (!isNative) return;
   try {
@@ -109,7 +111,9 @@ export async function cancelR(): Promise<void> {
  *  time, in arrival order — the app's explicit FIFO (M17: webR serializes
  *  internally too, but that queue is invisible; this one publishes its
  *  state on "r-queue" so project windows can show a queue position instead
- *  of bare "Running…"). A request whose caller already gave up still runs
+ *  of bare "Running…"). A request cancelled by its window is dequeued
+ *  (FL-F14), so a queued check's cancel never touches the running
+ *  evaluation; a request whose caller gave up some other way still runs
  *  once when it reaches the front — the shell discards its late result —
  *  so a cancelled caller never wedges the queue. */
 export async function serveR(evaluate: (code: string) => Promise<RVector>) {
@@ -119,11 +123,20 @@ export async function serveR(evaluate: (code: string) => Promise<RVector>) {
     void getCurrentWebviewWindow().emit("r-queue", snapshot).catch(() => {});
   });
   await getCurrentWebviewWindow().listen<[number, string]>("r-eval", ({ payload: [id, code] }) =>
-    queue.enqueue(() => evaluate(code)).then(
+    queue.enqueue(() => evaluate(code), id).then(
       (values) => invoke("r_result", { id, values }),
       (err: unknown) => invoke("r_result", { id, error: err instanceof Error ? err.message : String(err) }),
     ),
   );
+  // A project window cancelled its own requests (its watchdog fired, or
+  // the user hit Cancel): the shell dropped them and sends their ids.
+  // Dequeue the ones still waiting — without touching R — and interrupt R
+  // only if the evaluation now running is one of them. A queued cancel
+  // used to clear every window's waiting requests and restart the engine,
+  // killing another window's in-flight install (FL-F14).
+  await getCurrentWebviewWindow().listen<number[]>("r-cancel", ({ payload: ids }) => {
+    if (queue.cancel(ids).runningCancelled) interruptR();
+  });
   // A project window asked R to stop (its watchdog fired, or the user hit
   // Cancel): interrupt this window's R. If the channel cannot be
   // interrupted, the evaluation's own watchdog restarts the engine.

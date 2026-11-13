@@ -164,9 +164,12 @@ export function onEngineStuck(handler: (() => void) | null): void {
 const liveEvals = new Set<{ controller: AbortController }>();
 
 /** Cancel every evaluation in flight in this window. The app's one R serves
- *  every window, so this stops the shared engine for everyone — the user
- *  staring at the stuck analysis is the one who asked. A cancelled run is
- *  not cached, so asking again retries it. */
+ *  every window, but a cancel only stops this window's own work (FL-F14):
+ *  the shell drops only this window's waiting requests and the engine
+ *  dequeues them; R is interrupted only if the evaluation now running is
+ *  one of this window's — a queued check's cancel no longer kills another
+ *  window's in-flight install. A cancelled run is not cached, so asking
+ *  again retries it. */
 export function cancelActiveEvals(): void {
   for (const { controller } of liveEvals) controller.abort();
 }

@@ -9,7 +9,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { evalNamedVector, resetR, setPackageRepo, startR } from "../src/stats/webr";
+import { EvalCancelledError, evalNamedVector, resetR, setPackageRepo, startR } from "../src/stats/webr";
 import {
   createEvalQueue,
   getRQueueSnapshot,
@@ -6313,6 +6313,56 @@ check("one R evaluation failing never stalls the queue behind it (M17)", async (
   deepStrictEqual(queue.snapshot(), { running: false, queued: 0 });
 });
 
+check("cancelling a queued R evaluation drops it without touching the running one (FL-F14)", async () => {
+  const queue = createEvalQueue();
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  const ran: number[] = [];
+  // Id 1 is the other window's install (running); id 2 is this window's
+  // check, queued behind it; id 3 waits behind the check.
+  const p1 = queue.enqueue(async () => {
+    await sleep(30);
+    ran.push(1);
+    return 1;
+  }, 1);
+  const p2 = queue.enqueue(async () => {
+    ran.push(2);
+    return 2;
+  }, 2);
+  const p3 = queue.enqueue(async () => {
+    ran.push(3);
+    return 3;
+  }, 3);
+  // Let the install's turn start, so it is genuinely running while the check waits.
+  await sleep(0);
+  // Cancel the queued check while the install still runs: it never runs,
+  // and the running install is not reported as cancelled.
+  deepStrictEqual(queue.cancel([2]), { cancelledQueued: 1, runningCancelled: false });
+  strictEqual(await p1, 1);
+  await rejects(p2, (err: unknown) => err instanceof EvalCancelledError);
+  strictEqual(await p3, 3);
+  deepStrictEqual(ran, [1, 3]);
+  deepStrictEqual(queue.snapshot(), { running: false, queued: 0 });
+});
+
+check("cancelling the running R evaluation says so, and an unknown id cancels nothing (FL-F14)", async () => {
+  const queue = createEvalQueue();
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  const p1 = queue.enqueue(async () => {
+    await sleep(20);
+    return 1;
+  }, 1);
+  const p2 = queue.enqueue(async () => 2, 2);
+  // Let the first task's turn start, so it is genuinely running.
+  await sleep(0);
+  deepStrictEqual(queue.cancel([99]), { cancelledQueued: 0, runningCancelled: false });
+  // The running evaluation is reported, not stopped here — stopping it is
+  // the caller's interrupt — so it still completes, and so does the queued one.
+  deepStrictEqual(queue.cancel([1]), { cancelledQueued: 0, runningCancelled: true });
+  strictEqual(await p1, 1);
+  strictEqual(await p2, 2);
+  deepStrictEqual(queue.snapshot(), { running: false, queued: 0 });
+});
+
 check("a waiting view names the R queue instead of bare Running… (M17)", () => {
   strictEqual(rQueueStatusText(null), "");
   strictEqual(rQueueStatusText({ running: false, queued: 0 }), "");
@@ -6334,6 +6384,21 @@ check("the engine window answers R requests through the FIFO, and publishes its 
   ok(/emit\("r-queue"/.test(native), "serveR must publish the queue on \"r-queue\"");
   const view = readFileSync("src/views/analyses/analysis-view.tsx", "utf8");
   ok(/rQueueStatusText\(queue\)/.test(view), "the analysis view must show the queue depth while running");
+});
+
+check("a cancel drops only its own window's requests, and the engine dequeues them (FL-F14)", () => {
+  const main = readFileSync("src-tauri/src/main.rs", "utf8");
+  ok(/emit_to\("engine", "r-cancel"/.test(main), "cancel_r must tell the engine which requests were dropped");
+  ok(/waiting\.retain/.test(main), "cancel_r must drop only the calling window's waiting requests");
+  ok(
+    /caller == "engine"/.test(main),
+    "cancel_r from the engine window must still drop every waiting request (stuck-engine recovery)",
+  );
+  const native = readFileSync("src/native.ts", "utf8");
+  ok(/listen<number\[\]>\("r-cancel"/.test(native), "serveR must listen for the dropped request ids");
+  ok(/queue\.cancel\(ids\)\.runningCancelled/.test(native), "serveR must interrupt only when the running evaluation was cancelled");
+  const queue = readFileSync("src/stats/r-queue.ts", "utf8");
+  ok(/cancel\(ids: Iterable<unknown>\)/.test(queue), "the FIFO must drop queued entries by id");
 });
 
 // ── Open-format nudge (prism-format-work (f)) ─────────────────────────────

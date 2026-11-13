@@ -564,11 +564,15 @@ struct REngine(Mutex<Requests>);
 struct Requests {
     ready: bool,
     next_id: u64,
-    waiting: HashMap<u64, (String, Sender<RResult>)>,
+    /// Waiting requests, by id: the R code, the label of the window that
+    /// asked for it, and the sender its `eval_r` waits on. The owner is
+    /// what lets a cancel drop only the cancelling window's requests
+    /// (FL-F14) instead of every window's.
+    waiting: HashMap<u64, (String, String, Sender<RResult>)>,
 }
 
 #[tauri::command]
-async fn eval_r(app: AppHandle, engine: State<'_, REngine>, code: String) -> RResult {
+async fn eval_r(app: AppHandle, window: WebviewWindow, engine: State<'_, REngine>, code: String) -> RResult {
     let (sender, mut receiver) = channel(1);
     {
         let mut requests = engine.0.lock().unwrap();
@@ -577,36 +581,58 @@ async fn eval_r(app: AppHandle, engine: State<'_, REngine>, code: String) -> RRe
         if requests.ready {
             let _ = app.emit_to("engine", "r-eval", (id, &code));
         }
-        requests.waiting.insert(id, (code, sender));
+        requests.waiting.insert(id, (code, window.label().to_string(), sender));
     }
     receiver.recv().await.unwrap_or_else(|| Err("R stopped unexpectedly.".into()))
 }
 
 #[tauri::command]
 fn r_result(engine: State<REngine>, id: u64, values: Option<HashMap<String, Option<f64>>>, error: Option<String>) {
-    if let Some((_, sender)) = engine.0.lock().unwrap().waiting.remove(&id) {
+    if let Some((_, _, sender)) = engine.0.lock().unwrap().waiting.remove(&id) {
         let _ = sender.try_send(values.ok_or_else(|| error.unwrap_or_default()));
     }
 }
 
-/// Stop the R running in the engine window, from a project window (its
-/// watchdog fired, or the user hit Cancel). The waiting requests are dropped
-/// — their project windows' own watchdogs reject instead of waiting forever —
-/// and the engine is told to interrupt its R. The engine is the app's one R,
-/// so this stops it for every window at once. If the interrupt does not free
-/// R, the engine window's own watchdog restarts it (dropping its waiters here
-/// first, so the hung code is not re-sent when the engine says it is ready).
+/// Stop this window's own R work in the engine, from a project window (its
+/// watchdog fired, or the user hit Cancel). Only the calling window's
+/// waiting requests are dropped (FL-F14): clearing every window's used to
+/// kill another window's in-flight install with "R stopped unexpectedly."
+/// The engine is told which requests were dropped, so it can dequeue them
+/// without touching R — and interrupts R only if the evaluation now running
+/// is one of the dropped ones. From the engine window itself (its
+/// stuck-engine recovery) the old behaviour stands: every waiting request
+/// is dropped and the engine is told to interrupt, before the reload.
 #[tauri::command]
-fn cancel_r(app: AppHandle, engine: State<'_, REngine>) {
-    engine.0.lock().unwrap().waiting.clear();
-    let _ = app.emit_to("engine", "r-interrupt", ());
+fn cancel_r(app: AppHandle, window: WebviewWindow, engine: State<'_, REngine>) {
+    let caller = window.label().to_string();
+    if caller == "engine" {
+        engine.0.lock().unwrap().waiting.clear();
+        let _ = app.emit_to("engine", "r-interrupt", ());
+        return;
+    }
+    let dropped: Vec<u64> = {
+        let mut requests = engine.0.lock().unwrap();
+        let mut dropped = Vec::new();
+        requests.waiting.retain(|id, (_, owner, _)| {
+            if *owner == caller {
+                dropped.push(*id);
+                false
+            } else {
+                true
+            }
+        });
+        dropped
+    };
+    if !dropped.is_empty() {
+        let _ = app.emit_to("engine", "r-cancel", dropped);
+    }
 }
 
 #[tauri::command]
 fn r_ready(app: AppHandle, engine: State<REngine>) {
     let mut requests = engine.0.lock().unwrap();
     requests.ready = true;
-    for (id, (code, _)) in &requests.waiting {
+    for (id, (code, _, _)) in &requests.waiting {
         let _ = app.emit_to("engine", "r-eval", (id, code));
     }
 }
