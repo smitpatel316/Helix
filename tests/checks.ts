@@ -9,7 +9,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { EvalCancelledError, ensurePackages, evalNamedVector, packageDiagnostics, packageStatus, resetR, setPackageRepo, startR } from "../src/stats/webr";
+import { cancelActiveEvals, EvalCancelledError, ensurePackages, evalNamedVector, packageDiagnostics, packageStatus, resetR, setPackageRepo, startR } from "../src/stats/webr";
 import {
   createEvalQueue,
   getRQueueSnapshot,
@@ -7509,6 +7509,71 @@ check("an engine restart clears package states, so the next analysis reinstalls 
     packageDiagnostics().installsStarted > started,
     "the re-run must have started a fresh install",
   );
+});
+
+// R3-03: a cancel in the engine never escalated — both listeners called a
+// bare interruptR(), a no-op on Tauri's PostMessage channel, so a wedged
+// engine sat out the full 5-minute watchdog budget instead of the
+// 5-second grace → reload. They now also abort the live evaluations, and
+// the shell clears its `ready` flag on reload / (re)start, so a request
+// arriving mid-reload is sent once instead of twice. (FL-F14 already
+// fixed the other leg — cancel_r dropping every window's requests — so
+// this check does not re-litigate it.)
+check("a cancel in the engine escalates through the watchdog, and a mid-reload request is sent once (R3-03)", async () => {
+  // The wiring, leg (a): both engine-window listeners abort the live
+  // evaluations (not just a bare interrupt), so the watchdog's 5-second
+  // grace starts and a stuck engine is abandoned + reloaded.
+  const native = readFileSync("src/native.ts", "utf8");
+  const serveR = native.slice(
+    native.indexOf("export async function serveR"),
+    native.indexOf("export async function onRQueue"),
+  );
+  ok(
+    (serveR.match(/cancelActiveEvals\(\)/g) ?? []).length >= 2,
+    "both engine-window cancel listeners must abort the live evaluations",
+  );
+  ok(
+    /runningCancelled/.test(serveR) && /cancelActiveEvals\(\)/.test(serveR),
+    "a cancelled running evaluation must reach cancelActiveEvals",
+  );
+  // The wiring, leg (b): the shell clears `ready` when the engine reloads
+  // and when it (re)starts, and serveR announces the (re)start before its
+  // listeners attach.
+  const main = readFileSync("src-tauri/src/main.rs", "utf8");
+  ok(/fn r_starting/.test(main), "the shell must expose r_starting");
+  ok(/r_starting,/.test(main), "r_starting must be registered as a command");
+  const cancelR = main.slice(main.indexOf("fn cancel_r"), main.indexOf("fn r_starting"));
+  ok(/ready = false/.test(cancelR), "the engine's own cancel must clear ready before the reload");
+  const rStarting = main.slice(main.indexOf("fn r_starting"), main.indexOf("fn r_ready"));
+  ok(/ready = false/.test(rStarting), "r_starting must clear ready until the engine says it is ready");
+  ok(/invoke\("r_starting"\)/.test(serveR), "serveR must announce the (re)start");
+  ok(
+    serveR.indexOf('invoke("r_starting")') < serveR.indexOf('listen<[number, string]>("r-eval"'),
+    "r_starting must come before the listeners attach",
+  );
+  ok(
+    serveR.indexOf('invoke("r_starting")') < serveR.indexOf('invoke("r_ready")'),
+    "r_starting must come before r_ready",
+  );
+  // The runtime proof, leg (a): a long evaluation aborted through
+  // cancelActiveEvals rejects promptly with EvalCancelledError — it must
+  // not sit out the 5-minute watchdog budget the way the bare-interrupt
+  // path did. (The Tauri listener wiring above is code-level: there is no
+  // engine window in this process.)
+  await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
+  const started = Date.now();
+  const pending = evalNamedVector("Sys.sleep(30); c(a=1)");
+  await new Promise((r) => setTimeout(r, 500));
+  cancelActiveEvals();
+  await rejects(pending, (err: unknown) => err instanceof EvalCancelledError);
+  const elapsed = Date.now() - started;
+  ok(elapsed < 30_000, `cancel took ${elapsed} ms — the engine must not sit out the 5-minute budget`);
+  // The cancel may have escalated to restarting the engine (the
+  // watchdog's grace expiry abandons a stuck engine): re-boot explicitly,
+  // as the M15 check does, so the retry below proves R itself is healthy
+  // either way.
+  await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
+  deepStrictEqual(await evalNamedVector("c(a=1)"), { a: 1 });
 });
 
 // ── Open-format nudge (prism-format-work (f)) ─────────────────────────────
