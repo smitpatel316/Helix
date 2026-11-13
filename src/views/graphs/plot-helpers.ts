@@ -321,13 +321,41 @@ export const jitter = (col: number, i: number) => {
   return (s - Math.floor(s) - 0.5) * 0.3;
 };
 
-/** The least space around the plot area. Every axis has `automargin`, so Plotly widens
- *  it just enough for tick labels, axis titles and legends: the sheet hugs the figure. */
+/** The least space around the plot area. Every axis has `automargin`, so Plotly
+ *  widens it just enough for tick labels and axis titles — but automargin does
+ *  NOT cover a legend or colorbar placed outside the plot area, so those
+ *  reserve their own room (see `legendRightMargin`) instead of relying on it. */
 export const marginsFor = (options: GraphOptions) => ({ l: 16, r: 16, t: options.title ? 44 : 16, b: 16 });
 
+/** Width in px a legend needs past the plot's right edge: its marker + gap
+ *  plus the longest series name at the graph's font size. Capped so one very
+ *  long name doesn't eat the plot — the user can still drag the legend inside. */
+const LEGEND_MARKER_PX = 24;
+const LEGEND_MAX_PX = 260;
+export const legendWidthPx = (names: string[], fontSize: number): number =>
+  names.length === 0
+    ? 0
+    : Math.min(
+        LEGEND_MARKER_PX + Math.ceil(Math.max(...names.map((n) => n.length)) * fontSize * 0.6) + 8,
+        LEGEND_MAX_PX,
+      );
+
+/** The right margin a layout needs when its legend is shown outside the plot
+ *  at its default spot: the 1.02 offset (~2% of the plot, ~12 px at usual
+ *  widths) plus the legend's own width. A legend the user dragged inside
+ *  (x < 1) needs no room. With no names to measure, reserve a typical
+ *  legend's width rather than clipping. */
+const LEGEND_OFFSET_PX = 12;
+export const legendRightMargin = (options: GraphOptions, names: string[]): number => {
+  const x = options.legend?.x ?? 1.02;
+  if (x < 1) return 16;
+  return Math.max(16, LEGEND_OFFSET_PX + (names.length ? legendWidthPx(names, options.fontSize) : 120));
+};
+
 /** Page skeleton shared by every graph family (background, static-chart dragmode,
- *  font, margins, title) — only the axis shape differs per family. */
-function chromeLayout(options: GraphOptions): Record<string, unknown> {
+ *  font, margins, title) — only the axis shape differs per family. `rightMargin`
+ *  overrides the right margin where a legend or colorbar needs the room (M13). */
+function chromeLayout(options: GraphOptions, rightMargin?: number): Record<string, unknown> {
   const background = options.background === "transparent" ? "rgba(0,0,0,0)" : "#ffffff";
   return {
     paper_bgcolor: background,
@@ -336,7 +364,7 @@ function chromeLayout(options: GraphOptions): Record<string, unknown> {
     // rescales the whole plot, so the axes/bars resize instead of adding space.
     dragmode: false,
     font: { color: INK, family: FONT, size: options.fontSize },
-    margin: marginsFor(options),
+    margin: rightMargin == null ? marginsFor(options) : { ...marginsFor(options), r: rightMargin },
     // xref: "paper" centers over the plot area (inside the margins), matching where the
     // X-axis title centers — the default "container" ref centers over the whole figure
     // width instead, which drifts off-center since the Y labels widen the left margin.
@@ -442,11 +470,14 @@ export function pieLayout(options: GraphOptions): Record<string, unknown> {
 }
 
 /** Heatmap layout: two categorical axes (columns = variables, rows = table row
- *  order), reversed on Y so row 1 sits at the top like the table itself. The colorscale
- *  legend, when shown, widens the right margin on its own. */
+ *  order), reversed on Y so row 1 sits at the top like the table itself. The
+ *  colorscale legend needs its own room past the right edge (M13): Plotly's
+ *  default bar (30 px) plus its numeric tick labels plus the 1.02 offset. */
+const COLORBAR_PX = 30 + 36 + 12;
 export function heatmapLayout(options: GraphOptions, colNames: string[], rowNames: string[]): Record<string, unknown> {
+  const colorbarOutside = options.heatmapShowScale && (options.legend?.x ?? 1.02) >= 1;
   return {
-    ...chromeLayout(options),
+    ...chromeLayout(options, colorbarOutside ? Math.max(16, COLORBAR_PX) : undefined),
     showlegend: false,
     xaxis: {
       type: "category",
@@ -469,15 +500,16 @@ export function heatmapLayout(options: GraphOptions, colNames: string[], rowName
 
 /** XY family layout: a genuine numeric X axis (not category ticks), with a legend
  *  once there's more than one Y series. `xName` (the X column's name) and `yName`
- *  title the axes the user hasn't titled. */
+ *  title the axes the user hasn't titled. The legend's series names reserve the
+ *  right margin (M13) so the legend isn't clipped at the figure edge. */
 export function xyLayout(
   options: GraphOptions,
   xName: string,
   seriesCount: number,
-  opts: { zeroBase?: boolean; yName?: string } = {},
+  opts: { zeroBase?: boolean; yName?: string; seriesNames?: string[] } = {},
 ): Record<string, unknown> {
   return {
-    ...chromeLayout(options),
+    ...chromeLayout(options, seriesCount > 1 ? legendRightMargin(options, opts.seriesNames ?? []) : undefined),
     showlegend: seriesCount > 1,
     legend: legendOf(options),
     xaxis: {
@@ -596,11 +628,12 @@ export function separatedPositions(groups: number, labels: string[]): SeparatedA
 
 /** Bar layout for the grouped family: a category axis for the rows and a numeric
  *  value axis, swapped when `horizontal`. The value axis reuses the Y-scale
- *  options; the category axis reuses the X-axis label. */
+ *  options; the category axis reuses the X-axis label. The legend's group names
+ *  reserve the right margin (M13) so the legend isn't clipped at the figure edge. */
 export function groupedBarLayout(
   options: GraphOptions,
   seriesCount: number,
-  opts: { horizontal?: boolean; separated?: SeparatedAxis } = {},
+  opts: { horizontal?: boolean; separated?: SeparatedAxis; seriesNames?: string[] } = {},
 ): Record<string, unknown> {
   const value = {
     ...axisChrome(options),
@@ -622,7 +655,7 @@ export function groupedBarLayout(
     ...axisTitle(options.xLabel, options.xTitleGap),
   };
   return {
-    ...chromeLayout(options),
+    ...chromeLayout(options, seriesCount > 1 ? legendRightMargin(options, opts.seriesNames ?? []) : undefined),
     showlegend: seriesCount > 1,
     legend: legendOf(options),
     xaxis: opts.horizontal ? value : category,
@@ -637,9 +670,10 @@ export function groupedScatterLayout(
   labels: string[],
   seriesCount: number,
   separated?: SeparatedAxis,
+  seriesNames: string[] = [],
 ): Record<string, unknown> {
   return {
-    ...chromeLayout(options),
+    ...chromeLayout(options, seriesCount > 1 ? legendRightMargin(options, seriesNames) : undefined),
     showlegend: seriesCount > 1,
     legend: legendOf(options),
     xaxis: {

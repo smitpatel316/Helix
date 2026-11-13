@@ -27,7 +27,7 @@ function survivorCountsStep(x: number[], counts: number[]): { t: number[]; s: nu
 
 function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFigure {
   const [xCol, ...ySeries] = columns;
-  const layout = xyLayout(options, xCol?.name ?? "Time", ySeries.length, { zeroBase: true, yName: "Percent survival" });
+  const layout = xyLayout(options, xCol?.name ?? "Time", ySeries.length, { zeroBase: true, yName: "Percent survival", seriesNames: ySeries.map((y) => y.name) });
   if (!xCol || ySeries.length === 0) return { data: [], layout };
 
   const byCodes = options.survivalMode !== "counts";

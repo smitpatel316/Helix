@@ -33,7 +33,7 @@ function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFig
     };
   });
 
-  return { data, layout: xyLayout(options, xCol.name, ySeries.length) };
+  return { data, layout: xyLayout(options, xCol.name, ySeries.length, { seriesNames: ySeries.map((y) => y.name) }) };
 }
 
 export const xyScatter: GraphModule = {

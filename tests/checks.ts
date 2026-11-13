@@ -63,7 +63,7 @@ import { adjustComparisonRows, adjustPValues, incompleteRows, missingColumn } fr
 import { dagostinoPearson } from "../src/stats/column/shapiro-wilk";
 import { parseGroupLevels, toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
 import { initialAnswer } from "../src/views/analyses/analysis-wizard";
-import { addNote, movedText, paintOf, vectorTraces, visibleOutline, withCaps } from "../src/views/graphs/plot-helpers";
+import { addNote, groupedBarLayout, groupedScatterLayout, heatmapLayout, legendRightMargin, legendWidthPx, movedText, paintOf, vectorTraces, visibleOutline, withCaps, xyLayout } from "../src/views/graphs/plot-helpers";
 import {
   drawnKeys,
   drawnStyle,
@@ -2332,6 +2332,31 @@ check("texts moved by hand stay where they were dropped", () => {
     [o.legend, o.note, o.points],
     [{ x: 0.9, y: 0.4 }, undefined, { "Y1#0": { labelOffset: { x: 12, y: -8 } } }],
   );
+});
+
+check("a legend shown outside the plot reserves its own right margin (M13)", () => {
+  const options = { ...newGraphOptions("xy-scatter") };
+  const names = ["Control", "Treated with a very long drug name"];
+  // A two-series XY graph reserves room for the legend past the right edge.
+  const two = xyLayout(options, "X", 2, { seriesNames: names });
+  const right = (two.margin as { r: number }).r;
+  ok(right > 16);
+  strictEqual(right, legendRightMargin(options, names));
+  // The room covers the legend itself: its offset past the plot plus its width.
+  ok(right >= 12 + legendWidthPx(names, options.fontSize));
+  // One series shows no legend and keeps the tight margin.
+  strictEqual((xyLayout(options, "X", 1).margin as { r: number }).r, 16);
+  // A legend the user dragged inside the plot needs no room.
+  const inside = xyLayout({ ...options, legend: { x: 0.5, y: 0.2 } }, "X", 2, { seriesNames: ["A", "B"] });
+  strictEqual((inside.margin as { r: number }).r, 16);
+  // Grouped bar + scatter with two groups reserve room for the group names.
+  ok((groupedBarLayout(options, 2, { seriesNames: ["Drug", "Placebo"] }).margin as { r: number }).r > 16);
+  ok((groupedScatterLayout(options, ["R1", "R2"], 2, undefined, ["Drug", "Placebo"]).margin as { r: number }).r > 16);
+  // A heatmap with its scale shown reserves the colorbar's room (30 px bar +
+  // numeric ticks + offset); without the scale it keeps the tight margin.
+  const heat = heatmapLayout({ ...options, heatmapShowScale: true }, ["A", "B"], ["R1"]);
+  ok((heat.margin as { r: number }).r >= 78);
+  strictEqual((heatmapLayout({ ...options, heatmapShowScale: false }, ["A", "B"], ["R1"]).margin as { r: number }).r, 16);
 });
 
 // ── Selected points ──────────────────────────────────────────────────────
