@@ -90,6 +90,19 @@ export function analysisOptionsForTable(tableType: TableType, data?: TableData):
   });
 }
 
+/** The key the native Analysis menu depends on for its data-dependent items:
+ *  the offered tests, joined. It changes exactly when the offered set changes
+ *  (a row band added/removed, a nested group gaining/losing data) and stays
+ *  put on edits that don't change the set, so the menu effect re-runs only
+ *  when the menu itself would change — without it the menu goes stale once
+ *  `isDirty` is true and consecutive edits share an `undoName` (BUG-REPORT #16). */
+export function analysisOptionsKey(tableType: TableType | undefined, data?: TableData): string {
+  if (!tableType) return "";
+  return analysisOptionsForTable(tableType, data)
+    .map((o) => o.value)
+    .join(",");
+}
+
 /** Count data columns (excluding the leading Title column) that hold ≥1 numeric value. */
 export function countDataColumns(data: TableData | undefined): number {
   if (!data) return 0;

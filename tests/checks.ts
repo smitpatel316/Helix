@@ -55,7 +55,7 @@ import {
   writeBlock,
 } from "../src/views/tables/table-data";
 import { flattenThreeWay, rowGroupBands } from "../src/stats/grouped/base";
-import { analysisOptionsForTable } from "../src/views/analyses";
+import { analysisOptionsForTable, analysisOptionsKey } from "../src/views/analyses";
 import { followTable } from "../src/store/references";
 import { pairKey } from "../src/lib/columns";
 import {
@@ -1885,6 +1885,54 @@ check("the three-way ANOVA is offered only with at least 2 row bands", () => {
     "multiple-t-tests",
   ]);
   deepStrictEqual(values(), ["two-way-anova", "mixed-effects", "multiple-t-tests"]);
+});
+
+// The native Analysis menu's effect depends on this key, not on the table data
+// itself: it must change exactly when the data-dependent items change, or the
+// menu goes stale once isDirty is true and consecutive edits share an undoName
+// (BUG-REPORT #16 — three-way ANOVA, nested t-test, nested ANOVA).
+check("the native Analysis menu key follows the data-dependent tests (R3-16)", () => {
+  const grouped: TableData = {
+    columns: ["Title", "A:Y1"],
+    rows: [["r1", "1"], ["r2", "2"]],
+    groups: 1,
+    replicates: 1,
+    rowGroups: [{ name: "All rows", count: 2 }],
+  };
+  const twoBands: TableData = {
+    ...grouped,
+    rowGroups: [
+      { name: "WT", count: 1 },
+      { name: "KO", count: 1 },
+    ],
+  };
+  // A second row band offers the three-way ANOVA, so the key must change.
+  ok(analysisOptionsKey("grouped", grouped) !== analysisOptionsKey("grouped", twoBands));
+  ok(analysisOptionsKey("grouped", twoBands).includes("three-way-anova"));
+  // A value-only edit leaves the offered set alone, so the key stays put.
+  strictEqual(
+    analysisOptionsKey("grouped", twoBands),
+    analysisOptionsKey("grouped", { ...twoBands, rows: [["r1", "9"], ["r2", "8"]] }),
+  );
+  const nestedTwo: TableData = {
+    columns: ["Title", "A:S1:R1", "B:S1:R1"],
+    rows: [[null, "1", "2"]],
+    groups: 2,
+    subgroups: 1,
+    replicates: 1,
+  };
+  const nestedThree: TableData = {
+    columns: ["Title", "A:S1:R1", "B:S1:R1", "C:S1:R1"],
+    rows: [[null, "1", "2", "3"]],
+    groups: 3,
+    subgroups: 1,
+    replicates: 1,
+  };
+  // A third data group swaps the nested t-test for the nested ANOVA.
+  ok(analysisOptionsKey("nested", nestedTwo) !== analysisOptionsKey("nested", nestedThree));
+  strictEqual(analysisOptionsKey("nested", nestedTwo), "nested-t-test");
+  strictEqual(analysisOptionsKey("nested", nestedThree), "nested-anova");
+  strictEqual(analysisOptionsKey(undefined, nestedTwo), "");
 });
 
 check("the three-way ANOVA wizard asks for a post-hoc term only when comparing", () => {
