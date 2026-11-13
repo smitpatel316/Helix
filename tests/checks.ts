@@ -76,6 +76,7 @@ import {
   withoutSelection,
 } from "../src/views/graphs/selection";
 import { genesNamed } from "../src/views/graphs/volcano";
+import { addForestPlot } from "../src/views/graphs/forest-plot";
 import { examplesFor, matched, type Matched } from "../src/views/graphs/match-graph";
 import type { OutlineNode } from "../src/store/use-project-store";
 import { deriveComparisons } from "../src/views/graphs/significance-overlay";
@@ -3573,6 +3574,61 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
     covariates: ["Treatment", "Years"],
     stratifyBy: "Treatment",
   });
+});
+
+check("the forest plot drops non-finite or non-positive hazard ratios instead of blanking on a log axis (R2-M14)", () => {
+  const options = newGraphOptions("forest-plot");
+  const fig = GRAPHS["forest-plot"].build([], options, paintOf(options, 1));
+  // Under separation a Cox CI underflows to 0 or overflows to Inf (and the
+  // hazard ratio itself can underflow to 0): log10 of those is -Infinity /
+  // Infinity, an invalid Plotly range that blanked the whole plot.
+  const outcome: AnalysisResult = {
+    testType: "cox-proportional-hazards",
+    stats: [],
+    groups: [],
+    notes: "",
+    coefficients: [
+      { term: "Trt", estimate: null, stdError: null, t: null, p: null, hazardRatio: 0.3672, low: 0.1009, high: 1.3369 },
+      { term: "Age", estimate: null, stdError: null, t: null, p: null, hazardRatio: 2.1, low: 0, high: 4.5 },
+      { term: "Sex", estimate: null, stdError: null, t: null, p: null, hazardRatio: 1.4, low: 0.8, high: Number.POSITIVE_INFINITY },
+      { term: "Stage", estimate: null, stdError: null, t: null, p: null, hazardRatio: 0, low: 0.5, high: 2 },
+    ],
+  };
+  addForestPlot(fig, outcome, paintOf(options, 1), options);
+  const traces = fig.data as { mode?: string; x?: number[]; y?: string[]; text?: string[] }[];
+  const row = traces.find((t) => t.mode === "markers");
+  deepStrictEqual(row?.y, ["Trt"]);
+  deepStrictEqual(row?.x, [0.3672]);
+  const xaxis = fig.layout.xaxis as { type?: string; range?: number[] };
+  ok(
+    xaxis.range?.every((v) => Number.isFinite(v)),
+    `forest-plot range must be finite, got ${JSON.stringify(xaxis.range)}`,
+  );
+  const notes = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+  ok(
+    notes.some((n) => n.text?.includes("“Age”") && n.text?.includes("“Sex”") && n.text?.includes("“Stage”")),
+    `omitted covariates must be named on the figure, got ${JSON.stringify(notes.map((n) => n.text))}`,
+  );
+  // All rows degenerate: nothing to draw, but the note still lands and
+  // nothing throws — the figure keeps its (log, empty) axes.
+  const empty = GRAPHS["forest-plot"].build([], options, paintOf(options, 1));
+  addForestPlot(
+    empty,
+    {
+      testType: "cox-proportional-hazards",
+      stats: [],
+      groups: [],
+      notes: "",
+      coefficients: [{ term: "Age", estimate: null, stdError: null, t: null, p: null, hazardRatio: 2.1, low: 0, high: 4.5 }],
+    },
+    paintOf(options, 1),
+    options,
+  );
+  strictEqual(empty.data.length, 0);
+  ok(
+    ((empty.layout.annotations as { text?: string }[] | undefined) ?? []).some((n) => n.text?.includes("“Age”")),
+    "the all-dropped note must still name the omitted covariate",
+  );
 });
 
 check("the PCA wizard asks scale then components, defaulting to the correlation matrix and all components", () => {
