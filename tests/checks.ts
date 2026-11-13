@@ -4796,6 +4796,23 @@ check(".pzfx import names summary subcolumns and warns they aren't replicates", 
   ok(imported.issues.some((i) => i.message.includes("not raw replicates")), "warns about summaries");
 });
 
+check(".pzfx import never assumes an empty YFormat means replicates (FF-F7)", () => {
+  // twoway_empty_yformat.pzfx is the column_sdn.pzfx table (TwoWay, 3
+  // mean/SD/N-shaped subcolumns per group) with YFormat blanked. Before the
+  // fix it imported as a grouped table (groups 2, replicates 3) with no
+  // warning, so a group comparison would treat the means as raw replicates.
+  const { imported, table } = importedTable("twoway_empty_yformat");
+  strictEqual(table.tableType, "column");
+  strictEqual(table.data!.groups, undefined);
+  strictEqual(table.data!.replicates, undefined);
+  deepStrictEqual(table.data!.columns, ["Title", "A_1", "A_2", "A_3", "B_1", "B_2", "B_3"]);
+  deepStrictEqual(table.data!.rows[0], ["Low", "100", "10", "2", "10", "1", "10"]);
+  ok(
+    imported.issues.some((i) => i.message.includes("empty YFormat") && i.message.includes("not replicates")),
+    "warns the Y format wasn't recorded and the subcolumns aren't replicates",
+  );
+});
+
 check(".pzfx import refuses files that aren't .pzfx", () => {
   for (const text of ["hello", "<GraphPadPrismFile></GraphPadPrismFile>", "<Other><Table/></Other>"]) {
     const imported = parsePzfx(text);

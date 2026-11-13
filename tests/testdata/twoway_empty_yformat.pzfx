@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GraphPadPrismFile PrismXMLVersion="5.00">
+<TableSequence>
+<Ref ID="Table0" Selected="1"></Ref>
+</TableSequence>
+<Table ID="Table0" XFormat="none" YFormat="" TableType="TwoWay" EVFormat="AsteriskAfterNumber">
+<Title>Data 1</Title>
+<RowTitlesColumn Width="1">
+<Subcolumn>
+<d>Low</d>
+<d>Medium</d>
+<d>High</d>
+</Subcolumn>
+</RowTitlesColumn>
+<YColumn Width="243" Decimals="0" Subcolumns="3">
+<Title>A</Title>
+<Subcolumn>
+<d>100</d>
+<d>110</d>
+<d>120</d>
+</Subcolumn>
+<Subcolumn>
+<d>10</d>
+<d>20</d>
+<d>30</d>
+</Subcolumn>
+<Subcolumn>
+<d>2</d>
+<d>3</d>
+<d>4</d>
+</Subcolumn>
+</YColumn>
+<YColumn Width="243" Decimals="0" Subcolumns="3">
+<Title>B</Title>
+<Subcolumn>
+<d>10</d>
+<d>20</d>
+<d>30</d>
+</Subcolumn>
+<Subcolumn>
+<d>1</d>
+<d>2</d>
+<d>3</d>
+</Subcolumn>
+<Subcolumn>
+<d>10</d>
+<d>20</d>
+<d>30</d>
+</Subcolumn>
+</YColumn>
+</Table>
+</GraphPadPrismFile>
