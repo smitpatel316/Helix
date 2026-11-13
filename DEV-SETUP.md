@@ -3,10 +3,17 @@
 Linux is a **first-class dev/test platform** for Titer (Smit's call,
 2026-11-08: "get it working on Linux so you can build, test independently
 without my need"). The **Mac DMG stays the release target for Mansi** —
-signing/notarization and the Mac-only UI polish still need a Mac. Do not
-test on Smit's MacBook — Smit does all Mac testing himself.
+signing/notarization and the Mac-only UI polish still need a Mac. Mac GUI
+proofs run on Smit's MacBook via the device route (Smit's call, 2026-11-09:
+agents may install and test everything needed): background control only,
+never steal focus, stop GUI work immediately if Smit starts using the Mac,
+and never kill/restart the device gateway from SSH. DMGs are built on the
+Mac itself (`scripts/build-mac-dmg.sh`).
 
-Last verified: 2026-11-08, branch `feat/prism-import-survival`.
+Last verified: 2026-11-13, branch `feat/prism-import-survival` (suite green
+on the launch tip; this doc's version table below is the Nov 8 snapshot —
+re-run `scripts/setup-linux.sh` after every container replacement, which
+reinstalls the system `-dev` packages the table lists).
 Linux release build verified 2026-11-08 23:05, then **re-verified 23:37
 after the ~23:20 container replacement** (apt reinstall via
 `scripts/setup-linux.sh` + full rebuild).
