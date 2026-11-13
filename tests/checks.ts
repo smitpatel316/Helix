@@ -7728,6 +7728,39 @@ check("the release pipeline builds webr-repo/, and the CSP allows the CDN fallba
   );
 });
 
+// ── R3-17: the engine window can show dialogs ─────────────────────────────
+// With no project window open, the hidden engine window sets the menu bar
+// (engine.ts), so "Check for Updates…" and the missing-file alert
+// (menus.ts: sayGone) run there — and both go through the dialog plugin
+// (native.ts: alert/askToDownload → message()). The engine capability
+// granted only "core:default", so those calls failed with a permission
+// error whenever no project window was open. The project windows already
+// had "dialog:default" (capabilities/default.json); this pins the engine
+// window to the same. Static assertion: there is no dialog call in the
+// test harness, and the permission is what the runtime enforces.
+check("the engine window grants dialog:default, so Check for Updates and missing-file alerts work with no project open (R3-17)", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const engine = JSON.parse(readFileSync(join(root, "src-tauri/capabilities/engine.json"), "utf8")) as {
+    windows: string[];
+    permissions: string[];
+  };
+  ok(engine.windows.includes("engine"), "capabilities/engine.json must target the engine window");
+  ok(
+    engine.permissions.includes("dialog:default"),
+    `capabilities/engine.json permissions must include "dialog:default" (has: ${engine.permissions.join(", ")})`,
+  );
+  // The dialog calls the windowless menu bar depends on must actually be
+  // the plugin's message dialog, not a window.alert fallback.
+  const native = readFileSync(join(root, "src/native.ts"), "utf8");
+  ok(
+    native.includes('from "@tauri-apps/plugin-dialog"'),
+    "src/native.ts must use @tauri-apps/plugin-dialog for alerts",
+  );
+  const menus = readFileSync(join(root, "src/menus.ts"), "utf8");
+  ok(menus.includes("checkForUpdates()"), "the windowless menu bar must offer Check for Updates…");
+  ok(menus.includes("sayGone"), "the windowless menu bar must report a missing recent file");
+});
+
 // ── Replicate pooling (prism-format-work (b)/(g)) ─────────────────────────
 // An imported Prism analysis names its Y data set ("Control"), not a column
 // — the fit pools the data set's replicate columns, as Prism does.
