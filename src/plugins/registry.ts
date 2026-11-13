@@ -79,10 +79,7 @@ const entries = new Map<string, PluginAnalysisEntry>();
  * namespaced id and any spec problem. The plugin id must be a valid
  * manifest id (see manifest.ts).
  */
-export function registerPluginAnalysis(
-  pluginId: string,
-  specValue: unknown,
-): { id: string } | { errors: string[] } {
+export function registerPluginAnalysis(pluginId: string, specValue: unknown): { id: string } | { errors: string[] } {
   if (!isValidPluginId(pluginId)) return { errors: [`Plugin id “${pluginId}” is not a valid plugin id.`] };
   const validated = validatePluginAnalysisSpec(specValue, { allowTypeScriptCompute: true });
   if ("errors" in validated) return { errors: validated.errors };

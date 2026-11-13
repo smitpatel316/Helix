@@ -210,7 +210,8 @@ export function confirmEnable(
     return { ...record, status: "incompatible", incompatibility };
   }
   const registered = registerPluginAnalysesFromManifest(record.manifest.id, record.analyses);
-  if ("errors" in registered) throw new Error(`Could not enable plugin “${record.manifest.id}”: ${registered.errors.join(" ")}`);
+  if ("errors" in registered)
+    throw new Error(`Could not enable plugin “${record.manifest.id}”: ${registered.errors.join(" ")}`);
   return { ...record, status: "enabled", grantedPermissions: [...granted], incompatibility: undefined };
 }
 

@@ -68,7 +68,16 @@ export type PluginQuestion =
       options: { value: string; label: string }[] | "columns";
       emptyMessage?: string;
     }
-  | { id: string; ask: string; kind: "number"; label: string; initial: number; min?: number; max?: number; step?: number }
+  | {
+      id: string;
+      ask: string;
+      kind: "number";
+      label: string;
+      initial: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }
   | { id: string; ask: string; kind: "names"; options: string[] | "columns"; min?: number }
   | { id: string; ask: string; kind: "text"; label: string; initial: string; placeholder?: string };
 
@@ -85,15 +94,11 @@ export interface PluginTsComputeOutput {
   stats: StatRow[];
   notes?: string;
 }
-export type PluginTsCompute = (
-  input: PluginTsComputeInput,
-) => Promise<PluginTsComputeOutput> | PluginTsComputeOutput;
+export type PluginTsCompute = (input: PluginTsComputeInput) => Promise<PluginTsComputeOutput> | PluginTsComputeOutput;
 
 /** How a plugin analysis computes: R code through webR, or a TypeScript
  *  function (code registration only). */
-export type PluginCompute =
-  | { kind: "r"; code: string }
-  | { kind: "typescript"; run: PluginTsCompute };
+export type PluginCompute = { kind: "r"; code: string } | { kind: "typescript"; run: PluginTsCompute };
 
 /** The JSON form of the computation: R only. */
 export type PluginComputeJson = { kind: "r"; code: string };
@@ -126,11 +131,7 @@ export interface PluginAnalysisSpec {
   compute: PluginCompute;
   notes?: string;
   requiredPackages?: string[];
-  rows?: (
-    v: Record<string, number | null>,
-    groups: GroupDescriptives[],
-    params: PluginParamValues,
-  ) => StatRow[];
+  rows?: (v: Record<string, number | null>, groups: GroupDescriptives[], params: PluginParamValues) => StatRow[];
 }
 
 // ── R static scan ──────────────────────────────────────────────────────────
@@ -141,10 +142,19 @@ export interface PluginAnalysisSpec {
 // clear message instead of letting it reach the engine.
 const FORBIDDEN_R_PATTERNS: { pattern: RegExp; message: string }[] = [
   { pattern: /\b(system|shell)\s*\(/, message: "must not run shell commands (system()/shell())" },
-  { pattern: /\b(library|require)\s*\(/, message: "must not load packages inline (library()/require()) — declare them in requiredPackages" },
+  {
+    pattern: /\b(library|require)\s*\(/,
+    message: "must not load packages inline (library()/require()) — declare them in requiredPackages",
+  },
   { pattern: /\bsource\s*\(/, message: "must not source files (source())" },
-  { pattern: /\b(download\.file|url|socketConnection)\s*\(/, message: "must not reach the network (download.file()/url()/socketConnection())" },
-  { pattern: /\b(readLines|read\.csv|read\.table|scan)\s*\(/, message: "must not read files (readLines()/read.csv()/read.table()/scan())" },
+  {
+    pattern: /\b(download\.file|url|socketConnection)\s*\(/,
+    message: "must not reach the network (download.file()/url()/socketConnection())",
+  },
+  {
+    pattern: /\b(readLines|read\.csv|read\.table|scan)\s*\(/,
+    message: "must not read files (readLines()/read.csv()/read.table()/scan())",
+  },
   { pattern: /\b(file|list\.files|dir)\s*\(/, message: "must not touch the filesystem (file()/list.files()/dir())" },
   { pattern: /\beval\s*\(/, message: "must not evaluate generated code (eval())" },
 ];
@@ -178,7 +188,9 @@ function validateQuestions(
     }
     const id = q.id as string;
     if (!parameterKeys.has(id)) {
-      errors.push(`Wizard question “${id}” does not answer any declared parameter — question ids must be parameter keys.`);
+      errors.push(
+        `Wizard question “${id}” does not answer any declared parameter — question ids must be parameter keys.`,
+      );
       continue;
     }
     if (!isNonEmptyString(q.ask)) {
@@ -251,11 +263,7 @@ function validateQuestions(
             options: "columns",
             ...(typeof q.min === "number" ? { min: q.min } : {}),
           });
-        } else if (
-          Array.isArray(q.options) &&
-          q.options.length > 0 &&
-          q.options.every((o) => typeof o === "string")
-        ) {
+        } else if (Array.isArray(q.options) && q.options.length > 0 && q.options.every((o) => typeof o === "string")) {
           questions.push({
             id,
             ask: q.ask as string,
@@ -312,9 +320,7 @@ export function validatePluginAnalysisSpec(
   }
   if (!isNonEmptyString(v.label)) errors.push("Analysis label must be a non-empty string.");
   if (!Array.isArray(v.tableTypes) || v.tableTypes.length === 0 || !v.tableTypes.every(isTableType)) {
-    errors.push(
-      `Analysis tableTypes must list at least one of: ${PLUGIN_TABLE_TYPES.join(", ")}.`,
-    );
+    errors.push(`Analysis tableTypes must list at least one of: ${PLUGIN_TABLE_TYPES.join(", ")}.`);
   }
   if (typeof v.minColumns !== "number" || !Number.isInteger(v.minColumns) || v.minColumns < 1) {
     errors.push("Analysis minColumns must be a whole number of at least 1.");
@@ -350,7 +356,7 @@ export function validatePluginAnalysisSpec(
   let compute: PluginCompute | PluginComputeJson | undefined;
   const c = v.compute as Record<string, unknown> | undefined;
   if (typeof c !== "object" || c === null) {
-    errors.push("Analysis compute must declare how it computes (kind \"r\" with code, or kind \"typescript\").");
+    errors.push('Analysis compute must declare how it computes (kind "r" with code, or kind "typescript").');
   } else if (c.kind === "r") {
     if (!isNonEmptyString(c.code)) {
       errors.push("R compute needs non-empty code (an R expression ending in a c(name=value, …) named vector).");
@@ -414,7 +420,10 @@ export function jsonSpecToCodeSpec(spec: PluginAnalysisSpecJson): PluginAnalysis
  * question carries its range (no `validate` function — the runner re-checks,
  * as first-party number questions do).
  */
-export function toWizardQuestions(spec: PluginAnalysisSpec | PluginAnalysisSpecJson, columnNames: string[]): Question[] {
+export function toWizardQuestions(
+  spec: PluginAnalysisSpec | PluginAnalysisSpecJson,
+  columnNames: string[],
+): Question[] {
   return spec.questions.map((q): Question => {
     switch (q.kind) {
       case "choice":
@@ -422,10 +431,7 @@ export function toWizardQuestions(spec: PluginAnalysisSpec | PluginAnalysisSpecJ
           id: q.id,
           ask: q.ask,
           kind: "choice",
-          options:
-            q.options === "columns"
-              ? columnNames.map((name) => ({ value: name, label: name }))
-              : q.options,
+          options: q.options === "columns" ? columnNames.map((name) => ({ value: name, label: name })) : q.options,
           ...(q.emptyMessage ? { emptyMessage: q.emptyMessage } : {}),
         };
       case "number":

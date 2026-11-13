@@ -1,1 +1,23 @@
-{"analyses":[{"compute":{"code":"c(mean_value=mean(g0))","kind":"r"},"description":"The mean of the first data column.","id":"hello-mean","label":"Hello mean","minColumns":1,"notes":"The mean of the first column.","parameters":[],"questions":[],"tableTypes":["column"]}],"apiVersion":"3.0","author":"Titer example author","description":"The smallest possible plugin: one analysis, the mean of the first column, computed in R through the webR engine.","id":"example.hello-analysis","license":"MIT","name":"Hello Analysis","permissions":["read-table"],"version":"1.0.0"}
+{
+  "analyses": [
+    {
+      "compute": { "code": "c(mean_value=mean(g0))", "kind": "r" },
+      "description": "The mean of the first data column.",
+      "id": "hello-mean",
+      "label": "Hello mean",
+      "minColumns": 1,
+      "notes": "The mean of the first column.",
+      "parameters": [],
+      "questions": [],
+      "tableTypes": ["column"]
+    }
+  ],
+  "apiVersion": "3.0",
+  "author": "Titer example author",
+  "description": "The smallest possible plugin: one analysis, the mean of the first column, computed in R through the webR engine.",
+  "id": "example.hello-analysis",
+  "license": "MIT",
+  "name": "Hello Analysis",
+  "permissions": ["read-table"],
+  "version": "1.0.0"
+}

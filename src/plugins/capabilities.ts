@@ -85,10 +85,7 @@ export type CapabilityCheck = { allowed: true } | { allowed: false; reason: stri
  * here ever defaults to allowed — a missing entry, a typo, or a permission
  * the manifest never declared all land on the denied side.
  */
-export function checkCapability(
-  granted: readonly PluginPermission[],
-  command: string,
-): CapabilityCheck {
+export function checkCapability(granted: readonly PluginPermission[], command: string): CapabilityCheck {
   if (!(KNOWN_COMMANDS as readonly string[]).includes(command)) {
     return {
       allowed: false,

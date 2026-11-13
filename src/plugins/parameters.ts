@@ -91,7 +91,9 @@ export function validatePluginParameters(value: unknown): { parameters: PluginPa
         if (options === null) {
           errors.push(`Choice parameter “${key}” needs at least one option.`);
         } else if (typeof p.default !== "string" || !options.includes(p.default)) {
-          errors.push(`Choice parameter “${key}” has a default that is not one of its options (${options.join(", ")}).`);
+          errors.push(
+            `Choice parameter “${key}” has a default that is not one of its options (${options.join(", ")}).`,
+          );
         } else {
           parameters.push({
             kind: "choice",
@@ -194,7 +196,9 @@ export function validatePluginParameters(value: unknown): { parameters: PluginPa
         break;
       }
       default:
-        errors.push(`Parameter “${key}” has an unknown kind “${String(p.kind)}” — use choice, number, boolean, text, names or column.`);
+        errors.push(
+          `Parameter “${key}” has an unknown kind “${String(p.kind)}” — use choice, number, boolean, text, names or column.`,
+        );
     }
   }
   return errors.length ? { errors } : { parameters };
@@ -225,10 +229,7 @@ export function pluginParamDefaults(parameters: readonly PluginParameter[]): Plu
 /** Check supplied values against the declarations (range, options, type).
  *  Missing keys are fine — they take their defaults. Returns the problems,
  *  if any; the runner refuses to run on a non-empty list. */
-export function validatePluginParamValues(
-  parameters: readonly PluginParameter[],
-  values: PluginParamValues,
-): string[] {
+export function validatePluginParamValues(parameters: readonly PluginParameter[], values: PluginParamValues): string[] {
   const errors: string[] = [];
   for (const p of parameters) {
     const v = values[p.key];

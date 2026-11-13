@@ -28,13 +28,7 @@ export const APP_NAME = "Titer";
  *  `network` is denied by default — a plugin must declare it AND the user
  *  must approve it at the enable review step (see loader.ts); the default
  *  answer is no. */
-export type PluginPermission =
-  | "read-table"
-  | "run-analysis"
-  | "write-analysis"
-  | "save-file"
-  | "open-link"
-  | "network";
+export type PluginPermission = "read-table" | "run-analysis" | "write-analysis" | "save-file" | "open-link" | "network";
 
 export const KNOWN_PERMISSIONS: readonly PluginPermission[] = [
   "read-table",
@@ -89,13 +83,7 @@ export function semverAtLeast(a: Semver, b: Semver): boolean {
 const PLUGIN_ID = /^[a-z0-9][a-z0-9._-]*$/;
 
 export function isValidPluginId(id: unknown): id is string {
-  return (
-    typeof id === "string" &&
-    id.length > 0 &&
-    id.length <= 128 &&
-    PLUGIN_ID.test(id) &&
-    !id.startsWith("titer.")
-  );
+  return typeof id === "string" && id.length > 0 && id.length <= 128 && PLUGIN_ID.test(id) && !id.startsWith("titer.");
 }
 
 /** The manifest itself: id, name, version, apiVersion, author, license,
@@ -130,9 +118,7 @@ const isNonEmptyString = (v: unknown, max = 128): v is string =>
  * by `validatePluginAnalysisSpec` (analysis-spec.ts) — this function does
  * not look at it.
  */
-export function validatePluginManifest(
-  value: unknown,
-): { manifest: PluginManifest } | { errors: string[] } {
+export function validatePluginManifest(value: unknown): { manifest: PluginManifest } | { errors: string[] } {
   const errors: string[] = [];
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return { errors: ["The plugin manifest (plugin.json) must be a JSON object."] };
@@ -170,8 +156,7 @@ export function validatePluginManifest(
   }
   if (v.description !== undefined && typeof v.description !== "string")
     errors.push("Plugin description must be a string.");
-  if (v.homepage !== undefined && typeof v.homepage !== "string")
-    errors.push("Plugin homepage must be a string.");
+  if (v.homepage !== undefined && typeof v.homepage !== "string") errors.push("Plugin homepage must be a string.");
   if (v.entry !== undefined && (typeof v.entry !== "string" || v.entry.trim().length === 0))
     errors.push("Plugin entry must be a non-empty file name (for example “index.js”).");
   if (v.entry !== undefined && typeof v.entry === "string" && !/^[A-Za-z0-9._/-]+$/.test(v.entry))
@@ -198,10 +183,7 @@ export function validatePluginManifest(
 }
 
 /** Why a plugin cannot run on this build: `null` when it can. */
-export function pluginIncompatibility(
-  manifest: PluginManifest,
-  appVersion: string,
-): string | null {
+export function pluginIncompatibility(manifest: PluginManifest, appVersion: string): string | null {
   const api = parseSemver(manifest.apiVersion);
   if (api && api.major !== PLUGIN_API_MAJOR) {
     // The roadmap's message, verbatim in shape: "needs Titer 3.x".
@@ -225,16 +207,9 @@ export function pluginIncompatibility(
 /** The install/review lines for a manifest: name, version, author, license,
  *  then one plain-language line per permission (or "asks for no permissions"). */
 export function manifestReviewLines(manifest: PluginManifest): string[] {
-  const lines = [
-    `${manifest.name} ${manifest.version} by ${manifest.author}`,
-    `License: ${manifest.license}`,
-  ];
+  const lines = [`${manifest.name} ${manifest.version} by ${manifest.author}`, `License: ${manifest.license}`];
   if (manifest.description) lines.push(manifest.description);
   const perms = describePermissions(manifest.permissions);
-  lines.push(
-    perms.length
-      ? `This plugin can: ${perms.join("; ")}.`
-      : "This plugin asks for no permissions.",
-  );
+  lines.push(perms.length ? `This plugin can: ${perms.join("; ")}.` : "This plugin asks for no permissions.");
   return lines;
 }

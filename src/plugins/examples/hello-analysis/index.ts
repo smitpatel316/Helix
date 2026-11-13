@@ -17,13 +17,7 @@
 import { mean, median } from "../../../lib/summary";
 import type { Column } from "../../../lib/dataset";
 import { getPluginAnalysis, registerPluginAnalysis, runPluginAnalysis } from "../../registry";
-import {
-  confirmEnable,
-  installPlugin,
-  parsePluginPackage,
-  requestEnable,
-  type PluginRecord,
-} from "../../loader";
+import { confirmEnable, installPlugin, parsePluginPackage, requestEnable, type PluginRecord } from "../../loader";
 import pluginJson from "./plugin.json";
 
 export const HELLO_PLUGIN_ID = "example.hello-analysis";
@@ -132,8 +126,7 @@ export function helloColumn(name: string, values: number[]): Column {
   };
 }
 
-const approx = (a: number | null | undefined, b: number): boolean =>
-  typeof a === "number" && Math.abs(a - b) < 1e-9;
+const approx = (a: number | null | undefined, b: number): boolean => typeof a === "number" && Math.abs(a - b) < 1e-9;
 
 /**
  * Run both hello analyses on synthetic columns and check the numbers.
@@ -157,9 +150,7 @@ export async function verifyHelloPlugin(): Promise<{ ok: boolean; checks: string
   } else {
     const value = meanOutcome.stats.find((s) => s.label === "Mean value")?.value;
     checks.push(
-      approx(value, 5)
-        ? "hello-mean: mean of [2, 4, 9] is 5"
-        : `hello-mean: expected mean 5, got ${String(value)}`,
+      approx(value, 5) ? "hello-mean: mean of [2, 4, 9] is 5" : `hello-mean: expected mean 5, got ${String(value)}`,
     );
     checks.push(
       meanOutcome.pluginId === HELLO_PLUGIN_ID && meanOutcome.testType === HELLO_MEAN_ID
