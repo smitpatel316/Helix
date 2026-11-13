@@ -2333,6 +2333,32 @@ check("the curve wizard asks about weighting, comparing models and global fits",
   );
 });
 
+// R3-11x: a global homologous fit with Kd = [L] exactly (LogKd = 0) used to
+// crash — the shared LogKd start is the mean of the single-curve fits, so
+// it sat exactly on the optimum and port misfired with "false convergence
+// (8)". The global fit now retries once from nudged starts. Same fixture
+// shape as the #11 homologous check, with LogKd = 0 in the generator.
+check("a global homologous fit with Kd = [L] fits instead of failing on false convergence", async () => {
+  const xs = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
+  const noise = [0, 0.4, -0.3, 0.5, -0.4, 0.3, -0.5, 0.4, -0.3, 0.2, -0.2];
+  const homo = (bmax: number) => (x: number) => (bmax * 1) / (1 + 10 ** x + 10 ** 0) + 10;
+  const table: TableData = {
+    columns: ["Title", "X", "Y1", "Y2"],
+    rows: xs.map((x, i) => ["", String(x), String(homo(100)(x) + noise[i]), String(homo(95)(x) - noise[i])]),
+  };
+  const h = await runAnalysis("nonlinear-regression", table, {
+    y: "Y1",
+    model: "homologous-competition-logx",
+    globalY: ["Y2"],
+    ligandConcentration: 1,
+  });
+  ok(!("error" in h), `global homologous fit with Kd = [L] failed: ${"error" in h ? h.error : ""}`);
+  const r2 = h.fit?.rows.find((r) => r.label === "R squared")?.values;
+  ok(r2?.length === 2 && r2.every((v) => v != null && Number.isFinite(v) && v > 0.9), `per-series R² should be finite and > 0.9, got ${r2}`);
+  const logKd = h.coefficients?.find((c) => c.term === "LogKd")?.estimate;
+  ok(logKd != null && Math.abs(logKd) < 0.1, `fitted LogKd should be ~0 (Kd = [L]), got ${logKd}`);
+});
+
 // Plan 26: only nested model pairs get the F test, and AICc matches R
 // (line AICc −19.5734 for RSS 0.3112, n = 8, k = 2 — verified in R).
 check("only nested model pairs get the F test", () => {
