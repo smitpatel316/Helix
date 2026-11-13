@@ -5747,6 +5747,55 @@ check("frequency bins are left-closed with the last bin closed, and empty bins s
   );
 });
 
+check("frequency bins put a value exactly on an edge into the bin above it, not below", () => {
+  // (0.3 - 0.1) / 0.1 is 1.9999999999999998 in doubles, so Math.floor alone
+  // bins 0.3 into "0.2 to <0.3"; the index is nudged against the actual
+  // edges until the value lies inside its bin.
+  const { bins } = computeFrequencyBins([0.1, 0.3, 0.5], { binMode: "auto" });
+  deepStrictEqual(
+    bins.map((b) => [b.bin, b.count]),
+    [
+      ["0.1 to <0.2", 1],
+      ["0.2 to <0.3", 0],
+      ["0.3 to <0.4", 1],
+      ["0.4 to 0.5", 1],
+    ],
+  );
+});
+
+check("pretty breaks stay distinct at large magnitudes instead of collapsing to NaN counts", () => {
+  // toPrecision(12) rounded both ends of [1e9, 1e9+0.0005] to the same
+  // value, collapsing start === end and producing NaN counts.
+  deepStrictEqual(prettyBreaks(1e9, 1e9 + 0.0005, 5), [
+    1000000000, 1000000000.0001, 1000000000.0002, 1000000000.0003, 1000000000.0004, 1000000000.0005,
+  ]);
+  const { bins } = computeFrequencyBins([1e9, 1e9 + 0.0005], { binMode: "auto" });
+  deepStrictEqual(
+    bins.map((b) => b.count),
+    [1, 0, 1],
+  );
+  ok(bins.every((b) => Number.isFinite(b.count) && Number.isFinite(b.relativeFrequency)));
+});
+
+check("width-mode binning terminates when the width is below the rounding resolution at 1e9", () => {
+  // clean(1e9 + 0.0002) rounded back to 1e9, so the old repeated-addition
+  // loop pushed 1e9 forever (OOM/hang). Edges are built by index now, so
+  // this returns 5,000 bins in milliseconds.
+  const { bins, edges } = computeFrequencyBins([1e9, 1e9 + 1], { binMode: "width", binWidth: 0.0002 });
+  strictEqual(bins.length, 5000);
+  strictEqual(edges.length, 5001);
+  strictEqual(edges[0], 1e9);
+  strictEqual(edges.at(-1), 1e9 + 1);
+  deepStrictEqual(
+    bins.map((b) => b.count).filter((c) => c > 0),
+    [1, 1],
+  );
+  strictEqual(
+    bins.reduce((s, b) => s + b.count, 0),
+    2,
+  );
+});
+
 check("a constant column bins into one bin, and bad binning is an error, not a crash", async () => {
   const table = (values: (number | string)[]): TableData => ({
     columns: ["Title", "V"],
