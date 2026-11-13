@@ -48,14 +48,33 @@ export async function confirmDelete(title: string, detail: string): Promise<bool
   return answer === "Delete" || answer === "Ok";
 }
 
-/** A Download / Later prompt for a newer version of Titer. */
-export async function askToDownload(version: string): Promise<boolean> {
-  const answer = await message("Download it from GitHub, then replace Titer in your Applications folder.", {
+/** An Update Now / Later prompt for a newer version of Titer. `forced`:
+ *  no Later — the channel says this version must not run, so the dialog
+ *  has only Update Now. `installable`: false on a platform with no
+ *  installable asset (Linux today) — the prompt then offers the manual
+ *  download instead of promising a restart-to-install. */
+export async function askToUpdate(version: string, forced: boolean, installable: boolean): Promise<boolean> {
+  const detail = !installable
+    ? "Download it from GitHub, then replace Titer in your Applications folder."
+    : forced
+      ? "This version can no longer run — update to keep using Titer."
+      : "Download it now, and Titer will restart to install it.";
+  const answer = await message(detail, {
     title: `Titer ${version} is available`,
     kind: "info",
-    buttons: { ok: "Download", cancel: "Later" },
+    buttons: forced ? { ok: "Update Now" } : { ok: "Update Now", cancel: "Later" },
   });
-  return answer === "Download" || answer === "Ok";
+  return answer === "Update Now" || answer === "Ok";
+}
+
+/** A Retry / Quit prompt when a forced update cannot install. */
+export async function askToRetryUpdate(version: string, detail: string): Promise<boolean> {
+  const answer = await message(`Titer ${version} could not be installed: ${detail}`, {
+    title: "Couldn't Install the Update",
+    kind: "warning",
+    buttons: { ok: "Retry", cancel: "Quit" },
+  });
+  return answer === "Retry" || answer === "Ok";
 }
 
 /** This app's version ("1.0.0"), from its bundle. */
@@ -218,6 +237,25 @@ export const accentColor = () => (isNative ? invoke<string | null>("accent_color
 
 /** Titer's GitHub page, its releases, or Buy Me a Coffee, in the default browser. */
 export const openLink = (link: "github" | "releases" | "coffee") => void invoke("open_link", { link });
+
+// ── Updates ──────────────────────────────────────────────────────────────
+// The shell side lives in src-tauri/src/updater.rs.
+
+/** Downloads the update asset to a temp file and checks its size and
+ *  sha256 against the manifest; the temp path. */
+export const downloadUpdate = (url: string, sha256: string, size: number) =>
+  invoke<string>("download_update", { url, sha256, size });
+
+/** Verifies the downloaded asset's version stamp and stages the bundle
+ *  swap. Resolves once the swap is staged; the caller then quits, and a
+ *  helper swaps the bundle once this process has exited and opens the new
+ *  app. */
+export const applyUpdate = (path: string, version: string) =>
+  invoke<string>("apply_update", { path, version });
+
+/** Quits through the normal flow, as Titer ▸ Quit does: each project
+ *  window asks about its unsaved changes first. */
+export const quitApp = () => invoke("quit_app");
 
 /** Calls `handler` now and whenever the window enters or leaves full screen. */
 export function onFullscreenChange(handler: (fullscreen: boolean) => void) {

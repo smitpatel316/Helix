@@ -14,17 +14,19 @@ export function isNewer(a: string, b: string): boolean {
   return false;
 }
 
-const RELEASE = "https://api.github.com/repos/smitpatel316/Helix/releases/latest";
-// GitHub answers 60 checks an hour per network (a lab's Macs share one). Past that, the
-// version on the development branch, which runs ahead of a release only while it is being built.
-const MAIN = "https://raw.githubusercontent.com/smitpatel316/Helix/feat/prism-import-survival/package.json";
+// The version on the release branch's package.json: the fallback when the
+// update channel has never answered (its manifest is the authority once it
+// exists). A plain static file, never the GitHub API: the API answers 60
+// checks an hour per network (a lab's Macs share one). It runs ahead of a
+// release only while that release is being built, so it can only ever
+// produce an optional offer, never a forced one.
+// TODO(v2 rebase): retarget at main once feat/prism-import-survival merges.
+const BRANCH_PACKAGE =
+  "https://raw.githubusercontent.com/smitpatel316/Helix/feat/prism-import-survival/package.json";
 
 /** The latest version out ("v1.0.4"); null when none is released yet. */
 export async function latestVersion(): Promise<unknown> {
-  const response = await fetch(RELEASE, { headers: { Accept: "application/vnd.github+json" } });
-  if (response.status === 404) return null;
-  if (response.ok) return (await response.json()).tag_name;
-  const main = await fetch(MAIN);
+  const main = await fetch(BRANCH_PACKAGE);
   if (!main.ok) throw new Error(`GitHub answered ${main.status}`);
   return (await main.json()).version;
 }

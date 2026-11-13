@@ -27,6 +27,10 @@ use tauri::{
 };
 use tauri_plugin_dialog::DialogExt;
 
+// In-app auto-update (v2, item 77): the download / verify / apply /
+// relaunch half. The check half lives in the frontend (src/updates.ts).
+mod updater;
+
 // ── Project windows ──────────────────────────────────────────────────────
 
 /// A project file for a window to open once its page is ready. `untitled`: shown as a
@@ -237,6 +241,22 @@ fn choose_prism_file(app: AppHandle, window: WebviewWindow) {
 #[tauri::command]
 fn cancel_quit(projects: State<Projects>) {
     projects.0.lock().unwrap().quitting = false;
+}
+
+/// Quits through the normal flow, as the macOS quit hook does: mark the
+/// quit, close the project windows (each asks about its unsaved changes),
+/// and the run loop ends Titer once the last one is gone. Used by the
+/// updater after staging a relaunch. A window whose user cancels the quit
+/// calls `cancel_quit`, which clears the flag, so Titer stays.
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    app.state::<Projects>().0.lock().unwrap().quitting = true;
+    for window in app.webview_windows().into_values().filter(|w| is_project(w.label())) {
+        let _ = window.close();
+    }
+    if !app.webview_windows().keys().any(|l| is_project(l)) {
+        app.exit(0);
+    }
 }
 
 // ── Session ──────────────────────────────────────────────────────────────
@@ -691,6 +711,9 @@ fn main() {
             choose_project,
             choose_prism_file,
             cancel_quit,
+            quit_app,
+            updater::download_update,
+            updater::apply_update,
             read_text,
             read_prism_text,
             read_prism_bytes,
