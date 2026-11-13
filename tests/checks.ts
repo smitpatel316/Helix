@@ -2467,6 +2467,59 @@ check("an inverted band-inversion CI is dropped, never shown as an interval", as
   ok(!("error" in out) && out.notes.includes("comes back inverted"));
 });
 
+// BUG-REPORT #9 (FL-R3-09): a smoothing spline on an XY table with tied X
+// values failed outright — smooth.spline's fit$y lives on the UNIQUE sorted
+// knots (length(unique(x))), so the old code returned 4 + 100 values for 5
+// observations and R recycled fit$y across mismatched rows in the RSS.
+// fitted(fit) is per-observation, so the fit now returns one fitted value
+// per row and the RSS is sum((y - fitted(fit))^2). Reference values below
+// are smooth.spline(x, y) on X = [1,1,2,3,4], Y = [2,2.5,4,6,8], computed
+// straight from R (spar 1.4805142007968894, df 2.00000000833144).
+check("a smoothing spline fits tied X values, one fitted value per observation (FL-R3-09)", async () => {
+  const table: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "1", "2"],
+      ["", "1", "2.5"],
+      ["", "2", "4"],
+      ["", "3", "6"],
+      ["", "4", "8"],
+    ],
+  };
+  const out = await runAnalysis("spline-lowess", table, { method: "spline" } as never);
+  if ("error" in out) throw new Error(out.error);
+  const expected = [2.2058824056037776, 2.2058824056037776, 4.117646984179642, 6.029411567068956, 7.941176153346085];
+  strictEqual(out.fitted?.length, 5);
+  strictEqual(out.curve?.length, 100);
+  out.fitted!.forEach((p, i) => ok(Math.abs(p.y - expected[i]) < 1e-9, `fitted[${i}]`));
+  // The tied X = 1 rows share one knot but are two observations: both get
+  // the knot's fitted value, and the residuals use each row's own Y.
+  strictEqual(out.fitted![0].y, out.fitted![1].y);
+  const rss = out.stats.find((s) => s.label === "Residual sum of squares")?.value;
+  ok(rss != null && Math.abs(rss - 0.14705882236979922) < 1e-9, `rss ${rss}`);
+  // The reported RSS agrees with the fitted values it ships: recomputed
+  // in TS from the residuals, so a recycled fit$y cannot hide in it.
+  const recomputed = out.fitted!.reduce((sum, p) => sum + (p.observed! - p.y) ** 2, 0);
+  ok(rss != null && Math.abs(recomputed - rss) < 1e-9, `recomputed rss ${recomputed}`);
+  const spar = out.stats.find((s) => s.label === "Smoothing parameter (spar)")?.value;
+  ok(spar != null && Math.abs(spar - 1.4805142007968894) < 1e-9, `spar ${spar}`);
+  // Fewer than 4 DISTINCT X values is rejected cleanly before R runs,
+  // instead of surfacing R's "need at least four unique 'x' values".
+  const few: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "1", "2"],
+      ["", "1", "2.5"],
+      ["", "2", "4"],
+      ["", "3", "6"],
+      ["", "3", "7"],
+    ],
+  };
+  deepStrictEqual(await runAnalysis("spline-lowess", few, { method: "spline" } as never), {
+    error: "A smoothing spline needs at least 4 distinct X values.",
+  });
+});
+
 check("data sets ticked again keep the table's order", () => {
   const options = ["A", "B", "C"];
   deepStrictEqual(toggled(options, ["A", "C"], "B", true), ["A", "B", "C"]);

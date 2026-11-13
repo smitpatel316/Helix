@@ -80,12 +80,29 @@ export async function fitSmooth(
   if (!picked) return { error: "No Y column holds numbers yet." };
   const { xs, ys } = picked;
   const n = xs.length;
-  if (n < 4) return { error: "Smoothing needs at least 4 complete pairs of X and Y values." };
+  // smooth.spline needs four DISTINCT x values — fit$x/fit$y live on the
+  // unique sorted knots, not on the n observations — so a table with tied
+  // X's can pass an n >= 4 check and still fail inside R. Lowess has no
+  // such requirement, so it keeps the plain pair count.
+  const uniqueX = new Set(xs).size;
+  if (method === "spline" ? uniqueX < 4 : n < 4)
+    return {
+      error:
+        method === "spline"
+          ? "A smoothing spline needs at least 4 distinct X values."
+          : "Smoothing needs at least 4 complete pairs of X and Y values.",
+    };
   const minX = xs[0];
   const maxX = xs[n - 1];
 
   // Lowess has no `predict` method — the curve is the interpolation of its
   // fitted values on the grid, which is the standard way to draw it.
+  // A smoothing spline's fit$y lives on the UNIQUE sorted knots
+  // (length(unique(x))), not on the n observations, so the per-observation
+  // fitted values — and the residuals — come from fitted(fit), which
+  // repeats each knot's fitted value at every tied X. Using fit$y here
+  // returned length(unique(x)) + 100 values and recycled fit$y across
+  // mismatched observations in the RSS whenever X had ties.
   const fitExpr = fitExpression(method, f, spar, df);
   const vectorCode =
     method === "lowess"
@@ -94,13 +111,13 @@ export async function fitSmooth(
         `c(fit$y,approx(fit$x,fit$y,xout=grid)$y)`
       : `x<-${rVec(xs)};y<-${rVec(ys)};fit<-${fitExpr};` +
         `grid<-seq(${minX},${maxX},length.out=${GRID_POINTS});` +
-        `c(fit$y,predict(fit,x=grid)$y)`;
+        `c(fitted(fit),predict(fit,x=grid)$y)`;
   const scalarCode =
     method === "lowess"
       ? `x<-${rVec(xs)};y<-${rVec(ys)};fit<-${fitExpr};` +
         `c(f=${f},rss=sum((y-fit$y)^2),n=length(x))`
       : `x<-${rVec(xs)};y<-${rVec(ys)};fit<-${fitExpr};` +
-        `c(spar=fit$spar,df=fit$df,rss=sum((y-fit$y)^2),n=length(x))`;
+        `c(spar=fit$spar,df=fit$df,rss=sum((y-fitted(fit))^2),n=length(x))`;
   let values: number[];
   let scalars: Record<string, number | null>;
   try {
