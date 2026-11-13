@@ -729,8 +729,15 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
   },
 
   "bland-altman": {
-    questions: (a, table) => {
-      const methods = dataNames(table);
+    questions: (a, table, tableType) => {
+      // On an XY table the X column is the independent variable (time,
+      // dose…) — not a measurement method. Offering it as a "method" let
+      // the wizard present an X − Y difference's bias/limits as a method
+      // comparison, which is scientifically meaningless, so only the Y
+      // columns are methods there. A column table has no X, so every
+      // numeric column stays a method.
+      const isXY = tableType === "xy";
+      const methods = isXY ? yNames(table) : dataNames(table);
       return [
         choice("first", "Which column is the first method?", names(methods)),
         choice(
@@ -738,7 +745,9 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           "Which column is the second method? The difference is computed as first − second.",
           names(methods.filter((n) => n !== a.first)),
           false,
-          "This table has only one numeric column, so there is no second method to choose. Add another numeric column first.",
+          isXY
+            ? "This table has only one Y data set, so there is no second method to choose. Add another Y column first."
+            : "This table has only one numeric column, so there is no second method to choose. Add another numeric column first.",
         ),
       ];
     },
