@@ -23,6 +23,14 @@ const DEFAULTS: CompareTwoGroupsParams = {
   tails: "two-sided",
 };
 
+/** A partial params object (e.g. a field stripped on load) still runs —
+// the missing fields fall back to the defaults instead of reaching R as
+// `undefined` (BUG-REPORT #26). */
+const withDefaults = (params: CompareTwoGroupsParams | undefined): CompareTwoGroupsParams => ({
+  ...DEFAULTS,
+  ...params,
+});
+
 function subtitle(p: CompareTwoGroupsParams): string {
   if (!p.gaussian) return p.paired ? "Wilcoxon matched-pairs signed rank test" : "Mann-Whitney test";
   if (p.paired) return p.ratio ? "Ratio paired t test" : "Paired t test";
@@ -88,10 +96,10 @@ export const compareTwoGroupsSpec: ColumnTestSpec<CompareTwoGroupsParams> = {
   minGroups: 2,
   maxGroups: 2,
   minValues: 2,
-  matched: (params) => (params ?? DEFAULTS).paired,
+  matched: (params) => withDefaults(params).paired,
   // 5 — a ratio is of two values above 0.
   check: (columns, params) => {
-    const p = params ?? DEFAULTS;
+    const p = withDefaults(params);
     if (!(p.paired && p.gaussian && p.ratio)) return undefined;
     for (const g of pairedGroups(dataGroups(columns).slice(0, 2))) {
       const v = g.values.find((v) => v <= 0);
@@ -100,10 +108,10 @@ export const compareTwoGroupsSpec: ColumnTestSpec<CompareTwoGroupsParams> = {
   },
   // The first two columns holding data; paired, only rows where both have a value.
   parseGroups: (columns, params) =>
-    (params ?? DEFAULTS).paired ? pairedGroups(dataGroups(columns).slice(0, 2)) : dataGroups(columns),
-  rCode: (groups, params) => rCode(groups, params ?? DEFAULTS),
+    withDefaults(params).paired ? pairedGroups(dataGroups(columns).slice(0, 2)) : dataGroups(columns),
+  rCode: (groups, params) => rCode(groups, withDefaults(params)),
   rows: (v, groups, params) => {
-    const p = params ?? DEFAULTS;
+    const p = withDefaults(params);
     if (!p.gaussian) {
       const rows: StatRow[] = [
         { label: "Test statistic", value: v.W },
@@ -162,9 +170,9 @@ export const compareTwoGroupsSpec: ColumnTestSpec<CompareTwoGroupsParams> = {
       ? ` Compares “${groups[0].name}” and “${groups[1].name}”, the first two columns with data; ` +
         `not included: ${ignored.map((n) => `“${n}”`).join(", ")}.`
       : "";
-    const p = params ?? DEFAULTS;
+    const p = withDefaults(params);
     const rows = p.paired ? ` ${matchedRowsNote(dataGroups(columns).slice(0, 2))}` : "";
     return notes(p) + rows + which;
   },
-  subtitle: (params) => subtitle(params ?? DEFAULTS),
+  subtitle: (params) => subtitle(withDefaults(params)),
 };

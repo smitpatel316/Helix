@@ -799,7 +799,7 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
       // Evicted while queued behind a hung batch: never start the install —
       // a zombie install would only contend with the retry that replaced it.
       if (cancel.current) return;
-      return installBatch(missing, cancel);
+      return installBatch(missing, cancel, timeoutMs);
     });
     batch.then(
       () => releaseGate(),
@@ -894,7 +894,11 @@ function evictTimedOut(names: string[], error: PackageError): void {
  *  loads (`requireNamespace`). Never throws — failures land in `states`.
  *  A batch evicted by a timeout (`cancel.current`) writes no states at all:
  *  the retry owns the packages now. */
-async function installBatch(names: string[], cancel: { current: boolean }): Promise<void> {
+async function installBatch(
+  names: string[],
+  cancel: { current: boolean },
+  timeoutMs: number,
+): Promise<void> {
   installsStarted++;
   const attempts: { repos: string | null; source: "bundled" | "cdn" }[] =
     repoUrl === CDN_REPO_URL
@@ -910,7 +914,11 @@ async function installBatch(names: string[], cancel: { current: boolean }): Prom
       `${repos === null ? "" : `, repos=${JSON.stringify(repos)}`}, quiet=TRUE);` +
       `c(${names.map((n) => `${JSON.stringify(n)}=as.numeric(requireNamespace(${JSON.stringify(n)}, quietly=TRUE))`).join(",")})`;
     try {
-      const loaded = await evalNamedVector(code);
+      // The install eval carries the install budget (BUG-REPORT #26): the
+      // default EVAL_TIMEOUT_MS (300 s) used to abort installs before
+      // PACKAGE_INSTALL_TIMEOUT_MS (360 s), and classifyInstallError then
+      // misread the EvalTimeoutError as "install-failed".
+      const loaded = await evalNamedVector(code, { timeoutMs });
       const unloaded = names.filter((n) => loaded[n] !== 1);
       if (!unloaded.length) {
         // Evicted while this install was running (B2): the retry owns these

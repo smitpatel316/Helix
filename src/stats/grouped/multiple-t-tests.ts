@@ -19,11 +19,24 @@ const CORRECTION_LABEL: Record<MultipleTTestsParams["correction"], string> = {
   none: "uncorrected",
 };
 
+/** Wizard defaults (first/recommended choices): unpaired, Gaussian, no
+ *  pooled SD, Holm correction. */
+const DEFAULTS: MultipleTTestsParams = {
+  paired: false,
+  gaussian: true,
+  pooledSd: false,
+  correction: "holm",
+};
+
 export async function runMultipleTTests(
   columns: Column[],
   params: MultipleTTestsParams,
   titles: (string | null)[],
 ): Promise<AnalysisOutcome> {
+  // A partial params object still runs with the missing fields defaulted
+  // (BUG-REPORT #26): without this, `{}` sent `p.adjust(pr,"undefined")`
+  // to R and the whole analysis failed.
+  params = { ...DEFAULTS, ...params };
   let name1: string;
   let name2: string;
   let rowsA: number[][];

@@ -2115,6 +2115,79 @@ check("a repeated-measures two-way ANOVA survives a group with one complete subj
     throw new Error(`expected the too-few-subjects error, got ${JSON.stringify(refused)}`);
 });
 
+// BUG-REPORT #26 (FL-R3-26): partial AnalysisParams used to crash (or refuse)
+// four runners — `params ?? DEFAULTS` only covers a wholly missing params
+// object, so a partial one left fields `undefined` and R saw
+// `alternative="undefined"` / `p.adjust(pr,"undefined")`, or the runner
+// refused with a "“undefined” multiple comparisons" error. Each runner now
+// merges over its defaults, so a partial object runs with the missing fields
+// defaulted.
+check("partial compare-two-groups params fall back to the defaults (FL-R3-26)", async () => {
+  const out = await runAnalysis("compare-two-groups", treatments(["Control", "Drug A"]), {
+    paired: false,
+  } as AnalysisParams);
+  if ("error" in out) throw new Error(`expected a result, got ${out.error}`);
+  strictEqual(out.subtitle, "Unpaired t test");
+});
+
+check("partial nested-anova params fall back to no post-hoc (FL-R3-26)", async () => {
+  const table: TableData = {
+    columns: ["Title", "A:S1:R1", "A:S2:R1", "B:S1:R1", "B:S2:R1", "C:S1:R1", "C:S2:R1"],
+    rows: [[null, "1", "2", "3", "4", "5", "6"]],
+    groups: 3,
+    subgroups: 2,
+    replicates: 1,
+  };
+  const out = await runAnalysis("nested-anova", table, {} as AnalysisParams);
+  if ("error" in out) throw new Error(`expected a result, got ${out.error}`);
+  strictEqual(out.stats.find((s) => s.label === "Groups")?.value, 3);
+});
+
+check("partial two-way-anova params fall back to the ordinary design (FL-R3-26)", async () => {
+  const table: TableData = {
+    columns: ["Title", "A:Y1", "A:Y2", "B:Y1", "B:Y2"],
+    rows: [
+      ["a", "1", "3", "2", "4"],
+      ["b", "5", "6", "7", "8"],
+      ["c", "9", "10", "11", "12"],
+    ],
+    groups: 2,
+    replicates: 2,
+  };
+  const out = await runAnalysis("two-way-anova", table, { design: "ordinary" } as AnalysisParams);
+  if ("error" in out) throw new Error(`expected a result, got ${out.error}`);
+  strictEqual(out.subtitle, "Ordinary two-way ANOVA");
+});
+
+check("partial multiple-t-tests params fall back to the unpaired Gaussian Holm defaults (FL-R3-26)", async () => {
+  const data: TableData = {
+    columns: ["Title", "A:1", "A:2", "A:3", "B:1", "B:2", "B:3"],
+    rows: [
+      ["r1", "1", "2", "3", "4", "5", "6"],
+      ["r2", "2", "3", "4", "5", "6", "7"],
+    ],
+  };
+  const out = await runAnalysis("multiple-t-tests", data, {} as AnalysisParams);
+  if ("error" in out) throw new Error(`expected a result, got ${out.error}`);
+  strictEqual(out.stats.find((s) => s.label === "Rows compared")?.value, 2);
+  ok(out.comparisons!.every((c) => c.p !== null), "every row completes with a P value");
+});
+
+// BUG-REPORT #26, leg 2 (FL-R3-26): installBatch used to call evalNamedVector
+// with no timeout, so the 300 s EVAL_TIMEOUT_MS aborted a package install
+// before the 360 s PACKAGE_INSTALL_TIMEOUT_MS — and classifyInstallError
+// then misread the EvalTimeoutError as "install-failed". The install eval
+// now carries the install budget. A runtime repro would need a >300 s
+// install, so this pins the call itself.
+check("installBatch gives the install eval the package-install timeout (FL-R3-26)", () => {
+  const webr = readFileSync("src/stats/webr.ts", "utf8");
+  const batch = webr.slice(webr.indexOf("async function installBatch"));
+  ok(
+    /const loaded = await evalNamedVector\(code, \{ timeoutMs \}\)/.test(batch),
+    "installBatch must pass { timeoutMs } to evalNamedVector",
+  );
+});
+
 // R2-B3: with X + 1 Y the enzyme-inhibition wizard used to dead-end — the
 // model defaulted to a global fit whose Y question needed min: 2 from a
 // single option, so Next stayed disabled with no message. Now only Morrison

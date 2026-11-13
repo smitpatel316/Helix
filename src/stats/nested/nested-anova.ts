@@ -22,7 +22,10 @@ export async function runNestedAnova(
   columns: Column[],
   params: NestedAnovaParams | undefined,
 ): Promise<AnalysisOutcome> {
-  const method = (params ?? DEFAULTS).posthoc;
+  // A partial params object still runs with the missing fields defaulted
+  // (BUG-REPORT #26): `params ?? DEFAULTS` only covered a wholly missing
+  // object, so `{}` left posthoc `undefined` and the run was refused.
+  const method = ({ ...DEFAULTS, ...params }).posthoc;
   // POSTHOCS also carries the Šídák / Holm–Šídák / LSD options other ANOVAs
   // offer — this runner only does Tukey and Bonferroni, so refuse those here
   // rather than silently running Bonferroni under a Šídák label.
