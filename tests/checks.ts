@@ -5402,6 +5402,8 @@ check("a failed analysis is not cached: fixing the data and re-running works", a
   };
   const second = await runAnalysis("binding-kinetics", fixed, params);
   ok(!("error" in second), `fixed data should fit, got ${JSON.stringify(second)}`);
+});
+
 // R2-M15: a hung R boot must not strand the run — or the runAnalysis cache —
 // forever. The boot watchdog stops it with a clear error, the boot memo is
 // reset, and the next startR boots fresh — that is the retry. The hung boot
