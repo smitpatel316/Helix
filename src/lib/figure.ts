@@ -209,6 +209,19 @@ export function panelRects(
   }));
 }
 
+/** A panel's size as Plotly sees it: the size the exporter hands to
+ *  `Plotly.react` and `Plotly.toImage` for that panel. Plotly's `toImage`
+ *  multiplies width/height by its `scale` (dpi/96), so this must be the
+ *  rectangle in Plotly's own 96-DPI layout units — handing it the rectangle
+ *  (already in DPI pixels) scales twice, and at 600 DPI a 3000×4500 panel
+ *  becomes a 18750×28125 image, past what WebKit draws. */
+export function panelPlotSize(rect: { width: number; height: number }, dpi: number): { width: number; height: number } {
+  return {
+    width: Math.round((rect.width * PX_PER_INCH) / dpi),
+    height: Math.round((rect.height * PX_PER_INCH) / dpi),
+  };
+}
+
 /** The same rectangles in points (an SVG's units): 1 pt = 1/72 in. */
 export function panelRectsPt(
   panels: FigurePanel[],

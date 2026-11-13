@@ -126,7 +126,7 @@ import { makeInitialState, reducer } from "../src/store/use-project-store";
 import { isNewer, latestVersion } from "../src/lib/version";
 import { titleCase } from "../src/lib/format";
 import { loadRecents } from "../src/store/recents";
-import { largestAt, withDpi } from "../src/lib/image-dpi";
+import { largestAt, PX_PER_INCH, withDpi } from "../src/lib/image-dpi";
 import {
   assignLabels,
   clampPanel,
@@ -137,6 +137,7 @@ import {
   figurePixelSize,
   missingPanels,
   newFigurePanels,
+  panelPlotSize,
   panelRects,
   sharedLegendCheck,
   validateFigureSize,
@@ -4294,6 +4295,33 @@ check("a figure's export size and panel alignment are arithmetic (F-02, F-04)", 
   strictEqual(rects.length, 2);
   deepStrictEqual([rects[0].x, rects[0].width], [0, 1500]);
   deepStrictEqual([rects[1].x, rects[1].width], [1500, 1500]);
+});
+
+// F-#7: a 600 DPI panel must render at its rectangle, not scaled twice.
+// r3-15.hlx is 10×7.5 in on a 1×2 grid, so each panel's rectangle at 600 DPI
+// is 3000×4500. Plotly's toImage multiplies the size it is handed by
+// dpi/96, so the size handed to Plotly must be the rectangle in 96-DPI
+// layout units — handing it the rectangle scales twice (18750×28125 at 600
+// DPI, past what WebKit draws), and createImageBitmap then fails to decode
+// the panel image. The 300 DPI control works because its double-scaled
+// image (4687×7031) still fits.
+check("a 600 DPI figure panel renders at its rectangle, not scaled twice (F-#7)", () => {
+  for (const dpi of [150, 300, 600]) {
+    const { panels, grid, figureSize } = figurePayload().nodes.f1;
+    const rects = panelRects(panels!, grid!, figureSize!, dpi);
+    for (const rect of rects) {
+      const plot = panelPlotSize({ width: rect.width, height: rect.height }, dpi);
+      // The image Plotly's toImage returns: the handed size times dpi/96.
+      const image = {
+        width: Math.round((plot.width * dpi) / PX_PER_INCH),
+        height: Math.round((plot.height * dpi) / PX_PER_INCH),
+      };
+      deepStrictEqual(image, { width: rect.width, height: rect.height }, `panel image at ${dpi} DPI`);
+    }
+  }
+  // The r3-15 geometry, spelled out: 3000×4500 at 600 DPI draws from a
+  // 480×720 layout, never a 18750×28125 canvas.
+  deepStrictEqual(panelPlotSize({ width: 3000, height: 4500 }, 600), { width: 480, height: 720 });
 });
 
 check("a figure's SVG export is one vector parent with labelled panels (F-03, F-05)", () => {
