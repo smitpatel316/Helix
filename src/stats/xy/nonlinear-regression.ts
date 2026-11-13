@@ -996,16 +996,45 @@ async function runGlobalNonlinear(
       return evaluateCurve(model, perSeries, x, params?.ligandConcentration);
     },
   };
+  const fitSeries = series.map((s) => ({ name: s.name, x: s.xs, y: s.ys, covariate: 0 }));
   let result;
   try {
-    result = await runGlobalFit(
-      series.map((s) => ({ name: s.name, x: s.xs, y: s.ys, covariate: 0 })),
-      def,
-    );
+    result = await runGlobalFit(fitSeries, def);
   } catch (err) {
-    return {
-      error: `The global fit could not be fitted (${err instanceof Error ? err.message : String(err)}). A shared parameter may be unidentifiable from one data set — try sharing fewer parameters, or fit each data set separately.`,
+    const message = err instanceof Error ? err.message : String(err);
+    // R3-11x: a shared start is the mean of the single-curve fits, so when
+    // the data determine a parameter exactly — homologous data with Kd =
+    // [L] give LogKd = 0 in both series — the stacked start sits exactly
+    // on the optimum and port misfires with "false convergence (8)": it
+    // cannot take a first step from the optimum. Retry once from starts
+    // nudged a hair off the fitted values (kept inside their bounds when
+    // the parameter has them); the retry only runs when the primary fails
+    // this way, so passing fits never touch it (the single-curve runner's
+    // retryFits precedent).
+    if (!message.includes("false convergence")) {
+      return {
+        error: `The global fit could not be fitted (${message}). A shared parameter may be unidentifiable from one data set — try sharing fewer parameters, or fit each data set separately.`,
+      };
+    }
+    const nudged: GlobalModelDef = {
+      ...def,
+      params: def.params.map((p) => ({
+        ...p,
+        start: (s) => {
+          const v = p.start(s);
+          const off = (x: number) =>
+            Math.min(Math.max(x + 0.01 * (1 + Math.abs(x)), p.lower ?? -Infinity), p.upper ?? Infinity);
+          return Array.isArray(v) ? v.map(off) : off(v);
+        },
+      })),
     };
+    try {
+      result = await runGlobalFit(fitSeries, nudged);
+    } catch {
+      return {
+        error: `The global fit could not be fitted (${message}). A shared parameter may be unidentifiable from one data set — try sharing fewer parameters, or fit each data set separately.`,
+      };
+    }
   }
   // Rename the coefficients to display terms: shared plain, per-series as
   // "Top (Treated)".
