@@ -78,13 +78,21 @@ export interface ProjectFilePayload {
   /** Each table's analyses and graphs, in sidebar order. */
   childOrder: Record<string, string[]>;
   activeNodeId: string | null;
+  /** Unknown keys from a newer or hand-edited file (FF-F12): the file envelope's
+   *  and the project's, kept verbatim and written back on save, so opening a
+   *  newer file in this Helix doesn't silently lose its forward-compat data.
+   *  Absent on files this version wrote (nothing unknown to carry). */
+  fileUnknowns?: Record<string, unknown>;
+  projectUnknowns?: Record<string, unknown>;
 }
 
 // ── Writing ──────────────────────────────────────────────────────────────
 
-export function serializeProjectFile({ nodes, rootOrder, childOrder, activeNodeId }: ProjectFilePayload): string {
-  const project: ProjectFilePayload = { nodes, rootOrder, childOrder, activeNodeId };
-  return format({ app: "helix", schemaVersion: 1, savedAt: new Date().toISOString(), project }, "") + "\n";
+export function serializeProjectFile({ nodes, rootOrder, childOrder, activeNodeId, fileUnknowns, projectUnknowns }: ProjectFilePayload): string {
+  // Unknown keys go back where they came from, under the known keys — a
+  // hand-edited file can't smuggle a second `nodes` or `app` past the reader.
+  const project: ProjectFilePayload = { ...projectUnknowns, nodes, rootOrder, childOrder, activeNodeId };
+  return format({ ...fileUnknowns, app: "helix", schemaVersion: 1, savedAt: new Date().toISOString(), project }, "") + "\n";
 }
 
 /** Indented JSON, with each list of plain values (a table row, the column names)
@@ -121,6 +129,13 @@ function canonical(obj: Obj, keys: readonly string[]): Obj {
   const spelling = new Map(keys.map((k) => [k.toLowerCase(), k]));
   return Object.fromEntries(Object.entries(obj).map(([k, v]) => [spelling.get(k.toLowerCase()) ?? k, v]));
 }
+
+/** The keys of `obj` this version doesn't know (FF-F12), whatever their case —
+ *  carried through a save, not dropped. */
+const unknownsOf = (obj: Obj, known: readonly string[]): Obj => {
+  const spelling = new Set(known.map((k) => k.toLowerCase()));
+  return Object.fromEntries(Object.entries(obj).filter(([k]) => !spelling.has(k.toLowerCase())));
+};
 
 // Every field Helix knows, per level. The `satisfies` checks make TypeScript
 // flag any field added to a type but not listed here.
@@ -247,9 +262,6 @@ const cellText = (v: unknown) =>
   typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : null;
 
 const isHex = (v: unknown): v is string => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
-
-const isWord = (v: unknown) =>
-  typeof v === "boolean" || isFiniteNumber(v) || (typeof v === "string" && /^[a-z0-9.-]+$/.test(v));
 
 /** Whether `key` is one of `list`'s own entries (not a name every object has, as "constructor"). */
 const isIn = (list: object, key: unknown) => typeof key === "string" && Object.hasOwn(list, key);
@@ -605,9 +617,12 @@ function readParams(
 ): AnalysisParams | undefined {
   if (!isObj(raw)) return undefined;
   const p = canonical(raw, Object.keys(PARAMS));
-  // A param this version doesn't know is kept as a plain word.
+  // A param this version doesn't know is kept verbatim — any JSON value, in its
+  // own case (FF-F12): it belongs to a newer Helix (or a hand edit), and this
+  // version's runners only ever read the params they know by name, so keeping
+  // it can't change what a test computes or reach R.
   const read = (k: string, v: unknown) => {
-    if (!isIn(PARAMS, k)) return isWord(lower(v)) ? lower(v) : undefined;
+    if (!isIn(PARAMS, k)) return v;
     let dropped = 0;
     const value = readParam(PARAMS[k as ParamKey], v, (n) => {
       dropped = n;
@@ -925,8 +940,23 @@ export function parseProjectFile(
     }
   }
 
-  const read = { nodes, rootOrder, childOrder, activeNodeId };
-  return { project: read, issues, updated: contents(read) !== contents(file.project) };
+  // Unknown keys from the envelopes (FF-F12): the file's own, and the project's —
+  // kept on the project so saving writes them back where they came from.
+  const fileUnknowns = unknownsOf(file, FILE_KEYS);
+  const projectUnknowns = unknownsOf(project, PROJECT_KEYS);
+  const read: ProjectFilePayload = {
+    nodes,
+    rootOrder,
+    childOrder,
+    activeNodeId,
+    ...(Object.keys(fileUnknowns).length ? { fileUnknowns } : {}),
+    ...(Object.keys(projectUnknowns).length ? { projectUnknowns } : {}),
+  };
+  // `updated` compares what Helix knows only: carrying unknowns through is not
+  // a repair, so a newer file that needed no repair still opens unedited.
+  const known = { nodes, rootOrder, childOrder, activeNodeId };
+  const filed = Object.fromEntries(PROJECT_KEYS.map((k) => [k, project[k]]));
+  return { project: read, issues, updated: contents(known) !== contents(filed) };
 }
 
 // ── Dose-response graphs (before Helix 1.0.7) ───────────────────────────
