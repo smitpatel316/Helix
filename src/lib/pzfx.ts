@@ -422,10 +422,40 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
     const counts = yColumns.map((y) => y.subcolumns.length);
     groups = yColumns.length;
     replicates = Math.max(...counts);
+    // A grouped table's columns are "Group:Y1"…, so a group name must be
+    // unique and colon-free — seriesKeyOf splits at the first ":" and
+    // regroupTable rebuilds exactly "Group:Y1"…"Group:Y<replicates>" on
+    // reload. Before this fix untitled Y columns all became "Group"
+    // (duplicate "Group:Y1" columns, renamed "Group:Y1 2" by FF-F9 but
+    // still dropped on reload), a title like "1:10" became "1:10:Y1"
+    // (group "1", its data wiped on reload), and a ragged Y column left
+    // its group short of subcolumns. So: sanitize ":", dedupe the group
+    // names, and pad every group to `replicates` subcolumns.
+    const usedGroups = new Set<string>();
+    const renamedGroups: string[] = [];
+    const rowLen = Math.max(
+      0,
+      ...yColumns.flatMap((y) => y.subcolumns.map((s) => s.values.length)),
+      rowTitleValues.length,
+    );
+    const emptySubcolumn = (): Subcolumn => ({ values: Array<string | null>(rowLen).fill(null), excluded: new Set() });
+    const reps = replicates;
     yColumns.forEach((y) => {
-      const group = y.title === "" ? "Group" : y.title;
-      y.subcolumns.forEach((sub, i) => pushColumn(`${group}:Y${i + 1}`, sub));
+      const raw = y.title === "" ? "Group" : y.title;
+      const base = raw.replace(/:/g, "-");
+      let group = base;
+      for (let n = 2; usedGroups.has(group); n++) group = `${base} ${n}`;
+      usedGroups.add(group);
+      if (group !== raw) renamedGroups.push(`“${raw}” → “${group}”`);
+      const subs = [...y.subcolumns];
+      while (subs.length < reps) subs.push(emptySubcolumn());
+      subs.forEach((sub, i) => pushColumn(`${group}:Y${i + 1}`, sub));
     });
+    if (renamedGroups.length > 0) {
+      warnings.push(
+        `${displayName}: group names must be unique and can't contain “:”, so they were renamed (${renamedGroups.join(", ")}) — the data itself is unchanged.`,
+      );
+    }
   } else if (tableType === "TwoWay") {
     // Summary values (mean, SD, N…) — not raw replicates. Keep them, named, and
     // say so: running a group comparison on them as if they were replicates
