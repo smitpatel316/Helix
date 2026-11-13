@@ -15,11 +15,17 @@
 // it makes the queue observable and gives future priority/cancel work a
 // single place to hook in.
 //
-// A queued request whose caller already gave up (watchdog/cancel) still
-// runs once when it reaches the front — the shell discards its late result
-// — so a cancelled caller never wedges the queue. Per-request cancel of
-// queued work would need the shell to tell the engine which ids were
-// dropped; it doesn't today, so cancel stays the watchdog + interrupt path.
+// A queued request whose caller gave up is dropped by `cancel` (FL-F14):
+// the shell tells the engine which request ids it dropped, and the engine
+// dequeues them here instead of running them — the shell discards a late
+// result anyway, so a dropped request never wedges the queue. Only a
+// request that is already running needs the interrupt path; `cancel` says
+// whether one of the ids is the running one, and the caller interrupts
+// only then. A request whose caller gave up some other way (its window
+// closed with no cancel) still runs once when it reaches the front — the
+// shell discards its late result — so a cancelled caller never wedges the
+// queue.
+import { EvalCancelledError } from "./webr";
 
 /** What the queue looks like right now: one evaluation running, the rest waiting. */
 export interface RQueueSnapshot {
@@ -30,25 +36,40 @@ export interface RQueueSnapshot {
 /** A serial FIFO for R evaluations: tasks run in enqueue order, one at a
  *  time; a task that throws never stalls the queue — the next task still
  *  runs, and the error reaches that task's caller. `onChange` fires on
- *  every enqueue, start, and finish. */
+ *  every enqueue, start, finish, and cancel. `enqueue` takes the task's id
+ *  (the shell's request id, when the engine window enqueues it) so `cancel`
+ *  can drop that one request: a queued request cancelled this way never
+ *  runs — its promise rejects with `EvalCancelledError` when its turn
+ *  comes — and the running request is never touched by it. */
 export function createEvalQueue(onChange?: (snapshot: RQueueSnapshot) => void) {
   let tail: Promise<void> = Promise.resolve();
   let running = false;
-  let queued = 0;
-  const snapshot = (): RQueueSnapshot => ({ running, queued });
+  /** The running entry's id, while one runs — what `cancel` checks before
+   *  deciding the interrupt is the canceller's to make. */
+  let runningId: unknown;
+  /** Entries still waiting for their turn, in order — what `cancel` drops. */
+  const waiting: { id: unknown; cancelled: boolean }[] = [];
+  const snapshot = (): RQueueSnapshot => ({ running, queued: waiting.length });
   const emit = () => onChange?.(snapshot());
   return {
-    enqueue<T>(task: () => Promise<T>): Promise<T> {
-      queued++;
+    enqueue<T>(task: () => Promise<T>, id?: unknown): Promise<T> {
+      const entry = { id, cancelled: false };
+      waiting.push(entry);
       emit();
       const run = tail.then(async () => {
-        queued--;
+        const at = waiting.indexOf(entry);
+        if (at >= 0) waiting.splice(at, 1);
+        if (entry.cancelled) {
+          throw new EvalCancelledError();
+        }
         running = true;
+        runningId = entry.id;
         emit();
         try {
           return await task();
         } finally {
           running = false;
+          runningId = undefined;
           emit();
         }
       });
@@ -59,6 +80,27 @@ export function createEvalQueue(onChange?: (snapshot: RQueueSnapshot) => void) {
         () => {},
       );
       return run;
+    },
+    /** Drop the queued entries with these ids, and say whether one of them
+     *  is the entry now running. A dropped entry never runs; the running
+     *  entry is reported, not stopped — stopping it is the caller's
+     *  interrupt. An id with no entry here cancels nothing. */
+    cancel(ids: Iterable<unknown>): { cancelledQueued: number; runningCancelled: boolean } {
+      const wanted = new Set(ids);
+      let cancelledQueued = 0;
+      for (let i = waiting.length - 1; i >= 0; i--) {
+        const entry = waiting[i];
+        if (entry.id !== undefined && wanted.has(entry.id)) {
+          entry.cancelled = true;
+          waiting.splice(i, 1);
+          cancelledQueued++;
+        }
+      }
+      if (cancelledQueued) emit();
+      return {
+        cancelledQueued,
+        runningCancelled: runningId !== undefined && wanted.has(runningId),
+      };
     },
     snapshot,
   };
