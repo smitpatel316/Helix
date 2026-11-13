@@ -62,8 +62,12 @@ export const EXPONENTIAL_MODELS: NonlinearModel[] = [
 
 /** The enzyme-kinetics models (plan 09): fitted with nls() algorithm
  *  "port" (see modelSpec). Unlike the log/ratio forms, their formulas are
- *  defined at X = 0, so the vehicle point stays in the fit — they set no
- *  `positiveX`; the positive-X values are used only for start values. */
+ *  defined at X = 0, so the vehicle point stays in the fit — they set
+ *  `nonNegativeX`, not `positiveX`; the positive-X values are used only for
+ *  start values. `nonNegativeX` keeps the interpolation grid (and the
+ *  point-estimate search) at X ≥ 0: below zero the allosteric form is NaN
+ *  for a non-integer Hill slope and the Michaelis-Menten pole at −Km sits
+ *  inside the grid (R3-10). */
 export const ENZYME_MODELS: NonlinearModel[] = [
   "michaelis-menten",
   "allosteric-sigmoidal",
@@ -140,11 +144,13 @@ export interface ModelSpec {
   derived?: Derived[];
   /** Log-X curves fit the points with X > 0 only (log(0) is undefined). */
   positiveX?: boolean;
-  /** Raw-concentration ratio curves (4PL/5PL X, hyperbola, two-site X):
-   *  defined at X = 0 — the vehicle point is the Bottom anchor, so it stays
-   *  in the fit — but not at X < 0 (a fractional power of a negative is NaN
-   *  in R). The enzyme models share the "defined at 0" half and set neither
-   *  flag; their negative-X check lives in prepareFit. */
+  /** Raw-concentration ratio curves (4PL/5PL X, hyperbola, two-site X, enzyme
+   *  kinetics): defined at X = 0 — the vehicle point is the Bottom anchor, so
+   *  it stays in the fit — but not at X < 0 (a fractional power of a negative
+   *  is NaN in R). The enzyme models share the "defined at 0" half and set
+   *  this flag (R3-10: without it the interpolation grid extended below zero,
+   *  where allosteric-sigmoidal is NaN and Michaelis-Menten has its pole);
+   *  their negative-X error still lives in prepareFit. */
   nonNegativeX?: boolean;
   /** nls models only: R defining `g<-function(xv,p)` — the curve evaluated at
    *  X `xv` with parameter vector `p` (named, as `coef(m)` reports them).
@@ -506,7 +512,10 @@ export function modelSpec(
     // names — a separate model entry, same formula, no duplicated fitter.
     // None sets positiveX: the formulas are defined at X = 0, so the
     // vehicle point stays in the fit; median(x[x > 0]) is used only for
-    // the Km/Khalf start values.
+    // the Km/Khalf start values. All three set nonNegativeX (R3-10): the
+    // interpolation grid and point-estimate search must stay at X ≥ 0 —
+    // below zero allosteric-sigmoidal is NaN for a non-integer Hill slope
+    // and Michaelis-Menten's pole at −Km captures the band inversion.
     case "michaelis-menten": {
       // Y = Vmax·X / (Km + X). Vmax/Km's CI is the delta method (upstream
       // reports no CI for it; Prism does).
@@ -517,6 +526,7 @@ export function modelSpec(
         kind: "nls",
         fit: "m<-nls(y~Vmax*x/(Km+x),start=list(Vmax=max(y)*1.1,Km=median(x[x>0])),algorithm=\"port\")",
         terms: ["Vmax", "Km"],
+        nonNegativeX: true,
         derived: [
           {
             label: "Vmax/Km",
@@ -534,6 +544,7 @@ export function modelSpec(
         kind: "nls",
         fit: "m<-nls(y~Vmax*x^h/(Khalf^h+x^h),start=list(Vmax=max(y)*1.1,Khalf=median(x[x>0]),h=1),algorithm=\"port\")",
         terms: ["Vmax", "Khalf", "HillSlope"],
+        nonNegativeX: true,
         curveFn: 'g<-function(xv,p) p[["Vmax"]]*xv^p[["h"]]/(p[["Khalf"]]^p[["h"]]+xv^p[["h"]])',
       };
     case "substrate-inhibition":
@@ -543,6 +554,7 @@ export function modelSpec(
         kind: "nls",
         fit: "m<-nls(y~Vmax*x/(Km+x+x^2/Ki),start=list(Vmax=max(y)*1.5,Km=median(x[x>0]),Ki=max(x)),algorithm=\"port\")",
         terms: ["Vmax", "Km", "Ki"],
+        nonNegativeX: true,
         curveFn: 'g<-function(xv,p) p[["Vmax"]]*xv/(p[["Km"]]+xv+xv^2/p[["Ki"]])',
         retryFits: [
           {
@@ -1053,8 +1065,10 @@ export function prepareFit(
     // is unidentifiable with no positive X or with all X equal — validate
     // before calling R, not after it fails. The X = 0 vehicle point is
     // kept (the formulas are defined at X = 0); only the start values use
-    // the positive X values.
-    if (xs.some((x) => x < 0)) return { error: "Substrate concentrations cannot be negative." };
+    // the positive X values. The negativity test reads the unfiltered
+    // points: `nonNegativeX` drops X < 0 from `xs` above, so testing `xs`
+    // would never fire (R3-10).
+    if (complete.x.some((x) => x < 0)) return { error: "Substrate concentrations cannot be negative." };
     if (!xs.some((x) => x > 0))
       return { error: "No positive substrate concentration — Km cannot be estimated." };
     if (new Set(xs).size === 1)
