@@ -155,6 +155,15 @@ export async function runMonteCarlo(
     if (pairs.x.length < 3) {
       return { error: "Monte Carlo needs at least 3 complete X–Y pairs to repeat a regression or correlation." };
     }
+    // A constant X has no slope or correlation to repeat: lm() / cor() on
+    // it return NA, which the run below would only report as the generic
+    // "did not return the expected values" error. Name the cause instead.
+    if (new Set(pairs.x).size < 2) {
+      return {
+        error:
+          "Monte Carlo needs at least 2 different X values to repeat a regression or correlation — all X values are the same, so the slope / correlation is undefined.",
+      };
+    }
     x = pairs.x;
     groups.push({ name: y.name, values: pairs.y });
   } else {

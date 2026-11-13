@@ -4483,6 +4483,74 @@ check("the 2x2 chi-square for reference is uncorrected, Fisher's exact unchanged
   close(stat2("Chi-square (for reference)"), 0.7937, 1e-3, "uncorrected chi-square, second table");
 });
 
+// BUG-REPORT #28 leg 3: prop.trend.test on a first row/column holding 0%
+// or 100% of the counts crashed R's lm.wfit ("NA/NaN/Inf in 'x'"). The
+// guard names the constant row/column instead of calling it — and a table
+// with a real trend still runs the trend test.
+check("the chi-square trend test names a constant first row or column instead of crashing R", async () => {
+  const trendError = async (data: TableData) => {
+    const out = await runAnalysis("chi-square", data, { trendOrdered: true });
+    if (!("error" in out)) throw new Error(`expected a trend error, got ${JSON.stringify(out.stats)}`);
+    return out.error;
+  };
+  const firstCol0: TableData = {
+    columns: ["Title", "Success", "Failure"],
+    rows: [
+      ["Dose 1", "0", "20"],
+      ["Dose 2", "0", "15"],
+      ["Dose 3", "0", "11"],
+      ["Dose 4", "0", "6"],
+    ],
+  };
+  const firstCol100: TableData = {
+    columns: ["Title", "Success", "Failure"],
+    rows: [
+      ["Dose 1", "20", "0"],
+      ["Dose 2", "15", "0"],
+      ["Dose 3", "11", "0"],
+      ["Dose 4", "6", "0"],
+    ],
+  };
+  const firstRow0: TableData = {
+    columns: ["Title", "Dose 1", "Dose 2", "Dose 3", "Dose 4"],
+    rows: [
+      ["Success", "0", "0", "0", "0"],
+      ["Failure", "18", "15", "11", "6"],
+    ],
+  };
+  const firstRow100: TableData = {
+    columns: ["Title", "Dose 1", "Dose 2", "Dose 3", "Dose 4"],
+    rows: [
+      ["Success", "2", "5", "9", "14"],
+      ["Failure", "0", "0", "0", "0"],
+    ],
+  };
+  const e0 = await trendError(firstCol0);
+  ok(e0.includes("test for trend is undefined") && e0.includes("first column") && e0.includes("0%"), e0);
+  const e100 = await trendError(firstCol100);
+  ok(e100.includes("test for trend is undefined") && e100.includes("first column") && e100.includes("100%"), e100);
+  const r0 = await trendError(firstRow0);
+  ok(r0.includes("test for trend is undefined") && r0.includes("first row") && r0.includes("0%"), r0);
+  const r100 = await trendError(firstRow100);
+  ok(r100.includes("test for trend is undefined") && r100.includes("first row") && r100.includes("100%"), r100);
+  // A table with a real trend still runs the trend test (same data as the
+  // wizard check above).
+  const trend2x4: TableData = {
+    columns: ["Title", "Success", "Failure"],
+    rows: [
+      ["Dose 1", "2", "18"],
+      ["Dose 2", "5", "15"],
+      ["Dose 3", "9", "11"],
+      ["Dose 4", "14", "6"],
+    ],
+  };
+  const out = await runAnalysis("chi-square", trend2x4, { trendOrdered: true });
+  if ("error" in out) throw new Error(out.error);
+  const stat = (label: string) => out.stats.find((s) => s.label === label)?.value;
+  close(stat("Chi-square for trend"), 17.0667, 1e-3, "chi-square for trend");
+  close(stat("P value (test for trend)"), 0.0000361, 1e-6, "trend p value");
+});
+
 check("the McNemar wizard confirms paired data and defaults the correction on", () => {
   const data: TableData = {
     columns: ["Title", "Second: Yes", "Second: No"],
@@ -6008,6 +6076,58 @@ check("Monte Carlo is offered on column and XY tables only, with its histogram g
   for (const tableType of ["column", "xy"] as const)
     ok(GRAPH_OPTIONS_BY_TABLE[tableType].some((o) => o.value === "monte-carlo-histogram"));
   ok(!GRAPH_OPTIONS_BY_TABLE.grouped.some((o) => o.value === "monte-carlo-histogram"));
+});
+
+// BUG-REPORT #28 leg 4: a Monte Carlo repeat of a regression/correlation
+// with all X values identical failed only with the generic "did not return
+// the expected values" error (lm()/cor() return NA on a constant X). The
+// guard names the constant X — and a varying X still runs.
+check("Monte Carlo names a constant X instead of the generic failure", async () => {
+  const constX: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "5", "2"],
+      ["", "5", "4"],
+      ["", "5", "6"],
+      ["", "5", "8"],
+    ],
+  };
+  for (const [target, statistic] of [
+    ["linear-regression", "Slope"],
+    ["correlation", "r"],
+  ] as const) {
+    const out = await runAnalysis("monte-carlo", constX, {
+      targetAnalysis: target,
+      summaryStatistic: statistic,
+      repeats: 100,
+      seed: 42,
+    } as AnalysisParams);
+    if (!("error" in out)) throw new Error(`expected a constant-X error for ${target}`);
+    ok(
+      out.error.includes("at least 2 different X values") && out.error.includes("all X values are the same"),
+      out.error,
+    );
+  }
+  // A varying X still runs (same table with X 1–4).
+  const varyingX: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "1", "2"],
+      ["", "2", "4"],
+      ["", "3", "6"],
+      ["", "4", "8"],
+    ],
+  };
+  const mc = await runAnalysis("monte-carlo", varyingX, {
+    targetAnalysis: "linear-regression",
+    summaryStatistic: "Slope",
+    repeats: 100,
+    seed: 42,
+  });
+  if ("error" in mc) throw new Error(mc.error);
+  strictEqual(mc.monteCarlo?.repeats, 100);
+  close(mc.monteCarlo?.mean, 0.0728, 1e-3, "mean slope over repeats");
+  strictEqual(mc.monteCarlo?.observed, 2);
 });
 
 check("a Monte Carlo analysis, its histogram and a simulated table survive a file round-trip", () => {
