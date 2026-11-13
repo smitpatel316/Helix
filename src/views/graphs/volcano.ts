@@ -61,6 +61,11 @@ export function volcanoPair(groups: string[], options: GraphOptions): [string | 
 /** A volcano's two colored series, by key: what it calls them. */
 export const VOLCANO_SERIES: Record<string, string> = { down: "Down-regulated", up: "Up-regulated" };
 
+/** The highest -log10 a volcano plots: a p / FDR of exactly 0 (R underflow for a
+ *  very small p, or 0 from BH adjustment) plots here, at the top, instead of
+ *  being dropped — it is the most significant gene there is. */
+export const VOLCANO_MAX_LOG10 = 308;
+
 function build(columns: Column[], options: GraphOptions, paint: Paint, titles?: (string | null)[]): GraphFigure {
   const byName = (name?: string) => columns.find((c) => c.name === name);
   const xCol = byName(options.volcanoX) ?? columns[0];
@@ -106,8 +111,12 @@ function build(columns: Column[], options: GraphOptions, paint: Paint, titles?: 
     let yv = yCol.byRow[r] ?? null;
     if (xv == null || yv == null) continue;
     if (yIsP) {
-      if (yv <= 0) continue; // a p / FDR must be > 0 to take -log10
-      yv = -Math.log10(yv);
+      // A p / FDR of exactly 0 is the most significant gene there is, not a
+      // missing one: R underflows very small p values to 0, and BH adjustment
+      // can return 0 too. Plot it at the capped -log10 instead of dropping it;
+      // only genuinely invalid values (negative, NaN, ±Infinity) are skipped.
+      if (yv < 0 || !Number.isFinite(yv)) continue;
+      yv = Math.min(-Math.log10(Math.max(yv, Number.MIN_VALUE)), VOLCANO_MAX_LOG10);
     }
     const sig = Math.abs(xv) >= fc && yv >= sigY;
     // A gene is its row; its own style wins over its up / down / not significant look.
