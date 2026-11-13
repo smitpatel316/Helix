@@ -150,7 +150,7 @@ Titer is free software: you can redistribute it and modify it under the terms of
 
 © 2026 mickaphd
 
-Titer is free and always will be. If it saves you time, you can buy the developer a coffee. <!-- TODO: add Smit's Buy Me a Coffee URL here — the Cricket 07 link could not be found in the site source; Smit to confirm the exact URL -->
+Titer is free and always will be. If it saves you time, you can [buy the developer a coffee](https://www.buymeacoffee.com/smitpatel316).
 
 ## Acknowledgments
 
