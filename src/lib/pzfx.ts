@@ -480,6 +480,38 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
     columns.splice(at, 0, { ...dateColumn, name });
   }
 
+  // FF-F9: Prism lets two Y columns share a title (and an X title can match
+  // a Y title), but Helix resolves a column by name with
+  // `data.columns.indexOf(name)` — the first match wins, so an analysis
+  // naming the second duplicate silently ran on the first column's data.
+  // Rename later duplicates ("A" → "A 2", "A 3", …) so every imported
+  // column has a distinct name and each keeps its own data. A duplicate
+  // that already ends in " N" renumbers from its stem ("Control 2" →
+  // "Control 3"), so renames never stack into "Control 2 2".
+  const seenNames = new Set<string>(["Title"]);
+  const renamed: string[] = [];
+  for (const column of columns) {
+    if (!seenNames.has(column.name)) {
+      seenNames.add(column.name);
+      continue;
+    }
+    const stem = column.name.replace(/ \d+$/, "");
+    let n = 2;
+    let renamedName = `${stem} ${n}`;
+    while (seenNames.has(renamedName)) {
+      n++;
+      renamedName = `${stem} ${n}`;
+    }
+    renamed.push(`“${column.name}” → “${renamedName}”`);
+    column.name = renamedName;
+    seenNames.add(renamedName);
+  }
+  if (renamed.length > 0) {
+    warnings.push(
+      `${displayName}: duplicate column names were renamed so each column keeps its own data (${renamed.join(', ')}).`,
+    );
+  }
+
   const rowCount = Math.max(0, ...columns.map((c) => c.values.length), rowTitleValues.length);
   if (rowCount === 0 || columns.length === 0) {
     issues.push({ severity: "warning", message: `${displayName} holds no data. It was left out.` });
