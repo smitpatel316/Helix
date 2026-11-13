@@ -214,15 +214,28 @@ async function runRepeatedMeasures(
   const rowKeys = [...new Set(row)];
   const rowNames = rowKeys.map((key) => rowName(titles, Number(key.slice(1)) - 1));
   const groupNames = [...new Set(group)];
+  // One complete subject per group in every group leaves no residual degrees
+  // of freedom (nrow(Y) == nlevels(gs)): the pooled covariance's denominator
+  // is 0 and pf() gets a NULL df. Refuse up front instead of crashing in R.
+  if (new Set(subject).size <= groupNames.length) {
+    return {
+      error:
+        "Repeated-measures two-way ANOVA needs more complete subjects than column groups — " +
+        "with only one complete subject in every group there is no residual variation to estimate " +
+        "the Geisser-Greenhouse correction from.",
+    };
+  }
   const setup = `v<-${rVec(values)};g<-${rFactor(group)};r<-${rFactor(row)};id<-${rFactor(subject)}`;
   // Y: a subject per row (values come subject by subject, rows in order); gs its group.
   // Geisser-Greenhouse: epsilon of the rows' covariance pooled over the groups, double-centered.
   // A zero denominator means the differences have no variance at all (sphericity holds
-  // exactly) — epsilon is 1, never 0/0.
+  // exactly) — epsilon is 1, never 0/0. A group with a single complete subject
+  // contributes a zero matrix, not (length(i)-1)*cov(...): cov() of one row is all
+  // NA, and 0 * NA is NA in R, which would poison S, C and the epsilon test.
   const q = rowKeys.length;
   const gg =
     `Y<-matrix(v,ncol=${q},byrow=TRUE);gs<-factor(g[seq(1,length(v),by=${q})]);` +
-    `S<-Reduce("+",lapply(split(seq_len(nrow(Y)),gs),function(i)(length(i)-1)*cov(Y[i,,drop=FALSE])))/(nrow(Y)-nlevels(gs));` +
+    `S<-Reduce("+",lapply(split(seq_len(nrow(Y)),gs),function(i)if(length(i)>1)(length(i)-1)*cov(Y[i,,drop=FALSE])else matrix(0,${q},${q})))/(nrow(Y)-nlevels(gs));` +
     `H<-diag(${q})-1/${q};C<-H%*%S%*%H;ggd<-(${q - 1})*sum(C*C);e<-if(ggd>0)min(1,sum(diag(C))^2/ggd)else 1`;
   const within = (k: string, f: string, df: string, resid: string, p: string) =>
     corrected

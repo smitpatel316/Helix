@@ -2051,6 +2051,57 @@ check("a two-way ANOVA of one value per cell asks nothing and runs the ordinary 
   });
 });
 
+// BUG-REPORT #14 (FL-R3-14): a repeated-measures two-way ANOVA used to crash
+// inside R with "missing value where TRUE/FALSE needed" when one group had a
+// single complete subject — cov() of one row is all NA, and 0 * NA is NA,
+// poisoning the pooled covariance S and the Geisser-Greenhouse epsilon (the
+// GG code is spliced in even when sphericity is assumed). The single-subject
+// group now contributes a zero matrix to S, and one subject per group in
+// every group is refused up front instead of crashing in R.
+check("a repeated-measures two-way ANOVA survives a group with one complete subject (FL-R3-14)", async () => {
+  // Group A has 3 complete subjects; Group B has 1 (Y2 misses row 3, Y3 misses row 1).
+  const table: TableData = {
+    columns: ["Title", "A:Y1", "A:Y2", "A:Y3", "B:Y1", "B:Y2", "B:Y3"],
+    rows: [
+      ["", "10", "12", "11", "20", "22", null],
+      ["", "13", "14", "15", "24", "25", "26"],
+      ["", "16", "17", "18", "27", null, "29"],
+    ],
+    groups: 2,
+    replicates: 3,
+  };
+  const params = { design: "repeated-measures", sphericity: false, posthoc: "none", posthocTarget: "groups" } as AnalysisParams;
+  const out = await runAnalysis("two-way-anova", table, params);
+  if ("error" in out) throw new Error(`expected a result, got ${out.error}`);
+  const stats = Object.fromEntries(out.stats.map((s) => [s.label, s.value]));
+  // Epsilon 0.5 and the corrected P values, verified against an independent
+  // (pure-JS) computation of the pooled covariance and the F distribution.
+  ok(Math.abs((stats["Geisser-Greenhouse epsilon"] ?? NaN) - 0.5) < 1e-12);
+  ok(Math.abs((stats["Row P value"] ?? NaN) - 0.008421202561088295) < 1e-9);
+  ok(Math.abs((stats["Interaction P value"] ?? NaN) - 0.47776703213290367) < 1e-9);
+  // Sphericity assumed: same data, no GG correction, no epsilon reported.
+  const assumed = await runAnalysis("two-way-anova", table, { ...params, sphericity: true });
+  if ("error" in assumed) throw new Error(`expected a result with sphericity assumed, got ${assumed.error}`);
+  const assumedStats = Object.fromEntries(assumed.stats.map((s) => [s.label, s.value]));
+  ok(!assumed.stats.some((s) => s.label === "Geisser-Greenhouse epsilon"));
+  ok(Math.abs((assumedStats["Row P value"] ?? NaN) - 0.0002812828254859835) < 1e-9);
+  // One complete subject per group in every group: no residual variation, so a
+  // clean error, not an R crash.
+  const allSingle: TableData = {
+    columns: ["Title", "A:Y1", "A:Y2", "B:Y1", "B:Y2"],
+    rows: [
+      ["", "10", "12", "20", null],
+      ["", "13", null, "24", "25"],
+      ["", "16", "17", "27", "29"],
+    ],
+    groups: 2,
+    replicates: 2,
+  };
+  const refused = await runAnalysis("two-way-anova", allSingle, params);
+  if (!("error" in refused) || !refused.error.includes("more complete subjects than column groups"))
+    throw new Error(`expected the too-few-subjects error, got ${JSON.stringify(refused)}`);
+});
+
 // R2-B3: with X + 1 Y the enzyme-inhibition wizard used to dead-end — the
 // model defaulted to a global fit whose Y question needed min: 2 from a
 // single option, so Next stayed disabled with no message. Now only Morrison
