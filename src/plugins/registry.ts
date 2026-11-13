@@ -277,7 +277,7 @@ export async function runPluginAnalysis(
     // Groups are declared as g0, g1, … (the ColumnTestSpec contract); the
     // plugin code ends in a c(name=value, …) named vector.
     const v = await evalNamedVector(`${declareGroups(groups)};${spec.compute.code}`);
-    const described = await describe(groups);
+    const { groups: described } = await describe(groups);
     const stats = spec.rows ? spec.rows(v, described, values) : defaultRows(v);
     return {
       testType: id,

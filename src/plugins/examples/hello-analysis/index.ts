@@ -18,6 +18,7 @@ import { mean, median } from "../../../lib/summary";
 import type { Column } from "../../../lib/dataset";
 import { getPluginAnalysis, registerPluginAnalysis, runPluginAnalysis } from "../../registry";
 import { confirmEnable, installPlugin, parsePluginPackage, requestEnable, type PluginRecord } from "../../loader";
+import type { PluginAnalysisSpec } from "../../analysis-spec";
 import pluginJson from "./plugin.json";
 
 export const HELLO_PLUGIN_ID = "example.hello-analysis";
@@ -51,7 +52,8 @@ export function registerHelloPlugin(): { record: PluginRecord; ids: string[] } |
   }
 
   if (!getPluginAnalysis(HELLO_SCALED_MEAN_ID)) {
-    const registered = registerPluginAnalysis(HELLO_PLUGIN_ID, {
+    // Typed as a code spec so the compute function's params type-check.
+    const scaledMeanSpec: PluginAnalysisSpec = {
       id: "hello-scaled-mean",
       label: "Hello scaled mean",
       tableTypes: ["column"],
@@ -107,7 +109,8 @@ export function registerHelloPlugin(): { record: PluginRecord; ids: string[] } |
         },
       },
       notes: "The mean (or median) of the first column, times the multiplier.",
-    });
+    };
+    const registered = registerPluginAnalysis(HELLO_PLUGIN_ID, scaledMeanSpec);
     if ("errors" in registered) return { errors: registered.errors };
   }
 
