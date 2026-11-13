@@ -27,15 +27,18 @@ const reason = (err: unknown) => (err instanceof Error ? err.message : String(er
 
 type Size = { width: number; height: number };
 
-/** A panel drawn at `size`, as an image blob (raster at `dpi`, or SVG). */
+/** A panel drawn at `size`, as an image blob (raster at `dpi`, or SVG).
+ *  With `hideLegend`, the panel draws no legend of its own — the figure's
+ *  one shared legend (drawn below the grid by the caller) replaces it. */
 async function panelImage(
   graph: ProjectNode,
   nodes: Record<string, ProjectNode>,
   size: Size,
   format: ExportFormat,
   dpi: Resolution,
+  hideLegend: boolean,
 ): Promise<Blob | null> {
-  const fig = buildPanelFigure(graph, nodes);
+  const fig = buildPanelFigure(graph, nodes, { hideLegend });
   if (!fig) return null;
   const el = document.createElement("div");
   el.style.cssText = "position:fixed;left:-10000px;top:0;visibility:hidden;";
@@ -125,7 +128,7 @@ export async function renderFigureRaster(
     const graph = nodes[rect.panel.graphId];
     const y = rect.y + g.titleStrip;
     if (graph) {
-      const image = await panelImage(graph, nodes, { width: rect.width, height: rect.height }, format, dpi);
+      const image = await panelImage(graph, nodes, { width: rect.width, height: rect.height }, format, dpi, legend.ok);
       if (image) {
         const bitmap = await createImageBitmap(image);
         ctx.drawImage(bitmap, rect.x, y, rect.width, rect.height);
@@ -194,7 +197,7 @@ export async function renderFigureSvg(
   for (const rect of g.rects) {
     const graph = nodes[rect.panel.graphId];
     if (!graph) continue;
-    const image = await panelImage(graph, nodes, { width: rect.width, height: rect.height }, "svg", dpi);
+    const image = await panelImage(graph, nodes, { width: rect.width, height: rect.height }, "svg", dpi, legend.ok);
     if (image) composed.push({ panel: rect.panel, svg: await image.text() });
   }
   const { svg, missing } = composeFigureSvg(composed, figureOf(figure), legend.ok ? legend.entries : undefined);

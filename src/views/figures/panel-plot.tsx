@@ -11,18 +11,21 @@ export function PanelPlot({
   nodes,
   width,
   height,
+  hideLegend,
   onPlot,
 }: {
   graph: ProjectNode;
   nodes: Record<string, ProjectNode>;
   width: number;
   height: number;
+  /** True while the figure shows one shared legend: the panel draws none. */
+  hideLegend?: boolean;
   /** The drawn element (for per-panel export, which reuses `saveGraphImage`). */
   onPlot: (el: HTMLElement | null) => void;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const plottedRef = React.useRef<HTMLDivElement | null>(null);
-  const fig = React.useMemo(() => buildPanelFigure(graph, nodes), [graph, nodes]);
+  const fig = React.useMemo(() => buildPanelFigure(graph, nodes, { hideLegend }), [graph, nodes, hideLegend]);
 
   React.useEffect(() => {
     const el = ref.current;

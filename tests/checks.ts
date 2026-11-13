@@ -139,6 +139,7 @@ import {
   sharedLegendCheck,
   validateFigureSize,
 } from "../src/lib/figure";
+import { buildPanelFigure } from "../src/views/figures/panel-figure";
 import { sampleProject } from "./sample-project";
 import { crc32 } from "node:zlib";
 import type { AnalysisOutcome, AnalysisParams, AnalysisResult, DoseResponseSpecialParams, MonteCarloParams, RegressionCoefficient, SimulationSpec } from "../src/stats/types";
@@ -4284,6 +4285,67 @@ check("a shared legend needs identical series in identical colours (F-10, F-11)"
   };
   const refused = sharedLegendCheck(recoloured.nodes.f1.panels!, recoloured.nodes);
   ok(!refused.ok && refused.reason?.includes("different colours"), JSON.stringify(refused));
+});
+
+// BUG-REPORT #15: a figure with a shared legend promised "per-panel legends
+// are hidden", but every panel kept drawing its own alongside the shared one
+// below the grid — `buildPanelFigure` never touched `showlegend`, and neither
+// the preview nor the exporter overrode it. Before the fix both panels below
+// came back `showlegend: true` with a valid shared legend. The fixture's own
+// graphs (mean-error, individual) never draw a legend, so the check uses XY
+// scatters with two Y series, which do (`showlegend: seriesCount > 1`).
+check("a shared legend hides each panel's own legend (BUG-REPORT #15)", () => {
+  const ft: ProjectNode = {
+    id: "ft",
+    type: "table",
+    name: "Figure data",
+    parentId: null,
+    tableType: "xy",
+    data: {
+      columns: ["Title", "X", "Y1", "Y2"],
+      rows: [
+        [null, "1", "10", "14"],
+        [null, "2", "12", "16"],
+        [null, "3", "11", "15"],
+      ],
+    },
+  };
+  const scatter = (id: string, name: string): ProjectNode => ({
+    id,
+    type: "graph",
+    name,
+    parentId: "ft",
+    graphType: "xy-scatter",
+    graphOptions: {
+      ...newGraphOptions("xy-scatter"),
+      series: { Y1: { color: "#0072B2" }, Y2: { color: "#D55E00" } },
+    },
+  });
+  const nodes: Record<string, ProjectNode> = { ft, g1: scatter("g1", "Scatter 1"), g2: scatter("g2", "Scatter 2") };
+  const panels = [
+    { graphId: "g1", graphName: "Scatter 1", label: "A", title: "", row: 0, col: 0, rowSpan: 1, colSpan: 1 },
+    { graphId: "g2", graphName: "Scatter 2", label: "B", title: "", row: 0, col: 1, rowSpan: 1, colSpan: 1 },
+  ];
+  ok(sharedLegendCheck(panels, nodes).ok, "the shared legend must be valid for this check to mean anything");
+  for (const panel of panels) {
+    const graph = nodes[panel.graphId];
+    // The legend exists to hide: without the flag the panel still draws it.
+    strictEqual(buildPanelFigure(graph, nodes)?.layout.showlegend, true, `${panel.graphId} draws a legend on its own`);
+    strictEqual(buildPanelFigure(graph, nodes, { hideLegend: false })?.layout.showlegend, true);
+    // With the flag — the shared-legend case — the panel draws none, and
+    // nothing else about the figure changes.
+    const hidden = buildPanelFigure(graph, nodes, { hideLegend: true });
+    strictEqual(hidden?.layout.showlegend, false, `${panel.graphId} must hide its legend under a shared legend`);
+    strictEqual(hidden?.data.length, buildPanelFigure(graph, nodes)?.data.length);
+  }
+  // The wiring: the preview hides a panel's legend exactly when the figure
+  // has a shared legend and it is valid; the exporter does the same on both
+  // its raster and SVG paths (each already computes `legend.ok` that way).
+  const view = readFileSync("src/views/figures/figure-view.tsx", "utf8");
+  ok(view.includes('hideLegend={sharedLegend === "shared" && legend.ok}'), "the preview must pass hideLegend");
+  const exporter = readFileSync("src/views/figures/figure-export.ts", "utf8");
+  ok(exporter.includes("}, format, dpi, legend.ok)"), "the raster export must pass legend.ok");
+  ok(exporter.includes('}, "svg", dpi, legend.ok)'), "the SVG export must pass legend.ok");
 });
 
 check("an oversize figure offers the largest fitting size, never silently (F-12)", () => {
