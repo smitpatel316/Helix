@@ -14,6 +14,18 @@ tauri-plugin-window-state = "2"
 percent-encoding = "2"
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Cloud storage (v2 item 75, Box first): provider HTTP, OS-keychain tokens,
+# loopback OAuth. rustls, not OpenSSL: no system TLS dependency on any target.
+# Build verification for these deps is pending v1 clear (no cargo builds on
+# this lane); see docs/cloud-storage-box.md.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+keyring = "3"
+sha2 = "0.10"
+sha1 = "0.10"
+rand = "0.8"
+async-trait = "0.1"
 
 # macOS-only: the private-API feature and the Objective-C bridge. The Linux
 # build (dev/test) compiles without them; the Mac DMG build is unchanged.
@@ -26,3 +38,8 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 strip = true
+
+[dev-dependencies]
+# Only the mock-provider tests use it (#[tokio::test]); the app itself runs
+# on Tauri's runtime.
+tokio = { version = "1", features = ["rt", "macros"] }

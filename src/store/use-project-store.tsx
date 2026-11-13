@@ -27,7 +27,10 @@ type Selector =
   | { kind: "new-graph"; tableId: string }
   | { kind: "simulate-data"; tableId: string }
   | { kind: "converter" }
-  | { kind: "save-prompt" };
+  | { kind: "save-prompt" }
+  | { kind: "conflict" }
+  | { kind: "remote-picker" }
+  | { kind: "cloud-settings" };
 
 /** The project's content: what a file holds, and what Undo brings back. */
 interface Content {
@@ -107,7 +110,7 @@ type Action =
       /** Changed as it was read (repaired, or from an older Titer): to be saved. */
       edited?: boolean;
     }
-  | { type: "markSaved"; filePath: string; savedRevision: number };
+  | { type: "markSaved"; filePath: string | null; savedRevision: number };
 
 function nextName(prefix: string, taken: string[]): string {
   const used = new Set<number>();
@@ -429,7 +432,7 @@ interface ProjectActions {
     /** Changed as it was read: it opens edited, so saving keeps it as it is now. */
     edited?: boolean;
   }) => void;
-  markProjectSaved: (filePath: string, savedRevision: number) => void;
+  markProjectSaved: (filePath: string | null, savedRevision: number) => void;
 }
 
 interface ProjectContextValue extends ProjectActions {

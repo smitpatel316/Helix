@@ -14,6 +14,7 @@ import {
 import { fileName } from "./lib/paths";
 import { checkForUpdates } from "./updates";
 import { version } from "../package.json";
+import { recentLabel, type RecentEntry } from "./store/recents";
 
 export const separator = { item: "Separator" } as const;
 
@@ -51,17 +52,23 @@ export function openProjectsOrSay(paths: string[], forget: (path: string) => voi
 }
 
 /** File ▸ New Project, Open…, Open Recent: how every File menu starts. `forgetRecent`
- *  drops a recent project that is gone. */
+ *  drops a recent project that is gone. Remote entries open from the cloud
+ *  (via `openRemoteEntry`); without a project window to load into, a caller
+ *  passes none and remote entries are left out by filtering first. */
 export function projectItems(
-  recents: string[],
-  forgetRecent: (path: string) => void,
+  recents: RecentEntry[],
+  forgetRecent: (entry: RecentEntry) => void,
   clearRecents: () => void,
+  openRemoteEntry?: (entry: RecentEntry) => void,
 ): MenuItems {
   const recentItems = recents.length
     ? [
-        ...recents.map((path) => ({
-          text: fileName(path),
-          action: () => openProjectsOrSay([path], forgetRecent),
+        ...recents.map((entry) => ({
+          text: recentLabel(entry),
+          action: () =>
+            entry.kind === "local"
+              ? openProjectsOrSay([entry.path], (gone) => forgetRecent({ kind: "local", path: gone }))
+              : openRemoteEntry?.(entry),
         })),
         separator,
         { text: "Clear Menu", action: clearRecents },

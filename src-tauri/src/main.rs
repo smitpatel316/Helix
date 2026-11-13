@@ -5,6 +5,8 @@
 // macOS-only Objective-C calls live behind #[cfg(target_os = "macos")]; the
 // Linux build (dev/test only — the Mac DMG stays the release) gets no-op or
 // xdg-open equivalents so the same commands keep their signatures.
+mod cloud;
+mod cloud_box;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 #[cfg(target_os = "macos")]
 use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
@@ -12,7 +14,7 @@ use serde::Serialize;
 use std::{
     collections::HashMap,
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Mutex,
 };
 // OnceLock is only used by the macOS quit hook (ask_before_quitting_macos).
@@ -351,6 +353,276 @@ fn write_my_palettes(app: AppHandle, text: String) -> Result<(), String> {
     write_atomically(&dir.join(PALETTES_FILE), text.as_bytes())
 }
 
+// ── Cloud storage (v2 item 75, Box first) ─────────────────────────────────
+// The commands behind src/lib/cloud.ts. All provider HTTP and all tokens live
+// in Rust (cloud.rs / cloud_box.rs); the page only ever sees account identity,
+// folder listings, and file bytes — never a token. See
+// docs/cloud-storage-box.md for the design and the Box PKCE verdict.
+
+/// The connected accounts, as the page sees them: identity only, never
+/// tokens. Kept in Titer's data folder (`cloud-accounts.json`); the tokens
+/// themselves live in the OS keychain, keyed by provider + account id.
+fn cloud_registry_file(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|dir| dir.join("cloud-accounts.json"))
+}
+
+fn load_cloud_registry(app: &AppHandle) -> Vec<cloud::CloudAccount> {
+    cloud_registry_file(app)
+        .and_then(|file| fs::read_to_string(file).ok())
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn save_cloud_registry(app: &AppHandle, accounts: &[cloud::CloudAccount]) -> Result<(), cloud::CloudError> {
+    let Some(file) = cloud_registry_file(app) else {
+        return Err(cloud::CloudError::provider("Couldn't find the app-data folder."));
+    };
+    let text = serde_json::to_string(accounts)
+        .map_err(|e| cloud::CloudError::provider(format!("Couldn't record the cloud account: {e}")))?;
+    if let Some(parent) = file.parent() {
+        fs::create_dir_all(parent).map_err(|e| cloud::CloudError::provider(e.to_string()))?;
+    }
+    write_atomically(&file, text.as_bytes())
+}
+
+fn decode_base64(base64: &str) -> Result<Vec<u8>, cloud::CloudError> {
+    BASE64.decode(base64).map_err(|_| cloud::CloudError::provider("That file's bytes couldn't be read."))
+}
+
+/// The provider client for one account: the real Box client, or the
+/// in-memory mock (dev/QA only — the file layer, conflict dialog and offline
+/// behaviour without network or real accounts).
+fn cloud_provider(
+    app: &AppHandle,
+    mock: &cloud::MockProvider,
+    provider: &str,
+    account_id: &str,
+) -> Result<Box<dyn cloud::CloudProvider>, cloud::CloudError> {
+    match provider {
+        cloud::PROVIDER_MOCK => Ok(Box::new(mock.clone())),
+        cloud::PROVIDER_BOX => {
+            let accounts = load_cloud_registry(app);
+            let account =
+                accounts.iter().find(|a| a.provider == cloud::PROVIDER_BOX && a.id == account_id).ok_or_else(|| {
+                    cloud::CloudError::NotAuthenticated { message: "That Box account isn't connected.".into() }
+                })?;
+            Ok(Box::new(cloud_box::BoxClient::from_account(&account.id, &account.login, &account.name)?))
+        }
+        _ => Err(cloud::CloudError::provider("Unknown cloud provider.")),
+    }
+}
+
+/// What the Settings → Connected Storage page shows: the accounts, and
+/// whether Box has credentials saved (BYO) or a broker to use. Booleans
+/// only — no secrets cross the bridge, ever.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudStatus {
+    accounts: Vec<cloud::CloudAccount>,
+    box_has_credentials: bool,
+    box_has_broker: bool,
+}
+
+#[tauri::command]
+fn cloud_status(app: AppHandle) -> CloudStatus {
+    CloudStatus {
+        accounts: load_cloud_registry(&app),
+        box_has_credentials: matches!(cloud::load_byo_credentials("box"), Ok(Some(_))),
+        box_has_broker: cloud_box::BOX_BROKER_URL.is_some(),
+    }
+}
+
+/// Saves the user's own Box app credentials (client id + secret) to the OS
+/// keychain. They are validated at connect time, not here — Box is the one
+/// that can say whether they work.
+#[tauri::command]
+fn cloud_save_box_credentials(client_id: String, client_secret: String) -> Result<(), cloud::CloudError> {
+    let client_id = client_id.trim().to_string();
+    let client_secret = client_secret.trim().to_string();
+    if client_id.is_empty() || client_secret.is_empty() {
+        return Err(cloud::CloudError::provider("A client ID and a client secret are both needed."));
+    }
+    if client_id == cloud_box::BOX_CLIENT_ID_PLACEHOLDER {
+        return Err(cloud::CloudError::provider("That is the placeholder, not a real client ID."));
+    }
+    cloud::save_byo_credentials("box", &cloud::ByoCredentials { client_id, client_secret })
+}
+
+/// The Box connect flow (loopback + system browser + immediate exchange).
+/// Records the account in the registry on success.
+#[tauri::command]
+async fn cloud_connect_box(app: AppHandle) -> Result<cloud::CloudAccount, cloud::CloudError> {
+    let account = cloud_box::connect_box().await?;
+    let mut accounts = load_cloud_registry(&app);
+    accounts.retain(|a| !(a.provider == account.provider && a.id == account.id));
+    accounts.push(account.clone());
+    save_cloud_registry(&app, &accounts)?;
+    Ok(account)
+}
+
+/// Disconnect: revokes server-side AND deletes the keychain entry, then
+/// drops the account from the registry. The open document and its cache
+/// stay; the next save fails with a clear error and the local-copy escape
+/// hatch.
+#[tauri::command]
+async fn cloud_disconnect(
+    app: AppHandle,
+    mock: tauri::State<'_, cloud::MockProvider>,
+    provider: String,
+    account_id: String,
+) -> Result<(), cloud::CloudError> {
+    let client = cloud_provider(&app, &mock, &provider, &account_id)?;
+    client.revoke().await?;
+    let mut accounts = load_cloud_registry(&app);
+    accounts.retain(|a| !(a.provider == provider && a.id == account_id));
+    save_cloud_registry(&app, &accounts)?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn cloud_list(
+    app: AppHandle,
+    mock: tauri::State<'_, cloud::MockProvider>,
+    provider: String,
+    account_id: String,
+    folder_id: String,
+) -> Result<Vec<cloud::RemoteEntry>, cloud::CloudError> {
+    cloud_provider(&app, &mock, &provider, &account_id)?.list(&folder_id).await
+}
+
+/// Downloads a remote file AND writes the local cache copy (the app-data
+/// dir, keyed by provider + file id) the open document edits from.
+#[tauri::command]
+async fn cloud_download(
+    app: AppHandle,
+    mock: tauri::State<'_, cloud::MockProvider>,
+    provider: String,
+    account_id: String,
+    file_id: String,
+) -> Result<cloud::RemoteDownload, cloud::CloudError> {
+    let downloaded = cloud_provider(&app, &mock, &provider, &account_id)?.download(&file_id).await?;
+    let bytes = decode_base64(&downloaded.base64)?;
+    cloud::write_cache(&app, &provider, &file_id, &downloaded.name, &bytes)?;
+    Ok(downloaded)
+}
+
+/// The cache copy of a remote file, for opening while offline. The version
+/// is unknown from the cache alone — the in-memory handle keeps the version
+/// from the original download, and saving while offline is refused anyway.
+#[tauri::command]
+fn cloud_read_cache(
+    app: AppHandle,
+    provider: String,
+    file_id: String,
+    name: String,
+) -> Result<cloud::RemoteDownload, cloud::CloudError> {
+    let bytes = cloud::read_cache(&app, &provider, &file_id, &name).ok_or_else(|| cloud::CloudError::NotFound {
+        message: "No saved copy of that file is on this computer.".into(),
+    })?;
+    Ok(cloud::RemoteDownload { base64: BASE64.encode(&bytes), name, version: None, sha1: None, modified_at: None })
+}
+
+#[tauri::command]
+async fn cloud_upload(
+    app: AppHandle,
+    mock: tauri::State<'_, cloud::MockProvider>,
+    provider: String,
+    account_id: String,
+    file_id: String,
+    name: String,
+    base64: String,
+    expected_version: Option<String>,
+) -> Result<cloud::RemoteVersion, cloud::CloudError> {
+    let bytes = decode_base64(&base64)?;
+    let saved = cloud_provider(&app, &mock, &provider, &account_id)?
+        .upload_version(&file_id, &bytes, expected_version.as_deref())
+        .await?;
+    // The cache now holds what was just saved.
+    cloud::write_cache(&app, &provider, &file_id, &name, &bytes)?;
+    Ok(saved)
+}
+
+#[tauri::command]
+async fn cloud_upload_new(
+    mock: tauri::State<'_, cloud::MockProvider>,
+    app: AppHandle,
+    provider: String,
+    account_id: String,
+    folder_id: String,
+    name: String,
+    base64: String,
+) -> Result<cloud::RemoteEntry, cloud::CloudError> {
+    let bytes = decode_base64(&base64)?;
+    cloud_provider(&app, &mock, &provider, &account_id)?.upload_new(&folder_id, &name, &bytes).await
+}
+
+#[tauri::command]
+async fn cloud_create_folder(
+    app: AppHandle,
+    mock: tauri::State<'_, cloud::MockProvider>,
+    provider: String,
+    account_id: String,
+    parent_id: String,
+    name: String,
+) -> Result<cloud::RemoteEntry, cloud::CloudError> {
+    cloud_provider(&app, &mock, &provider, &account_id)?.create_folder(&parent_id, &name).await
+}
+
+#[tauri::command]
+async fn cloud_move(
+    app: AppHandle,
+    mock: tauri::State<'_, cloud::MockProvider>,
+    provider: String,
+    account_id: String,
+    file_id: String,
+    new_parent_id: String,
+    is_folder: bool,
+) -> Result<cloud::RemoteEntry, cloud::CloudError> {
+    cloud_provider(&app, &mock, &provider, &account_id)?.move_item(&file_id, &new_parent_id, is_folder).await
+}
+
+#[tauri::command]
+async fn cloud_metadata(
+    app: AppHandle,
+    mock: tauri::State<'_, cloud::MockProvider>,
+    provider: String,
+    account_id: String,
+    file_id: String,
+) -> Result<cloud::RemoteEntry, cloud::CloudError> {
+    cloud_provider(&app, &mock, &provider, &account_id)?.get_metadata(&file_id).await
+}
+
+#[tauri::command]
+async fn cloud_revisions(
+    app: AppHandle,
+    mock: tauri::State<'_, cloud::MockProvider>,
+    provider: String,
+    account_id: String,
+    file_id: String,
+) -> Result<Vec<cloud::RemoteVersion>, cloud::CloudError> {
+    cloud_provider(&app, &mock, &provider, &account_id)?.list_revisions(&file_id).await
+}
+
+/// Dev/QA only: flips the mock provider offline (every operation fails as
+/// if the network were gone) and back.
+#[tauri::command]
+fn cloud_mock_set_offline(mock: tauri::State<'_, cloud::MockProvider>, offline: bool) {
+    mock.set_offline(offline);
+}
+
+/// Dev/QA only: empties the mock provider back to just the root folder.
+#[tauri::command]
+fn cloud_mock_reset(mock: tauri::State<'_, cloud::MockProvider>) {
+    mock.reset();
+}
+
+/// Opens a URL in the system browser. Only provider authorize hosts are
+/// allowed (see cloud.rs) — the page can never open an arbitrary URL.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), cloud::CloudError> {
+    cloud::open_browser_url(&url)
+}
+
 // ── macOS ────────────────────────────────────────────────────────────────
 // The functions in this section are macOS-only (Objective-C via objc2). Each
 // command keeps a non-macOS twin below it with the same signature so the page
@@ -676,6 +948,7 @@ fn main() {
         )
         .manage(Projects::default())
         .manage(REngine::default())
+        .manage(cloud::MockProvider::new())
         .setup(|app| {
             ask_before_quitting(app.handle());
             show_menu_pictures();
@@ -700,6 +973,22 @@ fn main() {
             set_recent_documents,
             accent_color,
             open_link,
+            open_url,
+            cloud_status,
+            cloud_save_box_credentials,
+            cloud_connect_box,
+            cloud_disconnect,
+            cloud_list,
+            cloud_download,
+            cloud_read_cache,
+            cloud_upload,
+            cloud_upload_new,
+            cloud_create_folder,
+            cloud_move,
+            cloud_metadata,
+            cloud_revisions,
+            cloud_mock_set_offline,
+            cloud_mock_reset,
             eval_r,
             r_result,
             r_ready,
@@ -761,18 +1050,13 @@ mod tests {
     use std::path::PathBuf;
 
     fn fixture(name: &str) -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("tests")
-            .join("testdata")
-            .join(name)
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("tests").join("testdata").join(name)
     }
 
     #[test]
     fn read_prism_text_reads_a_pzfx_fixture() {
         let path = fixture("column.pzfx");
-        let text = read_prism_text(path.to_string_lossy().into_owned())
-            .expect("column.pzfx should read");
+        let text = read_prism_text(path.to_string_lossy().into_owned()).expect("column.pzfx should read");
         assert!(text.contains("GraphPadPrismFile"), "fixture should be a Prism file");
         assert!(text.contains("Data 1"), "fixture should contain the Data 1 table");
     }
