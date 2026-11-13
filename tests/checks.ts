@@ -75,7 +75,7 @@ import {
   stylePoints,
   withoutSelection,
 } from "../src/views/graphs/selection";
-import { genesNamed } from "../src/views/graphs/volcano";
+import { genesNamed, VOLCANO_MAX_LOG10 } from "../src/views/graphs/volcano";
 import { examplesFor, matched, type Matched } from "../src/views/graphs/match-graph";
 import type { OutlineNode } from "../src/store/use-project-store";
 import { deriveComparisons } from "../src/views/graphs/significance-overlay";
@@ -2454,6 +2454,34 @@ check("genes are found by their whole name, in any case, several at once", () =>
   const columns = readTable(genes).columns;
   deepStrictEqual(genesNamed(columns, volcanoOptions, " C3, b2 ,Nope"), { keys: ["#2", "#1"], missing: ["Nope"] });
   deepStrictEqual(genesNamed(columns, volcanoOptions, "b"), { keys: [], missing: ["b"] });
+});
+
+// M12: a p / FDR of exactly 0 (R underflow for a very small p, or 0 from BH
+// adjustment) is the most significant gene there is — it plots at the capped
+// -log10, with its label, instead of being dropped. A negative p is still
+// skipped, and a subnormal-but-nonzero p caps at the same height.
+check("a volcano plots a p / FDR of exactly 0 at the capped -log10, and still skips a negative one", () => {
+  const columns = readTable({
+    columns: ["Title", "Gene", "LFC", "P"],
+    rows: [
+      [null, "ZERO", "2", "0"],
+      [null, "TINY", "-2", "1e-320"],
+      [null, "NEG", "3", "-0.01"],
+      [null, "OK", "-1", "0.001"],
+    ],
+  }).columns;
+  const fig = GRAPHS.volcano.build(columns, volcanoOptions, paintOf(volcanoOptions, 2));
+  const traces = fig.data as { customdata: string[]; x: number[]; y: number[] }[];
+  const drawn = new Map(traces.flatMap((t) => t.customdata.map((key, i) => [key, { x: t.x[i], y: t.y[i] }] as const)));
+  deepStrictEqual([...drawn.keys()].sort(), ["#0", "#1", "#3"]); // NEG (#2) is not drawn
+  strictEqual(drawn.get("#0")!.y, VOLCANO_MAX_LOG10);
+  strictEqual(drawn.get("#1")!.y, VOLCANO_MAX_LOG10);
+  ok(Math.abs(drawn.get("#3")!.y - 3) < 1e-9);
+  // The zero-p gene is the most significant, so it is labelled first.
+  deepStrictEqual(
+    (fig.layout.annotations as { text: string }[]).map((a) => a.text),
+    ["ZERO", "TINY", "OK"],
+  );
 });
 
 check("a grouped volcano's genes keep their table rows, and follow them", () => {
