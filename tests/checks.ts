@@ -1252,6 +1252,18 @@ check("renaming a subgroup renames it within its group only", () => {
   strictEqual(renameSubgroup(t, "A", "S2", "Mouse 1"), t); // taken, within the group
 });
 
+check("renesting after a subgroup rename keeps each group's own subgroup names and values", () => {
+  // A renamed its S1 to "Mouse 1"; B still has S1 — renesting must not look for
+  // "B:Mouse 1" and overwrite B's S1 values with null.
+  const renamed = renameSubgroup(nested(), "A", "S1", "Mouse 1");
+  ok(!renestLoses(renamed, 2, 3, 3)); // a pure replicate increase loses nothing
+  const t = renestTable(renamed, 2, 3, 3);
+  deepStrictEqual(t.columns.slice(1, 4), ["A:Mouse 1:R1", "A:Mouse 1:R2", "A:Mouse 1:R3"]);
+  deepStrictEqual(t.columns.slice(10, 13), ["B:S1:R1", "B:S1:R2", "B:S1:R3"]);
+  strictEqual(t.rows[0][t.columns.indexOf("B:S1:R1")], "b11");
+  strictEqual(t.rows[0][t.columns.indexOf("A:Mouse 1:R1")], "a11");
+});
+
 check("a nested table survives a save and reload", () => {
   const data = nested();
   const file: ProjectFilePayload = {

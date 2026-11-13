@@ -333,11 +333,30 @@ export function renestTable(data: TableData, groups: number, subgroups: number, 
   const keys = [...new Set(data.columns.slice(1).map(seriesKeyOf))].slice(0, groups);
   // A new group takes the letter of its place (C for the third), or the next free one.
   for (let i = keys.length; keys.length < groups; i++) if (!keys.includes(columnLetter(i))) keys.push(columnLetter(i));
-  // Subgroups keep their names (per group they are the same "S1"… by default);
-  // a new subgroup takes the next free "S<n>".
-  const subs = [...new Set(data.columns.slice(1).map((n) => n.split(":")[1] ?? ""))].filter(Boolean).slice(0, subgroups);
-  for (let i = subs.length; subs.length < subgroups; i++) if (!subs.includes(`S${i + 1}`)) subs.push(`S${i + 1}`);
-  const columns = ["Title", ...nestedSubColumns(keys, subs, replicates)];
+  // Subgroups keep their names — per group, since a subgroup can be renamed in
+  // one group only ("A:Mouse 1" while B keeps "S1"); sharing one global list
+  // would look for "B:Mouse 1" and overwrite B's S1 values with null. A new
+  // subgroup takes the next free "S<n>" in its group.
+  const subsOf = (key: string): string[] => {
+    const subs = [
+      ...new Set(
+        data.columns
+          .slice(1)
+          .filter((n) => seriesKeyOf(n) === key)
+          .map((n) => n.split(":")[1] ?? ""),
+      ),
+    ]
+      .filter(Boolean)
+      .slice(0, subgroups);
+    for (let i = subs.length; subs.length < subgroups; i++) if (!subs.includes(`S${i + 1}`)) subs.push(`S${i + 1}`);
+    return subs;
+  };
+  const columns = [
+    "Title",
+    ...keys.flatMap((key) =>
+      subsOf(key).flatMap((sub) => Array.from({ length: replicates }, (_, r) => `${key}:${sub}:R${r + 1}`)),
+    ),
+  ];
   const from = columns.map((name, c) => (c === 0 ? 0 : data.columns.indexOf(name)));
   const to = (c: number) => (c === 0 ? 0 : columns.indexOf(data.columns[c]));
   return {
