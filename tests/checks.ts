@@ -96,6 +96,7 @@ import { genesNamed, VOLCANO_MAX_LOG10 } from "../src/views/graphs/volcano";
 import { XY_SCATTER_MAX_POINTS } from "../src/views/graphs/xy-scatter";
 import { addForestPlot } from "../src/views/graphs/forest-plot";
 import { addSchildPlot, schildPlotPoints } from "../src/views/graphs/schild-plot";
+import { addRegression, fitLinear } from "../src/views/graphs/regression-overlay";
 import { addObservedFitted } from "../src/views/graphs/observed-fitted";
 import { examplesFor, matched, type Matched } from "../src/views/graphs/match-graph";
 import type { OutlineNode } from "../src/store/use-project-store";
@@ -2922,6 +2923,98 @@ check("a markers-only xy-scatter keeps table row order, not X order (R2-G-F9)", 
   const [line] = GRAPHS["xy-scatter"].build(columns, lineOptions, paintOf(lineOptions, 1)).data as Trace[];
   deepStrictEqual(line.x, [1, 2, 3]);
   deepStrictEqual(line.y, [10, 20, 30]);
+});
+
+check("a linked weighted linear regression draws its weighted fit, band and equation (R3-08)", async () => {
+  // BUG-REPORT #8: the overlay ignored params.weights and always drew the
+  // unweighted OLS line. Heteroscedastic data where the two fits disagree
+  // sharply: the (10, 25)/(10, 15) points dominate OLS but carry almost no
+  // weight under 1/Y² (OLS slope 2.167, weighted slope 1.536).
+  const table: TableData = {
+    columns: ["Title", "X", "Y"],
+    rows: [
+      [null, "1", "1.1"],
+      [null, "2", "1.9"],
+      [null, "10", "25"],
+      [null, "10", "15"],
+    ],
+  };
+  const x = [1, 2, 10, 10];
+  const y = [1.1, 1.9, 25, 15];
+  const stat = (r: Awaited<ReturnType<typeof runAnalysis>>, label: string) => {
+    if ("error" in r) throw new Error(`weighted regression: ${r.error}`);
+    return r.stats.find((s) => s.label === label)?.value;
+  };
+  // Every weighting scheme the analysis offers, plus a forced-origin
+  // weighted fit, must match R's lm() on slope, intercept, R² and P.
+  for (const weights of ["1/y", "1/y2", "1/x", "1/x2"] as const) {
+    const r = await runAnalysis("linear-regression", table, { y: "Y", forceOrigin: false, weights });
+    const js = fitLinear(x, y, false, weights);
+    ok(js != null, `fitLinear with ${weights} must fit`);
+    for (const [label, value] of [
+      ["Slope", js.slope],
+      ["Y-intercept", js.intercept],
+      ["R squared", js.r2],
+      ["P value (slope ≠ 0)", js.p],
+    ] as const) {
+      const rValue = stat(r, label);
+      ok(rValue != null && Math.abs(rValue - value) < 1e-9, `${weights} ${label}: graph ${value}, R ${rValue}`);
+    }
+  }
+  const rOrigin = await runAnalysis("linear-regression", table, { y: "Y", forceOrigin: true, weights: "1/y2" });
+  const jsOrigin = fitLinear(x, y, true, "1/y2");
+  ok(jsOrigin != null, "weighted through-origin fit must fit");
+  const rOriginSlope = stat(rOrigin, "Slope");
+  ok(
+    rOriginSlope != null && Math.abs(rOriginSlope - jsOrigin.slope) < 1e-9,
+    `1/y2 through origin slope: graph ${jsOrigin.slope}, R ${rOriginSlope}`,
+  );
+  // Weights that cannot apply draw nothing instead of a wrong line.
+  strictEqual(fitLinear([1, 2, 3], [1, 0, 2], false, "1/y"), null);
+  strictEqual(fitLinear([1, 2, 3], [0, 2, 3], false, "1/y2"), null);
+  strictEqual(fitLinear([0, 1, 2], [1, 2, 3], false, "1/x"), null);
+  // The full overlay path: the drawn line, band and equation are the
+  // weighted fit's, not the OLS one's.
+  const options: GraphOptions = {
+    ...newGraphOptions("xy-scatter"),
+    regShowLine: true,
+    regShowBand: true,
+    regShowEquation: true,
+  };
+  const cols = plotColumns(readTable(table), "xy-scatter", options, "xy");
+  const fig = GRAPHS["xy-scatter"].build(cols, options, paintOf(options, 1));
+  addRegression(fig, cols, options, { y: "Y", forceOrigin: false, weights: "1/y2" }, paintOf(options, 1));
+  type Trace = { x: number[]; y: number[]; mode?: string; line?: { dash?: string } };
+  const traces = fig.data as Trace[];
+  const lineTrace = traces.find((t) => t.mode === "lines" && t.line?.dash === "dash");
+  ok(lineTrace, "the overlay must draw a dashed line");
+  const lineSlope =
+    (lineTrace!.y[lineTrace!.y.length - 1] - lineTrace!.y[0]) /
+    (lineTrace!.x[lineTrace!.x.length - 1] - lineTrace!.x[0]);
+  const rW = await runAnalysis("linear-regression", table, { y: "Y", forceOrigin: false, weights: "1/y2" });
+  const wSlope = stat(rW, "Slope");
+  ok(wSlope != null && Math.abs(lineSlope - wSlope) < 1e-9, `overlay line slope ${lineSlope}, R weighted ${wSlope}`);
+  const notes = ((fig.layout.annotations as { text?: string }[] | undefined) ?? []).map((n) => n.text ?? "");
+  ok(
+    notes.some((t) => t === "Y = 1.536*X − 0.6054<br>R² = 0.8487, P = 0.07873"),
+    `equation note must be the weighted fit's, got ${JSON.stringify(notes)}`,
+  );
+  // The band is R's predict(interval="confidence") for the weighted fit.
+  const pred = await evalNamedVector(
+    `x<-c(1,2,10,10);y<-c(1.1,1.9,25,15);w<-1/y^2;m<-lm(y~x,weights=w);` +
+      `p<-predict(m,newdata=data.frame(x=c(1,10)),interval="confidence");` +
+      `c(lo1=p[1,2],hi1=p[1,3],lo10=p[2,2],hi10=p[2,3])`,
+  );
+  const [lo, hi] = traces;
+  ok(lo && hi, "the overlay must draw a band");
+  for (const [got, want, where] of [
+    [lo.y[0], pred.lo1, "band low at x=1"],
+    [hi.y[0], pred.hi1, "band high at x=1"],
+    [lo.y[lo.y.length - 1], pred.lo10, "band low at x=10"],
+    [hi.y[hi.y.length - 1], pred.hi10, "band high at x=10"],
+  ] as const) {
+    ok(want != null && Math.abs(got - want) < 1e-9, `${where}: graph ${got}, R ${want}`);
+  }
 });
 
 check("the pie drops a negative slice and names it, instead of showing inflated percentages (R2-G-F12)", () => {

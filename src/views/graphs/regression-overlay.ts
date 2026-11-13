@@ -1,17 +1,17 @@
-// Linear-regression overlay for the XY scatter graph: an OLS fit line + 95%
+// Linear-regression overlay for the XY scatter graph: a fit line + 95%
 // confidence band, computed directly from the same x/y pairs the scatter plots —
-// no WebR round-trip needed. OLS has one unique solution, so the slope/intercept
-// here always match the sibling "Linear regression" analysis's R-computed fit
+// no WebR round-trip needed. The closed form here always matches the sibling
+// "Linear regression" analysis's R-computed fit — unweighted OLS, or weighted
+// least squares when the linked analysis carries a weighting scheme
 // (checked by `npm test`).
 import type { GraphOptions } from "../../store/types";
-import type { LinearRegressionParams } from "../../stats/types";
+import type { LinearRegressionParams, NonlinearWeightScheme } from "../../stats/types";
 import { pairUp, type Column } from "../../lib/dataset";
 import type { GraphFigure } from ".";
 import { num, pText } from "../../lib/format";
 import { tCrit95, tTwoSidedP } from "../../lib/student-t";
 import { withOpacity } from "../../lib/palettes";
 import { addNote, extent, type Paint } from "./plot-helpers";
-import { mean } from "../../lib/summary";
 
 export interface LinearFit {
   slope: number;
@@ -21,31 +21,74 @@ export interface LinearFit {
   dof: number;
   r2: number;
   p: number;
-  xbar: number;
-  sxx: number; // Σ(x-x̄)² (or Σx² when forced through the origin)
+  xbar: number; // weighted mean of x (plain mean when unweighted)
+  sxx: number; // Σw(x-x̄)² (or Σwx² when forced through the origin)
   s: number; // residual standard error
+  wSum: number; // Σw (n when unweighted)
 }
 
-/** Ordinary least-squares fit of y on x (optionally forced through the origin), plus
- *  the slope's P value. Returns null with fewer than 3 points or a degenerate
- *  (all-identical) X — too little residual freedom for a meaningful band. */
-export function fitLinear(x: number[], y: number[], forceOrigin: boolean): LinearFit | null {
+/** The weight for one point under a weighting scheme, or null when the scheme
+ *  cannot apply to this point — the same positivity guards as the analysis's
+ *  `check` in stats/xy/linear-regression.ts ("1/sd2" is not a linear-regression
+ *  scheme at all). A null anywhere makes the whole fit null: no overlay
+ *  rather than a wrong one. */
+function weightAt(scheme: Exclude<NonlinearWeightScheme, "1/sd2">, xi: number, yi: number): number | null {
+  switch (scheme) {
+    case "none":
+      return 1;
+    case "1/y":
+      return yi > 0 ? 1 / yi : null;
+    case "1/y2":
+      return yi !== 0 ? 1 / (yi * yi) : null;
+    case "1/x":
+      return xi > 0 ? 1 / xi : null;
+    case "1/x2":
+      return xi !== 0 ? 1 / (xi * xi) : null;
+    default:
+      return null;
+  }
+}
+
+/** (Weighted) least-squares fit of y on x (optionally forced through the
+ *  origin), plus the slope's P value. Returns null with fewer than 3 points,
+ *  a degenerate (all-identical) X, or weights that cannot apply to the data —
+ *  too little residual freedom, or no valid weighting, for a meaningful band.
+ *  With weights "none" this is plain OLS; otherwise it is the WLS fit R's
+ *  `lm(y ~ x, weights = w)` computes: weighted means, Σw(x−x̄)², and a
+ *  weighted R² (summary(lm)$r.squared is the weighted one). */
+export function fitLinear(
+  x: number[],
+  y: number[],
+  forceOrigin: boolean,
+  weights: Exclude<NonlinearWeightScheme, "1/sd2"> = "none",
+): LinearFit | null {
   const n = x.length;
   if (n < 3) return null;
-  const xbar = mean(x);
-  const ybar = mean(y);
-  const sxx = forceOrigin ? x.reduce((s, xi) => s + xi * xi, 0) : x.reduce((s, xi) => s + (xi - xbar) ** 2, 0);
+  const w: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const wi = weightAt(weights, x[i], y[i]);
+    if (wi == null) return null;
+    w.push(wi);
+  }
+  const wSum = w.reduce((s, wi) => s + wi, 0);
+  const xbar = w.reduce((s, wi, i) => s + wi * x[i], 0) / wSum;
+  const ybar = w.reduce((s, wi, i) => s + wi * y[i], 0) / wSum;
+  const sxx = forceOrigin
+    ? w.reduce((s, wi, i) => s + wi * x[i] * x[i], 0)
+    : w.reduce((s, wi, i) => s + wi * (x[i] - xbar) ** 2, 0);
   if (sxx === 0) return null;
   const slope = forceOrigin
-    ? x.reduce((s, xi, i) => s + xi * y[i], 0) / sxx
-    : x.reduce((s, xi, i) => s + (xi - xbar) * (y[i] - ybar), 0) / sxx;
+    ? w.reduce((s, wi, i) => s + wi * x[i] * y[i], 0) / sxx
+    : w.reduce((s, wi, i) => s + wi * (x[i] - xbar) * (y[i] - ybar), 0) / sxx;
   const intercept = forceOrigin ? 0 : ybar - slope * xbar;
-  const ssRes = x.reduce((s, xi, i) => s + (y[i] - (intercept + slope * xi)) ** 2, 0);
-  const ssTot = forceOrigin ? y.reduce((s, yi) => s + yi * yi, 0) : y.reduce((s, yi) => s + (yi - ybar) ** 2, 0);
+  const ssRes = w.reduce((s, wi, i) => s + wi * (y[i] - (intercept + slope * x[i])) ** 2, 0);
+  const ssTot = forceOrigin
+    ? w.reduce((s, wi, i) => s + wi * y[i] * y[i], 0)
+    : w.reduce((s, wi, i) => s + wi * (y[i] - ybar) ** 2, 0);
   const dof = n - (forceOrigin ? 1 : 2);
   const s = Math.sqrt(ssRes / dof);
   const t = slope / (s / Math.sqrt(sxx));
-  return { slope, intercept, forceOrigin, n, dof, r2: 1 - ssRes / ssTot, p: tTwoSidedP(t, dof), xbar, sxx, s };
+  return { slope, intercept, forceOrigin, n, dof, r2: 1 - ssRes / ssTot, p: tTwoSidedP(t, dof), xbar, sxx, s, wSum };
 }
 
 /** Evenly-spaced points across [xMin, xMax] with the fit line + 95% confidence band
@@ -67,7 +110,7 @@ function regressionCurve(
     const yHat = fit.intercept + fit.slope * x0;
     const variance = fit.forceOrigin
       ? (fit.s * x0) ** 2 / fit.sxx
-      : fit.s ** 2 * (1 / fit.n + (x0 - fit.xbar) ** 2 / fit.sxx);
+      : fit.s ** 2 * (1 / fit.wSum + (x0 - fit.xbar) ** 2 / fit.sxx);
     const half = tCrit * Math.sqrt(variance);
     x.push(x0);
     yFit.push(yHat);
@@ -101,7 +144,7 @@ export function addRegression(
   const y = ys.find((c) => c.name === params?.y) ?? ys[0];
   if (!x || !y) return;
   const pairs = pairUp(x, y);
-  const fit = fitLinear(pairs.x, pairs.y, params?.forceOrigin ?? false);
+  const fit = fitLinear(pairs.x, pairs.y, params?.forceOrigin ?? false, params?.weights ?? "none");
   if (!fit) return;
   const i = ys.indexOf(y);
   const curve = regressionCurve(fit, ...extent(pairs.x));
