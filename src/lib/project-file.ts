@@ -837,6 +837,205 @@ const contents = (v: unknown) =>
       : x,
   );
 
+// ── Duplicate node ids (FF-F19) ────────────────────────────────────────────
+// JSON itself is last-wins on duplicate keys: `JSON.parse` keeps only the
+// last `"t1"` in `project.nodes`, so a whole node used to vanish with no
+// warning. The duplicates are invisible once parsed, so they are caught here,
+// on the file's text, before parsing: each later copy keeps its data under a
+// renamed id (`t1__2`, `t1__3`, …) and the open warns about it. The renamed
+// copy keeps its own parentId, so it still hangs under its table; a renamed
+// table joins the sidebar in creation order, like any table the saved order
+// missed. Saving keeps the rescued copy under its new id (`updated` is
+// forced), so the file on disk stops losing it. Anything unexpected in the
+// text (malformed JSON, missing objects) bails out softly — the file then
+// parses exactly as before, and the usual errors speak for it.
+
+/** A key of the `project.nodes` object in the file's text: its id and the span of its quoted spelling. */
+type NodeKeySpan = { id: string; start: number; end: number };
+
+/** The keys of the file's `project.nodes` object (its last one, as `JSON.parse` would read it), or `null` when the text isn't shaped like a project file. */
+function nodeKeySpans(text: string): NodeKeySpan[] | null {
+  let i = 0;
+  const n = text.length;
+  const ws = () => {
+    while (i < n && /\s/.test(text[i])) i++;
+  };
+  const readString = (): string | null => {
+    if (text[i] !== '"') return null;
+    const escapes: Record<string, string> = {
+      '"': '"',
+      "\\": "\\",
+      "/": "/",
+      b: "\b",
+      f: "\f",
+      n: "\n",
+      r: "\r",
+      t: "\t",
+    };
+    let out = "";
+    i++;
+    while (i < n) {
+      const c = text[i];
+      if (c === '"') {
+        i++;
+        return out;
+      }
+      if (c === "\\") {
+        const esc = text[i + 1];
+        if (esc === undefined) return null;
+        if (esc === "u") {
+          const hex = text.slice(i + 2, i + 6);
+          if (!/^[0-9a-fA-F]{4}$/.test(hex)) return null;
+          out += String.fromCharCode(parseInt(hex, 16));
+          i += 6;
+        } else {
+          out += escapes[esc] ?? esc;
+          i += 2;
+        }
+        continue;
+      }
+      out += c;
+      i++;
+    }
+    return null;
+  };
+  /** Skips one JSON value starting at `i`; false when the text isn't valid JSON here. */
+  const skipValue = (): boolean => {
+    ws();
+    const c = text[i];
+    if (c === '"') return readString() !== null;
+    if (c === "{") return scanObject(() => skipValue());
+    if (c === "[") {
+      i++;
+      ws();
+      if (text[i] === "]") {
+        i++;
+        return true;
+      }
+      for (;;) {
+        if (!skipValue()) return false;
+        ws();
+        if (text[i] === ",") {
+          i++;
+          continue;
+        }
+        if (text[i] === "]") {
+          i++;
+          return true;
+        }
+        return false;
+      }
+    }
+    const lit =
+      /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(text.slice(i))?.[0] ??
+      /^(?:true|false|null)/.exec(text.slice(i))?.[0];
+    if (!lit) return false;
+    i += lit.length;
+    return true;
+  };
+  /** Scans one JSON object, calling `onKey` after each key's colon; false when the text isn't valid JSON here. */
+  const scanObject = (onKey: (key: string, start: number, end: number) => boolean): boolean => {
+    ws();
+    if (text[i] !== "{") return false;
+    i++;
+    ws();
+    if (text[i] === "}") {
+      i++;
+      return true;
+    }
+    for (;;) {
+      ws();
+      const start = i;
+      const key = readString();
+      if (key === null) return false;
+      const end = i;
+      ws();
+      if (text[i] !== ":") return false;
+      i++;
+      if (!onKey(key, start, end)) return false;
+      ws();
+      if (text[i] === ",") {
+        i++;
+        continue;
+      }
+      if (text[i] === "}") {
+        i++;
+        return true;
+      }
+      return false;
+    }
+  };
+  let found: NodeKeySpan[] | null = null;
+  ws();
+  const ok = scanObject((key) => {
+    if (key !== "project") return skipValue();
+    let nodes: NodeKeySpan[] | null = null;
+    const pok = scanObject((pkey) => {
+      if (pkey !== "nodes") return skipValue();
+      const spans: NodeKeySpan[] = [];
+      const nok = scanObject((id, start, end) => {
+        spans.push({ id, start, end });
+        return skipValue();
+      });
+      if (!nok) return false;
+      nodes = spans;
+      return true;
+    });
+    if (!pok) return false;
+    if (nodes) found = nodes;
+    return true;
+  });
+  return ok ? found : null;
+}
+
+/** Renames later copies of a duplicated node id in the file's text so both survive `JSON.parse`, returning the (possibly unchanged) text and what was renamed. */
+function rescueDuplicateNodeIds(text: string): { text: string; renamed: { from: string; to: string }[] } {
+  const spans = nodeKeySpans(text);
+  if (!spans) return { text, renamed: [] };
+  const seen = new Set<string>();
+  const taken = new Set(spans.map((s) => s.id));
+  const edits: { start: number; end: number; to: string }[] = [];
+  const renamed: { from: string; to: string }[] = [];
+  for (const s of spans) {
+    if (!seen.has(s.id)) {
+      seen.add(s.id);
+      continue;
+    }
+    let k = 2;
+    let to = `${s.id}__${k}`;
+    while (taken.has(to)) {
+      k++;
+      to = `${s.id}__${k}`;
+    }
+    taken.add(to);
+    edits.push({ start: s.start, end: s.end, to: JSON.stringify(to) });
+    renamed.push({ from: s.id, to });
+  }
+  if (!edits.length) return { text, renamed: [] };
+  let out = text;
+  for (const e of edits.sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.to + out.slice(e.end);
+  return { text: out, renamed };
+}
+
+/** Reads a `.hlx` file from its text, as `load` does — the same result as `parseProjectFile(JSON.parse(text))`, except a duplicated node id no longer drops a node silently (FF-F19): the later copy is kept under a renamed id and the open warns about it. */
+export function parseProjectText(
+  text: string,
+): { project: ProjectFilePayload; issues: ProjectIssue[]; updated: boolean } | { error: string } {
+  const { text: rescued, renamed } = rescueDuplicateNodeIds(text);
+  const parsed = parseProjectFile(JSON.parse(rescued));
+  if ("error" in parsed || renamed.length === 0) return parsed;
+  const byFrom = new Map<string, string[]>();
+  for (const { from, to } of renamed) byFrom.set(from, [...(byFrom.get(from) ?? []), to]);
+  const warnings: ProjectIssue[] = [...byFrom].map(([from, tos]) => ({
+    severity: "warning",
+    message:
+      tos.length === 1
+        ? `Item id “${from}” appears twice in this file; the second copy was kept as “${tos[0]}”.`
+        : `Item id “${from}” appears ${tos.length + 1} times in this file; the extra copies were kept as ${tos.map((t) => `“${t}”`).join(", ")}.`,
+  }));
+  return { ...parsed, issues: [...warnings, ...parsed.issues], updated: true };
+}
+
 /** Reads a `.hlx` file forgivingly. `{ error }` only when nothing usable remains;
  *  otherwise the project, what the user should know about it, and whether Helix changed
  *  anything as it read it (`updated`: repaired, or brought up to date from an older Helix),

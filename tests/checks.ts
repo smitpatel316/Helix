@@ -18,7 +18,7 @@ import {
   setRQueueSnapshot,
   type RQueueSnapshot,
 } from "../src/stats/r-queue";
-import { parseProjectFile, readPalette, serializeProjectFile, type ProjectFilePayload } from "../src/lib/project-file";
+import { parseProjectFile, parseProjectText, readPalette, serializeProjectFile, type ProjectFilePayload } from "../src/lib/project-file";
 import {
   DEFAULT_GRAPH_OPTIONS,
   GRAPH_LIMITS,
@@ -1032,6 +1032,33 @@ check("a broken item is left out alone, and said so", () => {
   deepStrictEqual(project.rootOrder, ["t1", "t2"]);
   ok(issues.some((i) => i.message.includes("2 unreadable items")));
   ok(issues.some((i) => i.message.includes("Future")));
+});
+
+// R2 FF-F19: a duplicated node id is last-wins in `JSON.parse`, so the first
+// copy used to vanish with no warning — a whole node gone on open. The
+// text-level read keeps both: the first copy under its id, the second under
+// a renamed id, and the open says so.
+check("a duplicated node id keeps both copies, and says so", () => {
+  const file = JSON.parse(serializeProjectFile(payload));
+  const second = {
+    ...table,
+    name: "Second Copy",
+    data: { columns: ["Title", "X", "Y1"], rows: [["b", "1", "9"]] },
+  };
+  const text = JSON.stringify(file).replace('"a1":', `"t1":${JSON.stringify(second)},"a1":`);
+  // The old path drops the first copy silently: `JSON.parse` keeps the last.
+  const old = read(text);
+  deepStrictEqual(Object.keys(old.project.nodes).sort(), ["a1", "g1", "t1"]);
+  strictEqual(old.project.nodes.t1.name, "Second Copy");
+  ok(!old.issues.some((i) => i.message.includes("appears twice")));
+  const result = parseProjectText(text);
+  if ("error" in result) throw new Error(result.error);
+  deepStrictEqual(Object.keys(result.project.nodes).sort(), ["a1", "g1", "t1", "t1__2"]);
+  strictEqual(result.project.nodes.t1.name, "Doses");
+  strictEqual(result.project.nodes["t1__2"].name, "Second Copy");
+  deepStrictEqual(result.project.rootOrder, ["t1", "t1__2"]);
+  strictEqual(result.updated, true);
+  ok(result.issues.some((i) => i.message.includes("Item id “t1” appears twice") && i.message.includes("t1__2")));
 });
 
 check("a file is never trusted: unknown types, R code in params, a huge graph", async () => {

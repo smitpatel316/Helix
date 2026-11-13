@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useProjectStore, type ProjectNode } from "./use-project-store";
-import { parseProjectFile, serializeProjectFile, PROJECT_FILE_EXTENSION } from "../lib/project-file";
+import { parseProjectText, serializeProjectFile, PROJECT_FILE_EXTENSION } from "../lib/project-file";
 import { parsePzfx } from "../lib/pzfx";
 import * as native from "../native";
 import { loadRecents, MAX_RECENTS, saveRecents } from "./recents";
@@ -107,7 +107,10 @@ export function useDocument() {
       return sayGone(path);
     }
     try {
-      const parsed = parseProjectFile(JSON.parse(text));
+      // Read from the text, not `JSON.parse` + `parseProjectFile`: a duplicated
+      // node id is last-wins in `JSON.parse`, so the text-level read (FF-F19)
+      // is what keeps the later copy instead of dropping it silently.
+      const parsed = parseProjectText(text);
       if ("error" in parsed) {
         report();
         return native.alert("Couldn't Open Project", parsed.error, "error");
