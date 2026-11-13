@@ -54,6 +54,18 @@ function webrRuntime(): Plugin {
 export default defineConfig({
   plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss(), webrRuntime()],
   clearScreen: false,
+  resolve: {
+    alias:
+      // E2E only (VITE_E2E=1 at build time, spike/tauri-e2e): route
+      // "@tauri-apps/api/core" through the mock-consulting shim
+      // (src/lib/tauri-core-e2e-shim.ts), so browser.tauri.mock() intercepts
+      // the app's own invokes — a Vite-bundled frontend calls
+      // __TAURI_INTERNALS__.invoke directly, which the @wdio/tauri-plugin
+      // cannot patch. Production builds never take this branch.
+      process.env.VITE_E2E === "1"
+        ? [{ find: "@tauri-apps/api/core", replacement: resolve("src/lib/tauri-core-e2e-shim.ts") }]
+        : [],
+  },
   // The native side is rebuilt by Tauri; its build output must not reload the page.
   server: { port: 1420, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
   build: {

@@ -8,6 +8,14 @@ import { accentColor, cancelR, evalR, isNative, onEngineReset, onFocusChange } f
 import { checkForUpdatesDaily } from "./updates";
 import "./styles.css";
 
+// E2E only (VITE_E2E=1 at build time, spike/tauri-e2e): the WebdriverIO Tauri
+// plugin, which exposes window.wdioTauri for browser.tauri.execute/mock.
+// Never in production bundles — Vite replaces import.meta.env.VITE_E2E at
+// build time, so the branch is dead-code-eliminated when the flag is unset.
+if ((import.meta.env as Record<string, string | undefined>).VITE_E2E) {
+  void import("@wdio/tauri-plugin");
+}
+
 // Highlights take the accent color chosen in System Settings, read again whenever
 // the window comes to the front (it can only change while System Settings is).
 const syncAccent = () =>

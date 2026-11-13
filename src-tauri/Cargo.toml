@@ -15,6 +15,16 @@ percent-encoding = "2"
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 
+# E2E only (spike/tauri-e2e): the WebdriverIO plugins — debug builds only, so
+# release builds never carry the embedded WebDriver server (it exposes
+# automation over HTTP; the docs warn never to ship it). Registered under
+# #[cfg(debug_assertions)] in main.rs, and the wdio capability is added at
+# runtime there, so release builds never see the permission either
+# (tauri-build would reject an unknown permission in a capability file).
+[target.'cfg(debug_assertions)'.dependencies]
+tauri-plugin-wdio = "1"
+tauri-plugin-wdio-webdriver = "1"
+
 # macOS-only: the private-API feature and the Objective-C bridge. The Linux
 # build (dev/test) compiles without them; the Mac DMG build is unchanged.
 [target.'cfg(target_os = "macos")'.dependencies]

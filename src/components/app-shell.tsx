@@ -34,8 +34,20 @@ export function AppShell() {
   const [fullscreen, setFullscreen] = React.useState(false);
   React.useEffect(() => onFullscreenChange(setFullscreen), []);
   const hidden = HIDDEN_SIDEBAR[fullscreen ? "fullscreen" : "window"];
-  const { nodes, selector, closeSelector, createTable, createGraph } = useProjectStore();
+  const { nodes, selector, closeSelector, openSelector, createTable, createGraph } = useProjectStore();
   const startAnalysis = useStartAnalysis();
+
+  // E2E only (VITE_E2E=1 at build time, spike/tauri-e2e): native menus are not
+  // WebDriver-drivable, so the spec opens the Convert dialog through this
+  // hook instead of File > Convert. The dialog itself is driven for real;
+  // the menu chrome stays a manual Mac-proof item.
+  React.useEffect(() => {
+    if ((import.meta.env as Record<string, string | undefined>).VITE_E2E) {
+      (window as unknown as { __titerE2E?: { openConverter: () => void } }).__titerE2E = {
+        openConverter: () => openSelector({ kind: "converter" }),
+      };
+    }
+  }, [openSelector]);
   // The New Analysis / New Graph pickers list what fits the target table's type.
   const tableType = selector && "tableId" in selector ? (nodes[selector.tableId]?.tableType ?? "column") : "column";
   const tableData = selector && "tableId" in selector ? nodes[selector.tableId]?.data : undefined;

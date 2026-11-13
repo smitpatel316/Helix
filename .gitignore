@@ -19,3 +19,8 @@ qa/**
 !qa/**/
 !qa/**/*.md
 test-corpus/
+
+# e2e (spike/tauri-e2e): temp outputs, scratch app-data dir, wdio logs.
+e2e/out/
+e2e/.e2e-home/
+e2e/logs/

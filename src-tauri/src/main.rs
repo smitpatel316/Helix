@@ -665,7 +665,7 @@ fn r_ready(app: AppHandle, engine: State<REngine>) {
 }
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             // All project windows share one remembered frame, which the first one opens in.
@@ -673,10 +673,25 @@ fn main() {
                 .with_denylist(&["engine"])
                 .map_label(|label| if is_project(label) { "project" } else { label })
                 .build(),
-        )
+        );
+    // E2E only (spike/tauri-e2e): the WebdriverIO plugins, debug builds only —
+    // the embedded WebDriver server exposes automation over HTTP and must never
+    // ship in a release build.
+    #[cfg(debug_assertions)]
+    let builder = builder
+        .plugin(tauri_plugin_wdio::init())
+        .plugin(tauri_plugin_wdio_webdriver::init());
+    builder
         .manage(Projects::default())
         .manage(REngine::default())
         .setup(|app| {
+            // E2E only: the wdio capability is added at runtime so release builds
+            // never see the permission — a capability file would make tauri-build
+            // reject the build without the (debug-only) plugin.
+            #[cfg(debug_assertions)]
+            let _ = app.add_capability(
+                r#"{"identifier":"wdio","windows":["project-*","engine"],"permissions":["wdio:default"]}"#,
+            );
             ask_before_quitting(app.handle());
             show_menu_pictures();
             restore_session(app.handle());
