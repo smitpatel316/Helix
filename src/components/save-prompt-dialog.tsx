@@ -29,7 +29,7 @@ export function SavePromptDialog({ onChoose }: { onChoose: (choice: SavePromptCh
       open={open}
       onClose={() => onChoose("cancel", false)}
       title="Save this Prism project"
-      description="This project came from a Prism file. Save it as the open Helix format (recommended — your data stays readable by any program, forever), or save it as Prism format. The original Prism file is never changed either way."
+      description="This project came from a Prism file. Save it as the open Titer format (recommended — your data stays readable by any program, forever), or save it as Prism format. The original Prism file is never changed either way."
       footer={
         <>
           <Button variant="accent" onClick={() => onChoose("hlx", remember)}>

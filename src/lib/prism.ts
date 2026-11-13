@@ -1,10 +1,10 @@
 // `.prism` → `.hlx` converter core (in-app).
 //
-// Reads a Prism 10 `.prism` file (a ZIP of JSON + CSVs) and builds the Helix
-// project it holds: data tables with their values, and the analyses Helix
+// Reads a Prism 10 `.prism` file (a ZIP of JSON + CSVs) and builds the Titer
+// project it holds: data tables with their values, and the analyses Titer
 // offers, with their parameters. Graphs and layouts are NOT transferred —
 // Prism stores them in an undocumented binary blob — and neither are
-// fitted results: Helix recomputes every analysis from the table when the
+// fitted results: Titer recomputes every analysis from the table when the
 // file opens, so results always match the data.
 //
 // Ported from the standalone converter CLI (branch `feat/prism-converter-cli`,
@@ -15,7 +15,7 @@
 //      `"survival-log-rank"` (which `parseProjectFile` now flags as an
 //      unknown test). The importer emits `"survival"` with
 //      `{ curveTest: "logrank", correction: "holm" }`.
-//   2. Prism `survival` tables import as Helix tableType `"survival"` —
+//   2. Prism `survival` tables import as Titer tableType `"survival"` —
 //      as `.pzfx` import does, and as the analysis picker expects — not
 //      `"xy"` as the pre-rebase CLI wrote.
 // D1 (single converter source of truth, decided 2026-11-12): THIS file is
@@ -59,7 +59,7 @@ export interface ConvertReport {
   tables: string[];
   /** Analysis nodes transferred, in file order. */
   analyses: string[];
-  /** Analyses present in the file that Helix doesn't offer (named, not dropped). */
+  /** Analyses present in the file that Titer doesn't offer (named, not dropped). */
   analysesUnsupported: string[];
   graphsNotTransferred: number;
   layoutsNotTransferred: number;
@@ -215,19 +215,19 @@ const SUBCOLUMN_SUFFIXES: Record<string, string[] | null> = {
   y_high_low: ["_MEAN", "_PLUSERROR", "_MINUSERROR"],
 };
 
-/** Prism nonlinear-regression equation name → Helix model. Only equations
- *  whose formula matches a Helix model exactly (checked against
+/** Prism nonlinear-regression equation name → Titer model. Only equations
+ *  whose formula matches a Titer model exactly (checked against
  *  src/stats/xy/nonlinear-fit.ts modelSpec, not just the label):
- *  - "Sigmoidal, 4PL, X is concentration" is Helix sigmoidal-4pl-x.
+ *  - "Sigmoidal, 4PL, X is concentration" is Titer sigmoidal-4pl-x.
  *  - "Sigmoidal, 4PL, X is log(concentration)" and the older
  *    "log(agonist)/log(inhibitor) vs. response -- Variable slope (four
- *    parameters)" are Helix sigmoidal-4pl-logx: Prism's
+ *    parameters)" are Titer sigmoidal-4pl-logx: Prism's
  *    Y=Bottom+(Top-Bottom)/(1+10^((LogEC50-X)*HillSlope)) is the same fit
  *    (LogIC50 vs LogEC50 is a name, not a different curve).
- *  - "One phase decay" is Helix one-phase-decay:
+ *  - "One phase decay" is Titer one-phase-decay:
  *    Y=(Y0-Plateau)*exp(-K*X)+Plateau, terms Y0/Plateau/K.
- *  - "Line" is Helix line (lm y~x); "Second order polynomial (quadratic)"
- *    is Helix quadratic (lm y~x+I(x^2), terms B0/B1/B2).
+ *  - "Line" is Titer line (lm y~x); "Second order polynomial (quadratic)"
+ *    is Titer quadratic (lm y~x+I(x^2), terms B0/B1/B2).
  *  Anything else is unsupported, never guessed. Equation names are trimmed
  *  before lookup — Prism writes at least one with a trailing space
  *  ("Second order polynomial (quadratic) "). */
@@ -250,7 +250,7 @@ const genId = (type: string) => `${type}_${Math.random().toString(36).slice(2, 1
  * caller's fallback applies. Never returns "[object Object]".
  * A title can also carry Prism's multi-line break — a carriage return
  * inside the string ("BACE-I \r& DOX", "Nonlin fit of 15-HEPE-d5\r A").
- * Helix labels are single-line, so the break becomes one space (see
+ * Titer labels are single-line, so the break becomes one space (see
  * cleanText); the title is never left with a bare \r in it.
  */
 export function plainTitle(value: unknown): string {
@@ -265,7 +265,7 @@ export function plainTitle(value: unknown): string {
 /**
  * Prism writes multi-line labels with a carriage return as the line break
  * — inside a quoted CSV field ("BACE-I \r& DOX") or in a JSON title
- * string — and sometimes with a lone newline. Helix labels and cell
+ * string — and sometimes with a lone newline. Titer labels and cell
  * values are single-line: the break becomes one space, with surrounding
  * whitespace collapsed ("BACE-I & DOX", "WT (3 weeks)"). A value that is
  * only whitespace (a lone break, spaces) becomes "" — the caller turns
@@ -327,7 +327,7 @@ export function parsePrismDate(value: string | null): number | null {
   return null;
 }
 
-/** Days between two Prism date cells, as Helix stores numbers (text). */
+/** Days between two Prism date cells, as Titer stores numbers (text). */
 export function daysBetween(start: string | null, end: string | null): string | null {
   const a = parsePrismDate(start);
   const b = parsePrismDate(end);
@@ -337,7 +337,7 @@ export function daysBetween(start: string | null, end: string | null): string | 
 }
 
 /**
- * Number text → Helix text. Which rule applies is decided once per file
+ * Number text → Titer text. Which rule applies is decided once per file
  * (see the thousands-mode pre-pass in convertPrism): decimal mode reads
  * a single comma as a decimal point (`1,5` → `1.5`); thousands mode
  * strips commas from grouped numbers (`1,234,567` → `1234567`) and
@@ -620,14 +620,14 @@ export async function convertPrism(data: Uint8Array, sourceName: string): Promis
     const hasXCol = xTitle !== null && (xCount as number) > 0;
     // Ordered layout entries (present or missing), each with its resolved
     // count — the emission loops walk this, advancing the CSV cursor by
-    // every entry's count whether or not it becomes a Helix column.
+    // every entry's count whether or not it becomes a Titer column.
     interface LayoutSet {
       set: PrismDataSet | null;
       count: number;
     }
     const layoutSets: LayoutSet[] = setUids.map((_, i) => ({ set: setJsons[i], count: counts[i] as number }));
 
-    // Helix columns: [Title, ...data]. Each entry: name + values per row.
+    // Titer columns: [Title, ...data]. Each entry: name + values per row.
     interface ImportColumn {
       name: string;
       values: (string | null)[];
@@ -678,7 +678,7 @@ export async function convertPrism(data: Uint8Array, sourceName: string): Promis
           });
         }
       } else {
-        // Helix tables hold one X column: keep the first subcolumn (the
+        // Titer tables hold one X column: keep the first subcolumn (the
         // value; for an error-bar X the second is the error) and say so.
         columns.push({ name: xTitle as string, values: xCols[0] });
         issues.push({
@@ -727,14 +727,14 @@ export async function convertPrism(data: Uint8Array, sourceName: string): Promis
       continue;
     }
     // CSV columns the converter consumed: title + every X subcolumn + every
-    // dataset subcolumn — from the layout, not from the Helix columns
-    // (missing datasets consume CSV columns without becoming Helix ones,
-    // and multi-subcolumn X collapses into one Helix column).
+    // dataset subcolumn — from the layout, not from the Titer columns
+    // (missing datasets consume CSV columns without becoming Titer ones,
+    // and multi-subcolumn X collapses into one Titer column).
     const consumedCols = titleCols + (xCount as number) + layoutSets.reduce((n, e) => n + e.count, 0);
     if (typeof content?.numberOfColumns === "number" && content.numberOfColumns > consumedCols) {
       issues.push({
         severity: "warning",
-        message: `${displayName}: the file holds ${content.numberOfColumns} columns but only ${consumedCols} map to Helix columns; the extra columns were left out.`,
+        message: `${displayName}: the file holds ${content.numberOfColumns} columns but only ${consumedCols} map to Titer columns; the extra columns were left out.`,
       });
     }
 
@@ -745,18 +745,18 @@ export async function convertPrism(data: Uint8Array, sourceName: string): Promis
     else if (format === "contingency") helixType = "contingency";
     else if (format === "column") helixType = "column";
     else if (format === "nested") {
-      // A Prism nested table is one of Prism's formats, but Helix's nested
+      // A Prism nested table is one of Prism's formats, but Titer's nested
       // table needs its own structure — import as Column, never silently.
       helixType = "column";
       issues.push({
         severity: "warning",
-        message: `${displayName}: Prism nested tables import as Column — convert it to Nested by hand in Helix.`,
+        message: `${displayName}: Prism nested tables import as Column — convert it to Nested by hand in Titer.`,
       });
     } else {
       helixType = "column";
       issues.push({
         severity: "warning",
-        message: `${displayName}: table format “${format}” isn't one Helix knows; it was imported as a Column table.`,
+        message: `${displayName}: table format “${format}” isn't one Titer knows; it was imported as a Column table.`,
       });
     }
     if (format === "survival") {
@@ -819,7 +819,7 @@ export async function convertPrism(data: Uint8Array, sourceName: string): Promis
       const equation = (params?.content?.model?.equation?.name ?? "").trim();
       const model = NONLINEAR_MODELS[equation];
       if (!model) {
-        report.analysesUnsupported.push(`${name} (nonlinear model “${equation}” — not yet supported in Helix)`);
+        report.analysesUnsupported.push(`${name} (nonlinear model “${equation}” — not yet supported in Titer)`);
         continue;
       }
       const inputs = sheet.inputDataSets ?? [];
@@ -852,7 +852,7 @@ export async function convertPrism(data: Uint8Array, sourceName: string): Promis
         parentId,
         analysisType: "survival",
         // One curve test per node; log-rank is Prism's headline comparison
-        // and Helix's default. Gehan–Breslow–Wilcoxon is a second run of
+        // and Titer's default. Gehan–Breslow–Wilcoxon is a second run of
         // the same analysis (curveTest "gehan"), not a second node.
         analysisParams: { curveTest: "logrank", correction: "holm" },
       };
@@ -860,7 +860,7 @@ export async function convertPrism(data: Uint8Array, sourceName: string): Promis
       childOrder[parentId].push(node.id);
       report.analyses.push(name);
     } else {
-      report.analysesUnsupported.push(`${name} (${analysisClass} — not yet supported in Helix)`);
+      report.analysesUnsupported.push(`${name} (${analysisClass} — not yet supported in Titer)`);
     }
   }
 
@@ -891,13 +891,13 @@ export async function convertPrism(data: Uint8Array, sourceName: string): Promis
     if (m && !referencedTables.has(m[1].toUpperCase())) report.unreferencedTablesIgnored++;
   }
 
-  // A project with no tables is not a project Helix can open — its own
+  // A project with no tables is not a project Titer can open — its own
   // parser rejects it ("no readable data tables"). Refuse cleanly instead
-  // of writing a .hlx that Helix itself won't read.
+  // of writing a .hlx that Titer itself won't read.
   if (report.tables.length === 0) {
     const dataSheets = sheets.data?.length ?? 0;
     throw new Error(
-      `“${sourceName}” has no data tables Helix can use — all ${dataSheets} data sheet(s) were left out, ` +
+      `“${sourceName}” has no data tables Titer can use — all ${dataSheets} data sheet(s) were left out, ` +
         `and graphs/layouts are not transferred. Nothing was written.`,
     );
   }
@@ -916,17 +916,17 @@ export function formatReport(report: ConvertReport): string {
     `Analyses transferred: ${report.analyses.length}${report.analyses.length ? " — " + report.analyses.join(", ") : ""}`,
   ];
   if (report.analysesUnsupported.length) {
-    lines.push(`Analyses not transferred (not yet supported in Helix): ${report.analysesUnsupported.join("; ")}`);
+    lines.push(`Analyses not transferred (not yet supported in Titer): ${report.analysesUnsupported.join("; ")}`);
   }
   if (report.graphsNotTransferred) {
     lines.push(
-      `Graphs not transferred: ${report.graphsNotTransferred} — re-create in Helix (graph data is stored in a binary format Prism does not document).`,
+      `Graphs not transferred: ${report.graphsNotTransferred} — re-create in Titer (graph data is stored in a binary format Prism does not document).`,
     );
   }
   if (report.layoutsNotTransferred) {
     lines.push(`Layouts not transferred: ${report.layoutsNotTransferred} — re-create with the figure builder.`);
   }
-  if (report.infoSheets) lines.push(`Info sheets not transferred: ${report.infoSheets} (Helix has no info sheet).`);
+  if (report.infoSheets) lines.push(`Info sheets not transferred: ${report.infoSheets} (Titer has no info sheet).`);
   if (report.orphanSheetsIgnored || report.unreferencedTablesIgnored) {
     lines.push(
       `Ignored: ${report.orphanSheetsIgnored} orphan sheet(s) and ${report.unreferencedTablesIgnored} unreferenced table(s) that document.json doesn't list.`,
