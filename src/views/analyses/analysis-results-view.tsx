@@ -423,6 +423,30 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
+      {result.baselineRemoved?.map((col) => {
+        const hasX = col.rows.some((r) => r.x !== undefined);
+        return (
+          <Table
+            key={col.column}
+            title={`Baseline removed — ${col.column}`}
+            columns={[
+              { label: "Row" },
+              ...(hasX ? [{ label: "X", numeric: true }] : []),
+              { label: "Original", numeric: true },
+              { label: "Baseline", numeric: true },
+              { label: "Baseline removed", numeric: true },
+            ]}
+            rows={col.rows.map((r) => [
+              r.row,
+              ...(hasX ? [num(r.x)] : []),
+              num(r.original),
+              num(r.baseline),
+              num(r.subtracted),
+            ])}
+          />
+        );
+      })}
+
       {result.frequencyBins &&
         result.frequencyBins.map((f) => (
           <Table

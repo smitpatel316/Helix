@@ -16,6 +16,7 @@ export type AnalysisType =
   | "deming-regression"
   | "simple-logistic-regression"
   | "area-under-curve"
+  | "remove-baseline"
   | "nonlinear-regression"
   | "two-way-anova"
   | "three-way-anova"
@@ -248,6 +249,31 @@ export interface SimpleLogisticRegressionParams {
 export interface AreaUnderCurveParams {
   /** Baseline Y value the area is measured from (peaks are heights above it). */
   baseline: number;
+}
+
+/** The baseline definitions "remove-baseline" offers (Prism's Remove
+ *  Baseline): the first value, the mean of the first N values, the mean of
+ *  control column(s), or a constant. The baseline is subtracted from every
+ *  value in the chosen columns, and the value used is recorded per column
+ *  so the operation is auditable. */
+export const REMOVE_BASELINE_METHODS = ["first-value", "mean-first-n", "mean-of-controls", "constant"] as const;
+export type RemoveBaselineMethod = (typeof REMOVE_BASELINE_METHODS)[number];
+
+/** Params for "remove-baseline": which columns to subtract from (`ys`),
+ *  how the baseline is defined, and — for XY tables — the X column whose
+ *  values label the result rows. */
+export interface RemoveBaselineParams {
+  /** Omitted: every numeric column except `x` — the wizard always sets it. */
+  ys?: string[];
+  /** XY tables only: the X column, for the result rows' X values. */
+  x?: string;
+  baselineMethod: RemoveBaselineMethod;
+  /** Mean of the first N values (method "mean-first-n"). */
+  firstN?: number;
+  /** Control columns whose values are averaged (method "mean-of-controls"). */
+  controls?: string[];
+  /** The baseline value (method "constant"). */
+  constant?: number;
 }
 
 /** The curves a nonlinear regression fits. `-logx`/`-x` say whether X is log(concentration)
@@ -787,6 +813,7 @@ export type AnalysisParams = DataSetsParam &
     | DemingRegressionParams
     | SimpleLogisticRegressionParams
     | AreaUnderCurveParams
+    | RemoveBaselineParams
     | NonlinearRegressionParams
     | BindingSaturationParams
     | BindingKineticsParams
@@ -953,6 +980,28 @@ export interface CorrelationRow {
   p: number | null;
 }
 
+/** One baseline-subtracted value ("remove-baseline"): the original value,
+ *  the baseline subtracted from it, and the result. `row` is the row title,
+ *  or the row number when the table has none; `x` is the X value at that
+ *  row (XY tables only). */
+export interface BaselineRemovedRow {
+  row: string;
+  x?: number | null;
+  original: number;
+  baseline: number;
+  subtracted: number;
+}
+
+/** One column's baseline-subtracted values ("remove-baseline"): the
+ *  baseline used for the column (recorded so the operation is auditable)
+ *  and how it was defined. */
+export interface BaselineRemovedColumn {
+  column: string;
+  baseline: number;
+  method: string;
+  rows: BaselineRemovedRow[];
+}
+
 /** One row of "area-under-curve" results: one Y series' trapezoidal AUC vs. X. */
 export interface AreaUnderCurveRow {
   variable: string;
@@ -1106,6 +1155,9 @@ export interface AnalysisResult {
   correlations?: CorrelationRow[];
   /** Optional per-Y area-under-curve table ("area-under-curve"). */
   areas?: AreaUnderCurveRow[];
+  /** Optional per-column baseline-subtracted values ("remove-baseline"):
+   *  one table per column, each with the baseline used recorded. */
+  baselineRemoved?: BaselineRemovedColumn[];
   /** Optional per-column outlier summary ("outliers"). */
   outlierGroups?: OutlierGroupRow[];
   /** Optional per-group survival summary ("survival"). */

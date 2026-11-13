@@ -7,6 +7,7 @@ import type {
   AnalysisOutcome,
   AnalysisParams,
   AreaUnderCurveParams,
+  RemoveBaselineParams,
   BindingKineticsParams,
   BindingSaturationParams,
   ChiSquareParams,
@@ -52,6 +53,7 @@ import { linearRegressionSpec } from "./xy/linear-regression";
 import { demingRegressionSpec } from "./xy/deming-regression";
 import { runSimpleLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
+import { runRemoveBaseline } from "./xy/remove-baseline";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
 import { runBindingKinetics, runBindingSaturation } from "./xy/binding";
 import { runEnzymeInhibition } from "./xy/enzyme-inhibition";
@@ -159,6 +161,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Area under the curve",
     minColumns: 2,
     run: (c, p) => runAreaUnderCurve(c, p as AreaUnderCurveParams),
+  },
+  "remove-baseline": {
+    label: "Remove baseline",
+    minColumns: 1,
+    run: (c, p, t) => runRemoveBaseline(c, p as RemoveBaselineParams, t),
   },
   "nonlinear-regression": {
     label: "Nonlinear regression",
@@ -345,12 +352,12 @@ export function runAnalysis(
   // sets `y`, so its fits hit this path while the `y`-less fixtures did not).
   // prettier-ignore
   const named = params as
-    { y?: string | string[]; ys?: string[]; y2?: string; dependent?: string; reference?: string; control?: string; compareWith?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string } | undefined;
+    { y?: string | string[]; ys?: string[]; y2?: string; x?: string; controls?: string[]; dependent?: string; reference?: string; control?: string; compareWith?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string } | undefined;
   // prettier-ignore
   const chosen = [
     ...(Array.isArray(named?.y) ? named.y : named?.y !== undefined ? [named.y] : []),
     ...(named?.ys ?? []),
-    named?.y2, named?.dependent, named?.reference, named?.control, named?.compareWith, ...(named?.predictors ?? []), ...(named?.datasets ?? []), named?.time, named?.status, ...(named?.covariates ?? []), named?.stratifyBy,
+    named?.y2, named?.x, ...(named?.controls ?? []), named?.dependent, named?.reference, named?.control, named?.compareWith, ...(named?.predictors ?? []), ...(named?.datasets ?? []), named?.time, named?.status, ...(named?.covariates ?? []), named?.stratifyBy,
   ];
   const gone =
     params?.sets?.find((name) => !table.sets.some((s) => s.name === name)) ??
