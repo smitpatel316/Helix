@@ -21,7 +21,8 @@ export const separator = { item: "Separator" } as const;
 const ABOUT = {
   name: "Titer", // spelled out: in development the process is named "titer"
   version,
-  shortVersion: "", // empty: no "(1.0.0)" after the version
+  // No shortVersion: Tauri renders one as "(<short>)" after the version, so an
+  // empty string showed "1.0.7 ()". Omitting it shows just the version.
   credits: "Scientific data analysis, simplified.",
   copyright: "© 2026 mickaphd\nFree and open source. No warranty.",
 };
