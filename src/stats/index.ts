@@ -376,7 +376,13 @@ export function runAnalysis(
         }
       }
       try {
-        return await analysis.run(columns, params, table.titles, data.rowGroups);
+        const outcome = await analysis.run(columns, params, table.titles, data.rowGroups);
+        // A failed run is not cached — whether the runner threw (below) or
+        // returned an error outcome (a bad fit, a timeout, a cancel): asking
+        // again runs it for real instead of replaying the stale error.
+        // Without this, the Retry button after a timeout/cancel was a no-op.
+        if ("error" in outcome) byTest.delete(key);
+        return outcome;
       } catch (err: unknown) {
         // A failure (an R error, R not starting) is shown, not kept: asking again retries.
         byTest.delete(key);

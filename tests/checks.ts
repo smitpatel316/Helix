@@ -4913,6 +4913,38 @@ check("hung R eval times out, is interrupted, and retry works", async () => {
   deepStrictEqual(v, { a: 1 });
 });
 
+// R2-B1: a failed run is not cached — Retry runs it for real. A runner
+// that returns an error outcome (a bad fit, a timeout, a cancel) used to
+// stay cached under the table version, so Retry replayed the stale error
+// instead of re-running.
+check("a failed analysis is not cached: fixing the data and re-running works", async () => {
+  const table: TableData = {
+    columns: ["Title", "X", "Y"],
+    rows: [
+      ["", "5", "1"],
+      ["", "5", "2"],
+      ["", "5", "3"],
+      ["", "5", "4"],
+      ["", "5", "5"],
+    ],
+  };
+  const params = { y: "Y", model: "association-one-phase" } as AnalysisParams;
+  const first = await runAnalysis("binding-kinetics", table, params);
+  ok(
+    "error" in first && /two different times/.test(first.error),
+    `expected the equal-times error, got ${JSON.stringify(first)}`,
+  );
+  // Same table object, fixed in place: without eviction the stale error replays.
+  table.rows.forEach((row, i) => {
+    row[1] = String(i);
+  });
+  const second = await runAnalysis("binding-kinetics", table, params);
+  ok(
+    !("error" in second) || !/two different times/.test(second.error),
+    `stale equal-times error replayed: ${JSON.stringify(second)}`,
+  );
+});
+
 // ── Run ──────────────────────────────────────────────────────────────────
 
 // Descriptives are computed by R since the v1.0.7 rebase, so checks that run
