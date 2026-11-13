@@ -27,6 +27,7 @@
 //   - dir 2: "plugin:dialog|save" is mocked to resolve to a temp path, so
 //     "Save .prism…" writes a real file the spec asserts on disk.
 import assert from "node:assert/strict";
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,6 +79,18 @@ describe("Convert dialog", () => {
     fs.mkdirSync(OUT_DIR, { recursive: true });
     await switchToProjectWindow();
     await dismissUpdateDialog();
+    // macOS only: the app launches as the key app, which would let
+    // requestAnimationFrame fire and mask the pre-fix stall. Move focus to
+    // Finder so the window is unfocused during the Convert steps — the exact
+    // condition that stalled the dialog in the Mac proof. Linux runs under
+    // bare Xvfb, where no window is ever focused — no-op there.
+    if (process.platform === "darwin") {
+      try {
+        execSync("open -a Finder");
+      } catch {
+        // Focus was already elsewhere; nothing to move.
+      }
+    }
   });
 
   // Dir 1 runs first: it needs no seeded project (the dialog converts a file,

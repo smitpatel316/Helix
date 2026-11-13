@@ -22,7 +22,15 @@ DISPLAY=127.0.0.1:99 npx wdio run e2e/wdio.conf.js
 ```
 
 On the Mac, run it from a logged-in GUI session (Batch 5 Mac proof must be
-done first — do not contend with it for the Mac).
+done first — do not contend with it for the Mac). Two Mac-specifics:
+- **Isolation:** the debug binary shares the real bundle id, so run wdio
+  with a scratch HOME — `mkdir -p /tmp/titer-e2e-home && HOME=/tmp/titer-e2e-home npx wdio run e2e/wdio.conf.js`
+  — so the app's `~/Library/Application Support` never touches Smit's real
+  app-data dir. (The XDG vars in `wdio.conf.js` are ignored on macOS.)
+- **Unfocused:** the app launches as the key app on macOS, which would let
+  `requestAnimationFrame` fire and mask the pre-fix stall. The spec's
+  `before()` moves focus to Finder (`open -a Finder`) on darwin before the
+  Convert steps; Linux needs no such step (bare Xvfb, no focus ever).
 
 ## What the spike changes in the app (all debug/e2e-only)
 
