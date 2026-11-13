@@ -4794,6 +4794,35 @@ check(".pzfx import names summary subcolumns and warns they aren't replicates", 
   ok(imported.issues.some((i) => i.message.includes("not raw replicates")), "warns about summaries");
 });
 
+check(".pzfx import dedupes duplicate column names so the second keeps its own data", () => {
+  // Two Y columns both titled "Control", plus a third already titled
+  // "Control 2" and a third "Control" — the rename must skip names that
+  // are already taken, and each column must keep its own values.
+  const text = `<?xml version="1.0" encoding="UTF-8"?><GraphPadPrismFile PrismXMLVersion="5.00">
+<Table ID="Table0" XFormat="none" TableType="OneWay">
+<Title>Data 1</Title>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Control</Title><Subcolumn><d>1.</d><d>2.</d></Subcolumn></YColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Control</Title><Subcolumn><d>10.</d><d>20.</d></Subcolumn></YColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Control 2</Title><Subcolumn><d>100.</d><d>200.</d></Subcolumn></YColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Control</Title><Subcolumn><d>1000.</d><d>2000.</d></Subcolumn></YColumn>
+</Table>
+</GraphPadPrismFile>`;
+  const imported = parsePzfx(text);
+  strictEqual(imported.tables.length, 1);
+  const node = imported.project.nodes[imported.project.rootOrder[0]];
+  if (!node || node.type !== "table") throw new Error("no table node");
+  deepStrictEqual(node.data!.columns, ["Title", "Control", "Control 2", "Control 3", "Control 4"]);
+  // The renamed columns still carry their own data: a lookup by name
+  // (data.columns.indexOf) now lands on the intended column, not the first.
+  deepStrictEqual(node.data!.rows, [
+    [null, "1.", "10.", "100.", "1000."],
+    [null, "2.", "20.", "200.", "2000."],
+  ]);
+  const renamed = node.data!.columns.indexOf("Control 2");
+  strictEqual(node.data!.rows[0][renamed], "10.");
+  ok(imported.issues.some((i) => i.message.includes("duplicate column names were renamed")), "warns about the rename");
+});
+
 check(".pzfx import refuses files that aren't .pzfx", () => {
   for (const text of ["hello", "<GraphPadPrismFile></GraphPadPrismFile>", "<Other><Table/></Other>"]) {
     const imported = parsePzfx(text);
