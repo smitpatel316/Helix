@@ -52,6 +52,7 @@ import {
   writeBlock,
 } from "../src/views/tables/table-data";
 import { flattenThreeWay, rowGroupBands } from "../src/stats/grouped/base";
+import { gridMenu } from "../src/views/tables/grid-menu";
 import { analysisOptionsForTable } from "../src/views/analyses";
 import { followTable } from "../src/store/references";
 import { pairKey } from "../src/lib/columns";
@@ -1252,6 +1253,48 @@ check("renaming a subgroup renames it within its group only", () => {
   deepStrictEqual(t.columns.slice(1, 5), ["A:Mouse 1:R1", "A:Mouse 1:R2", "A:S2:R1", "A:S2:R2"]);
   deepStrictEqual(t.columns.slice(5, 7), ["B:S1:R1", "B:S1:R2"]);
   strictEqual(renameSubgroup(t, "A", "S2", "Mouse 1"), t); // taken, within the group
+});
+
+check("renaming a nested table's top-level group renames all its sub-columns, and the menu offers Rename Group", () => {
+  const t = renameGroup(nested(), "A", "Control");
+  deepStrictEqual(t.columns.slice(1, 5), ["Control:S1:R1", "Control:S1:R2", "Control:S2:R1", "Control:S2:R2"]);
+  deepStrictEqual(t.columns.slice(5, 7), ["B:S1:R1", "B:S1:R2"]);
+  strictEqual(renameGroup(t, "B", "Control"), t); // taken, by another group
+  // The menu for a Nested table offers both levels: Rename Subgroup for the
+  // subgroup the column belongs to, and Rename Group for its top-level group.
+  // Before the fix only Rename Subgroup was offered, and the Group header's
+  // double-click opened the subgroup editor too, so kind "group" was
+  // unreachable in Nested tables.
+  let groupColumn = -1;
+  let subgroupColumn = -1;
+  const menu = (data: TableData, type: "nested" | "grouped") =>
+    gridMenu({
+      data,
+      type,
+      zone: "column",
+      range: { r0: 0, r1: 0, c0: 1, c1: 1 },
+      update: () => {},
+      rename: (c) => {
+        subgroupColumn = c;
+      },
+      renameGroup: (c) => {
+        groupColumn = c;
+      },
+      showGroups: () => {},
+    });
+  const items = menu(nested(), "nested");
+  const texts = items.map((i) => ("text" in i ? i.text : ""));
+  ok(texts.includes("Rename Group"));
+  ok(texts.includes("Rename Subgroup"));
+  const groupItem = items.find((i) => "text" in i && i.text === "Rename Group");
+  const action = groupItem && "action" in groupItem ? groupItem.action : undefined;
+  action?.("Rename Group");
+  strictEqual(groupColumn, 1);
+  strictEqual(subgroupColumn, -1); // the group entry must not open the subgroup editor
+  // A plain Grouped table still offers Rename Group exactly once.
+  const groupedTexts = menu(grouped(), "grouped").map((i) => ("text" in i ? i.text : ""));
+  strictEqual(groupedTexts.filter((text) => text === "Rename Group").length, 1);
+  ok(!groupedTexts.includes("Rename Subgroup"));
 });
 
 check("renesting after a subgroup rename keeps each group's own subgroup names and values", () => {
