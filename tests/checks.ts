@@ -70,6 +70,7 @@ import { deletePalette, keepPalette, loadMyPalettes } from "../src/store/my-pale
 import { GRAPHS, GRAPH_OPTIONS_BY_TABLE, newGraphOptions, plotColumns, type GraphFigure } from "../src/views/graphs";
 import { isGrouped, isNested, readTable, setColumns, type Dataset } from "../src/lib/dataset";
 import { adjustComparisonRows, adjustPValues, incompleteRows, missingColumn } from "../src/stats/column/base";
+import { droppedPredictorsNote, selectPredictors } from "../src/stats/multiple/predictors";
 import { compareTwoGroupsSpec } from "../src/stats/column/compare-two-groups";
 import { kruskalWallisSpec } from "../src/stats/column/kruskal-wallis";
 import { anovaSpec } from "../src/stats/column/anova";
@@ -3438,6 +3439,40 @@ check("an analysis whose chosen column is gone says so, whatever the test", asyn
   for (const [type, params] of cases) {
     deepStrictEqual(await runAnalysis(type, xy, params as AnalysisParams), { error: missingColumn("Gone") }, type);
   }
+});
+
+// R2-m5 (bug-fix queue item 39 — not the review sweep's M5, the params
+// fallback): a chosen predictor holding no numbers was silently dropped and
+// the fit ran on the subset. The fit now names it in its notes. The
+// selection is pure, so this checks the shared selector + note directly;
+// a full fit would need R, and the three runners append this note verbatim
+// to their outcome.
+check("a chosen predictor holding no numbers is named, not silently dropped", () => {
+  const data: TableData = {
+    columns: ["Title", "Y", "X", "Empty"],
+    rows: [
+      [null, "0", "1", null],
+      [null, "1", "2", null],
+      [null, "0", "3", null],
+      [null, "1", "4", null],
+      [null, "0", "5", null],
+    ],
+  };
+  const columns = readTable(data).columns;
+  const { dep, predictors, dropped } = selectPredictors(columns, {
+    dependent: "Y",
+    predictors: ["X", "Empty"],
+  });
+  strictEqual(dep?.name, "Y");
+  deepStrictEqual(predictors.map((c) => c.name), ["X"]);
+  deepStrictEqual(dropped, ["Empty"]);
+  const note = droppedPredictorsNote(dropped);
+  ok(note.includes("“Empty”"), `note should name the dropped predictor, got: ${note}`);
+  ok(note.includes("left out of the fit"), `note should say it was left out, got: ${note}`);
+  // Nothing chosen dataless: no note, and the no-predictors-chosen default
+  // (every other data-bearing column) is unchanged.
+  deepStrictEqual(selectPredictors(columns, { dependent: "Y" }).dropped, []);
+  strictEqual(droppedPredictorsNote([]), "");
 });
 
 // M8: a hand-edited or older file may carry y as one bare string — the file

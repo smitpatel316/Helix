@@ -2,21 +2,15 @@
 // variable regressed on every other data-bearing variable, fit on complete cases.
 // Bespoke runner (not ColumnTestSpec) — needs a chosen response + a coefficients table.
 import type { AnalysisOutcome, Column, MultipleRegressionParams, RegressionCoefficient } from "../types";
-import { dataGroups, describe, pairedGroups, pRow, rVec } from "../column/base";
+import { describe, pairedGroups, pRow, rVec } from "../column/base";
+import { droppedPredictorsNote, selectPredictors } from "./predictors";
 import { evalNamedVector } from "../webr";
 
 export async function runMultipleRegression(
   columns: Column[],
   params: MultipleRegressionParams | undefined,
 ): Promise<AnalysisOutcome> {
-  const vars = dataGroups(columns);
-  const dep = params?.dependent === undefined ? vars[0] : vars.find((c) => c.name === params.dependent);
-  const chosen = params?.predictors;
-  const predictors = dep
-    ? chosen && chosen.length > 0
-      ? vars.filter((c) => c !== dep && chosen.includes(c.name))
-      : vars.filter((c) => c !== dep)
-    : [];
+  const { dep, predictors, dropped } = selectPredictors(columns, params);
   if (!dep || predictors.length < 1) {
     return { error: "Multiple regression needs a dependent variable and at least one other variable with data." };
   }
@@ -67,7 +61,8 @@ export async function runMultipleRegression(
     groups: described,
     notes:
       `Ordinary least-squares regression of “${dep.name}” on ${p} predictor(s), fit on ${n} complete rows. ` +
-      "Each coefficient's P value tests whether that predictor's slope differs from zero, holding the others fixed.",
+      "Each coefficient's P value tests whether that predictor's slope differs from zero, holding the others fixed." +
+      droppedPredictorsNote(dropped),
     coefficients,
   };
 }

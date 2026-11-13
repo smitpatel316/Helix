@@ -11,7 +11,8 @@ import type {
   RegressionCoefficient,
   StatRow,
 } from "../types";
-import { dataGroups, describe, pairedGroups, pRow, rVec } from "../column/base";
+import { describe, pairedGroups, pRow, rVec } from "../column/base";
+import { droppedPredictorsNote, selectPredictors } from "./predictors";
 import { evalNamedVector } from "../webr";
 import { num } from "../../lib/format";
 
@@ -25,14 +26,7 @@ export async function runMultipleLogisticRegression(
   columns: Column[],
   params: MultipleLogisticRegressionParams | undefined,
 ): Promise<AnalysisOutcome> {
-  const vars = dataGroups(columns);
-  const dep = params?.dependent === undefined ? vars[0] : vars.find((c) => c.name === params.dependent);
-  const chosen = params?.predictors;
-  const predictors = dep
-    ? chosen && chosen.length > 0
-      ? vars.filter((c) => c !== dep && chosen.includes(c.name))
-      : vars.filter((c) => c !== dep)
-    : [];
+  const { dep, predictors, dropped } = selectPredictors(columns, params);
   if (!dep || predictors.length < 1) {
     return {
       error: "Multiple logistic regression needs a dependent variable and at least one other variable with data.",
@@ -141,7 +135,8 @@ export async function runMultipleLogisticRegression(
     notes:
       `Multiple logistic regression of “${dep.name}” on ${p} predictor(s), fit on ${n} complete rows. ` +
       "The odds ratios are per one-unit increase in each predictor, with Wald 95% confidence intervals (a normal approximation). " +
-      "Each predictor's P value tests whether its coefficient differs from zero, holding the others fixed.",
+      "Each predictor's P value tests whether its coefficient differs from zero, holding the others fixed." +
+      droppedPredictorsNote(dropped),
     coefficients,
     // The coefficients table's statistic is a z, not a t.
     statisticLabel: "z",
