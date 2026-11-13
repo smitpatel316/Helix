@@ -1253,6 +1253,63 @@ check("the ROC wizard's score question carries a message when the truth is the o
   strictEqual(initialAnswer(score, undefined), null);
 });
 
+check("the Bland-Altman wizard never offers the X column as a method on XY tables (F8)", () => {
+  const xy = readTable({
+    columns: ["Title", "Time", "Method A", "Method B"],
+    rows: [
+      ["", "0", "1.1", "1.0"],
+      ["", "1", "2.9", "3.1"],
+      ["", "2", "5.2", "4.8"],
+    ],
+  });
+  const choiceValues = (q: Question) => {
+    if (q.kind !== "choice") throw new Error(`${q.id} is not a choice question`);
+    return q.options.map((o) => o.value);
+  };
+  const first = WIZARDS["bland-altman"]!
+    .questions({}, xy, "xy")
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "first") as Question;
+  deepStrictEqual(choiceValues(first), ["Method A", "Method B"]);
+  // With the first method picked, the second question still cannot offer X.
+  const second = WIZARDS["bland-altman"]!
+    .questions({ first: "Method A" }, xy, "xy")
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "second") as Question;
+  deepStrictEqual(choiceValues(second), ["Method B"]);
+  // A column table has no X column, so every numeric column stays a method.
+  const column = readTable({
+    columns: ["Title", "Method A", "Method B"],
+    rows: [
+      ["", "1.1", "1.0"],
+      ["", "2.9", "3.1"],
+      ["", "5.2", "4.8"],
+    ],
+  });
+  const firstCol = WIZARDS["bland-altman"]!
+    .questions({}, column, "column")
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "first") as Question;
+  deepStrictEqual(choiceValues(firstCol), ["Method A", "Method B"]);
+  // X + 1 Y: no second method exists, and the wizard says so instead of
+  // offering X as the second method.
+  const oneY = readTable({
+    columns: ["Title", "Time", "Method A"],
+    rows: [
+      ["", "0", "1.1"],
+      ["", "1", "2.9"],
+      ["", "2", "5.2"],
+    ],
+  });
+  const secondOneY = WIZARDS["bland-altman"]!
+    .questions({ first: "Method A" }, oneY, "xy")
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "second") as Question;
+  if (secondOneY.kind !== "choice") throw new Error("second is not a choice question");
+  deepStrictEqual(secondOneY.options, []);
+  ok(secondOneY.emptyMessage?.includes("only one Y data set"));
+});
+
 // ── Row groups (a grouped table's third factor, plan 03) ─────────────────
 
 check("row groups split, resize and merge keeping every row covered", () => {
