@@ -49,6 +49,10 @@ function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFig
       const { t, s } = survivorCountsStep(x, values);
       return [{ ...steps(t, s, paint.line(y.name, i)), name: y.name, hoverinfo: "x+y", showlegend: true }];
     }
+    // R2-G-F16: no complete pairs means no data for this group — skip it.
+    // kaplanMeier([], []) returns its (0, 100%) anchor, which would draw a
+    // fabricated point for a group with no subjects at all.
+    if (x.length === 0) return [];
     const km = kaplanMeier(x, values);
     const percent = (curve: (number | null)[]) => curve.map((v, k) => (v ?? km.s[k]) * 100);
     const traces: unknown[] = [];

@@ -2627,6 +2627,26 @@ check("a survival curve runs on to the last subject followed", () => {
   deepStrictEqual([curve.x.slice(-2), curve.y.at(-1)], [[2, 5], curve.y.at(-2)]);
 });
 
+check("a survival group with zero complete pairs draws no point", () => {
+  const options = newGraphOptions("survival");
+  // Group B has times but no event codes at all — zero complete pairs.
+  const data = {
+    columns: ["Title", "X", "A", "B"],
+    rows: [
+      [null, "1", "1", null],
+      [null, "2", "1", null],
+      [null, "5", "0", null],
+    ],
+  };
+  const fig = GRAPHS.survival.build(readTable(data).columns, options, paintOf(options, 2));
+  const traces = fig.data as { legendgroup?: string; name?: string }[];
+  // Group A still draws its curve; group B draws nothing — before the fix
+  // kaplanMeier([], []) returned its (0, 100%) anchor, a phantom point.
+  ok(traces.length > 0, "the group with data still draws");
+  ok(traces.some((t) => t.name === "A"), "the group with data keeps its curve");
+  ok(traces.every((t) => t.legendgroup !== "B"), "no trace for the group with no data");
+});
+
 check("texts moved by hand stay where they were dropped", () => {
   // What Plotly reports of a move: the legend, a color legend, a named text; a
   // significance label has no name, so it isn't one.
