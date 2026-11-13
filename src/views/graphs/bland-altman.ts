@@ -64,8 +64,8 @@ function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFig
   };
   const data: unknown[] = [points];
   // The lines are labelled where they sit (at their right end, inside the
-  // plot), not in a legend: a legend at x = 1.02 overflows this figure's
-  // narrow right margin and is clipped.
+  // plot), not in a legend — the in-plot labels stay by design, even though
+  // a legend now reserves its own right margin (M13).
   const annotations: unknown[] = [];
   if (diffs.length >= 2) {
     const s = computeBlandAltman(diffs);

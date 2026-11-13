@@ -71,7 +71,7 @@ function build(columns: Column[], options: GraphOptions, paint: Paint, titles?: 
     }
   });
 
-  return { data, layout: groupedScatterLayout(options, labels, total, separated) };
+  return { data, layout: groupedScatterLayout(options, labels, total, separated, groups.map((g) => g.name)) };
 }
 
 export const groupedBox: GraphModule = {
