@@ -32,21 +32,6 @@ export async function runPrincipalComponentAnalysis(
   if (vars.length < 2) {
     return { error: "PCA needs at least 2 variables containing numeric data." };
   }
-  // A constant variable has SD 0: with scale. = TRUE prcomp errors ("cannot
-  // rescale a constant/zero column"), so name it before calling R. On the
-  // covariance matrix a constant variable is fine — it just contributes no
-  // variance — so the check only applies to the correlation matrix.
-  if (scale === "correlation") {
-    const constant = vars.find((c) => sd(c.values) === 0);
-    if (constant) {
-      return {
-        error:
-          `“${constant.name}” is constant — PCA on the correlation matrix cannot standardise a variable with no ` +
-          `variation. Remove it from the table, or run PCA on the covariance matrix instead.`,
-      };
-    }
-  }
-
   // Complete cases: the rows where every variable used has a value.
   const aligned = pairedGroups(vars).map((g) => g.values);
   const n = aligned[0].length;
@@ -54,6 +39,24 @@ export async function runPrincipalComponentAnalysis(
   const dropped = incompleteRows(vars);
   if (n < 2) {
     return { error: "PCA needs at least 2 complete rows (rows measured in every variable)." };
+  }
+  // A constant variable has SD 0: with scale. = TRUE prcomp errors ("cannot
+  // rescale a constant/zero column"), so name it before calling R. The check
+  // runs on the complete cases, not the raw columns — a variable can vary
+  // only on rows another variable leaves blank, and be constant once those
+  // rows are dropped. On the covariance matrix a constant variable is fine
+  // — it just contributes no variance — so the check only applies to the
+  // correlation matrix.
+  if (scale === "correlation") {
+    const constantIdx = aligned.findIndex((col) => sd(col) === 0);
+    if (constantIdx >= 0) {
+      const constant = vars[constantIdx];
+      return {
+        error:
+          `“${constant.name}” is constant — PCA on the correlation matrix cannot standardise a variable with no ` +
+          `variation. Remove it from the table, or run PCA on the covariance matrix instead.`,
+      };
+    }
   }
 
   const k = Math.min(n, p); // prcomp returns this many components

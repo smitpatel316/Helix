@@ -7,7 +7,7 @@
 // quasipoisson) in place of glm(family = binomial).
 import type { AnalysisOutcome, Column, PoissonRegressionParams, RegressionCoefficient, StatRow } from "../types";
 import { describe, pairedGroups, rVec } from "../column/base";
-import { droppedPredictorsNote, selectPredictors } from "./predictors";
+import { droppedPredictorsNote, selectPredictors, aliasedPredictorsError } from "./predictors";
 import { evalNamedVector } from "../webr";
 import { num } from "../../lib/format";
 
@@ -60,22 +60,45 @@ export async function runPoissonRegression(
   // ratios (per predictor only) are Wald: exp(estimate ± 1.96·SE). Under
   // quasipoisson the coefficient matrix's SEs are already scaled by
   // sqrt(dispersion) — the runner scales nothing itself.
+  // A constant or collinear predictor is aliased: coef(m) holds NA for it and
+  // summary()'s matrix DROPS its row, so co[t + 1, ] would read the wrong row
+  // — or crash with "subscript out of bounds" past the last row. The
+  // coefficient pulls are therefore guarded on nal (any NA in coef(m)), and
+  // the aliased predictors are reported by index (al0…), so the runner can
+  // name them instead of indexing the matrix.
   const coefAssigns = Array.from({ length: p + 1 }, (_, t) => {
-    const base = `b${t}=co[${t + 1},1],se${t}=co[${t + 1},2],z${t}=co[${t + 1},3],pv${t}=co[${t + 1},4]`;
+    const base =
+      `b${t}=if(nal) NA else co[${t + 1},1],se${t}=if(nal) NA else co[${t + 1},2],` +
+      `z${t}=if(nal) NA else co[${t + 1},3],pv${t}=if(nal) NA else co[${t + 1},4]`;
     return t === 0
       ? base
-      : `${base},rr${t}=exp(co[${t + 1},1]),rrLo${t}=exp(co[${t + 1},1]-1.96*co[${t + 1},2]),rrHi${t}=exp(co[${t + 1},1]+1.96*co[${t + 1},2])`;
+      : `${base},rr${t}=if(nal) NA else exp(co[${t + 1},1]),` +
+          `rrLo${t}=if(nal) NA else exp(co[${t + 1},1]-1.96*co[${t + 1},2]),` +
+          `rrHi${t}=if(nal) NA else exp(co[${t + 1},1]+1.96*co[${t + 1},2])`;
   });
+  const aliasAssigns = Array.from({ length: p }, (_, i) => `al${i}=as.numeric(na[${i + 2}])`);
   // AIC is dropped under quasi-Poisson: a quasi-likelihood has no true AIC
   // (R's m$aic is NA there). The dispersion row, from summary()'s dispersion,
   // is the scaling factor the quasi fit actually used (Pearson-based).
   const code =
-    `${decls.join(";")};m<-glm(${formula},family=${quasi ? "quasipoisson" : "poisson"});s<-summary(m);co<-s$coefficients;` +
+    `${decls.join(";")};m<-glm(${formula},family=${quasi ? "quasipoisson" : "poisson"});s<-summary(m);co<-s$coefficients;na<-is.na(coef(m));nal<-any(na);` +
     `c(dev=m$deviance,nulldev=m$null.deviance,residDf=m$df.residual,` +
-    `pearson=sum(residuals(m,type="pearson")^2),converged=as.numeric(m$converged),` +
-    `${quasi ? "disp=s$dispersion," : "aic=m$aic,"}${coefAssigns.join(",")})`;
+    `pearson=sum(residuals(m,type="pearson")^2),converged=as.numeric(m$converged),aliased=as.numeric(nal),` +
+    `${aliasAssigns.join(",")},${quasi ? "disp=s$dispersion," : "aic=m$aic,"}${coefAssigns.join(",")})`;
 
   const v = await evalNamedVector(code);
+  if (v.aliased === 1) {
+    return {
+      error:
+        aliasedPredictorsError(
+          predictors,
+          aligned.slice(1),
+          predictors.map((_, i) => v[`al${i}`]),
+          "Poisson regression",
+        ) ??
+        "The fit could not estimate a separate coefficient for every predictor — two or more predictors carry the same information. Drop one of the collinear predictors and try again.",
+    };
+  }
   const terms = ["Intercept", ...predictors.map((c) => c.name)];
   const coefficients: RegressionCoefficient[] = terms.map((term, t) => ({
     term,

@@ -33,22 +33,6 @@ export async function runKMeans(
   }
   // Standardise by default (Prism's default): z-score each variable first.
   const standardise = params?.standardise !== false;
-  // A constant variable has SD 0: z-scoring divides by zero, so name it
-  // before calling R (same convention as Plan 21's PCA constant-variable
-  // error). In the original units a constant variable is fine — it just
-  // contributes nothing to the distances — so the check only applies
-  // when standardising.
-  if (standardise) {
-    const constant = vars.find((c) => sd(c.values) === 0);
-    if (constant) {
-      return {
-        error:
-          `“${constant.name}” is constant — K-means clustering cannot standardise a variable with no ` +
-          `variation. Remove it from the table, or run without standardisation instead.`,
-      };
-    }
-  }
-
   // Complete cases: the rows where every variable used has a value.
   const aligned = pairedGroups(vars).map((g) => g.values);
   const n = aligned[0].length;
@@ -61,6 +45,24 @@ export async function runKMeans(
     return {
       error: `K-means clustering needs fewer clusters than observations (k = ${k}, ${n} complete rows).`,
     };
+  }
+  // A constant variable has SD 0: z-scoring divides by zero, so name it
+  // before calling R (same convention as Plan 21's PCA constant-variable
+  // error). The check runs on the complete cases, not the raw columns — a
+  // variable can vary only on rows another variable leaves blank, and be
+  // constant once those rows are dropped. In the original units a constant
+  // variable is fine — it just contributes nothing to the distances — so
+  // the check only applies when standardising.
+  if (standardise) {
+    const constantIdx = aligned.findIndex((col) => sd(col) === 0);
+    if (constantIdx >= 0) {
+      const constant = vars[constantIdx];
+      return {
+        error:
+          `“${constant.name}” is constant — K-means clustering cannot standardise a variable with no ` +
+          `variation. Remove it from the table, or run without standardisation instead.`,
+      };
+    }
   }
 
   // The matrix fills column by column (R's default), and `aligned` is one
