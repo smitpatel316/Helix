@@ -48,15 +48,24 @@ export async function confirmDelete(title: string, detail: string): Promise<bool
   return answer === "Delete" || answer === "Ok";
 }
 
-/** A Download / Later prompt for a newer version of Titer. */
-export async function askToDownload(version: string): Promise<boolean> {
-  const answer = await message("Download it from GitHub, then replace Titer in your Applications folder.", {
+/** What to do about a newer version of Titer. */
+export async function askToInstall(version: string, current: string): Promise<"install" | "notes" | "later"> {
+  const answer = await message(`You have ${current}. Titer will reopen your projects.`, {
     title: `Titer ${version} is available`,
     kind: "info",
-    buttons: { ok: "Download", cancel: "Later" },
+    buttons: { yes: "Install and Relaunch", no: "Release Notes", cancel: "Later" },
   });
-  return answer === "Download" || answer === "Ok";
+  if (answer === "Install and Relaunch" || answer === "Yes") return "install";
+  if (answer === "Release Notes" || answer === "No") return "notes";
+  return "later";
 }
+
+/** The newer version of Titer out ("1.0.8"), null when this one is the latest. Rejects with
+ *  "offline" (GitHub can't be reached) or "unavailable" (no update details to read). */
+export const checkUpdate = () => invoke<string | null>("check_update");
+
+/** Downloads and installs the version `checkUpdate` found, then relaunches Titer. */
+export const installUpdate = () => invoke<void>("install_update");
 
 /** This app's version ("1.0.0"), from its bundle. */
 export const appVersion = getVersion;
@@ -215,6 +224,15 @@ export function onCloseRequested(canClose: () => Promise<boolean>) {
 
 /** The accent color chosen in System Settings ▸ Appearance (#RRGGBB), or null. */
 export const accentColor = () => (isNative ? invoke<string | null>("accent_color") : Promise.resolve(null));
+
+// One request at a time: two sent together may reach the shell in either order, and a
+// wheel shown after it was taken away would spin for ever.
+let spinner = Promise.resolve();
+
+/** macOS's spinning wheel over this window, centered at `at` (x, y from its top left); null takes it away. */
+export function setSpinner(at: [number, number] | null) {
+  spinner = spinner.then(() => invoke<void>("set_spinner", { at })).catch(() => {});
+}
 
 /** Titer's GitHub page, its releases, or Buy Me a Coffee, in the default browser. */
 export const openLink = (link: "github" | "releases" | "coffee") => void invoke("open_link", { link });

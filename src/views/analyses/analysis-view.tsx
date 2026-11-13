@@ -5,6 +5,7 @@ import type { ProjectNode } from "../../store/types";
 import { useProjectStore } from "../../store/use-project-store";
 import { Button } from "../../ui/controls";
 import { Toolbar } from "../../ui/layout";
+import { isNative, setSpinner } from "../../native";
 import { ANALYSES } from "../../stats";
 import { cancelActiveEvals } from "../../stats/webr";
 import { titleCase } from "../../lib/format";
@@ -16,6 +17,30 @@ import { rQueueStatusText } from "../../stats/r-queue";
 function formatElapsed(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/** While the analysis runs: macOS's spinning wheel in the middle of the results, once it
+ *  has taken half a second (R or a package loading): a quick one shows none. */
+function Running() {
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!isNative) return;
+    let shown = false;
+    const timer = setTimeout(() => {
+      const { left, top, width, height } = ref.current!.getBoundingClientRect();
+      shown = true;
+      setSpinner([left + width / 2, top + height / 2]);
+    }, 500);
+    return () => {
+      clearTimeout(timer);
+      if (shown) setSpinner(null);
+    };
+  }, []);
+  return (
+    <div ref={ref} className="flex h-full items-center justify-center text-regular text-secondary">
+      {!isNative && "Running…"}
+    </div>
+  );
 }
 
 export function AnalysisView({ node }: { node: ProjectNode }) {
@@ -42,6 +67,8 @@ export function AnalysisView({ node }: { node: ProjectNode }) {
       <div className="flex-1 overflow-auto">
         {outcome && !("error" in outcome) ? (
           <AnalysisResultsView result={outcome} />
+        ) : data && !outcome ? (
+          <Running />
         ) : (
           <div className="flex flex-col items-start gap-3 px-8 py-6">
             <p className="text-regular text-secondary">

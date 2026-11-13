@@ -159,7 +159,7 @@ type OptionalOption = {
 }[keyof GraphOptions];
 // prettier-ignore
 const OPTIONAL_OPTIONS = {
-  yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number",
+  yMin: "number", yMax: "number", yStep: "number", xMin: "number", xMax: "number", xStep: "number", binWidth: "number",
   sigAnalysisId: "text", sigPairs: "texts", regAnalysisId: "text", demingAnalysisId: "text", coxAnalysisId: "text", poissonAnalysisId: "text", smoothAnalysisId: "text", pcaAnalysisId: "text", kmeansAnalysisId: "text", monteCarloAnalysisId: "text", xVariable: "text", yVariable: "text",
   volcanoX: "text", volcanoY: "text", volcanoLabel: "text", volcanoGroupA: "text", volcanoGroupB: "text",
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
@@ -254,6 +254,7 @@ const PARAMS = {
   seed: "number",
   groupMeans: "numbers-by-name",
   groupSds: "numbers-by-name",
+  rout: "yes/no", x: "name",
 } satisfies Record<ParamKey, ParamKind>;
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -407,7 +408,7 @@ function describeDroppedBand(b: unknown): string {
  *  rebuilt set — a gapped sub-column ("A:Y3" with no "A:Y2") — so `regroupDropped`
  *  names the valued columns that went, for a warning: without it the values
  *  would vanish on load and the loss would be saved over the file. */
-function readData(raw: Obj): {
+function readData(raw: Obj, type: unknown): {
   data: TableData;
   colors: TableColors;
   beyond: number;
@@ -435,25 +436,28 @@ function readData(raw: Obj): {
       )
     : {};
   const rowGroups = readRowGroups(d.rowGroups);
+  // Groups of sub-columns: a Grouped table's, or an XY table's data sets of replicates (after X).
+  const grouping = (type === "grouped" || type === "xy") && isCount(d.groups) && isCount(d.replicates);
   let data = defined({
     ...d,
     columns,
     rows,
-    groups: isCount(d.groups) && isCount(d.replicates) ? d.groups : undefined,
-    replicates: isCount(d.groups) && isCount(d.replicates) ? d.replicates : undefined,
-    subgroups: isCount(d.groups) && isCount(d.replicates) && isCount(d.subgroups) ? d.subgroups : undefined,
+    groups: grouping ? d.groups : undefined,
+    replicates: grouping ? d.replicates : undefined,
+    subgroups: grouping && isCount(d.subgroups) ? d.subgroups : undefined,
     rowGroups: rowGroups.groups,
     excluded: excluded.length ? excluded : undefined,
     widths: Object.keys(widths).length ? (widths as Record<string, number>) : undefined,
     freezeTitle: d.freezeTitle === true || undefined,
   } as TableData);
   const regroupDroppedNames: string[] = [];
-  if (isGrouped(data) && columns.length > 1) {
-    const groups = [...new Set(columns.slice(1).map(seriesKeyOf))];
-    const replicates = Math.max(...groups.map((g) => columns.filter((c) => seriesKeyOf(c) === g).length));
+  const lead = type === "xy" ? 2 : 1;
+  if (isGrouped(data) && columns.length > lead) {
+    const groups = [...new Set(columns.slice(lead).map(seriesKeyOf))];
+    const replicates = Math.max(...groups.map((g) => columns.slice(lead).filter((c) => seriesKeyOf(c) === g).length));
     if (groups.length !== data.groups || replicates !== data.replicates) {
-      regroupDroppedNames.push(...regroupDropped(data, groups.length, replicates));
-      data = defined(regroupTable(data, groups.length, replicates));
+      regroupDroppedNames.push(...regroupDropped(data, groups.length, replicates, type === "xy" ? "xy" : "grouped"));
+      data = defined(regroupTable(data, groups.length, replicates, type === "xy" ? "xy" : "grouped"));
     }
   }
   if (isNested(data) && columns.length > 1) {
@@ -691,6 +695,14 @@ function readParams(
       });
     }
   }
+  // 1.0.9's outliers params carried `grubbs: true` instead of `method: "grubbs"`:
+  // translate it on load, so a 1.0.9 file's Grubbs analysis still runs Grubbs
+  // (without this it would fall back to ROUT — the runner dispatches on `method`).
+  if (analysisType === "outliers" && "grubbs" in sanitized) {
+    if ((sanitized as Record<string, unknown>).grubbs === true && sanitized.method === undefined)
+      (sanitized as Record<string, unknown>).method = "grubbs";
+    delete (sanitized as Record<string, unknown>).grubbs;
+  }
   // Strip the left-out values first, so a dropped key falls back to its
   // default instead of shadowing it with `undefined`.
   return defined({ ...fill, ...defined(sanitized) }) as unknown as AnalysisParams;
@@ -771,7 +783,7 @@ function readNode(
   } as ProjectNode;
 
   if (type === "table") {
-    const read = isObj(n.data) ? readData(n.data) : null;
+    const read = isObj(n.data) ? readData(n.data, lower(n.tableType)) : null;
     if (!read) return null;
     node.data = read.data;
     tableColors[id] = read.colors;

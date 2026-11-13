@@ -4,10 +4,10 @@
 import type { GraphOptions } from "../../store/types";
 import type { AnalysisResult, NonlinearModel, RegressionCoefficient } from "../../stats/types";
 import { nonNegativeXOnly, positiveXOnly, coefficientsForSet, termLabel } from "../../stats/xy/nonlinear-regression";
-import { pairUp, type Column } from "../../lib/dataset";
+import { xyPoints, type Column, type DataSet } from "../../lib/dataset";
 import type { GraphFigure } from ".";
 import { num } from "../../lib/format";
-import { addNote, extent, type Paint } from "./plot-helpers";
+import { addNote, curveXs, extent, type Paint } from "./plot-helpers";
 
 function coef(coefficients: RegressionCoefficient[], term: string): number {
   return coefficients.find((c) => c.term === term)?.estimate ?? NaN;
@@ -118,23 +118,83 @@ function fittedCurve(
   return { x, y };
 }
 
-/** "EC50 = 12.3<br>Hill slope = 1.05<br>R² = 0.9821" annotation text (Plotly-ready), as the
- *  analysis reports them: its derived values (an EC50, a half-life…, not a Span), then the
- *  coefficients they don't already say (a dose-response's Bottom, Top and log midpoint),
- *  then R². */
-function curveLabel(fit: AnalysisResult): string {
+/** The X values a fitted curve draws over: log-X curves need X > 0, raw
+ *  ratio curves need X ≥ 0 (X = 0 is their Bottom), everything else any X. */
+const keepCurveX = (model: NonlinearModel, v: number) =>
+  positiveXOnly(model) ? v > 0 : nonNegativeXOnly(model) ? v >= 0 : true;
+
+/** A data set's lines of a fit's note, as the analysis reports them: its derived values (an
+ *  EC50, a half-life…, not a Span), then the coefficients they don't already say (a
+ *  dose-response's Bottom, Top and log midpoint), then R². `set`: its column in the fit,
+ *  `coefficients` its own. (Upstream 1.0.9.) */
+function curveLines(fit: AnalysisResult, set: number, coefficients: RegressionCoefficient[]): string[] {
   const rows = fit.fit?.rows ?? [];
   const derived = rows.filter(
     (r) => r.values && r.label !== "Span" && rows.indexOf(r) < rows.findIndex((x) => x.label === "R squared"),
   );
   const said = new Set(["Bottom", "Top", "LogEC50", "LogIC50"]);
   const lines = [
-    ...derived.map((r) => `${r.label} = ${num(r.values![0])}`),
-    ...(fit.coefficients ?? []).filter((c) => !said.has(c.term)).map((c) => `${c.term} = ${num(c.estimate)}`),
+    ...derived.map((r) => `${r.label} = ${num(r.values![set])}`),
+    ...coefficients.filter((c) => !said.has(c.term)).map((c) => `${c.term} = ${num(c.estimate)}`),
   ];
-  const r2 = rows.find((r) => r.label === "R squared")?.values?.[0];
+  const r2 = rows.find((r) => r.label === "R squared")?.values?.[set];
   if (r2 != null) lines.push(`R² = ${num(r2)}`);
-  return lines.join("<br>");
+  return lines;
+}
+
+/** "EC50 = 12.3<br>Hill slope = 1.05<br>R² = 0.9821" annotation text (Plotly-ready), as the
+ *  analysis reports them: one data set's lines, from curveLines. */
+function curveLabel(fit: AnalysisResult): string {
+  return curveLines(fit, 0, fit.coefficients ?? []).join("<br>");
+}
+
+/** Draws `model`'s fitted curve of each data set fitted (`fitted`, by name) against `x`
+ *  under the points, in its color (`ys`, the graph's Y series, places it in the palette),
+ *  and their note when `note`: one data set's values one per line, several's one line
+ *  each, after its name. (Upstream 1.0.9, with our fittedCurve's grid; the ROUT
+ *  hollow-out is skipped — our fits carry no curveOutliers until the ROUT-in-fit
+ *  follow-up lands, so it would be the identity. The multi-Y reference check
+ *  drives this; the app's scatter uses addFittedCurve for the same curves.) */
+export function addFittedCurves(
+  fig: GraphFigure,
+  x: Column,
+  fitted: string[],
+  ys: DataSet[],
+  model: NonlinearModel,
+  fit: AnalysisResult,
+  note: boolean,
+  options: GraphOptions,
+  paint: Paint,
+) {
+  const all = fit.coefficients ?? [];
+  const many = fitted.length > 1;
+  const notes: string[] = [];
+  const curves = fitted.flatMap((name, i) => {
+    const y = ys.find((s) => s.name === name);
+    // Several data sets' coefficients are named after each ("A — Top").
+    const coefficients = many
+      ? all.filter((c) => c.term.startsWith(`${name} — `)).map((c) => ({ ...c, term: c.term.slice(name.length + 3) }))
+      : all;
+    const xs = y ? xyPoints(x, y).x.filter((v) => keepCurveX(model, v)) : [];
+    if (!y || !xs.length || !coefficients.some((c) => c.estimate != null)) return [];
+    const lines = curveLines(fit, i, coefficients);
+    notes.push(many ? `${name}: ${lines.join(", ")}` : lines.join("<br>"));
+    const curve = fittedCurve(model, coefficients, ...extent(xs), 100, fit.ligandConcentration);
+    return [
+      {
+        type: "scatter",
+        mode: "lines",
+        x: curve.x,
+        y: curve.y,
+        line: { color: paint.color(y.name, ys.indexOf(y)), width: 1.5 },
+        hoverinfo: "skip",
+        showlegend: false,
+      },
+    ];
+  });
+  if (!curves.length) return;
+  fig.data = [...curves, ...fig.data];
+  if (note) addNote(fig, notes.join("<br>"), options);
 }
 
 /** Draws `model`'s fitted curve of `y` against `x` under the points, in `y`'s color (`ys`,
@@ -144,19 +204,14 @@ function curveLabel(fit: AnalysisResult): string {
 export function addFittedCurve(
   fig: GraphFigure,
   x: Column,
-  y: Column,
-  ys: Column[],
+  y: DataSet,
+  ys: DataSet[],
   model: NonlinearModel,
   fit: AnalysisResult,
   note: boolean,
   options: GraphOptions,
   paint: Paint,
 ) {
-/** The X values a fitted curve draws over: log-X curves need X > 0, raw
- *  ratio curves need X ≥ 0 (X = 0 is their Bottom), everything else any X. */
-const keepCurveX = (model: NonlinearModel, v: number) =>
-  positiveXOnly(model) ? v > 0 : nonNegativeXOnly(model) ? v >= 0 : true;
-
   const coefficients = fit.coefficients ?? [];
   if (!coefficients.length) return;
   // The homologous curve needs [L], which the fit carries — without it,
@@ -166,7 +221,7 @@ const keepCurveX = (model: NonlinearModel, v: number) =>
   if (sets.length > 1) {
     for (const setName of sets) {
       const yCol = ys.find((c) => c.name === setName) ?? y;
-      const xs = pairUp(x, yCol).x.filter((v) => keepCurveX(model, v));
+      const xs = xyPoints(x, yCol).x.filter((v) => keepCurveX(model, v));
       if (!xs.length) continue;
       const curve = fittedCurve(model, coefficientsForSet(coefficients, setName, sets), ...extent(xs), 100, fit.ligandConcentration);
       fig.data = [
@@ -184,7 +239,7 @@ const keepCurveX = (model: NonlinearModel, v: number) =>
     }
     return;
   }
-  const xs = pairUp(x, y).x.filter((v) => keepCurveX(model, v));
+  const xs = xyPoints(x, y).x.filter((v) => keepCurveX(model, v));
   if (!xs.length) return;
   const curve = fittedCurve(model, coefficients, ...extent(xs), 100, fit.ligandConcentration);
   fig.data = [
@@ -200,4 +255,49 @@ const keepCurveX = (model: NonlinearModel, v: number) =>
     ...fig.data,
   ];
   if (note) addNote(fig, curveLabel(fit), options);
+}
+
+/** The probability a logistic regression gives Y = 1 at `x`, from R's coefficients (B0, B1).
+ *  (Upstream 1.0.9; the S-curve overlay for its logistic-regression analysis.) */
+export function logisticAt(coefficients: RegressionCoefficient[], x: number): number {
+  const [b0, b1] = coefficients.map((c) => c.estimate ?? NaN);
+  return 1 / (1 + Math.exp(-(b0 + b1 * x)));
+}
+
+/** Draws a logistic regression's S curve of `y` (0s and 1s) against `x` under the points, in
+ *  `y`'s color, and its note when `note`: the odds ratio, the X at 50% and Tjur's R². */
+export function addLogisticCurve(
+  fig: GraphFigure,
+  x: Column,
+  y: DataSet,
+  ys: DataSet[],
+  fit: AnalysisResult,
+  note: boolean,
+  options: GraphOptions,
+  paint: Paint,
+) {
+  const coefficients = fit.coefficients ?? [];
+  const xs = xyPoints(x, y).x;
+  if (coefficients.length !== 2 || !xs.length) return;
+  const curve = curveXs(xs, options.xScale, 100);
+  fig.data = [
+    {
+      type: "scatter",
+      mode: "lines",
+      x: curve,
+      y: curve.map((x0) => logisticAt(coefficients, x0)),
+      line: { color: paint.color(y.name, ys.indexOf(y)), width: 1.5 },
+      hoverinfo: "skip",
+      showlegend: false,
+    },
+    ...fig.data,
+  ];
+  const stat = (label: string) => num(fit.stats.find((s) => s.label === label)?.value);
+  if (note)
+    addNote(
+      fig,
+      `Odds ratio = ${stat("Odds ratio (per unit of X)")}<br>X at 50% = ${stat("X at 50% probability")}<br>` +
+        `Tjur's R² = ${stat("Tjur's R squared")}`,
+      options,
+    );
 }

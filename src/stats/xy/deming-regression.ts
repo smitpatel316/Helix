@@ -18,7 +18,7 @@
 // the words here follow the packages.)
 import type { Column, DemingRegressionParams } from "../types";
 import { rVec, type ColumnTestSpec, type Group } from "../column/base";
-import { pairUp, splitXY, xyProblem } from "../../lib/dataset";
+import { splitXY, xyPoints, xyProblem } from "../../lib/dataset";
 import { num } from "../../lib/format";
 import { mean } from "../../lib/summary";
 
@@ -29,7 +29,7 @@ function pickXY(columns: Column[], params: DemingRegressionParams | undefined): 
   const { x, ys } = splitXY(columns);
   const y = params?.y === undefined ? ys[0] : ys.find((c) => c.name === params.y);
   if (!x || !y) return [];
-  const pairs = pairUp(x, y);
+  const pairs = xyPoints(x, y);
   return [
     { name: x.name, values: pairs.x },
     { name: y.name, values: pairs.y },

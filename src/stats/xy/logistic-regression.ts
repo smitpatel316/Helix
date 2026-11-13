@@ -1,126 +1,83 @@
-// Simple logistic regression of a binary (0/1) outcome on X, for an XY table.
-// Fits glm(y ~ x, family = binomial) in base R and reports the coefficients
-// (with z-statistics), the odds ratio per one-unit increase in X with its Wald
-// 95% CI, both deviances and McFadden's pseudo-R². Bespoke runner (not a
-// ColumnTestSpec) — it needs the deviance/pseudo-R² block and a coefficients
-// table whose statistic is a z, not a t.
-import type {
-  AnalysisOutcome,
-  Column,
-  RegressionCoefficient,
-  SimpleLogisticRegressionParams,
-  StatRow,
-} from "../types";
-import { describe, rVec } from "../column/base";
-import { pairUp, splitXY, xyProblem } from "../../lib/dataset";
-import { num } from "../../lib/format";
+// Simple logistic regression of an XY table: the chance that Y is 1 (an event, a response)
+// rather than 0, as X changes, P = 1 / (1 + e^−(B0 + B1·X)). Computed by R's glm (binomial):
+// its coefficients (Wald z, profile-likelihood 95% CIs), the odds ratio per unit of X, the
+// likelihood-ratio test of the model, the X at a 50% chance and Tjur's R².
+import type { AnalysisOutcome, Column, LogisticRegressionParams, RegressionCoefficient } from "../types";
+import { describe, pRow, rVec } from "../column/base";
+import { splitXY, xyPoints, xyProblem } from "../../lib/dataset";
 import { evalNamedVector } from "../webr";
 
-/** Complete separation makes glm diverge (huge coefficients, no convergence):
- *  R still returns numbers, so the guard below refuses to present them. */
-const SEPARATION_ERROR =
-  "The outcome is (nearly) perfectly separated by X — the odds ratio is not estimable. " +
-  "Try a different predictor, or collect more data where the outcomes overlap.";
+/** R: the fit of `y` (0 and 1) on `x`; NA where the data separate perfectly (an X splits
+ *  the 0s from the 1s), as glm's estimates then run off. */
+const R_LOGISTIC =
+  `m<-suppressWarnings(glm(y~x,family=binomial));s<-summary(m)$coefficients;p<-fitted(m)\n` +
+  `sep<-max(x[y==0])<min(x[y==1])||max(x[y==1])<min(x[y==0])\n` +
+  `ci<-if(sep)matrix(NA,2,2) else suppressMessages(suppressWarnings(confint(m)))\n` +
+  `c(b0=s[1,1],se0=s[1,2],z0=s[1,3],p0=s[1,4],lo0=ci[1,1],hi0=ci[1,2],` +
+  `b1=s[2,1],se1=s[2,2],z1=s[2,3],p1=s[2,4],lo1=ci[2,1],hi1=ci[2,2],` +
+  `or=exp(s[2,1]),orlo=exp(ci[2,1]),orhi=exp(ci[2,2]),x50=-s[1,1]/s[2,1],` +
+  `lr=pchisq(m$null.deviance-m$deviance,1,lower.tail=FALSE),tjur=mean(p[y==1])-mean(p[y==0]),` +
+  `n=length(y),n1=sum(y),n0=sum(y==0),sep=sep)`;
 
-export async function runSimpleLogisticRegression(
+export async function runLogisticRegression(
   columns: Column[],
-  params: SimpleLogisticRegressionParams | undefined,
+  params: LogisticRegressionParams | undefined,
 ): Promise<AnalysisOutcome> {
-  const { x: xCol, ys: yCols } = splitXY(columns);
-  const yCol = params?.y === undefined ? yCols[0] : yCols.find((c) => c.name === params.y);
-  if (!xCol || !yCol) return { error: xyProblem(columns, params?.y)! };
-
-  const { x, y } = pairUp(xCol, yCol);
-  if (y.some((v) => v !== 0 && v !== 1)) {
-    return { error: "The outcome column must contain only 0s and 1s." };
-  }
-  const ones = y.filter((v) => v === 1).length;
-  const zeros = y.length - ones;
-  if (ones === 0 || zeros === 0) {
-    return { error: "The outcome has only one value (all 0s / all 1s). Logistic regression needs both outcomes." };
-  }
-  // A Titer guardrail, not Prism's: a handful of points (or of the rarer outcome)
-  // cannot support a two-parameter fit.
-  if (y.length < 5) {
+  const { x, ys } = splitXY(columns);
+  const y = params?.y === undefined ? ys[0] : ys.find((s) => s.name === params.y);
+  if (!x || !y) return { error: xyProblem(columns, params?.y)! };
+  const points = xyPoints(x, y);
+  const code = points.y.find((v) => v !== 0 && v !== 1);
+  if (code !== undefined) return { error: `“${y.name}” holds ${code}: enter 1 for an event, 0 for none.` };
+  const [n0, n1] = [points.y.filter((v) => v === 0).length, points.y.filter((v) => v === 1).length];
+  if (n0 < 2 || n1 < 2) return { error: `“${y.name}” needs at least two 0s and two 1s to fit a logistic curve.` };
+  // A Titer guardrail, not Prism's (kept from our F-02 implementation, which
+  // upstream 1.0.9's simple logistic regression supersedes): a handful of
+  // points cannot support a two-parameter fit.
+  if (points.y.length < 5) {
     return {
-      error: `Only ${y.length} complete pair${y.length === 1 ? "" : "s"} — logistic regression needs at least 5 (a Titer guardrail, not Prism's).`,
+      error: `Only ${points.y.length} complete pair${points.y.length === 1 ? "" : "s"} — logistic regression needs at least 5 (a Titer guardrail, not Prism's).`,
     };
   }
-  const minority = Math.min(ones, zeros);
-  if (minority < 2) {
+
+  const v = await evalNamedVector(`x<-${rVec(points.x)};y<-${rVec(points.y)}\n${R_LOGISTIC}`);
+  if (v.sep === 1) {
     return {
-      error: `Only ${minority} observation of the less common outcome — logistic regression needs at least 2 of each outcome (a Titer guardrail, not Prism's).`,
+      error:
+        `In “${y.name}”, an X splits the 0s from the 1s exactly (every 0 below it, every 1 above, or the ` +
+        "reverse): the logistic curve is then a step, its slope endless, and can't be estimated.",
     };
   }
-  if (new Set(x).size < 2) {
-    return { error: "X has only one distinct value." };
-  }
-
-  const code =
-    `x<-${rVec(x)};y<-${rVec(y)};m<-glm(y~x,family=binomial);s<-summary(m);co<-s$coefficients;` +
-    `c(intercept=unname(co[1,1]),slope=unname(co[2,1]),` +
-    `seInt=unname(co[1,2]),seSlope=unname(co[2,2]),` +
-    `zInt=unname(co[1,3]),zSlope=unname(co[2,3]),` +
-    `pInt=unname(co[1,4]),pSlope=unname(co[2,4]),` +
-    `or=exp(unname(co[2,1])),` +
-    `orLo=exp(unname(co[2,1])-1.96*unname(co[2,2])),` +
-    `orHi=exp(unname(co[2,1])+1.96*unname(co[2,2])),` +
-    `slopeLo=unname(co[2,1])-1.96*unname(co[2,2]),` +
-    `slopeHi=unname(co[2,1])+1.96*unname(co[2,2]),` +
-    `nullDev=m$null.deviance,nullDf=m$df.null,` +
-    `residDev=m$deviance,residDf=m$df.residual,aic=m$aic,` +
-    `converged=as.numeric(m$converged))`;
-
-  const v = await evalNamedVector(code);
-  const coefficients: RegressionCoefficient[] = [
-    { term: "Intercept", estimate: v.intercept ?? null, stdError: v.seInt ?? null, t: v.zInt ?? null, p: v.pInt ?? null },
-    { term: xCol.name, estimate: v.slope ?? null, stdError: v.seSlope ?? null, t: v.zSlope ?? null, p: v.pSlope ?? null },
-  ];
-  // glm's warnings (non-convergence, fitted probabilities 0/1) are swallowed by
-  // evalNamedVector, so separation is caught here from the fit itself: no
-  // convergence, a huge |coefficient|, or a missing/non-finite standard error.
-  const separated =
-    v.converged !== 1 ||
-    coefficients.some((c) => c.estimate == null || Math.abs(c.estimate) > 30) ||
-    coefficients.some((c) => c.stdError == null);
-  if (separated) return { error: SEPARATION_ERROR };
-
-  const pseudoR2 =
-    v.nullDev != null && v.nullDev !== 0 && v.residDev != null ? 1 - v.residDev / v.nullDev : null;
-  const stats: StatRow[] = [
-    { label: "Odds ratio (per 1 unit X)", value: v.or ?? null },
-    { label: "Odds ratio 95% CI lower", value: v.orLo ?? null },
-    { label: "Odds ratio 95% CI upper", value: v.orHi ?? null },
-    { label: "Slope 95% CI lower", value: v.slopeLo ?? null },
-    { label: "Slope 95% CI upper", value: v.slopeHi ?? null },
-    { label: "Null deviance", value: v.nullDev ?? null },
-    { label: "Null deviance DF", value: v.nullDf ?? null },
-    { label: "Residual deviance", value: v.residDev ?? null },
-    { label: "Residual deviance DF", value: v.residDf ?? null },
-    { label: "McFadden pseudo-R²", value: pseudoR2 },
-    { label: "AIC", value: v.aic ?? null },
-    { label: "N", value: y.length },
-  ];
-
-  const b0 = v.intercept;
-  const b1 = v.slope;
-  const equation =
-    b0 == null || b1 == null
-      ? undefined
-      : `P(Y=1) = 1 / (1 + exp(-(${num(b1)}*X ${b0 < 0 ? "−" : "+"} ${num(Math.abs(b0))})))`;
-
+  const coefficients: RegressionCoefficient[] = (["B0", "B1"] as const).map((term, i) => ({
+    term: term === "B0" ? "B0 (intercept)" : "B1 (slope)",
+    estimate: v[`b${i}`] ?? null,
+    stdError: v[`se${i}`] ?? null,
+    t: v[`z${i}`] ?? null,
+    p: v[`p${i}`] ?? null,
+    low: v[`lo${i}`] ?? null,
+    high: v[`hi${i}`] ?? null,
+  }));
   return {
-    testType: "simple-logistic-regression",
+    testType: "logistic-regression",
     subtitle: "Simple logistic regression",
-    equation,
-    stats,
-    groups: (await describe([xCol, yCol])).groups,
-    notes:
-      `Simple logistic regression of “${yCol.name}” on “${xCol.name}” (n = ${y.length}). ` +
-      "The odds ratio is per one-unit increase in X. " +
-      "The 95% confidence intervals are Wald intervals (a normal approximation).",
+    stats: [
+      { label: "Odds ratio (per unit of X)", value: v.or ?? null },
+      { label: "Odds ratio 95% CI lower", value: v.orlo ?? null },
+      { label: "Odds ratio 95% CI upper", value: v.orhi ?? null },
+      { label: "X at 50% probability", value: v.x50 ?? null },
+      { label: "Tjur's R squared", value: v.tjur ?? null },
+      pRow("P value (likelihood ratio test)", v.lr ?? null),
+      { label: "N", value: v.n ?? null },
+      { label: "Number of 0s", value: v.n0 ?? null },
+      { label: "Number of 1s", value: v.n1 ?? null },
+    ],
     coefficients,
-    // The coefficients table's statistic is a z, not a t.
     statisticLabel: "z",
+    groups: (await describe([x, { name: y.name, values: points.y }])).groups,
+    notes:
+      `Logistic regression of “${y.name}” (1 or 0) on “${x.name}”: the probability that Y is 1, ` +
+      "P = 1 / (1 + e^−(B0 + B1·X)), fitted by maximum likelihood. The odds ratio is e^B1, how the odds " +
+      "of a 1 are multiplied for each unit of X; the CIs are profile likelihood ones. The P value tests the " +
+      "model against none (likelihood ratio); Tjur's R² is the mean probability of the 1s minus that of the 0s.",
   };
 }

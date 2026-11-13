@@ -1,5 +1,5 @@
 // Analyses and graphs name the columns and groups they use: the data sets an analysis
-// runs on, a regression's Y, a multiple regression's variables, a scatter's variables, a
+// runs on, a regression's X and Y, a multiple regression's variables, a scatter's variables, a
 // volcano's columns or groups, the comparisons drawn as stars, the
 // series styled by hand, and the points styled one by one (by column and row). When a
 // table edit renames a column or group, or moves rows, its analyses and graphs follow,
@@ -17,6 +17,7 @@ export interface TableMove {
 
 // The params and options holding names (a name, or a list of names).
 const PARAM_NAMES = [
+  "x",
   "y",
   "y2",
   "ys",
@@ -92,8 +93,16 @@ function movePoints<T>(
   for (const [key, style] of Object.entries(points)) {
     const { column, row } = parsePointKey(key);
     const group = seriesKeyOf(column);
+    // An XY table's column given replicates becomes their first ("Y1" → "Y1:Y1"), and back.
     const name =
-      column === "" ? "" : [to(column), to(group) + column.slice(group.length)].find((n) => columns.includes(n));
+      column === ""
+        ? ""
+        : [
+            to(column),
+            to(group) + column.slice(group.length),
+            `${to(column)}:Y1`,
+            ...(column === `${group}:Y1` ? [to(group)] : []),
+          ].find((n) => columns.includes(n));
     const at = rows ? rows(row) : row;
     if (at !== null && name !== undefined) moved[pointKeyOf(name, at)] = style;
   }

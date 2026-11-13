@@ -53,7 +53,7 @@ export interface GraphFigure {
  *  "multiple" plots a Multiple Variables table's numeric columns (its graphs
  *  read a sibling analysis, not the columns directly — shared with plan 05's
  *  ROC work, not a one-off). */
-type GraphFamily = "column" | "xy" | "grouped" | "pie" | "heatmap" | "volcano" | "multiple";
+type GraphFamily = "column" | "xy" | "grouped" | "pie" | "heatmap" | "volcano" | "histogram" | "multiple";
 
 export interface GraphModule {
   label: string;
@@ -112,7 +112,7 @@ export const GRAPHS: Record<GraphType, GraphModule> = {
 
 /** The two variables a scatter of a Multiple Variables table plots, X then Y: the ones
  *  chosen, else (none, or gone) the first two holding numbers. */
-function variablePair(numeric: Column[], options: GraphOptions): [Column?, Column?] {
+export function variablePair<T extends { name: string }>(numeric: T[], options: GraphOptions): [T?, T?] {
   const byName = (name?: string) => numeric.find((c) => c.name === name);
   const x = byName(options.xVariable) ?? numeric[0];
   return [x, byName(options.yVariable) ?? numeric.find((c) => c !== x)];
@@ -142,17 +142,22 @@ export function plotColumns(
   // as the first method plotted X against a method, the exact invalid
   // comparison the wizard guard (F8) already blocks. A column table has no
   // X, so the generic XY-family branch below hands it every column.
-  if (type === "bland-altman" && tableType === "xy") return splitXY(columns).ys;
+  if (type === "bland-altman" && tableType === "xy") return splitXY(columns).ys.flatMap((s) => s.columns);
   if (family === "volcano") return columns;
   if (family === "heatmap")
     return sets.filter((s) => s.columns.some((c) => c.values.length)).map((s) => centerColumn(s, options.center));
+  // A Multiple Variables table's histogram: its one variable, as a scatter's X.
+  if (family === "histogram" && tableType === "multiple") {
+    const x = variablePair(numeric, options)[0];
+    return x ? [x] : [];
+  }
   if (family !== "xy") return numeric;
   if (tableType === "multiple") {
     const [x, y] = variablePair(numeric, options);
     return x && y ? [x, y] : [];
   }
   const { x, ys } = splitXY(columns);
-  return x ? [x, ...ys] : [];
+  return x ? [x, ...ys.flatMap((s) => s.columns)] : [];
 }
 
 /** The series a graph colors, in order: a volcano's "down" and "up", none for a
@@ -177,6 +182,10 @@ export function graphSeries(type: GraphType, data: TableData, tableType: TableTy
   if (family === "xy" && tableType === "multiple") {
     const y = variablePair(readTable(data).numeric, options)[1];
     return y ? [y.name] : [];
+  }
+  if (family === "histogram" && tableType === "multiple") {
+    const x = variablePair(readTable(data).numeric, options)[0];
+    return x ? [x.name] : [];
   }
   return seriesOf(data, tableType);
 }
@@ -239,7 +248,7 @@ export const GRAPH_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<GraphType>
   // `groupsOf`, which takes a nested column's group prefix ("A" for
   // "A:S1:R1"), so bars, scatter and lines all draw from nested columns.
   nested: optionsFor(["grouped-bars", "grouped-scatter", "grouped-lines"]),
-  multiple: optionsFor(["xy-scatter", "heatmap", "volcano", "forest-plot", "observed-fitted", "scree-plot", "pca-biplot", "kmeans-scatter", "survival"]),
+  multiple: optionsFor(["xy-scatter", "histogram", "heatmap", "volcano", "forest-plot", "observed-fitted", "scree-plot", "pca-biplot", "kmeans-scatter", "survival"]),
   // Outcomes as series across the row categories, as Prism graphs contingency tables.
   contingency: optionsFor(["grouped-bars", "grouped-stacked", "grouped-hbars", "heatmap"]),
   survival: optionsFor(["survival"]),

@@ -1,12 +1,13 @@
 // "Volcano plot": a large scatter of effect size (X) vs. significance (Y). On a
 // Multiple Variables table it plots columns the user already has (DESeq2/edgeR
 // output…): which column is X (log2 fold change), which is Y (a P value, adjusted P
-// or FDR), and an optional gene-name column. On an XY table, X is the X column and Y
-// a chosen Y column. On a grouped table, graph-view first computes them from two
-// groups (lib/deg.ts). Genes are named by the gene-name column, else by their row
-// titles. Y holds P values (`volcanoYIsPValue`: plotted as their -log10) or values that
-// are -log10 already (plotted as they are): either way, the higher a gene, the more
-// significant.
+// or FDR), the first two holding numbers until chosen (`volcanoAxes`), and an optional
+// gene-name column. On an XY table, X is the X column and Y a chosen Y column. On a
+// grouped table, graph-view first computes them from two groups (lib/deg.ts). Genes are
+// named by the gene-name column, else by their row titles. Y holds P values
+// (`volcanoYIsPValue`: plotted as their -log10; a P of 0, which has none, one unit above
+// the most significant gene) or values that are -log10 already (plotted as they are):
+// either way, the higher a gene, the more significant.
 //
 // Rendered as a `scattergl` (WebGL) trace with per-point arrays so tens of thousands
 // of genes stay smooth (an export draws them as plain shapes, `vectorTraces`); points
@@ -58,6 +59,21 @@ export function volcanoPair(groups: string[], options: GraphOptions): [string | 
   return [pick(options.volcanoGroupA, groups[0]), pick(options.volcanoGroupB, groups[1])];
 }
 
+/** The columns a volcano plots, X then Y: the ones chosen, else the first two holding
+ *  numbers. `gone`: a chosen column the table no longer has — nothing is drawn then,
+ *  never other columns in its place. */
+export function volcanoAxes<T extends { name: string }>(numeric: T[], all: T[], options: GraphOptions) {
+  const named = (name?: string) => all.find((c) => c.name === name);
+  const gone = [options.volcanoX, options.volcanoY].find((name) => name !== undefined && !named(name));
+  const x = named(options.volcanoX) ?? numeric[0];
+  return { x, y: named(options.volcanoY) ?? numeric.find((c) => c !== x), gone };
+}
+
+/** The significance cutoff, kept on the plotted (-log10) scale, as the P value it stands
+ *  for (0.05), and back: what is typed when Y holds P values. */
+export const cutoffAsP = (cutoff: number) => Number((10 ** -cutoff).toPrecision(3));
+export const cutoffOfP = (p: number) => -Math.log10(p);
+
 /** A volcano's two colored series, by key: what it calls them. */
 export const VOLCANO_SERIES: Record<string, string> = { down: "Down-regulated", up: "Up-regulated" };
 
@@ -67,9 +83,12 @@ export const VOLCANO_SERIES: Record<string, string> = { down: "Down-regulated", 
 export const VOLCANO_MAX_LOG10 = 308;
 
 function build(columns: Column[], options: GraphOptions, paint: Paint, titles?: (string | null)[]): GraphFigure {
-  const byName = (name?: string) => columns.find((c) => c.name === name);
-  const xCol = byName(options.volcanoX) ?? columns[0];
-  const yCol = byName(options.volcanoY) ?? columns[1];
+  const axes = volcanoAxes(
+    columns.filter((c) => c.values.length > 0),
+    columns,
+    options,
+  );
+  const [xCol, yCol] = axes.gone ? [] : [axes.x, axes.y];
   const names = geneNames(columns, options, titles);
   const yIsP = options.volcanoYIsPValue;
 
@@ -78,7 +97,8 @@ function build(columns: Column[], options: GraphOptions, paint: Paint, titles?: 
   const yTitle = options.yLabel || (yIsP ? `-log10(${yName})` : yName);
 
   // The XY family's numeric-axis layout (clean spines, no legend), Y titled by default.
-  const layout = xyLayout(options, xName, 0, { yName: yTitle });
+  // Its axes stay linear: Y is already −log10 (a scale another graph may pass by Match).
+  const layout = xyLayout({ ...options, xScale: "linear", yScale: "linear" }, xName, 0, { yName: yTitle });
 
   if (!xCol || !yCol) return { data: [], layout };
 
@@ -105,19 +125,22 @@ function build(columns: Column[], options: GraphOptions, paint: Paint, titles?: 
   const labels: Name[] = [];
   const named: Name[] = []; // the genes asked to show their name
 
+  // A P of 0 (as DESeq2 writes its smallest) has no -log10: it goes one unit above the
+  // most significant of the others.
+  const top = yIsP ? yCol.values.reduce((max, p) => (p > 0 ? Math.max(max, -Math.log10(p)) : max), 0) + 1 : 0;
+
   const n = Math.max(xCol.cells.length, yCol.cells.length);
   for (let r = 0; r < n; r++) {
     const xv = xCol.byRow[r] ?? null;
-    let yv = yCol.byRow[r] ?? null;
-    if (xv == null || yv == null) continue;
-    if (yIsP) {
-      // A p / FDR of exactly 0 is the most significant gene there is, not a
-      // missing one: R underflows very small p values to 0, and BH adjustment
-      // can return 0 too. Plot it at the capped -log10 instead of dropping it;
-      // only genuinely invalid values (negative, NaN, ±Infinity) are skipped.
-      if (yv < 0 || !Number.isFinite(yv)) continue;
-      yv = Math.min(-Math.log10(Math.max(yv, Number.MIN_VALUE)), VOLCANO_MAX_LOG10);
-    }
+    const held = yCol.byRow[r] ?? null;
+    if (xv == null || held == null) continue;
+    // A p / FDR of exactly 0 is the most significant gene there is, not a
+    // missing one: R underflows very small p values to 0, and BH adjustment
+    // can return 0 too. It plots one unit above the most significant of the
+    // others (`top`); only genuinely invalid values (negative, NaN,
+    // ±Infinity) are skipped.
+    if (yIsP && (held < 0 || !Number.isFinite(held))) continue;
+    const yv = !yIsP ? held : held === 0 ? top : Math.min(-Math.log10(held), VOLCANO_MAX_LOG10);
     const sig = Math.abs(xv) >= fc && yv >= sigY;
     // A gene is its row; its own style wins over its up / down / not significant look.
     const key = geneKey(r);
@@ -134,7 +157,7 @@ function build(columns: Column[], options: GraphOptions, paint: Paint, titles?: 
       fill: own?.fill ?? options.pointFill,
       outline: own?.outline ?? paint.outline,
       outlineColor: paint.outlineColor(color, own?.outlineColor),
-      hover: `${name ? name + "<br>" : ""}${xName}: ${xv}<br>${yTitle}: ${yv.toFixed(2)}`,
+      hover: `${name ? name + "<br>" : ""}${xName}: ${xv}<br>${yIsP && held === 0 ? `${yName}: 0` : `${yTitle}: ${yv.toFixed(2)}`}`,
       own: !!own,
     });
     if (own?.label) named.push({ key, x: xv, y: yv, text: name || `Row ${r + 1}` });

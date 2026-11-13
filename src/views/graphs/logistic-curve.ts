@@ -1,5 +1,5 @@
 // "Logistic curve": the 0/1 data points of an XY table's first Y series plus
-// the fitted sigmoid from the "Simple logistic regression" analysis — the same
+// the fitted sigmoid from the "Simple logistic regression" analysis (upstream 1.0.9) — the same
 // cached run the analysis view reads (see graph-view), evaluated here in plain
 // TS from its intercept and slope, so no second R call is needed.
 //
@@ -16,6 +16,17 @@ import { xyScatter } from "./xy-scatter";
 
 function coef(coefficients: RegressionCoefficient[], term: string): number {
   return coefficients.find((c) => c.term === term)?.estimate ?? NaN;
+}
+
+/** The intercept and slope, by position: upstream 1.0.9's logistic-regression
+ *  names them "B0 (intercept)" / "B1 (slope)" (our F-02 build used "Intercept" /
+ *  the X name — kept as fallback, for results stored before the rebase). */
+function coefPair(coefficients: RegressionCoefficient[], xName: string): [number, number] {
+  if (coefficients.length >= 2) {
+    const [b0, b1] = [coefficients[0].estimate, coefficients[1].estimate];
+    if (b0 != null && b1 != null) return [b0, b1];
+  }
+  return [coef(coefficients, "Intercept"), coef(coefficients, xName)];
 }
 
 /** Evenly-spaced points across [xMin, xMax] tracing the fitted sigmoid. */
@@ -48,8 +59,7 @@ export function addLogisticCurve(
   const y = ys[0];
   const coefficients = fit.coefficients ?? [];
   if (!x || !y || !coefficients.length) return;
-  const intercept = coef(coefficients, "Intercept");
-  const slope = coef(coefficients, x.name);
+  const [intercept, slope] = coefPair(coefficients, x.name);
   if (!Number.isFinite(intercept) || !Number.isFinite(slope)) return;
   const xs = pairUp(x, y).x;
   if (!xs.length) return;
@@ -89,7 +99,7 @@ function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFig
  *  empty. The non-binary case names the requirement outright. */
 export function logisticCurveNote(outcome: AnalysisOutcome | null): string | null {
   if (!outcome || !("error" in outcome)) return null;
-  if (outcome.error.includes("only 0s and 1s"))
+  if (outcome.error.includes("only 0s and 1s") || outcome.error.includes("enter 1 for an event, 0 for none"))
     return "Logistic curve needs a 0/1 outcome — the Y values are not all 0 or 1, so no fitted curve is drawn.";
   return `Logistic curve: ${outcome.error}`;
 }

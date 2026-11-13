@@ -30,7 +30,7 @@ import { describe } from "../column/base";
 import { num } from "../../lib/format";
 import { parseInhibitorConcentration } from "./enzyme-inhibition";
 import { runGlobalFit, type GlobalFitSeries, type GlobalModelDef } from "./global-fit";
-import { pairUp, splitXY, xyProblem } from "../../lib/dataset";
+import { splitXY, xyPoints, xyProblem, type DataSet } from "../../lib/dataset";
 
 export const DOSE_RESPONSE_SPECIAL_LABEL: Record<DoseResponseSpecialModel, string> = {
   "ec50-shift": "EC50 shift",
@@ -112,7 +112,7 @@ const derivedCoef = (term: string, estimate: number | null): RegressionCoefficie
 });
 
 interface SeriesFit {
-  col: Column;
+  col: DataSet;
   B: number;
   x: number[];
   y: number[];
@@ -282,7 +282,7 @@ export async function runDoseResponseSpecial(
   const series: SeriesFit[] = [];
   for (const name of requested) {
     const col = yCols.find((c) => c.name === name)!;
-    const { x, y } = pairUp(xCol, col);
+    const { x, y } = xyPoints(xCol, col);
     if (x.length < 5)
       return {
         error: `“${name}” has only ${x.length} complete points; a Dose-response — Special fit needs at least 5 per series.`,
@@ -451,7 +451,7 @@ export async function runDoseResponseSpecial(
       subtitle: label,
       ...(eq ? { equation: eq } : {}),
       stats: [...r2PerSeries, ...extraStats, ...stats],
-      groups: (await describe([xCol, ...series.map((s) => s.col)])).groups,
+      groups: (await describe([xCol, ...series.flatMap((s) => s.col.columns)])).groups,
       notes: notes.join(" "),
       coefficients: allCoefficients,
     };

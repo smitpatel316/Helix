@@ -14,7 +14,7 @@
 // in TS on the known lengths; one `evalNamedVector` call returns the scalars.
 import type { AnalysisOutcome, Column, FittedPoint, SplineLowessParams, StatRow } from "../types";
 import { describe, rVec } from "../column/base";
-import { pairUp, splitXY, xyProblem } from "../../lib/dataset";
+import { splitXY, xyPoints, xyProblem } from "../../lib/dataset";
 import { num } from "../../lib/format";
 import { evalNamedVector, evalNumericVector } from "../webr";
 
@@ -28,15 +28,15 @@ export interface SmoothFit {
 }
 
 /** X and the chosen Y series (the first by default), on the rows where both
- *  have a value — sorted by X, since `pairUp` preserves row order and both
- *  smoothers (and the returned arrays) are in ascending X. */
-function pickSortedPairs(columns: Column[], yName: string | undefined): { xCol: Column; yCol: Column; xs: number[]; ys: number[] } | null {
+ *  have a value — sorted by X, since `xyPoints` returns points row-sorted
+ *  and both smoothers (and the returned arrays) are in ascending X. */
+function pickSortedPairs(columns: Column[], yName: string | undefined): { xCol: Column; xs: number[]; ys: number[] } | null {
   const { x, ys } = splitXY(columns);
   const y = yName === undefined ? ys[0] : ys.find((c) => c.name === yName);
   if (!x || !y) return null;
-  const pairs = pairUp(x, y);
+  const pairs = xyPoints(x, y);
   const order = pairs.x.map((_, i) => i).sort((a, b) => pairs.x[a] - pairs.x[b]);
-  return { xCol: x, yCol: y, xs: order.map((i) => pairs.x[i]), ys: order.map((i) => pairs.y[i]) };
+  return { xCol: x, xs: order.map((i) => pairs.x[i]), ys: order.map((i) => pairs.y[i]) };
 }
 
 /** The R expression for the smoother's fit object, from the validated params. */
@@ -200,7 +200,7 @@ export async function runSplineLowess(
     testType: "spline-lowess",
     subtitle: method === "lowess" ? "Lowess" : "Smoothing spline",
     stats,
-    groups: (await describe([x, yCol])).groups,
+    groups: (await describe([x, ...yCol.columns])).groups,
     notes: notes.join(" "),
     fitted,
     curve,

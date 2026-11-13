@@ -3,7 +3,7 @@
 // then one compact table per part of the result, the descriptive statistics, and the
 // notes. Numbers keep same-width digits so columns line up; everything is selectable.
 import type * as React from "react";
-import type { AnalysisResult, StatRow } from "../../stats/types";
+import type { AnalysisResult, GroupDescriptives, StatRow } from "../../stats/types";
 import { cn } from "../../ui/controls";
 import { isSignificant, num, pStars, pValue } from "../../lib/format";
 
@@ -16,6 +16,9 @@ function P({ p }: { p: number | null | undefined }) {
     </span>
   );
 }
+
+/** Whether a normality test's P is consistent with the distribution: here a small P is a No. */
+const verdict = (p: number | null) => (p == null ? "—" : p > 0.05 ? "Yes" : <span className="text-secondary">No</span>);
 
 type Column = { label: string; numeric?: boolean };
 
@@ -78,6 +81,24 @@ export function headline(stats: StatRow[]): number | null {
   return main.length === 1 ? main[0].value : null;
 }
 
+/** The rows of the Descriptive statistics analysis, in order. */
+// prettier-ignore
+const DESCRIPTIVE_ROWS: [string, (g: GroupDescriptives) => React.ReactNode][] = [
+  ["N", (g) => g.n],
+  ["Mean", (g) => num(g.mean)],
+  ["SD", (g) => num(g.sd)],
+  ["SEM", (g) => num(g.sem)],
+  ["95% CI of mean", (g) => (g.ciLow == null && g.ciHigh == null ? "—" : `${num(g.ciLow)} to ${num(g.ciHigh)}`)],
+  ["Coefficient of variation", (g) => (g.cv == null ? "—" : `${num(g.cv)}%`)],
+  ["Geometric mean", (g) => num(g.geoMean)],
+  ["Minimum", (g) => num(g.min)],
+  ["25th percentile", (g) => num(g.q1)],
+  ["Median", (g) => num(g.median)],
+  ["75th percentile", (g) => num(g.q3)],
+  ["Maximum", (g) => num(g.max)],
+  ["Range", (g) => num(g.range)],
+];
+
 export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
   const headlineP = headline(result.stats);
   const showP = headlineP != null && !Number.isNaN(headlineP);
@@ -112,6 +133,31 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         </header>
       )}
 
+      {result.summary && <p className="max-w-prose">{result.summary}</p>}
+
+      {result.normality && (
+        <Table
+          columns={[
+            { label: "" },
+            { label: "W", numeric: true },
+            { label: "P value", numeric: true },
+            { label: "Normal?" },
+            { label: "W (log)", numeric: true },
+            { label: "P value (log)", numeric: true },
+            { label: "Lognormal?" },
+          ]}
+          rows={result.normality.map((r) => [
+            r.group,
+            num(r.w),
+            r.p == null ? "—" : pValue(r.p),
+            verdict(r.p),
+            num(r.logW),
+            r.logP == null ? "—" : pValue(r.logP),
+            verdict(r.logP),
+          ])}
+        />
+      )}
+
       {result.fit && (
         <Table
           title="Best-fit values"
@@ -119,7 +165,25 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
           rows={result.fit.rows.map((row) => [
             <span className="text-secondary">{row.label}</span>,
             ...(row.ranges?.map(([low, high]) => (low == null && high == null ? "—" : `${num(low)} to ${num(high)}`)) ??
-              row.values!.map(num)),
+              row.values!.map((v) => (row.p ? <P p={v} /> : num(v)))),
+          ])}
+        />
+      )}
+
+      {result.curveOutliers && result.curveOutliers.length > 0 && (
+        <Table
+          title="Outliers (left out of the fit)"
+          columns={[
+            { label: "" },
+            ...(result.fit && result.fit.sets.length > 1 ? [{ label: "Data set" }] : []),
+            { label: "X", numeric: true },
+            { label: "Y", numeric: true },
+          ]}
+          rows={result.curveOutliers.map((o) => [
+            o.label,
+            ...(result.fit && result.fit.sets.length > 1 ? [o.set] : []),
+            num(o.x),
+            num(o.y),
           ])}
         />
       )}
@@ -237,7 +301,27 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
-      {result.outlierGroups && result.outlierGroups.length > 0 && (
+      {result.outlierGroups?.[0]?.grubbs && (
+        <Table
+          title="Outliers by column"
+          columns={[
+            { label: "" },
+            { label: "Points", numeric: true },
+            { label: "Farthest value", numeric: true },
+            { label: "G", numeric: true },
+            { label: "P value", numeric: true },
+          ]}
+          rows={result.outlierGroups.map((g) => [
+            g.group,
+            g.points,
+            num(g.grubbs?.extreme),
+            num(g.grubbs?.g),
+            <P p={g.grubbs?.p} />,
+          ])}
+        />
+      )}
+
+      {result.outlierGroups && result.outlierGroups.length > 0 && !result.outlierGroups[0].grubbs && (
         <Table
           title="Outliers by column"
           columns={[
@@ -463,37 +547,45 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
-      {groups.length > 0 && (
-        <Table
-          title="Descriptive statistics"
-          columns={[
-            { label: "" },
-            { label: "Mean", numeric: true },
-            { label: "SD", numeric: true },
-            { label: "SEM", numeric: true },
-            ...(showCi ? [{ label: "95% CI of mean", numeric: true }] : []),
-            { label: "Median", numeric: true },
-            ...(showRange
-              ? [
-                  { label: "Min", numeric: true },
-                  { label: "Max", numeric: true },
-                  { label: "Range", numeric: true },
-                ]
-              : []),
-            { label: "N", numeric: true },
-          ]}
-          rows={groups.map((g) => [
-            g.name,
-            num(g.mean),
-            num(g.sd),
-            num(g.sem),
-            ...(showCi ? [g.ciLow == null && g.ciHigh == null ? "—" : `${num(g.ciLow)} to ${num(g.ciHigh)}`] : []),
-            num(g.median),
-            ...(showRange ? [num(g.min), num(g.max), num(g.range)] : []),
-            g.n,
-          ])}
-        />
-      )}
+      {groups.length > 0 &&
+        (result.testType === "descriptive-statistics" ? (
+          // The full summary: one column per data set, one row per statistic.
+          <Table
+            title="Descriptive statistics"
+            columns={[{ label: "" }, ...groups.map((g) => ({ label: g.name, numeric: true }))]}
+            rows={DESCRIPTIVE_ROWS.map(([label, of]) => [label, ...groups.map(of)])}
+          />
+        ) : (
+          <Table
+            title="Descriptive statistics"
+            columns={[
+              { label: "" },
+              { label: "Mean", numeric: true },
+              { label: "SD", numeric: true },
+              { label: "SEM", numeric: true },
+              ...(showCi ? [{ label: "95% CI of mean", numeric: true }] : []),
+              { label: "Median", numeric: true },
+              ...(showRange
+                ? [
+                    { label: "Min", numeric: true },
+                    { label: "Max", numeric: true },
+                    { label: "Range", numeric: true },
+                  ]
+                : []),
+              { label: "N", numeric: true },
+            ]}
+            rows={groups.map((g) => [
+              g.name,
+              num(g.mean),
+              num(g.sd),
+              num(g.sem),
+              ...(showCi ? [g.ciLow == null && g.ciHigh == null ? "—" : `${num(g.ciLow)} to ${num(g.ciHigh)}`] : []),
+              num(g.median),
+              ...(showRange ? [num(g.min), num(g.max), num(g.range)] : []),
+              g.n,
+            ])}
+          />
+        ))}
 
       {result.notes && <p className="max-w-prose text-small text-secondary">{result.notes}</p>}
     </div>

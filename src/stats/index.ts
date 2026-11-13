@@ -22,6 +22,8 @@ import type {
   MultipleLogisticRegressionParams,
   MultipleTTestsParams,
   NestedAnovaParams,
+  LinearRegressionParams,
+  LogisticRegressionParams,
   NonlinearRegressionParams,
   OutliersParams,
   SurvivalParams,
@@ -30,7 +32,6 @@ import type {
   PrincipalComponentAnalysisParams,
   RocParams,
   ShapiroWilkParams,
-  SimpleLogisticRegressionParams,
   SplineLowessParams,
   ThreeWayAnovaParams,
   TwoWayAnovaParams,
@@ -48,9 +49,9 @@ import { shapiroWilkSpec } from "./column/shapiro-wilk";
 import { kolmogorovSmirnovSpec } from "./column/kolmogorov-smirnov";
 import { runOutliers } from "./column/rout";
 import { runXYCorrelation } from "./xy/correlation";
-import { linearRegressionSpec } from "./xy/linear-regression";
+import { linearRegressionSpec, runLinearRegressions } from "./xy/linear-regression";
 import { demingRegressionSpec } from "./xy/deming-regression";
-import { runSimpleLogisticRegression } from "./xy/logistic-regression";
+import { runLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
 import { runBindingKinetics, runBindingSaturation } from "./xy/binding";
@@ -148,12 +149,22 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
   "kolmogorov-smirnov": spec("Kolmogorov-Smirnov test", kolmogorovSmirnovSpec),
   outliers: { label: "Identify outliers", minColumns: 1, run: (c, p) => runOutliers(c, p as OutliersParams) },
   correlation: { label: "Correlation", minColumns: 2, run: (c, p) => runXYCorrelation(c, p as XYCorrelationParams) },
-  "linear-regression": spec("Linear regression", linearRegressionSpec),
+  "linear-regression": {
+    ...spec("Linear regression", linearRegressionSpec),
+    // Several Y data sets: each regressed on its own, side by side; one: as the spec says.
+    run: (c, p) => {
+      const params = p as LinearRegressionParams | undefined;
+      const ys = params?.ys ?? [];
+      return ys.length > 1
+        ? runLinearRegressions(c, { ...params!, ys })
+        : runColumnTest(c, linearRegressionSpec, ys.length ? { ...params!, y: ys[0], ys: undefined } : params);
+    },
+  },
   "deming-regression": spec("Deming regression", demingRegressionSpec),
-  "simple-logistic-regression": {
+  "logistic-regression": {
     label: "Simple logistic regression",
     minColumns: 2,
-    run: (c, p) => runSimpleLogisticRegression(c, p as SimpleLogisticRegressionParams),
+    run: (c, p) => runLogisticRegression(c, p as LogisticRegressionParams),
   },
   "area-under-curve": {
     label: "Area under the curve",
@@ -345,12 +356,12 @@ export function runAnalysis(
   // sets `y`, so its fits hit this path while the `y`-less fixtures did not).
   // prettier-ignore
   const named = params as
-    { y?: string | string[]; ys?: string[]; y2?: string; dependent?: string; reference?: string; control?: string; compareWith?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string } | undefined;
+    { x?: string; y?: string | string[]; ys?: string[]; y2?: string; dependent?: string; reference?: string; control?: string; compareWith?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string } | undefined;
   // prettier-ignore
   const chosen = [
     ...(Array.isArray(named?.y) ? named.y : named?.y !== undefined ? [named.y] : []),
     ...(named?.ys ?? []),
-    named?.y2, named?.dependent, named?.reference, named?.control, named?.compareWith, ...(named?.predictors ?? []), ...(named?.datasets ?? []), named?.time, named?.status, ...(named?.covariates ?? []), named?.stratifyBy,
+    named?.x, named?.y2, named?.dependent, named?.reference, named?.control, named?.compareWith, ...(named?.predictors ?? []), ...(named?.datasets ?? []), named?.time, named?.status, ...(named?.covariates ?? []), named?.stratifyBy,
   ];
   const gone =
     params?.sets?.find((name) => !table.sets.some((s) => s.name === name)) ??

@@ -14,9 +14,9 @@ export type AnalysisType =
   | "correlation"
   | "linear-regression"
   | "deming-regression"
-  | "simple-logistic-regression"
   | "area-under-curve"
   | "nonlinear-regression"
+  | "logistic-regression"
   | "two-way-anova"
   | "three-way-anova"
   | "multiple-t-tests"
@@ -164,7 +164,7 @@ export function routQError(q: number): string | undefined {
 }
 
 /** Params for "compare-two-groups": resolves to Student/Welch t-test, paired
- *  t-test, ratio t-test, Mann-Whitney, or Wilcoxon signed-rank, Prism-wizard style. */
+ *  t-test, ratio or lognormal t-test, Mann-Whitney, or Wilcoxon signed-rank, Prism-wizard style. */
 export interface CompareTwoGroupsParams {
   paired: boolean;
   gaussian: boolean;
@@ -173,6 +173,10 @@ export interface CompareTwoGroupsParams {
   /** Only meaningful when paired && gaussian: compare ratios (log-transformed)
    *  instead of differences — for data where proportional change is what matters. */
   ratio: boolean;
+  /** Only meaningful when gaussian && !paired: compare the geometric means, a t test on the
+   *  logarithms (lognormal t test, Student's or Welch's). Its own param, not `ratio`: a file
+   *  of an older Helix may hold a `ratio` left from a paired answer. */
+  lognormal?: boolean;
   /** "less"/"greater" follow R's t.test semantics: alternative on (col0 vs col1). */
   tails: (typeof TAILS)[number];
 }
@@ -215,11 +219,15 @@ export interface FriedmanParams {
   posthoc: (typeof RANK_POSTHOCS)[number];
 }
 
-/** Params for "linear-regression" (XY table): which Y series to regress on X, and
- *  whether to force the line through the origin (intercept = 0). */
+/** Params for "linear-regression": which Y series to regress on X, and whether to
+ *  force the line through the origin (intercept = 0). */
 export interface LinearRegressionParams {
+  /** The X variable of a Multiple Variables table; omitted, X is the first data column (XY). */
+  x?: string;
   /** Omitted defaults to the first Y data column. */
   y?: string;
+  /** An XY table's Y data sets, each regressed on its own (`y` then unused). */
+  ys?: string[];
   forceOrigin: boolean;
   /** Weighting (plan 26, same schemes as nonlinear regression except 1/SD²,
    *  which needs the replicate columns this runner never sees). */
@@ -236,9 +244,8 @@ export interface DemingRegressionParams {
   lambda: number;
 }
 
-/** Params for "simple-logistic-regression" (XY table): which Y series is the
- *  binary (0/1) outcome. Predictor is always X. */
-export interface SimpleLogisticRegressionParams {
+/** Params for "logistic-regression": the Y data set (0s and 1s) regressed on X. */
+export interface LogisticRegressionParams {
   /** Omitted defaults to the first Y data column. */
   y?: string;
 }
@@ -260,6 +267,8 @@ export type NonlinearWeightScheme = "none" | "1/y" | "1/y2" | "1/x" | "1/x2" | "
 export interface NonlinearRegressionParams {
   /** Omitted defaults to the first Y data column. */
   y?: string;
+  /** The Y data sets fitted, each on its own (`y` then unused; no comparison). */
+  ys?: string[];
   model: NonlinearModel;
   /** A dose-response curve compared with this other Y data set's (an extra sum-of-squares F test). */
   compareWith?: string;
@@ -298,6 +307,9 @@ export interface NonlinearRegressionParams {
    *  the result also reports Ki (Cheng–Prusoff: Ki = IC50 / (1 + [L]/Kd))
    *  alongside IC50. False/absent: today's behaviour (IC50 only). */
   fitKi?: boolean;
+  /** Find each data set's outliers by ROUT (at `q`, in %) and leave them out of its fit. */
+  rout?: boolean;
+  q?: number;
 }
 
 /** Params for "correlation-matrix": Pearson (parametric) vs. Spearman
@@ -785,13 +797,13 @@ export type AnalysisParams = DataSetsParam &
     | XYCorrelationParams
     | LinearRegressionParams
     | DemingRegressionParams
-    | SimpleLogisticRegressionParams
     | AreaUnderCurveParams
     | NonlinearRegressionParams
     | BindingSaturationParams
     | BindingKineticsParams
     | EnzymeInhibitionParams
     | DoseResponseSpecialParams
+    | LogisticRegressionParams
     | TwoWayAnovaParams
     | ThreeWayAnovaParams
     | MultipleTTestsParams
@@ -833,10 +845,9 @@ export interface CoxParams {
 /** What every test reads: the table's data columns, parsed once (see lib/dataset.ts). */
 export type { Column } from "../lib/dataset";
 
-/** Descriptive statistics for one group (computed in JS, not R). `ciLow`/`ciHigh`
- *  (95% confidence interval of the mean) and `min`/`max`/`range` are only populated
- *  by the standalone "descriptive-statistics" analysis — every other test leaves
- *  them undefined, so the results view only shows those columns for that analysis. */
+/** Descriptive statistics for one group (computed by R). `ciLow`/`ciHigh` (95% confidence
+ *  interval of the mean) and what follows are only populated by the standalone
+ *  "descriptive-statistics" analysis — every other test leaves them undefined. */
 export interface GroupDescriptives {
   name: string;
   mean: number | null;
@@ -849,6 +860,10 @@ export interface GroupDescriptives {
   min?: number | null;
   max?: number | null;
   range?: number | null;
+  q1?: number | null;
+  q3?: number | null;
+  cv?: number | null;
+  geoMean?: number | null;
 }
 
 /** One displayed statistic. `p: true` marks a P value (rendered with significance colour + stars). */
@@ -918,6 +933,8 @@ export interface RegressionCoefficient {
 export interface FitRow {
   label: string;
   values?: (number | null)[];
+  /** The values are P values. */
+  p?: boolean;
   ranges?: [number | null, number | null][];
 }
 
@@ -928,7 +945,7 @@ export interface FitRow {
  *  the inversion comes back inverted, low above high, on a non-monotonic curve). */
 export interface InterpolatedRow {
   label: string;
-  y: number;
+  y: number | null;
   x: number | null;
   concentration?: number | null;
   extrapolated: boolean;
@@ -960,7 +977,7 @@ export interface AreaUnderCurveRow {
   n: number;
 }
 
-/** One row of "outliers" results: one column's outlier count + robust mean
+/** One row of "outliers" results: one column's outlier count, with ROUT's robust mean
  *  (ROUT), or the mean after removing flagged outliers (`mean`, Grubbs). */
 interface OutlierGroupRow {
   group: string;
@@ -970,6 +987,18 @@ interface OutlierGroupRow {
   robustMean: number | null;
   /** Mean after removing flagged outliers ("grubbs" only). */
   mean?: number | null;
+  /** Grubbs' statistic for the column's most extreme value ("grubbs" only). */
+  grubbs?: { extreme: number | null; g: number | null; p: number | null };
+}
+
+/** One row of "shapiro-wilk" results: a data set's test of normality, and of lognormality
+ *  (on its logarithms); none where it can't be tested. */
+export interface NormalityRow {
+  group: string;
+  w: number | null;
+  p: number | null;
+  logW: number | null;
+  logP: number | null;
 }
 
 /** One bin of a frequency distribution: left-closed `[lower, upper)`, except
@@ -1075,6 +1104,10 @@ export interface AnalysisResult {
   testType: AnalysisType;
   /** Resolved test name when params pick a specific variant, e.g. "Welch's t test". */
   subtitle?: string;
+  /** What the results mean, in plain words, under the heading. */
+  summary?: string;
+  /** Optional per-data-set normality table ("shapiro-wilk"). */
+  normality?: NormalityRow[];
   /** Human-readable fitted-model equation, e.g. "Y = 2.927*X − 0.3322" (regressions). */
   equation?: string;
   stats: StatRow[];
@@ -1102,6 +1135,8 @@ export interface AnalysisResult {
   /** What the coefficients table's statistic column is ("t" by default): a
    *  logistic regression's is a z-statistic, so it says "z". */
   statisticLabel?: string;
+  /** The points a curve's ROUT left out: data set, row, X, Y and key (`pointKeyOf`). */
+  curveOutliers?: { set: string; label: string; x: number; y: number; key: string }[];
   /** Optional per-Y correlations table ("correlation", "x-vs-every-y" mode). */
   correlations?: CorrelationRow[];
   /** Optional per-Y area-under-curve table ("area-under-curve"). */

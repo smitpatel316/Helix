@@ -1,6 +1,6 @@
 [package]
 name = "titer"
-version = "1.0.7"
+version = "1.0.9"
 license = "GPL-3.0-or-later"
 edition = "2021"
 
@@ -11,9 +11,11 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-window-state = "2"
+tauri-plugin-updater = "2"
 percent-encoding = "2"
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1" # the plugins' settings in tauri.conf.json (generate_context!)
 
 # macOS-only: the private-API feature and the Objective-C bridge. The Linux
 # build (dev/test) compiles without them; the Mac DMG build is unchanged.

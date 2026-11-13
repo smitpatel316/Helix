@@ -84,6 +84,15 @@ export async function runRout(columns: Column[], params?: OutliersParams): Promi
 
 // ── Grubbs' test ───────────────────────────────────────────────────────────
 
+/** R: the Grubbs P of a G at n — `2n × pt(−t, n−2)` with
+ *  t² = n(n−2)G²/((n−1)² − nG²) — and the (index, G, P) of a column's most
+ *  extreme value. (Upstream 1.0.9, verbatim; the reference check drives it.
+ *  The TypeScript implementation below computes G/P directly.) */
+export const R_GRUBBS = `
+grubbsP<-function(G,n)min(1,2*n*pt(-sqrt(n*(n-2)*G^2/((n-1)^2-n*G^2)),n-2))
+grubbs<-function(x){n<-length(x);s<-sd(x);if(n<3||s==0)return(c(NA,NA,NA));i<-which.max(abs(x-mean(x)));G<-abs(x[i]-mean(x))/s
+c(i,G,grubbsP(G,n))}`;
+
 /** One round of Grubbs' test on a column's values: its G, two-sided P and
  *  critical value, and the most extreme value's index within `values`. */
 interface GrubbsRound {
@@ -201,14 +210,22 @@ export async function runGrubbs(columns: Column[], params?: OutliersParams): Pro
       }),
     ],
     groups: (await describe(groups)).groups,
-    outlierGroups: perGroup.map((p) => ({
-      group: p.group.name,
-      points: p.group.values.length,
-      outliers: p.flagged.length,
-      percent: (100 * p.flagged.length) / p.group.values.length,
-      robustMean: null,
-      mean: p.meanAfter,
-    })),
+    outlierGroups: perGroup.map((p) => {
+      const first = p.rounds[0];
+      return {
+        group: p.group.name,
+        points: p.group.values.length,
+        outliers: p.flagged.length,
+        percent: (100 * p.flagged.length) / p.group.values.length,
+        robustMean: null,
+        mean: p.meanAfter,
+        grubbs: {
+          extreme: first === undefined ? null : (p.group.values[first.index] ?? null),
+          g: first?.g ?? null,
+          p: first?.p ?? null,
+        },
+      };
+    }),
     notes,
   };
 }

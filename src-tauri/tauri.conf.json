@@ -48,6 +48,12 @@
       "devCsp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRDRTBCQ0RBQzQ0REM0MDYKUldRR3hFM0UycnpnVE5IQnhrdUpJa2ZzQzRyQ2lUbUFEL2QrcGxvMDFJK0RlZXhNQU1tcWtDQ28K",
+      "endpoints": ["https://github.com/smitpatel316/Helix/releases/latest/download/latest.json"]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["app", "dmg"],
