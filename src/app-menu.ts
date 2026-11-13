@@ -10,7 +10,7 @@ import { useLayout } from "./store/use-layout";
 import { removeWithConfirm, type DocumentActions } from "./store/use-document";
 import { NODE_NAMES, type GraphType, type NodeType } from "./store/types";
 import { TABLE_TYPE_OPTIONS } from "./views/tables";
-import { analysisOptionsForTable } from "./views/analyses";
+import { analysisOptionsForTable, analysisOptionsKey } from "./views/analyses";
 import { GRAPH_OPTIONS_BY_TABLE } from "./views/graphs";
 import { useStartAnalysis } from "./views/analyses/use-analysis-launcher";
 
@@ -95,6 +95,14 @@ export function useAppMenu(doc: DocumentActions) {
   const tableType = activeTableId ? nodes[activeTableId]?.tableType : undefined;
   const hasTable = activeTableId !== null;
   const tableCount = Object.values(nodes).filter((n) => n.type === "table").length;
+  // The data-dependent Analysis items (three-way ANOVA, nested t-test/ANOVA)
+  // change with the table data, not with any other dep below — without this
+  // key the native menu goes stale once isDirty is true and consecutive edits
+  // share an undoName (BUG-REPORT #16).
+  const analysisKey = analysisOptionsKey(
+    tableType,
+    activeTableId ? nodes[activeTableId]?.data : undefined,
+  );
 
   React.useEffect(() => {
     if (!isNative || !focused) return;
@@ -290,6 +298,7 @@ export function useAppMenu(doc: DocumentActions) {
     focused,
     tableType,
     hasTable,
+    analysisKey,
     activeNodeId !== null,
     activeNode?.type,
     tableCount,
