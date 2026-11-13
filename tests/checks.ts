@@ -92,6 +92,7 @@ import {
   withoutSelection,
 } from "../src/views/graphs/selection";
 import { genesNamed, VOLCANO_MAX_LOG10 } from "../src/views/graphs/volcano";
+import { XY_SCATTER_MAX_POINTS } from "../src/views/graphs/xy-scatter";
 import { addForestPlot } from "../src/views/graphs/forest-plot";
 import { addSchildPlot, schildPlotPoints } from "../src/views/graphs/schild-plot";
 import { addObservedFitted } from "../src/views/graphs/observed-fitted";
@@ -2571,6 +2572,39 @@ check("outlines take the color of what they outline, or the one chosen", () => {
     drawnStyle(GRAPHS.individual.build(readTable(data).numeric, half, paintOf(half, 2)).data, "A#0")!.color,
     color("A", 0),
   );
+});
+
+// R2-G-F18: a very large XY scatter thins to the cap instead of freezing the
+// render — timed renders on current code took 1.3s for 10k SVG points and
+// 5.3s for 50k (14.2s / 50.4s on a loaded machine; the graph view redraws
+// with no cancel), so the figure keeps at most XY_SCATTER_MAX_POINTS and
+// says how it thinned.
+check("a very large XY scatter thins to the cap and says so", () => {
+  const options = newGraphOptions("xy-scatter");
+  const rows = Array.from({ length: 10_000 }, (_, i) => [null, String(i), String(Math.sin(i / 100))]);
+  const fig = GRAPHS["xy-scatter"].build(
+    readTable({ columns: ["Title", "X", "Y"], rows }).columns,
+    options,
+    paintOf(options, 1),
+  );
+  const trace = fig.data[0] as { type: string; x: number[] };
+  strictEqual(trace.type, "scatter");
+  strictEqual(trace.x.length, XY_SCATTER_MAX_POINTS); // stride 2 over 10,000
+  const notes = (fig.layout.annotations as { name?: string; text?: string }[] | undefined) ?? [];
+  ok(
+    notes.some(
+      (a) => a.name === "note" && (a.text ?? "").includes("1 in 2 points") && (a.text ?? "").includes("5000 of 10000"),
+    ),
+  );
+  // A small series is untouched: every point drawn, no thinning note.
+  const small = GRAPHS["xy-scatter"].build(
+    readTable({ columns: ["Title", "X", "Y"], rows: [[null, "1", "2"], [null, "2", "3"]] }).columns,
+    options,
+    paintOf(options, 1),
+  );
+  strictEqual((small.data[0] as { x: number[] }).x.length, 2);
+  const smallNotes = (small.layout.annotations as { name?: string; text?: string }[] | undefined) ?? [];
+  ok(!smallNotes.some((a) => a.name === "note"));
 });
 
 check("error bars, the center line drawn with them, and lines take their own style", () => {
