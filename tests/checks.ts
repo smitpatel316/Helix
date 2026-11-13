@@ -82,6 +82,7 @@ import {
 } from "../src/views/graphs/selection";
 import { genesNamed, VOLCANO_MAX_LOG10 } from "../src/views/graphs/volcano";
 import { addForestPlot } from "../src/views/graphs/forest-plot";
+import { addObservedFitted } from "../src/views/graphs/observed-fitted";
 import { examplesFor, matched, type Matched } from "../src/views/graphs/match-graph";
 import type { OutlineNode } from "../src/store/use-project-store";
 import { deriveComparisons } from "../src/views/graphs/significance-overlay";
@@ -4077,6 +4078,79 @@ check("the forest plot names a covariate whose CI bound came back null (R2-M14)"
   ok(
     notes.some((n) => n.text?.includes("“Safe”")),
     `the null-bound covariate must be named on the figure, got ${JSON.stringify(notes.map((n) => n.text))}`,
+  );
+});
+
+check("the observed-vs-fitted plot drops overflowed fitted counts with a note instead of hiding the worst misfit (R2-G-F15)", () => {
+  const options = newGraphOptions("observed-fitted");
+  const fig = GRAPHS["observed-fitted"].build([], options, paintOf(options, 1));
+  // A linear predictor past ~709 overflows exp(): the fitted count comes
+  // back Infinity, which Plotly silently drops from the trace — and the
+  // y = x line's range stretches to Infinity with it, so the line vanishes
+  // too. The overflowed rows are the worst misfits; they must be named on
+  // the figure, not silently hidden, and the line must span the drawable
+  // points only.
+  const { columns } = readTable({
+    columns: ["Title", "Count", "Dose"],
+    rows: [
+      [null, "3", "0"],
+      [null, "5", "1"],
+      [null, "7", "2"],
+    ],
+  });
+  const outcome: AnalysisResult = {
+    testType: "poisson-regression",
+    stats: [],
+    groups: [],
+    notes: "",
+    coefficients: [
+      { term: "Intercept", estimate: 1, stdError: null, t: null, p: null },
+      { term: "Dose", estimate: 800, stdError: null, t: null, p: null },
+    ],
+  };
+  addObservedFitted(fig, columns, outcome, { dependent: "Count", predictors: ["Dose"], quasi: false }, paintOf(options, 1), options);
+  const traces = fig.data as { mode?: string; name?: string; x?: number[]; y?: number[] }[];
+  const points = traces.find((t) => t.mode === "markers");
+  deepStrictEqual(points?.x, [3]);
+  deepStrictEqual(points?.y, [Math.exp(1)]);
+  ok(
+    traces.every((t) => [...(t.x ?? []), ...(t.y ?? [])].every((v) => Number.isFinite(v))),
+    `no trace may carry a non-finite value, got ${JSON.stringify(fig.data)}`,
+  );
+  const line = traces.find((t) => t.name === "y = x");
+  ok(
+    line?.x?.every((v) => Number.isFinite(v)) && line?.y?.every((v) => Number.isFinite(v)),
+    `the y = x line must span the drawable points only, got ${JSON.stringify(line?.x)} / ${JSON.stringify(line?.y)}`,
+  );
+  const notes = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+  ok(
+    notes.some((n) => n.text?.includes("2 rows omitted")),
+    `the omitted rows must be named on the figure, got ${JSON.stringify(notes.map((n) => n.text))}`,
+  );
+  // All rows overflow: nothing to draw, but the note still lands and
+  // nothing throws — the figure keeps its (empty) axes.
+  const empty = GRAPHS["observed-fitted"].build([], options, paintOf(options, 1));
+  addObservedFitted(
+    empty,
+    columns,
+    {
+      testType: "poisson-regression",
+      stats: [],
+      groups: [],
+      notes: "",
+      coefficients: [
+        { term: "Intercept", estimate: 800, stdError: null, t: null, p: null },
+        { term: "Dose", estimate: 0.5, stdError: null, t: null, p: null },
+      ],
+    },
+    { dependent: "Count", predictors: ["Dose"], quasi: false },
+    paintOf(options, 1),
+    options,
+  );
+  strictEqual(empty.data.length, 0);
+  ok(
+    ((empty.layout.annotations as { text?: string }[] | undefined) ?? []).some((n) => n.text?.includes("3 rows omitted")),
+    "the all-overflowed note must still name the omitted rows",
   );
 });
 

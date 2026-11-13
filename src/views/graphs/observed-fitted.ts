@@ -10,7 +10,7 @@ import type { GraphOptions } from "../../store/types";
 import type { AnalysisResult, PoissonRegressionParams } from "../../stats/types";
 import { pairedGroups } from "../../stats/column/base";
 import type { Column } from "../../lib/dataset";
-import { extent, GUIDE, seriesMarker, xyLayout, type Paint } from "./plot-helpers";
+import { addNote, extent, GUIDE, seriesMarker, xyLayout, type Paint } from "./plot-helpers";
 import type { GraphFigure, GraphModule } from ".";
 
 /** The one series this graph draws, as the Series section names it. */
@@ -55,18 +55,38 @@ export function fittedCounts(
 
 /** Draws the observed-vs-fitted points of a Poisson result, with the dashed
  *  y = x identity line through the data range (floored at 0 — counts can't be
- *  negative). No-op when the result has no fitted counts to draw. */
+ *  negative). No-op when the result has no fitted counts to draw. Rows whose
+ *  fitted count overflowed are omitted with a note: exp() past ~709 comes
+ *  back Infinity, and Plotly silently drops non-finite points from the trace
+ *  (its numeric test fails Infinity), so the overflowed rows — the worst
+ *  misfits, far above y = x — would vanish without a trace. Worse, the y = x
+ *  line's range is taken over all points, so one Infinity stretches it to
+ *  [0, Infinity] and the line vanishes too. The range below is therefore
+ *  taken over the drawable points only. */
 export function addObservedFitted(
   fig: GraphFigure,
   columns: Column[],
   outcome: AnalysisResult,
   params: PoissonRegressionParams | undefined,
   paint: Paint,
+  options: GraphOptions,
 ) {
   const points = fittedCounts(columns, outcome, params);
   if (!points?.length) return;
-  const observed = points.map((p) => p.observed);
-  const fitted = points.map((p) => p.fitted);
+  // Keep only drawable points, so the range below is finite by construction,
+  // and name how many rows were omitted on the figure.
+  const kept = points.filter((p) => Number.isFinite(p.observed) && Number.isFinite(p.fitted));
+  const dropped = points.length - kept.length;
+  if (dropped > 0) {
+    addNote(
+      fig,
+      `${dropped} row${dropped === 1 ? "" : "s"} omitted: the fitted count overflowed and cannot be drawn.`,
+      options,
+    );
+  }
+  if (!kept.length) return;
+  const observed = kept.map((p) => p.observed);
+  const fitted = kept.map((p) => p.fitted);
   const [lo, hi] = extent([...observed, ...fitted]);
   const pad = (hi - lo) * 0.05 || 1;
   const line: [number, number] = [Math.max(0, lo - pad), hi + pad];

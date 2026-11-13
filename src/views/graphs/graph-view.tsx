@@ -539,7 +539,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
       }
       if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint, options);
       if (type === "observed-fitted" && poissonResult)
-        addObservedFitted(fig, columns, poissonResult, poissonParams, paint);
+        addObservedFitted(fig, columns, poissonResult, poissonParams, paint, options);
       if (type === "scree-plot") {
         if (pcaResult) addScreePlot(fig, pcaResult, paint);
         else addNote(fig, "Run a Principal component analysis on this table to draw the scree plot.", options);
