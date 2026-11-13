@@ -28,6 +28,10 @@ function lineTrace(x: [number, number], y: number, name: string, dashed: boolean
 }
 
 function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFigure {
+  // The first two columns are the two methods being compared. On an XY table
+  // `plotColumns` hands this the Y columns only — the X column is the
+  // independent variable, never a method — so what plots here can never be
+  // X against a method (the graph-path half of the F8 wizard guard).
   const [first, second] = columns;
   const layout = (xName: string) =>
     xyLayout(

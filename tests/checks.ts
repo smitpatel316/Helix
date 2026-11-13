@@ -1488,6 +1488,62 @@ check("the Bland-Altman wizard never offers the X column as a method on XY table
   ok(secondOneY.emptyMessage?.includes("only one Y data set"));
 });
 
+check("the Bland-Altman graph never plots X as a method on XY tables (FL-f8-graph)", () => {
+  const xy = readTable({
+    columns: ["Title", "Time", "Method A", "Method B"],
+    rows: [
+      ["", "0", "1.1", "1.0"],
+      ["", "1", "2.9", "3.1"],
+      ["", "2", "5.2", "4.8"],
+    ],
+  });
+  // The graph path the GUI uses: plotColumns picks the columns, the
+  // builder draws the first two — so X must never be among the picked
+  // columns, and the plotted trace must compare the two methods.
+  const options = newGraphOptions("bland-altman");
+  const picked = plotColumns(xy, "bland-altman", options, "xy").map((c) => c.name);
+  deepStrictEqual(picked, ["Method A", "Method B"]);
+  const fig = GRAPHS["bland-altman"].build(plotColumns(xy, "bland-altman", options, "xy"), options, paintOf(options, 2));
+  const [trace] = fig.data as { name: string; x: number[]; y: number[] }[];
+  strictEqual(trace.name, "Method A − Method B");
+  // The plotted points are Method A − Method B against their mean — never
+  // X (Time) against a method: the first point is (1.05, 0.1), not (0, 1.1).
+  const rounded = (vs: number[]) => vs.map((v) => Number(v.toFixed(2)));
+  deepStrictEqual(rounded(trace.x), [1.05, 3, 5]);
+  deepStrictEqual(rounded(trace.y), [0.1, -0.2, 0.4]);
+  // X + 1 Y: there is no second method, so the graph draws nothing rather
+  // than falling back to X as a method.
+  const oneY = readTable({
+    columns: ["Title", "Time", "Method A"],
+    rows: [
+      ["", "0", "1.1"],
+      ["", "1", "2.9"],
+      ["", "2", "5.2"],
+    ],
+  });
+  deepStrictEqual(
+    plotColumns(oneY, "bland-altman", options, "xy").map((c) => c.name),
+    ["Method A"],
+  );
+  deepStrictEqual(
+    GRAPHS["bland-altman"].build(plotColumns(oneY, "bland-altman", options, "xy"), options, paintOf(options, 1)).data,
+    [],
+  );
+  // A column table has no X column, so every numeric column stays a method.
+  const column = readTable({
+    columns: ["Title", "Method A", "Method B"],
+    rows: [
+      ["", "1.1", "1.0"],
+      ["", "2.9", "3.1"],
+      ["", "5.2", "4.8"],
+    ],
+  });
+  deepStrictEqual(
+    plotColumns(column, "bland-altman", options, "column").map((c) => c.name),
+    ["Method A", "Method B"],
+  );
+});
+
 // ── Row groups (a grouped table's third factor, plan 03) ─────────────────
 
 check("row groups split, resize and merge keeping every row covered", () => {
