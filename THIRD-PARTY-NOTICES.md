@@ -111,6 +111,6 @@ Yue Jiang). The Prism importer itself (`src/lib/pzfx.ts`) was written from the
 
 ## Source code
 
-Helix's source code is at <https://github.com/mickaphd/Helix>. The source code of R is at
+Helix's source code is the mickaphd/Helix repository on GitHub. The source code of R is at
 <https://cran.r-project.org/sources.html>, and that of webR (including how its binaries are
 built) at <https://github.com/r-wasm/webr>.

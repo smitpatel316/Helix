@@ -394,15 +394,15 @@ fn accent_color() -> Option<String> {
     }
 }
 
-/// Titer's GitHub page or releases, in the default browser: fixed addresses,
-/// so the page can't open anything else. (No website or Buy Me a Coffee link:
-/// there is no Titer site, and the coffee URL is still to be confirmed.)
+/// Titer's GitHub page, its releases, or Buy Me a Coffee, in the default
+/// browser: fixed addresses, so the page can't open anything else.
 #[cfg(target_os = "macos")]
 #[tauri::command]
 fn open_link(link: String) {
     let url = match link.as_str() {
         "github" => c"https://github.com/smitpatel316/Helix",
         "releases" => c"https://github.com/smitpatel316/Helix/releases/latest",
+        "coffee" => c"https://www.buymeacoffee.com/smitpatel316",
         _ => return,
     };
     unsafe {
@@ -542,6 +542,7 @@ fn open_link(link: String) {
     let url = match link.as_str() {
         "github" => "https://github.com/smitpatel316/Helix",
         "releases" => "https://github.com/smitpatel316/Helix/releases/latest",
+        "coffee" => "https://www.buymeacoffee.com/smitpatel316",
         _ => return,
     };
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();

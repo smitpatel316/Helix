@@ -13,7 +13,7 @@ statistics (through [webR](https://github.com/r-wasm/webr), R compiled to WebAss
 
 ## About this fork
 
-This is a modified fork of [mickaphd/Helix](https://github.com/mickaphd/Helix),
+This is a modified fork of mickaphd/Helix,
 the original Helix by mickaphd (© 2026 mickaphd). On top of upstream it adds
 Prism-file import, a wider analysis catalogue, multi-panel figures, and bug
 fixes — see the [release notes](https://github.com/smitpatel316/Helix/releases)
