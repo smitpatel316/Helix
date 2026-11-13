@@ -337,7 +337,13 @@ function readPointStyles(v: unknown): Record<string, PointStyle> | undefined {
 const READ_OPTION = {
   number: (v: unknown) => (isFiniteNumber(v) ? v : undefined),
   text: (v: unknown) => (typeof v === "string" ? v : undefined),
-  texts: (v: unknown) => (Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined),
+  texts: (v: unknown) => {
+    // A graph's significance pairs, keeping the usable ones (M6): one bad
+    // entry used to drop the whole list.
+    if (!Array.isArray(v)) return undefined;
+    const kept = v.filter((s) => typeof s === "string");
+    return kept.length ? kept : undefined;
+  },
   palette: readPalette,
   styles: readStyles,
   pointStyles: readPointStyles,
@@ -455,7 +461,7 @@ function readData(raw: Obj): {
 
 /** Every option, of the right type, one of its choices and within its limits: a missing
  *  or wrong one takes its default, a number beyond its limits the nearest it can be. */
-function readOptions(raw: unknown): GraphOptions {
+function readOptions(raw: unknown, label: string, issues: ProjectIssue[]): GraphOptions {
   const o = isObj(raw)
     ? canonical(raw, [
         ...Object.keys(DEFAULT_GRAPH_OPTIONS),
@@ -473,41 +479,175 @@ function readOptions(raw: unknown): GraphOptions {
     if (!choices || choices.includes(v)) out[key] = v;
   }
   for (const [key, limits] of Object.entries(GRAPH_LIMITS)) out[key] = within(out[key], limits);
-  for (const [key, kind] of Object.entries(OPTIONAL_OPTIONS)) out[key] = READ_OPTION[kind](o[key]);
+  for (const [key, kind] of Object.entries(OPTIONAL_OPTIONS)) {
+    const raw = o[key];
+    out[key] = READ_OPTION[kind](raw);
+    if (kind === "texts" && Array.isArray(raw) && raw.length) {
+      const kept = Array.isArray(out[key]) ? (out[key] as unknown[]).length : 0;
+      if (kept < raw.length) {
+        issues.push({
+          severity: "warning",
+          message: `Graph “${label}”: ${raw.length - kept} invalid ${raw.length - kept === 1 ? "entry" : "entries"} in “${key}” ${raw.length - kept === 1 ? "was" : "were"} left out; the rest were kept.`,
+        });
+      }
+    }
+  }
   return defined(out) as unknown as GraphOptions;
 }
 
-function readParam(kind: ParamKind, v: unknown): unknown {
+/** The runner default for a param, by analysis: when a file's value for one
+ *  of these is unusable it falls back to this instead of being left out — the
+ *  file header's promise. Only keys whose runner reads them whole-object
+ *  (`(params ?? DEFAULTS).key`) are listed; the rest already fall back per
+ *  key (`??` in the runner) or spread-merge their defaults (one-sample-t,
+ *  one-way ANOVA, frequency-distribution). Mirrors each runner's DEFAULTS —
+ *  compare-two-groups, kruskal-wallis, friedman, nested-anova,
+ *  deming-regression — and the multiple-t-tests wizard default (Holm). */
+const PARAM_DEFAULTS: Record<string, Record<string, unknown>> = {
+  "compare-two-groups": { paired: false, gaussian: true, equalVariance: true, ratio: false, tails: "two-sided" },
+  "kruskal-wallis": { posthoc: "none" },
+  friedman: { posthoc: "none" },
+  "nested-anova": { posthoc: "none" },
+  "deming-regression": { lambda: 1 },
+  "multiple-t-tests": { paired: false, gaussian: true, pooledSd: false, correction: "holm" },
+  // M7 fallbacks: a cross-family choice left out below lands on these.
+  anova: { posthoc: "none" },
+  correlation: { method: "pearson" },
+  "correlation-matrix": { method: "pearson" },
+  outliers: { method: "rout" },
+};
+
+/** Choice values only one family of analyses may use (M7). The merged PARAMS
+ *  lists admit them all, so each runner reinterprets the other family's
+ *  values: `posthoc: "dunn"` on a one-way ANOVA runs Dunnett's T3 math under
+ *  a Dunn's label, `"tukey"`/`"bonferroni"` on Kruskal-Wallis or Friedman
+ *  runs Dunn regardless, `method: "spline"|"lowess"` on a correlation is
+ *  silently treated as Pearson. Restricted here, at load, to the list its
+ *  own analysis offers; anything else is left out and falls back to the
+ *  default above, with a warning. Analyses whose runner already refuses
+ *  cross-family values with a clean error — nested-anova and three-way-anova
+ *  posthoc, two-way-anova posthoc, spline-lowess method, repeated-measures
+ *  ANOVA posthoc — are left alone: the error is the honest answer there.
+ *  The merged `model` list is likewise safe (each runner validates and
+ *  errors cleanly). */
+const PARAM_CHOICES: Record<string, Record<string, readonly string[]>> = {
+  anova: { posthoc: ANOVA_POSTHOCS },
+  "kruskal-wallis": { posthoc: RANK_POSTHOCS },
+  friedman: { posthoc: RANK_POSTHOCS },
+  correlation: { method: CORRELATION_METHODS },
+  "correlation-matrix": { method: CORRELATION_METHODS },
+  outliers: { method: ["rout", "grubbs"] },
+};
+
+/** A collection param, keeping its usable entries: one bad entry used to
+ *  drop the whole value (M6) — the analysis then silently ran on all columns
+ *  instead of the chosen subset, or lost every wizard-entered concentration
+ *  at once. `report` hears how many entries were left out, so the reader
+ *  can warn about them. */
+function readParam(kind: ParamKind, v: unknown, report?: (dropped: number) => void): unknown {
   if (kind === "yes/no") return typeof v === "boolean" ? v : undefined;
   if (kind === "number") return isFiniteNumber(v) ? v : undefined;
   if (kind === "name") return typeof v === "string" ? v : undefined;
   if (kind === "name-or-number") return typeof v === "string" || isFiniteNumber(v) ? v : undefined;
-  if (kind === "name-or-names")
-    return typeof v === "string" ? v : Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
-  if (kind === "numbers-by-name") return isObj(v) && Object.values(v).every(isFiniteNumber) ? v : undefined;
-  if (kind === "number-pairs-by-name")
-    return isObj(v) &&
-      Object.values(v).every((p) => Array.isArray(p) && p.length === 2 && p.every(isFiniteNumber))
-      ? v
-      : undefined;
-  if (kind === "name-and-names")
-    return isObj(v) &&
-      typeof v.name === "string" &&
-      Array.isArray(v.levels) &&
-      v.levels.every((s) => typeof s === "string")
-      ? v
-      : undefined;
-  if (kind === "names") return Array.isArray(v) && v.every((s) => typeof s === "string") ? v : undefined;
+  if (kind === "name-or-names") {
+    if (typeof v === "string") return v;
+    if (!Array.isArray(v)) return undefined;
+    const kept = v.filter((s): s is string => typeof s === "string");
+    if (kept.length !== v.length) report?.(v.length - kept.length);
+    return kept.length ? kept : undefined;
+  }
+  if (kind === "numbers-by-name") {
+    if (!isObj(v)) return undefined;
+    const kept = Object.fromEntries(Object.entries(v).filter(([, n]) => isFiniteNumber(n)));
+    const dropped = Object.keys(v).length - Object.keys(kept).length;
+    if (dropped) report?.(dropped);
+    return Object.keys(kept).length ? kept : undefined;
+  }
+  if (kind === "number-pairs-by-name") {
+    if (!isObj(v)) return undefined;
+    const kept = Object.fromEntries(
+      Object.entries(v).filter(([, p]) => Array.isArray(p) && p.length === 2 && p.every(isFiniteNumber)),
+    );
+    const dropped = Object.keys(v).length - Object.keys(kept).length;
+    if (dropped) report?.(dropped);
+    return Object.keys(kept).length ? kept : undefined;
+  }
+  if (kind === "name-and-names") {
+    if (!isObj(v) || typeof v.name !== "string" || !Array.isArray(v.levels)) return undefined;
+    const levels = v.levels.filter((s): s is string => typeof s === "string");
+    if (levels.length !== v.levels.length) report?.(v.levels.length - levels.length);
+    return levels.length ? { ...v, levels } : undefined;
+  }
+  if (kind === "names") {
+    if (!Array.isArray(v)) return undefined;
+    const kept = v.filter((s): s is string => typeof s === "string");
+    if (kept.length !== v.length) report?.(v.length - kept.length);
+    return kept.length ? kept : undefined;
+  }
   return Array.isArray(kind) ? oneOf(kind, v) : within(v, kind as Limits);
 }
 
-function readParams(raw: unknown): AnalysisParams | undefined {
+function readParams(
+  raw: unknown,
+  analysisType: string | undefined,
+  label: string,
+  issues: ProjectIssue[],
+): AnalysisParams | undefined {
   if (!isObj(raw)) return undefined;
   const p = canonical(raw, Object.keys(PARAMS));
   // A param this version doesn't know is kept as a plain word.
-  const read = (k: string, v: unknown) =>
-    isIn(PARAMS, k) ? readParam(PARAMS[k as ParamKey], v) : isWord(lower(v)) ? lower(v) : undefined;
-  return defined(Object.fromEntries(Object.entries(p).map(([k, v]) => [k, read(k, v)]))) as unknown as AnalysisParams;
+  const read = (k: string, v: unknown) => {
+    if (!isIn(PARAMS, k)) return isWord(lower(v)) ? lower(v) : undefined;
+    let dropped = 0;
+    const value = readParam(PARAMS[k as ParamKey], v, (n) => {
+      dropped = n;
+    });
+    if (dropped > 0) {
+      issues.push({
+        severity: "warning",
+        message: `Analysis “${label}”: ${dropped} invalid ${dropped === 1 ? "entry" : "entries"} in “${k}” ${dropped === 1 ? "was" : "were"} left out; the rest were kept.`,
+      });
+    }
+    return value;
+  };
+  const sanitized = Object.fromEntries(Object.entries(p).map(([k, v]) => [k, read(k, v)]));
+  // A choice from another test's family is left out (M7) — it would be
+  // silently reinterpreted by this test's runner — and falls back to the
+  // default below, with a warning of its own (not the M5 one).
+  const choices = (analysisType ? PARAM_CHOICES[analysisType] : undefined) ?? {};
+  const restricted = new Set<string>();
+  for (const [key, allowed] of Object.entries(choices)) {
+    const value = sanitized[key];
+    if (value !== undefined && !allowed.includes(value as string)) {
+      issues.push({
+        severity: "warning",
+        message: `Analysis “${label}”: “${key}” was “${value}”, which this test doesn't offer, so the usual default applies.`,
+      });
+      delete sanitized[key];
+      restricted.add(key);
+    }
+  }
+  // A value the reader left out falls back to its runner default (M5) — a
+  // dropped `gaussian` must not silently turn a t test into a Wilcoxon, a
+  // dropped `tails` must not reach R as "undefined", a dropped `posthoc`
+  // must not silently run Dunn. Only keys the file actually wrote get a
+  // substituted default: a key the file never had stays absent — the
+  // runner's own fallbacks cover it, and an older file (an outliers
+  // analysis with `{q}` only) still opens clean instead of "updated".
+  const defaults = (analysisType ? PARAM_DEFAULTS[analysisType] : undefined) ?? {};
+  const present = new Set(Object.keys(p));
+  const fill = Object.fromEntries(Object.entries(defaults).filter(([k]) => present.has(k)));
+  for (const key of Object.keys(p)) {
+    if (sanitized[key] === undefined && isIn(PARAMS, key) && key in defaults && !restricted.has(key)) {
+      issues.push({
+        severity: "warning",
+        message: `Analysis “${label}”: “${key}” was not a usable value, so the usual default applies.`,
+      });
+    }
+  }
+  // Strip the left-out values first, so a dropped key falls back to its
+  // default instead of shadowing it with `undefined`.
+  return defined({ ...fill, ...defined(sanitized) }) as unknown as AnalysisParams;
 }
 
 const NODE_TYPES: NodeType[] = ["table", "analysis", "graph", "figure"];
@@ -614,7 +754,7 @@ function readNode(
     }
   } else if (type === "analysis") {
     node.analysisType = lower(n.analysisType) as ProjectNode["analysisType"];
-    node.analysisParams = readParams(n.analysisParams);
+    node.analysisParams = readParams(n.analysisParams, node.analysisType as string, node.name, issues);
     if (!isIn(ANALYSES, node.analysisType)) {
       issues.push({ severity: "error", message: `Analysis “${node.name}” uses a test this version doesn't know.` });
     }
@@ -624,7 +764,7 @@ function readNode(
     Object.assign(node, readFigure(n));
   } else {
     node.graphType = lower(n.graphType) as ProjectNode["graphType"];
-    node.graphOptions = readOptions(n.graphOptions);
+    node.graphOptions = readOptions(n.graphOptions, node.name, issues);
     if (!isIn(GRAPHS, node.graphType) && (node.graphType as string) !== DOSE_GRAPH) {
       issues.push({ severity: "error", message: `Graph “${node.name}” uses a chart this version doesn't know.` });
     }
