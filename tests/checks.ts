@@ -556,6 +556,51 @@ check("a table that doesn't hold together is put straight", () => {
   });
 });
 
+check("a gapped sub-column's values are warned about, not silently dropped on load", () => {
+  // R2 FF-F10: a grouped table whose stored counts disagree with its columns
+  // is rebuilt from the columns on load, and a gapped sub-column ("A:Y3"
+  // with no "A:Y2") has no slot in the rebuilt set — its values used to
+  // vanish with no warning, and saving then persisted the loss.
+  const gapped = JSON.parse(serializeProjectFile(payload));
+  gapped.project.nodes.t1.data = {
+    columns: ["Title", "A:Y1", "A:Y3"],
+    rows: [["r1", "1", "3"]],
+    groups: 1,
+    replicates: 3,
+  };
+  const grouped = read(JSON.stringify(gapped));
+  deepStrictEqual(grouped.project.nodes.t1.data!.columns, ["Title", "A:Y1", "A:Y2"]);
+  ok(
+    grouped.issues.some((i) => i.message.includes("left out a column with values") && i.message.includes("A:Y3")),
+    `expected a warning naming A:Y3, got ${JSON.stringify(grouped.issues)}`,
+  );
+  // The same gap one level deeper, in a nested table.
+  const nested = JSON.parse(serializeProjectFile(payload));
+  nested.project.nodes.t1.data = {
+    columns: ["Title", "A:S1:R1", "A:S1:R3"],
+    rows: [["r1", "1", "3"]],
+    groups: 1,
+    subgroups: 1,
+    replicates: 3,
+  };
+  const renested = read(JSON.stringify(nested));
+  deepStrictEqual(renested.project.nodes.t1.data!.columns, ["Title", "A:S1:R1", "A:S1:R2"]);
+  ok(
+    renested.issues.some((i) => i.message.includes("left out a column with values") && i.message.includes("A:S1:R3")),
+    `expected a warning naming A:S1:R3, got ${JSON.stringify(renested.issues)}`,
+  );
+  // A gapped column holding nothing is still dropped, but silently — there
+  // is no value to lose.
+  const empty = JSON.parse(serializeProjectFile(payload));
+  empty.project.nodes.t1.data = {
+    columns: ["Title", "A:Y1", "A:Y3"],
+    rows: [["r1", "1", null]],
+    groups: 1,
+    replicates: 3,
+  };
+  strictEqual(read(JSON.stringify(empty)).issues.length, 0);
+});
+
 check("a saved project reads back identical", () => {
   const { project, issues } = read(serializeProjectFile(payload));
   deepStrictEqual(project, payload);

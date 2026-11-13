@@ -60,7 +60,7 @@ import { GRAPHS, GRAPH_OPTIONS_BY_TABLE } from "../views/graphs";
 import { ANALYSES } from "../stats";
 import { isGrouped, isNested } from "./dataset";
 import { seriesKeyOf } from "./columns";
-import { regroupTable, renestTable } from "../views/tables/table-data";
+import { regroupDropped, regroupTable, renestDropped, renestTable } from "../views/tables/table-data";
 import {
   assignLabels,
   clampPanel,
@@ -390,11 +390,16 @@ function describeDroppedBand(b: unknown): string {
 /** A table's data, and the colors it kept for its graphs. */
 /** A table's data, put straight: no value beyond its last column (`beyond` counts those left
  *  out), exclusions and widths only on cells and columns it has, and a grouped table's
- *  groups and sub-columns those of its columns ("A:Y1"…). */
+ *  groups and sub-columns those of its columns ("A:Y1"…). Rebuilding a grouped or
+ *  nested table from its columns drops any column whose name has no slot in the
+ *  rebuilt set — a gapped sub-column ("A:Y3" with no "A:Y2") — so `regroupDropped`
+ *  names the valued columns that went, for a warning: without it the values
+ *  would vanish on load and the loss would be saved over the file. */
 function readData(raw: Obj): {
   data: TableData;
   colors: TableColors;
   beyond: number;
+  regroupDropped: string[];
   rowGroupsDropped: string[];
 } | null {
   const { seriesColors, pointColors, ...d } = canonical(raw, [...DATA_KEYS, "seriesColors", "pointColors"]);
@@ -430,11 +435,14 @@ function readData(raw: Obj): {
     widths: Object.keys(widths).length ? (widths as Record<string, number>) : undefined,
     freezeTitle: d.freezeTitle === true || undefined,
   } as TableData);
+  const regroupDroppedNames: string[] = [];
   if (isGrouped(data) && columns.length > 1) {
     const groups = [...new Set(columns.slice(1).map(seriesKeyOf))];
     const replicates = Math.max(...groups.map((g) => columns.filter((c) => seriesKeyOf(c) === g).length));
-    if (groups.length !== data.groups || replicates !== data.replicates)
+    if (groups.length !== data.groups || replicates !== data.replicates) {
+      regroupDroppedNames.push(...regroupDropped(data, groups.length, replicates));
       data = defined(regroupTable(data, groups.length, replicates));
+    }
   }
   if (isNested(data) && columns.length > 1) {
     // A nested table's groups, subgroups and replicates are those of its
@@ -453,10 +461,12 @@ function readData(raw: Obj): {
         ),
       ),
     );
-    if (groups.length !== data.groups || subgroups !== data.subgroups || replicates !== data.replicates)
+    if (groups.length !== data.groups || subgroups !== data.subgroups || replicates !== data.replicates) {
+      regroupDroppedNames.push(...renestDropped(data, groups.length, subgroups, replicates));
       data = defined(renestTable(data, groups.length, subgroups, replicates));
+    }
   }
-  return { data, colors: { series: colors(seriesColors), cells: colors(pointColors) }, beyond, rowGroupsDropped: rowGroups.dropped };
+  return { data, colors: { series: colors(seriesColors), cells: colors(pointColors) }, beyond, regroupDropped: regroupDroppedNames, rowGroupsDropped: rowGroups.dropped };
 }
 
 /** Every option, of the right type, one of its choices and within its limits: a missing
@@ -734,6 +744,13 @@ function readNode(
       issues.push({
         severity: "warning",
         message: `Table “${node.name}” had ${values} beyond its last column; they were left out.`,
+      });
+    }
+    if (read.regroupDropped.length) {
+      const dropped = read.regroupDropped;
+      issues.push({
+        severity: "warning",
+        message: `Table “${node.name}” left out ${dropped.length === 1 ? "a column with values" : `${dropped.length} columns with values`} its groups couldn't hold: ${dropped.join(", ")}.`,
       });
     }
     if (read.rowGroupsDropped.length) {
