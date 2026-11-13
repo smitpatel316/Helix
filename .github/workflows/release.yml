@@ -17,6 +17,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # The vendored webR package repo (plan 00) is gitignored, so a fresh
+      # checkout has no webr-repo/ — build it before the tests, or
+      # tests/packages.ts warns and skips the package checks (and the
+      # release build below would ship without it). Skips downloads
+      # already on disk, so re-running is cheap.
+      - run: ./scripts/build-webr-repo.sh
       - run: npm run check
       - run: npm test
 
@@ -38,6 +44,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - run: npm ci
+      # Same as the check job: the vendored repo is gitignored, so build it
+      # before tauri-action (whose beforeBuildCommand is `vite build`, which
+      # copies webr-repo/ into dist/ only when it exists).
+      - run: ./scripts/build-webr-repo.sh
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
