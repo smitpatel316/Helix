@@ -13,6 +13,9 @@ logs/
 # manifest. Never commit it; a build without it falls back to the CDN.
 webr-repo/
 
-# QA artefacts and public test fixtures: deliberately uncommitted.
-qa/
+# QA notes (*.md, any depth) are tracked; all other QA artefacts
+# (screenshots, logs, fixtures) stay uncommitted.
+qa/**
+!qa/**/
+!qa/**/*.md
 test-corpus/
