@@ -10,6 +10,11 @@ import { Menu, Submenu, type MenuOptions } from "@tauri-apps/api/menu";
 import { message, save } from "@tauri-apps/plugin-dialog";
 import type { RVector } from "./stats/webr";
 import { interruptR } from "./stats/webr";
+import {
+  createEvalQueue,
+  setRQueueSnapshot,
+  type RQueueSnapshot,
+} from "./stats/r-queue";
 
 /** False when the UI runs in a plain browser (`npm run web`, for development) or in the tests. */
 export const isNative = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -100,10 +105,21 @@ export async function cancelR(): Promise<void> {
   }
 }
 
-/** In the engine window: answers every request with `evaluate`. */
+/** In the engine window: answers every request with `evaluate`, one at a
+ *  time, in arrival order — the app's explicit FIFO (M17: webR serializes
+ *  internally too, but that queue is invisible; this one publishes its
+ *  state on "r-queue" so project windows can show a queue position instead
+ *  of bare "Running…"). A request whose caller already gave up still runs
+ *  once when it reaches the front — the shell discards its late result —
+ *  so a cancelled caller never wedges the queue. */
 export async function serveR(evaluate: (code: string) => Promise<RVector>) {
+  const queue = createEvalQueue((snapshot) => {
+    setRQueueSnapshot(snapshot);
+    // Best effort: project windows listen for "r-queue" and show the depth.
+    void getCurrentWebviewWindow().emit("r-queue", snapshot).catch(() => {});
+  });
   await getCurrentWebviewWindow().listen<[number, string]>("r-eval", ({ payload: [id, code] }) =>
-    evaluate(code).then(
+    queue.enqueue(() => evaluate(code)).then(
       (values) => invoke("r_result", { id, values }),
       (err: unknown) => invoke("r_result", { id, error: err instanceof Error ? err.message : String(err) }),
     ),
@@ -113,6 +129,15 @@ export async function serveR(evaluate: (code: string) => Promise<RVector>) {
   // interrupted, the evaluation's own watchdog restarts the engine.
   await getCurrentWebviewWindow().listen("r-interrupt", () => interruptR());
   await invoke("r_ready");
+}
+
+/** In a project window: keeps this window's copy of the R queue's state
+ *  current (the engine window publishes "r-queue" whenever it changes).
+ *  No-op outside the app (tests, `npm run web`) — the snapshot stays null
+ *  there. Returns the unlisten function. */
+export async function onRQueue() {
+  if (!isNative) return () => {};
+  return getCurrentWebviewWindow().listen<RQueueSnapshot>("r-queue", ({ payload }) => setRQueueSnapshot(payload));
 }
 
 // ── Window ─────────────────────────────────────────────────────────────

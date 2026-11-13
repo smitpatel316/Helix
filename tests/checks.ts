@@ -8,6 +8,14 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { evalNamedVector, setPackageRepo, startR } from "../src/stats/webr";
+import {
+  createEvalQueue,
+  getRQueueSnapshot,
+  onRQueueSnapshot,
+  rQueueStatusText,
+  setRQueueSnapshot,
+  type RQueueSnapshot,
+} from "../src/stats/r-queue";
 import { parseProjectFile, readPalette, serializeProjectFile, type ProjectFilePayload } from "../src/lib/project-file";
 import {
   DEFAULT_GRAPH_OPTIONS,
@@ -4847,6 +4855,80 @@ check("hung R eval times out, is interrupted, and retry works", async () => {
   ok(elapsed < 10_000, `hung eval took ${elapsed} ms to fail`);
   const v = await evalNamedVector("c(a=1)");
   deepStrictEqual(v, { a: 1 });
+});
+
+// ── M17: the R queue is an explicit FIFO, and the UI shows it ───────────
+
+check("R evaluations run one at a time, in the order they were asked (M17)", async () => {
+  const seen: RQueueSnapshot[] = [];
+  const queue = createEvalQueue((snap) => seen.push({ ...snap }));
+  const done: number[] = [];
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  const p1 = queue.enqueue(async () => {
+    await sleep(30);
+    done.push(1);
+    return 1;
+  });
+  const p2 = queue.enqueue(async () => {
+    await sleep(10);
+    done.push(2);
+    return 2;
+  });
+  const p3 = queue.enqueue(async () => {
+    done.push(3);
+    return 3;
+  });
+  deepStrictEqual(await Promise.all([p1, p2, p3]), [1, 2, 3]);
+  deepStrictEqual(done, [1, 2, 3]);
+  deepStrictEqual(queue.snapshot(), { running: false, queued: 0 });
+  ok(
+    seen.some((s) => s.running && s.queued === 2),
+    "the queue must publish a snapshot with two waiting",
+  );
+});
+
+check("one R evaluation failing never stalls the queue behind it (M17)", async () => {
+  const queue = createEvalQueue();
+  const done: number[] = [];
+  const p1 = queue.enqueue(async () => {
+    done.push(1);
+    return 1;
+  });
+  const p2 = queue.enqueue(async () => {
+    throw new Error("boom");
+  });
+  const p3 = queue.enqueue(async () => {
+    done.push(3);
+    return 3;
+  });
+  strictEqual(await p1, 1);
+  await rejects(p2, /boom/);
+  strictEqual(await p3, 3);
+  deepStrictEqual(done, [1, 3]);
+  deepStrictEqual(queue.snapshot(), { running: false, queued: 0 });
+});
+
+check("a waiting view names the R queue instead of bare Running… (M17)", () => {
+  strictEqual(rQueueStatusText(null), "");
+  strictEqual(rQueueStatusText({ running: false, queued: 0 }), "");
+  strictEqual(rQueueStatusText({ running: true, queued: 1 }), " · R queue: 1 waiting");
+  strictEqual(rQueueStatusText({ running: true, queued: 2 }), " · R queue: 2 waiting");
+  const heard: RQueueSnapshot[] = [];
+  const off = onRQueueSnapshot((s) => heard.push(s));
+  setRQueueSnapshot({ running: true, queued: 2 });
+  deepStrictEqual(getRQueueSnapshot(), { running: true, queued: 2 });
+  deepStrictEqual(heard, [{ running: true, queued: 2 }]);
+  off();
+  setRQueueSnapshot({ running: false, queued: 0 });
+  deepStrictEqual(heard, [{ running: true, queued: 2 }]);
+});
+
+check("the engine window answers R requests through the FIFO, and publishes its queue (M17)", () => {
+  const native = readFileSync("src/native.ts", "utf8");
+  ok(/createEvalQueue/.test(native), "serveR must dispatch through createEvalQueue");
+  ok(/emit\("r-queue"/.test(native), "serveR must publish the queue on \"r-queue\"");
+  const view = readFileSync("src/views/analyses/analysis-view.tsx", "utf8");
+  ok(/rQueueStatusText\(queue\)/.test(view), "the analysis view must show the queue depth while running");
 });
 
 // ── Run ──────────────────────────────────────────────────────────────────
