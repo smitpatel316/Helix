@@ -5658,6 +5658,56 @@ check(".pzfx import dedupes duplicate column names so the second keeps its own d
   ok(imported.issues.some((i) => i.message.includes("duplicate column names were renamed")), "warns about the rename");
 });
 
+check(".pzfx import keeps untitled, colon-titled and ragged TwoWay replicate groups through a save/reload round-trip", () => {
+  // Two untitled Y columns, one titled "1:10", one ragged (1 of 2
+  // subcolumns). Before the fix all three legs lost data on reload: the
+  // untitled groups merged into "Group" (FF-F9 renamed the duplicate to
+  // "Group:Y1 2", which the reload's regroupTable then dropped), "1:10:Y1"
+  // split at the first ":" into group "1", and the ragged group was short
+  // a subcolumn.
+  const text = `<?xml version="1.0" encoding="UTF-8"?><GraphPadPrismFile PrismXMLVersion="5.00">
+<Table ID="Table0" XFormat="none" TableType="TwoWay" YFormat="replicates">
+<Title>TwoWay reps</Title>
+<RowTitlesColumn Width="89"><Subcolumn><d>Low</d><d>High</d></Subcolumn></RowTitlesColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="2"><Subcolumn><d>1.</d><d>2.</d></Subcolumn><Subcolumn><d>3.</d><d>4.</d></Subcolumn></YColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="2"><Subcolumn><d>10.</d><d>20.</d></Subcolumn><Subcolumn><d>30.</d><d>40.</d></Subcolumn></YColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="2"><Title>1:10</Title><Subcolumn><d>100.</d><d>200.</d></Subcolumn><Subcolumn><d>300.</d><d>400.</d></Subcolumn></YColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Ragged</Title><Subcolumn><d>1000.</d><d>2000.</d></Subcolumn></YColumn>
+</Table>
+</GraphPadPrismFile>`;
+  const imported = parsePzfx(text);
+  strictEqual(imported.tables.length, 1);
+  const node = imported.project.nodes[imported.project.rootOrder[0]];
+  if (!node || node.type !== "table") throw new Error("no table node");
+  strictEqual(node.tableType, "grouped");
+  strictEqual(node.data!.groups, 4);
+  strictEqual(node.data!.replicates, 2);
+  deepStrictEqual(node.data!.columns, [
+    "Title",
+    "Group:Y1",
+    "Group:Y2",
+    "Group 2:Y1",
+    "Group 2:Y2",
+    "1-10:Y1",
+    "1-10:Y2",
+    "Ragged:Y1",
+    "Ragged:Y2",
+  ]);
+  deepStrictEqual(node.data!.rows, [
+    ["Low", "1.", "3.", "10.", "30.", "100.", "300.", "1000.", null],
+    ["High", "2.", "4.", "20.", "40.", "200.", "400.", "2000.", null],
+  ]);
+  ok(imported.issues.some((i) => i.message.includes("group names must be unique")), "warns about the renames");
+  // The round-trip is the point: save as .hlx, reload, every value still there.
+  const { project } = read(serializeProjectFile(imported.project));
+  const reloaded = project.nodes[imported.project.rootOrder[0]];
+  if (!reloaded || reloaded.type !== "table") throw new Error("no reloaded table node");
+  deepStrictEqual(reloaded.data!.columns, node.data!.columns);
+  deepStrictEqual(reloaded.data!.rows, node.data!.rows);
+  strictEqual(reloaded.data!.groups, 4);
+  strictEqual(reloaded.data!.replicates, 2);
+});
+
 check(".pzfx import refuses files that aren't .pzfx", () => {
   for (const text of ["hello", "<GraphPadPrismFile></GraphPadPrismFile>", "<Other><Table/></Other>"]) {
     const imported = parsePzfx(text);
