@@ -2795,6 +2795,56 @@ check("analyses follow renamed columns", () => {
   deepStrictEqual(chosen.analysisParams, { posthoc: "tukey", sets: ["Control", "Treated", "B"] });
 });
 
+check("renaming a Y column follows y2, ys, globalY, truth, score and record keys, and subgroup point styles follow a subgroup rename", () => {
+  const binding = followTable(
+    { ...analysis, analysisType: "binding-saturation", analysisParams: { y: "Total", y2: "Nonspecific" } },
+    { renamed: { Nonspecific: "NS" } },
+    [],
+  );
+  deepStrictEqual(binding.analysisParams, { y: "Total", y2: "NS" });
+  const special = followTable(
+    {
+      ...analysis,
+      analysisType: "dose-response-special",
+      analysisParams: { ys: ["Y1", "Y2"], antagonistConcentrations: { Y1: 10, Y2: 20 } },
+    },
+    { renamed: { Y2: "High" } },
+    [],
+  );
+  deepStrictEqual(special.analysisParams, { ys: ["Y1", "High"], antagonistConcentrations: { Y1: 10, High: 20 } });
+  const global = followTable(
+    { ...analysis, analysisType: "nonlinear-regression", analysisParams: { globalY: ["Y1", "Y2"] } },
+    { renamed: { Y1: "Response" } },
+    [],
+  );
+  deepStrictEqual(global.analysisParams, { globalY: ["Response", "Y2"] });
+  const roc = followTable(
+    { ...analysis, analysisType: "roc-curve", analysisParams: { truth: "Disease", score: "Marker" } },
+    { renamed: { Marker: "Score" } },
+    [],
+  );
+  deepStrictEqual(roc.analysisParams, { truth: "Disease", score: "Score" });
+  const enzyme = followTable(
+    { ...analysis, analysisType: "enzyme-inhibition", analysisParams: { inhibitorConcentrations: { Drug: 5 } } },
+    { renamed: { Drug: "Inhibitor" } },
+    [],
+  );
+  deepStrictEqual(enzyme.analysisParams, { inhibitorConcentrations: { Inhibitor: 5 } });
+  // A subgroup rename hands its renamed columns to followTable, so per-point
+  // styles in that subgroup move with the column instead of being dropped.
+  const before = nested();
+  const after = renameSubgroup(before, "A", "S1", "Mouse 1");
+  const renamed = Object.fromEntries(
+    before.columns.map((n, i) => [n, after.columns[i]] as const).filter(([from, to]) => from !== to),
+  );
+  const styled = followTable(
+    { ...graph, graphOptions: { ...graph.graphOptions!, points: { "A:S1:R1#0": { size: 3 } } } },
+    { renamed },
+    after.columns,
+  ).graphOptions!.points;
+  deepStrictEqual(styled, { "A:Mouse 1:R1#0": { size: 3 } });
+});
+
 check("graphs follow renamed columns, groups, compared pairs and colors", () => {
   const node: ProjectNode = {
     ...graph,
