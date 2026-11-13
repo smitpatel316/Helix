@@ -4505,6 +4505,31 @@ check("a wizard asks which data sets only when there is a choice", () => {
   );
 });
 
+check("multiple t tests leave a constant row open instead of aborting the analysis", async () => {
+  // Row r0 is constant in both groups ([5,5,5] vs [5,5,5]): t.test errors
+  // "data are essentially constant" on it and used to abort the whole
+  // multi-row analysis. (A [0,0,0] row only yields NaN, since R's
+  // epsilon-scaled check is 0 < 0 there.)
+  const data: TableData = {
+    columns: ["Title", "A:1", "A:2", "A:3", "B:1", "B:2", "B:3"],
+    rows: [
+      ["r0", "5", "5", "5", "5", "5", "5"],
+      ["r1", "1", "2", "3", "4", "5", "6"],
+      ["r2", "2", "3", "4", "5", "6", "7"],
+    ],
+  };
+  const out = await runAnalysis("multiple-t-tests", data, {
+    gaussian: true,
+    pooledSd: false,
+    paired: false,
+    correction: "holm",
+  });
+  if ("error" in out) throw new Error(out.error);
+  strictEqual(out.stats.find((s) => s.label === "Rows compared")?.value, 3);
+  strictEqual(out.comparisons![0].p, null, "the constant row is open");
+  ok(out.comparisons![1].p !== null && out.comparisons![2].p !== null, "non-constant rows still complete");
+});
+
 check("the dose-response — Special wizard completes with X + 1 Y and the fit names the shortfall (R2-B4)", async () => {
   // One Y could never satisfy the two-series minimum, so the wizard used to
   // strand on a permanently disabled Next with no message; the runner's
@@ -4783,6 +4808,36 @@ check("parseGroupLevels validates the mixed-effects per-row group list", () => {
     strictEqual(groupNameQ.parse?.("Treatment")?.error, undefined);
     ok(groupNameQ.parse?.("")?.error);
   }
+});
+
+check("mixed-effects skips entirely empty rows in a Grouped table and reports a dropped rank-deficient term as NA", async () => {
+  // Group B holds data only at the first row, so the Group × Row interaction
+  // column is all zeros: lmer drops it from summary(m)$coefficients, and
+  // indexing it by position used to crash "subscript out of bounds" (and
+  // mislabel the terms after it). The last row is entirely empty: it must
+  // not count toward "Observations dropped as missing".
+  const data: TableData = {
+    columns: ["Title", "A:1", "A:2", "A:3", "B:1", "B:2", "B:3"],
+    rows: [
+      ["", "10", "12", "11", "20", "22", "21"],
+      ["", "11", "13", "12", null, null, null],
+      ["", "12", "14", "13", null, null, null],
+      ["", "13", "15", "14", null, null, null],
+      ["", null, null, null, null, null, null],
+    ],
+  };
+  const out = await runAnalysis("mixed-effects", data, {});
+  if ("error" in out) throw new Error(out.error);
+  const stat = (label: string) => out.stats.find((s) => s.label === label)?.value;
+  // 4 non-empty rows × 6 columns = 24 in the table; 15 used; 9 dropped.
+  strictEqual(stat("Observations in table"), 24);
+  strictEqual(stat("Observations dropped as missing"), 9);
+  const byTerm = (term: string) => out.coefficients?.find((c) => c.term === term)?.estimate;
+  ok(byTerm("Intercept") !== null && byTerm("Intercept") !== undefined, "intercept estimated");
+  ok(byTerm("Group (B vs A)") !== null && byTerm("Group (B vs A)") !== undefined, "group effect estimated");
+  ok(byTerm("Row") !== null && byTerm("Row") !== undefined, "row effect estimated");
+  strictEqual(byTerm("Group × Row (B vs A)"), null, "the dropped interaction is open, not mislabelled");
+  ok(out.notes?.includes("could not be estimated"), "the note names the dropped term");
 });
 
 check("the chi-square wizard asks about ordering only on a 2×k / k×2 table, defaulting to no trend", () => {

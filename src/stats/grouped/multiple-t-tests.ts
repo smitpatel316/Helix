@@ -50,7 +50,10 @@ export async function runMultipleTTests(
   const b = (r: number) => rVec(rowsB[r]);
   const test = (r: number) =>
     params.gaussian
-      ? `t.test(${a(r)},${b(r)},paired=${rBool(params.paired)})$p.value`
+      ? // A row constant in both groups (say [5,5,5] vs [5,5,5]) makes t.test
+        // error "data are essentially constant" and abort the whole multi-row
+        // analysis: that row's P is open instead, the other rows complete.
+        `tryCatch(t.test(${a(r)},${b(r)},paired=${rBool(params.paired)})$p.value,error=function(e) NA_real_)`
       : // wilcox.test warns of ties: the warning is the call's, so it wraps the call.
         `suppressWarnings(wilcox.test(${a(r)},${b(r)},paired=${rBool(params.paired)}))$p.value`;
   const pooled = params.gaussian && params.pooledSd;
@@ -100,7 +103,10 @@ pa<-p.adjust(pr,"${params.correction === "fdr" ? "BH" : params.correction}")
         { name: name2, values: rowsB.flat() },
       ])
     ).groups,
-    notes: `${testLabel} at each row, ${CORRECTION_LABEL[params.correction]} across rows.`,
+    notes: `${testLabel} at each row, ${CORRECTION_LABEL[params.correction]} across rows.` +
+      (params.gaussian && !pooled && comparisons.some((c) => c.p == null)
+        ? " A row with no variation in either group has no p-value (a t test needs variation to compare)."
+        : ""),
     comparisons,
     comparisonsLabel: `Per-row comparisons (${name1} vs. ${name2})`,
   };
