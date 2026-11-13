@@ -1,4 +1,4 @@
-// The hidden "engine" window, open as long as Helix is: the app's one R, which
+// The hidden "engine" window, open as long as Titer is: the app's one R, which
 // every project window uses, and the menu bar while no project window is open.
 import { evalNamedVector, onEngineStuck, startR } from "./stats/webr";
 import { cancelR, onNoWindows, serveR } from "./native";
@@ -18,7 +18,7 @@ onEngineStuck(() => {
   setTimeout(() => window.location.reload(), 2000);
 });
 
-/** With no project open, Helix stays open (as Pages does) with a menu bar to open one. */
+/** With no project open, Titer stays open (as Pages does) with a menu bar to open one. */
 function setWindowlessMenuBar() {
   const keepRecents = (paths: string[]) => {
     saveRecents(paths);

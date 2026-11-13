@@ -4,10 +4,10 @@
 // `pzfx` (R, MIT) and `pypzfx` (Python, MIT) readers and their `.pzfx` test
 // files — never from Prism's own code. Only the data tables are in the file's
 // readable XML: analyses, graphs and layouts live in a compressed `<Template>`
-// blob Helix doesn't read, so an import brings in the tables only; analyses
-// and graphs are rebuilt in Helix.
+// blob Titer doesn't read, so an import brings in the tables only; analyses
+// and graphs are rebuilt in Titer.
 //
-// What maps where (Prism `TableType` → Helix table):
+// What maps where (Prism `TableType` → Titer table):
 //   OneWay      → Column    (each Y column is a group)
 //   TwoWay      → Grouped   when the Y values are replicates (groups = Y columns,
 //                 replicates = subcolumns); otherwise Column, with the summary
@@ -34,7 +34,7 @@
 //                 OneWay/replicates to nested on a heuristic, a plain
 //                 replicates Column table is far more common than a nested one.
 //                 If a distinct marker is ever verified, map it here directly.
-// A struck-through value (`<d Excluded="1">`) becomes a Helix excluded cell.
+// A struck-through value (`<d Excluded="1">`) becomes a Titer excluded cell.
 // A `.prism` file (Prism 10's newer format) is not `.pzfx` and is not imported.
 
 import type { ProjectFilePayload } from "./project-file";
@@ -313,7 +313,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
   if (table.tag === "HugeTable") {
     issues.push({
       severity: "warning",
-      message: `${displayName} is a HugeTable, which Helix can't import yet. It was left out.`,
+      message: `${displayName} is a HugeTable, which Titer can't import yet. It was left out.`,
     });
     return null;
   }
@@ -342,7 +342,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
     if (x.subcolumns.length > 1) {
       xErrorValues = x.subcolumns[1].values;
       warnings.push(
-        `${displayName}: the X error values were imported as a “${xName} error” series — Helix XY tables hold one X column.`,
+        `${displayName}: the X error values were imported as a “${xName} error” series — Titer XY tables hold one X column.`,
       );
     }
   }
@@ -385,7 +385,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
     }
   }
 
-  // Helix columns: [Title, ...data]. Each entry: its name, values per row, and
+  // Titer columns: [Title, ...data]. Each entry: its name, values per row, and
   // which rows are excluded in it.
   interface ImportColumn {
     name: string;
@@ -397,7 +397,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
     columns.push({ name, values: sub.values.map((v) => normalizeNumber(v, groupingSeparators)), excluded: sub.excluded });
   };
 
-  let helixType: TableType;
+  let titerType: TableType;
   let groups: number | undefined;
   let replicates: number | undefined;
   // Only an explicit "replicates" YFormat is replicates. An empty or missing
@@ -407,7 +407,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
   const isGroupedReplicates =
     tableType === "TwoWay" && yFormat === "replicates";
   if (tableType === "OneWay" || tableType === "PartsOfWhole" || tableType === "Contingency") {
-    helixType = tableType === "Contingency" ? "contingency" : "column";
+    titerType = tableType === "Contingency" ? "contingency" : "column";
     for (const y of yColumns) {
       const names = subcolumnNames(y.title, yFormat, y.subcolumns.length);
       y.subcolumns.forEach((sub, i) => pushColumn(names[i], sub));
@@ -418,7 +418,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
       }
     }
   } else if (tableType === "TwoWay" && isGroupedReplicates) {
-    helixType = "grouped";
+    titerType = "grouped";
     const counts = yColumns.map((y) => y.subcolumns.length);
     groups = yColumns.length;
     replicates = Math.max(...counts);
@@ -430,7 +430,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
     // Summary values (mean, SD, N…) — not raw replicates. Keep them, named, and
     // say so: running a group comparison on them as if they were replicates
     // would be wrong.
-    helixType = "column";
+    titerType = "column";
     for (const y of yColumns) {
       const names = subcolumnNames(y.title, yFormat, y.subcolumns.length);
       y.subcolumns.forEach((sub, i) => pushColumn(names[i], sub));
@@ -443,7 +443,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
         : `${displayName}: the values are summaries (${yFormat}), not raw replicates — don't run group comparisons on them as if they were.`,
     );
   } else if (tableType === "XY" || tableType === "Survival") {
-    helixType = tableType === "Survival" ? "survival" : "xy";
+    titerType = tableType === "Survival" ? "survival" : "xy";
     if (xValues.length > 0 || xColumns.length > 0) {
       columns.push({ name: xName, values: xValues.map((v) => normalizeNumber(v, groupingSeparators)), excluded: new Set() });
       if (xErrorValues) {
@@ -460,19 +460,19 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
       );
     }
   } else {
-    helixType = "column";
+    titerType = "column";
     for (const y of yColumns) {
       const names = subcolumnNames(y.title, yFormat, y.subcolumns.length);
       y.subcolumns.forEach((sub, i) => pushColumn(names[i], sub));
     }
-    warnings.push(`${displayName}: table type “${tableType}” isn't one Helix knows; it was imported as a Column table.`);
+    warnings.push(`${displayName}: table type “${tableType}” isn't one Titer knows; it was imported as a Column table.`);
   }
 
   if (dateColumn) {
     // Next to X for XY/Survival (after X and its error, if any); first among
     // the data columns otherwise, since those types drop X entirely.
     let at = 0;
-    if (helixType === "xy" || helixType === "survival") {
+    if (titerType === "xy" || titerType === "survival") {
       at = Math.min((xColumns.length > 0 ? 1 : 0) + (xErrorValues ? 1 : 0), columns.length);
     }
     let name = dateColumn.name;
@@ -481,7 +481,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
   }
 
   // FF-F9: Prism lets two Y columns share a title (and an X title can match
-  // a Y title), but Helix resolves a column by name with
+  // a Y title), but Titer resolves a column by name with
   // `data.columns.indexOf(name)` — the first match wins, so an analysis
   // naming the second duplicate silently ran on the first column's data.
   // Rename later duplicates ("A" → "A 2", "A 3", …) so every imported
@@ -537,7 +537,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: bo
     type: "table",
     name: name === "" ? "Imported table" : name,
     parentId: null,
-    tableType: helixType,
+    tableType: titerType,
     data,
   };
   return { node, warnings };

@@ -87,7 +87,7 @@ export function AppShell() {
         onReturn={dismissProjectUpdated}
         dismissLabel="OK"
         title="Project Updated"
-        description="This project was made with an older Helix, or part of it couldn't be read as it was. Helix brought it up to date; save it to keep the update."
+        description="This project was made with an older Titer, or part of it couldn't be read as it was. Titer brought it up to date; save it to keep the update."
       />
 
       <UniversalModal

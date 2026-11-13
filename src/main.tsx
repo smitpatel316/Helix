@@ -19,7 +19,7 @@ onFocusChange((focused) => focused && syncAccent());
 // `cancelR` is the watchdog's / Cancel button's way to stop that R.
 if (isNative) connectR(evalR, cancelR);
 
-// Whether a newer Helix is out, at most once a day.
+// Whether a newer Titer is out, at most once a day.
 checkForUpdatesDaily();
 
 createRoot(document.getElementById("root")!).render(

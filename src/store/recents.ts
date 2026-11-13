@@ -2,7 +2,7 @@
 // window (local storage), also handed to macOS for the Dock icon's menu.
 import { setRecentDocuments } from "../native";
 
-const KEY = "helix.recent";
+const KEY = "titer.recent";
 export const MAX_RECENTS = 10;
 
 /** The list kept, its paths only: anything else stored there is left out. */

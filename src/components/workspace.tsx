@@ -8,7 +8,7 @@ import { FigureView } from "../views/figures/figure-view";
 import { GRAPHS } from "../views/graphs";
 import { ANALYSES } from "../stats";
 
-const NEWER = "It was made with a newer version of Helix.";
+const NEWER = "It was made with a newer version of Titer.";
 
 /** Shows the active node's view. */
 export function Workspace() {

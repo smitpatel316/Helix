@@ -107,7 +107,7 @@ type Action =
       fileUnknowns?: Record<string, unknown>;
       projectUnknowns?: Record<string, unknown>;
       filePath: string | null;
-      /** Changed as it was read (repaired, or from an older Helix): to be saved. */
+      /** Changed as it was read (repaired, or from an older Titer): to be saved. */
       edited?: boolean;
     }
   | { type: "markSaved"; filePath: string; savedRevision: number };

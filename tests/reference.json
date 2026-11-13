@@ -3101,7 +3101,7 @@
     "n": 25
    }
   ],
-  "notes": "Kolmogorov–Smirnov test per column: it compares the cumulative distribution with a Gaussian's, using only the largest discrepancy, so it is the least sensitive of the four tests. The mean and SD are estimated from the same sample, which makes the P value anti-conservative (the proper test with estimated parameters is Lilliefors); Prism does the same, so Helix matches Prism. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. Tied values present (“A”, “B”) — the tests lose power with many ties, and the P value is asymptotic, not exact. KS is weak at small n — a non-significant result on a small sample is weak evidence for normality."
+  "notes": "Kolmogorov–Smirnov test per column: it compares the cumulative distribution with a Gaussian's, using only the largest discrepancy, so it is the least sensitive of the four tests. The mean and SD are estimated from the same sample, which makes the P value anti-conservative (the proper test with estimated parameters is Lilliefors); Prism does the same, so Titer matches Prism. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. Tied values present (“A”, “B”) — the tests lose power with many ties, and the P value is asymptotic, not exact. KS is weak at small n — a non-significant result on a small sample is weak evidence for normality."
  },
  "shapiro-wilk normality {\"test\":\"shapiro-wilk\",\"lognormal\":true}": {
   "testType": "shapiro-wilk",
@@ -3434,7 +3434,7 @@
     "n": 4
    }
   ],
-  "notes": "Kolmogorov–Smirnov test per column: it compares the cumulative distribution with a Gaussian's, using only the largest discrepancy, so it is the least sensitive of the four tests. The mean and SD are estimated from the same sample, which makes the P value anti-conservative (the proper test with estimated parameters is Lilliefors); Prism does the same, so Helix matches Prism. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. KS is weak at small n — a non-significant result on a small sample is weak evidence for normality."
+  "notes": "Kolmogorov–Smirnov test per column: it compares the cumulative distribution with a Gaussian's, using only the largest discrepancy, so it is the least sensitive of the four tests. The mean and SD are estimated from the same sample, which makes the P value anti-conservative (the proper test with estimated parameters is Lilliefors); Prism does the same, so Titer matches Prism. P > 0.05: data are consistent with a normal distribution. P < 0.05: significant departure from normality. KS is weak at small n — a non-significant result on a small sample is weak evidence for normality."
  },
  "shapiro-wilk normalityNonpositive {\"test\":\"shapiro-wilk\",\"lognormal\":true}": {
   "error": "Lognormality testing needs all values > 0 (log is undefined at or below zero) — “B” holds 0."

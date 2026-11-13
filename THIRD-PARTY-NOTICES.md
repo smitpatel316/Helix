@@ -1,6 +1,6 @@
 # Third-party software
 
-Helix is free software under the GNU General Public License, version 3 or later
+Titer is free software under the GNU General Public License, version 3 or later
 (see [LICENSE](LICENSE)). It is built on the open-source work below. Each keeps its own
 license; the full texts come with each package's source.
 

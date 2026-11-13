@@ -24,7 +24,7 @@ export async function runChiSquare(columns: Column[], params?: ChiSquareParams):
   const trendAcrossRows = !is2x2 && cols === 2 && rows >= 3;
   const trendAcrossCols = !is2x2 && rows === 2 && cols >= 3;
   const trendShape = trendAcrossRows || trendAcrossCols;
-  // Prism always computes the trend on a qualifying table; Helix only does
+  // Prism always computes the trend on a qualifying table; Titer only does
   // when the user confirms the ordering, so a meaningless trend is never
   // silently reported.
   const trend = trendShape && params?.trendOrdered === true;

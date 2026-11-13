@@ -225,7 +225,7 @@ export interface GraphOptions {
   volcanoPThreshold: number; // cutoff on the plotted (−log10) scale: 1.3 is P = 0.05
   volcanoShowThresholds: boolean;
   volcanoLabelCount: number;
-  // Grouped-table volcano (Helix computes the DEGs): compare two groups (by column
+  // Grouped-table volcano (Titer computes the DEGs): compare two groups (by column
   // prefix, e.g. "A"/"B") row by row. `volcanoEffect` picks the X value — log2 of the
   // ratio of group means (raw data) or the plain difference of means (data already
   // on a log scale). `volcanoSignificance` picks the Y source — the per-row Welch
@@ -235,7 +235,7 @@ export interface GraphOptions {
   volcanoEffect: Choice<"volcanoEffect">;
   volcanoSignificance: Choice<"volcanoSignificance">;
   // Colors. `palette`: its name and colors, saved with the graph so a figure keeps
-  // them whatever becomes of Helix's catalog (lib/palettes.ts). `series`: the series
+  // them whatever becomes of Titer's catalog (lib/palettes.ts). `series`: the series
   // colored by hand, by name (a column, a group, a volcano's "up" and "down"); the
   // others take the palette's color for their place.
   palette?: GraphPalette;
@@ -405,7 +405,7 @@ export interface Place {
 /** An outline color that is the color of what it outlines. */
 export const SAME_AS_FILL = "fill";
 
-/** Helix 1.0's named colors (see `NAMED_COLORS`), as its files may hold them. */
+/** Titer 1.0's named colors (see `NAMED_COLORS`), as its files may hold them. */
 export type PaletteColor = "blue" | "red" | "green" | "purple" | "orange" | "black";
 
 /** How many groups, subgroups and sub-columns a grouped or nested table has:

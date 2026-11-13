@@ -58,7 +58,7 @@ import { pairKey } from "../src/lib/columns";
 import {
   NAMED_COLORS,
   PALETTES,
-  isHelixPalette,
+  isTiterPalette,
   paletteColor,
   paletteNamed,
   paletteOf,
@@ -230,7 +230,7 @@ const treatments = (columns: string[]): TableData => ({
 
 check("a file Helix had to repair or bring up to date opens to be saved; a sound one doesn't", () => {
   strictEqual(read(serializeProjectFile(payload)).updated, false);
-  strictEqual(read(readFileSync("samples/Helix Sample.hlx", "utf8")).updated, false);
+  strictEqual(read(readFileSync("samples/Titer Sample.hlx", "utf8")).updated, false);
   const file = () => JSON.parse(serializeProjectFile(payload));
   const repaired = file();
   repaired.project.nodes.g1.graphOptions.lineDash = "zigzag";
@@ -859,9 +859,9 @@ check("a file from Helix 1.0 keeps its colors, now each graph's own", () => {
   strictEqual(paint.color("Y1", 0), NAMED_COLORS.blue);
   strictEqual(paint.fill("Y2", 1), "rgba(248,113,113,0.5)");
   strictEqual(paint.dot("Y2", 1), "rgba(248,113,113,0.5)");
-  strictEqual(g1.graphOptions!.palette!.name, "helix");
+  strictEqual(g1.graphOptions!.palette!.name, "titer");
   // A heatmap keeps its scale as Plotly drew it, or Viridis.
-  strictEqual(g2.graphOptions!.palette!.name, "Heat (Helix 1.0)");
+  strictEqual(g2.graphOptions!.palette!.name, "Heat (Titer 1.0)");
   strictEqual(g2.graphOptions!.palette!.colors.length, 256);
   deepStrictEqual([g2.graphOptions!.palette!.colors[0], g2.graphOptions!.palette!.colors[255]], ["#800026", "#FFFFCC"]);
   strictEqual(g3.graphOptions!.palette!.name, "viridis");
@@ -938,7 +938,7 @@ check("a graph without a palette keeps the options it saved", () => {
     [0.9, 0.8, 9, 1, 0.3],
   );
   deepStrictEqual(o1.series, { Y1: { color: "#D55E00" } });
-  strictEqual(o1.palette!.name, "helix"); // the missing palette is still rebuilt
+  strictEqual(o1.palette!.name, "titer"); // the missing palette is still rebuilt
   const o2 = project.nodes.g2.graphOptions!;
   deepStrictEqual([o2.fill, o2.pointSize, o2.outline, o2.barGap], [0.9, 5, 2, 0]);
 });
@@ -2468,7 +2468,7 @@ check("palettes keep their authors' colors, in their order and number", () => {
   const counts = Object.fromEntries(PALETTES.map((p) => [p.name, p.colors.length]));
   // prettier-ignore
   deepStrictEqual(counts, {
-    "okabe-ito": 8, "tol-bright": 7, "tol-muted": 9, "tableau-10": 10, grayscale: 5, helix: 6,
+    "okabe-ito": 8, "tol-bright": 7, "tol-muted": 9, "tableau-10": 10, grayscale: 5, titer: 6,
     viridis: 256, cividis: 256, magma: 256, batlow: 256,
     coolwarm: 256, fast: 256, vik: 256, vlag: 256, rdbu: 11,
   });
@@ -3639,7 +3639,7 @@ check("the sample project ships a 2-panel figure", () => {
     ["g-viab", "g-volume-bars"],
   );
   // The sample file on disk round-trips with its figure intact.
-  const { project } = read(readFileSync("samples/Helix Sample.hlx", "utf8"));
+  const { project } = read(readFileSync("samples/Titer Sample.hlx", "utf8"));
   deepStrictEqual(project.nodes["f-main"].panels, figure.panels);
 });
 
@@ -5190,10 +5190,10 @@ check("Open Recent reads only a list of paths", () => {
   Object.assign(globalThis, { localStorage: storage });
   try {
     for (const bad of ['{"a":1}', "[1, null]", "not json"]) {
-      stored["helix.recent"] = bad;
+      stored["titer.recent"] = bad;
       deepStrictEqual(loadRecents(), []);
     }
-    stored["helix.recent"] = '["/a.hlx", 3, "/b.hlx"]';
+    stored["titer.recent"] = '["/a.hlx", 3, "/b.hlx"]';
     deepStrictEqual(loadRecents(), ["/a.hlx", "/b.hlx"]);
   } finally {
     delete (globalThis as { localStorage?: unknown }).localStorage;
@@ -5220,7 +5220,7 @@ check("My Palettes keep, replace and delete palettes; a gradient of few colors b
     ok(await deletePalette("Lab 2"));
     deepStrictEqual(await loadMyPalettes(), [heat]);
     // A broken entry is left out, the others kept.
-    stored["helix.palettes"] = JSON.stringify([heat, { name: "No colors", colors: [] }, 7]);
+    stored["titer.palettes"] = JSON.stringify([heat, { name: "No colors", colors: [] }, 7]);
     deepStrictEqual(await loadMyPalettes(), [heat]);
   } finally {
     delete (globalThis as { localStorage?: unknown }).localStorage;
@@ -5229,7 +5229,7 @@ check("My Palettes keep, replace and delete palettes; a gradient of few colors b
     [0, 1, 2, 3, 4].map((i) => paletteColor(heat, i, 5)),
     ["#FFFFFF", "#FFBFBF", "#FF8080", "#FF4040", "#FF0000"],
   );
-  ok(isHelixPalette("viridis") && isHelixPalette("Okabe-Ito") && !isHelixPalette("Lab"));
+  ok(isTiterPalette("viridis") && isTiterPalette("Okabe-Ito") && !isTiterPalette("Lab"));
   // A gradient of one color, from a broken file, runs from it to itself.
   deepStrictEqual(readPalette({ name: "Red", kind: "sequential", colors: ["#FF0000"] })!.colors, [
     "#FF0000",

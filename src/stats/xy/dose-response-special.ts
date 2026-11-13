@@ -200,7 +200,7 @@ function modelDef(model: DoseResponseSpecialModel, series: SeriesFit[], fixHillS
 }
 
 /** The fitted equation, from the fitted coefficients (4 significant figures,
- *  like the rest of Helix's display). */
+ *  like the rest of Titer's display). */
 function equation(
   model: DoseResponseSpecialModel,
   coefficients: RegressionCoefficient[],

@@ -31,7 +31,7 @@ const reason = (err: unknown) => (err instanceof Error ? err.message : String(er
 function tooLarge(size: Size, dpi: Resolution) {
   const most = largestAt(size, Number(dpi));
   if (most.width < size.width) {
-    return `At ${dpi} DPI, the largest graph Helix exports is ${most.width} × ${most.height} px. Choose a lower resolution, or make the graph smaller.`;
+    return `At ${dpi} DPI, the largest graph Titer exports is ${most.width} × ${most.height} px. Choose a lower resolution, or make the graph smaller.`;
   }
 }
 

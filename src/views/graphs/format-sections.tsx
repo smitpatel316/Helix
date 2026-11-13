@@ -44,7 +44,7 @@ export interface SectionContext {
   /** The chosen analysis's pairs; null while it runs. */
   comparisons: SigComparison[] | null;
   seriesNames: string[];
-  /** Volcano on a grouped table: the groups it can compare (Helix computes the DEGs). */
+  /** Volcano on a grouped table: the groups it can compare (Titer computes the DEGs). */
   volcanoGroups?: string[];
   numericNames: string[];
   allNames: string[];

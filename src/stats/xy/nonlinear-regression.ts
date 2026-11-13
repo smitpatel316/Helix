@@ -370,7 +370,7 @@ const coefOf = (coefficients: RegressionCoefficient[], term: string) =>
   coefficients.find((c) => c.term === termLabel(term))?.estimate ?? null;
 
 /** The fitted equation, from the fitted coefficients (4 significant figures,
- *  like the rest of Helix's display). Only the exponential models carry one —
+ *  like the rest of Titer's display). Only the exponential models carry one —
  *  the older models keep their pinned result shape. */
 function equation(
   model: NonlinearModel,

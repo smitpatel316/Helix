@@ -5,7 +5,7 @@ import * as React from "react";
 import { MinusIcon, PlusIcon } from "@phosphor-icons/react";
 import { Dialog } from "../../ui/dialog";
 import { Button, Field, Input, Segmented, cn } from "../../ui/controls";
-import { isHelixPalette, paletteBackground, paletteColor } from "../../lib/palettes";
+import { isTiterPalette, paletteBackground, paletteColor } from "../../lib/palettes";
 import { deletePalette, keepPalette } from "../../store/my-palettes";
 import { confirmDelete } from "../../native";
 import type { GraphPalette, PaletteKind } from "../../store/types";
@@ -53,7 +53,7 @@ export function PaletteDialog({
 
   const made = { name: name.trim(), kind, colors };
   const taken =
-    isHelixPalette(made.name) ||
+    isTiterPalette(made.name) ||
     mine.some((p) => p.name !== editing && p.name.toLowerCase() === made.name.toLowerCase());
   const done = async () => {
     if (!made.name || taken || !(await keepPalette(made, editing))) return;

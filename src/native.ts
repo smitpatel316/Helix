@@ -48,10 +48,10 @@ export async function confirmDelete(title: string, detail: string): Promise<bool
   return answer === "Delete" || answer === "Ok";
 }
 
-/** A Download / Later prompt for a newer version of Helix. */
+/** A Download / Later prompt for a newer version of Titer. */
 export async function askToDownload(version: string): Promise<boolean> {
-  const answer = await message("Download it from GitHub, then replace Helix in your Applications folder.", {
-    title: `Helix ${version} is available`,
+  const answer = await message("Download it from GitHub, then replace Titer in your Applications folder.", {
+    title: `Titer ${version} is available`,
     kind: "info",
     buttons: { ok: "Download", cancel: "Later" },
   });
@@ -76,7 +76,7 @@ export function writeFile(path: string, data: string | Uint8Array) {
   return invoke("write_file", bytes, { headers: { path: encodeURIComponent(path) } });
 }
 
-/** My Palettes' file in Helix's data folder: its text ("" before the first), and a new one. */
+/** My Palettes' file in Titer's data folder: its text ("" before the first), and a new one. */
 export const readMyPalettes = () => invoke<string>("read_my_palettes");
 export const writeMyPalettes = (text: string) => invoke("write_my_palettes", { text });
 
@@ -156,7 +156,7 @@ export function setRecentDocuments(paths: string[]) {
 }
 
 /** Run `canClose` whenever the window is about to close (red button, ⌘W, ⌘Q). A window
- *  that stays open while Helix quits stops the quitting. */
+ *  that stays open while Titer quits stops the quitting. */
 export function onCloseRequested(canClose: () => Promise<boolean>) {
   if (!isNative) return () => {};
   const off = win().onCloseRequested(async (event) => {
@@ -170,8 +170,8 @@ export function onCloseRequested(canClose: () => Promise<boolean>) {
 /** The accent color chosen in System Settings ▸ Appearance (#RRGGBB), or null. */
 export const accentColor = () => (isNative ? invoke<string | null>("accent_color") : Promise.resolve(null));
 
-/** Helix's website, GitHub page, releases or Buy Me a Coffee page, in the default browser. */
-export const openLink = (link: "website" | "github" | "releases" | "coffee") => void invoke("open_link", { link });
+/** Titer's GitHub page or releases, in the default browser. */
+export const openLink = (link: "github" | "releases") => void invoke("open_link", { link });
 
 /** Calls `handler` now and whenever the window enters or leaves full screen. */
 export function onFullscreenChange(handler: (fullscreen: boolean) => void) {
@@ -268,7 +268,7 @@ export function onDrop(handler: (paths: string[]) => void) {
 export type MenuItems = NonNullable<MenuOptions["items"]>;
 
 // Menus made here live in the shell until closed, even once replaced: each one is
-// closed when it's done with, or they would pile up until Helix quits.
+// closed when it's done with, or they would pile up until Titer quits.
 let menuBar: (Menu | Submenu)[] = [];
 // One menu bar is installed at a time, in the order asked: an earlier one, slower to
 // build, never ends up over a later one.

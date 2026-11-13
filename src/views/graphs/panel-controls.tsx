@@ -373,7 +373,7 @@ export const DashRow = ({ value, onChange }: { value: LineDash; onChange: (dash:
   />
 );
 
-/** A number field, blank (reading "Auto") when Helix chooses it: any number typed applies,
+/** A number field, blank (reading "Auto") when Titer chooses it: any number typed applies,
  *  when the field is left or on Return, so the graph doesn't redraw for each digit typed. */
 export function NumRow({ label, value, onChange }: { label: string; value?: number; onChange: (v?: number) => void }) {
   const shown = value === undefined ? "" : String(value);

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup-linux.sh — (Re-)install the system packages Helix needs on Linux.
+# setup-linux.sh — (Re-)install the system packages Titer needs on Linux.
 #
 # Hatch containers are replaced regularly and apt packages do NOT survive a
 # replacement, so re-run this script on a fresh container before building:

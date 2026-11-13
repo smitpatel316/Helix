@@ -1,30 +1,44 @@
-# Helix
+# Titer
 
 **Scientific data analysis, simplified.**
 
 Organize, analyze and visualize scientific data, from raw numbers to publication-ready
-graphs. Helix is a free, open-source and private alternative to GraphPad Prism for macOS.
+graphs. Titer is a free, open-source and private alternative to GraphPad Prism for macOS.
 
-Three engines do the work: a fast data grid built for Helix, **R**, the reference for
+Three engines do the work: a fast data grid built for Titer, **R**, the reference for
 statistics (through [webR](https://github.com/r-wasm/webr), R compiled to WebAssembly), and
 **[Plotly](https://plotly.com/javascript/)** for the graphs. Everything runs on your Mac.
 
-![Helix: a table, its analyses and a graph](docs/screenshot.png)
+![Titer: a table, its analyses and a graph](docs/screenshot.png)
+
+## About this fork
+
+This is a modified fork of [mickaphd/Helix](https://github.com/mickaphd/Helix),
+the original Helix by mickaphd (© 2026 mickaphd). On top of upstream it adds
+Prism-file import, a wider analysis catalogue, multi-panel figures, and bug
+fixes — see the [release notes](https://github.com/smitpatel316/Helix/releases)
+and the git history for what changed and when. Like upstream, it is licensed
+under the [GNU General Public License](LICENSE), version 3 or later.
 
 ## Download
 
-Get the latest version from the [Releases page](https://github.com/mickaphd/Helix/releases/latest):
+Get the latest version from the [Releases page](https://github.com/smitpatel316/Helix/releases):
 
-- `Helix_…_aarch64.dmg` for Macs with Apple Silicon (M1 and later)
-- `Helix_…_x64.dmg` for Macs with an Intel processor
+- `Titer_…_aarch64.dmg` for Macs with Apple Silicon (M1 and later)
+- `Titer_…_x64.dmg` for Macs with an Intel processor
 
-Requires macOS 13.3 (Ventura) or later. Open the DMG and drag **Helix** into the
-**Applications** folder. Helix is signed and notarized by Apple, so it opens like any other app.
+Each release is cut from a tagged commit — the release notes name the exact
+commit the DMGs were built from, so the source for any download is retrievable
+from this repo. Every DMG also includes a copy of the GNU GPL (`LICENSE`) and
+the third-party notices (`THIRD-PARTY-NOTICES.md`).
 
-When a new version is out, Helix tells you (Helix › Check for Updates…): download it and
+Requires macOS 13.3 (Ventura) or later. Open the DMG and drag **Titer** into the
+**Applications** folder. Titer is signed ad hoc (not notarized by Apple), so macOS may ask you to confirm the first time you open it.
+
+When a new version is out, Titer tells you (Titer › Check for Updates…): download it and
 replace the old one.
 
-## What Helix does
+## What Titer does
 
 Each **table** holds its own **analyses** and **graphs**. Change a value, and every result
 and figure that uses it updates at once.
@@ -78,7 +92,7 @@ And a spreadsheet that feels like one:
   lines with their confidence band and equation, any fitted curve with its best-fit values,
   Kaplan-Meier curves with their confidence band
 - **Every kind of figure:** dot plots, bars, box and violin, lines, heatmaps, volcano plots
-  (from your own results, or computed by Helix from replicates), survival curves
+  (from your own results, or computed by Titer from replicates), survival curves
 - **Colors that work:** 15 palettes from the scientific literature (Okabe-Ito, Paul Tol,
   Viridis, Batlow…), colorblind-friendly ones first, each reversible; or make your own,
   kept on your Mac
@@ -99,7 +113,7 @@ And a spreadsheet that feels like one:
 - Undo and redo everything, across the whole project
 - Several projects at once, each in its own window; the ones still open when you quit come
   back at the next launch
-- Open projects: a Helix file (`.hlx`) is plain JSON, described in
+- Open projects: a Titer file (`.hlx`) is plain JSON, described in
   [FILE-FORMAT.md](FILE-FORMAT.md), so your data are never locked in
 - Open methods: how each analysis is computed and checked is in [METHODS.md](METHODS.md)
 - Import a GraphPad Prism file (`.pzfx`): File › Import Prism File… brings in its
@@ -107,11 +121,11 @@ And a spreadsheet that feels like one:
   over). The newer `.prism` format isn't supported yet
 
 **Try it:** Help › Sample Project opens a made-up study told as a paper's figures, from cells
-to mice to patients, with every kind of table ([also here](samples/Helix%20Sample.hlx)).
+to mice to patients, with every kind of table ([also here](samples/Titer%20Sample.hlx)).
 
 ## Privacy
 
-Helix works entirely on your Mac: your data never leave it, and there is no
+Titer works entirely on your Mac: your data never leave it, and there is no
 telemetry in the app. Its only connection is a daily check on GitHub for a newer version.
 
 ## Building from source
@@ -121,7 +135,7 @@ Xcode Command Line Tools (`xcode-select --install`).
 
 ```bash
 npm ci            # install
-npm run dev       # run Helix with live reload
+npm run dev       # run Titer with live reload
 npm test          # check every analysis and graph against their reference results
 npm run build     # build the two DMGs
 ```
@@ -131,22 +145,21 @@ Building the two DMGs needs both Mac targets for Rust, once:
 
 ## License
 
-Helix is free software: you can redistribute it and modify it under the terms of the
+Titer is free software: you can redistribute it and modify it under the terms of the
 [GNU General Public License](LICENSE), version 3 or later. It comes with no warranty.
 
-© 2026 mickaphd · [helix-desktop.com](https://www.helix-desktop.com)
+© 2026 mickaphd
 
-Helix is free and always will be. If it saves you time, you can
-[buy me a coffee](https://buymeacoffee.com/mickaphd) ☕
+Titer is free and always will be. If it saves you time, you can [buy the developer a coffee](https://www.buymeacoffee.com/smitpatel316).
 
 ## Acknowledgments
 
-Helix stands on the shoulders of [R](https://www.r-project.org) and
+Titer stands on the shoulders of [R](https://www.r-project.org) and
 [webR](https://github.com/r-wasm/webr), which bring R to the app, R's
 [survival](https://github.com/therneau/survival) package for survival analysis,
 [Plotly.js](https://plotly.com/javascript/) for the graphs, [Phosphor Icons](https://phosphoricons.com)
 for its icons, and [Tauri](https://tauri.app) and [React](https://react.dev) for the app itself. See
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for all of them and their licenses.
 
-GraphPad Prism is a trademark of GraphPad Software, LLC. Helix is an independent project,
+GraphPad Prism is a trademark of GraphPad Software, LLC. Titer is an independent project,
 not affiliated with or endorsed by GraphPad Software.

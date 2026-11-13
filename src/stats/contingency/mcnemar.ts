@@ -1,7 +1,7 @@
 // McNemar's test for paired proportions: a 2×2 table of paired outcomes
 // (the same subjects measured twice, or matched pairs) — cells b and c are
 // the discordant pairs, the pairs that changed. Prism does not offer this
-// test; its guide directs matched-design users to it, so Helix provides it
+// test; its guide directs matched-design users to it, so Titer provides it
 // here. Base R only: mcnemar.test (with or without the continuity correction)
 // and binom.test for the exact two-sided P value and the paired odds ratio's
 // exact 95% CI. One WebR round-trip returning a flat named vector.

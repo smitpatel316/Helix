@@ -1,6 +1,6 @@
-# Helix dev setup — Hatch Linux VM (build + test)
+# Titer dev setup — Hatch Linux VM (build + test)
 
-Linux is a **first-class dev/test platform** for Helix (Smit's call,
+Linux is a **first-class dev/test platform** for Titer (Smit's call,
 2026-11-08: "get it working on Linux so you can build, test independently
 without my need"). The **Mac DMG stays the release target for Mansi** —
 signing/notarization and the Mac-only UI polish still need a Mac. Do not
@@ -21,7 +21,7 @@ after the ~23:20 container replacement** (apt reinstall via
 | rustc / cargo | 1.99.1 | rustup stable toolchain `stable-x86_64-unknown-linux-gnu` |
 | Rust targets | `aarch64-apple-darwin`, `x86_64-apple-darwin` | `rustup target add …` (see below) |
 | clang | 18.1.3 (Ubuntu) | preinstalled (`/usr/bin/clang`) — needed for the Apple-target check |
-| Python | 3.12.3 | preinstalled (not needed by Helix) |
+| Python | 3.12.3 | preinstalled (not needed by Titer) |
 | OS | Ubuntu 24.04.5 LTS, x86_64 | — |
 
 ## PATH — the one gotcha
@@ -179,14 +179,14 @@ DISPLAY=127.0.0.1:98 openbox > logs/openbox.log 2>&1 &
 echo $! > logs/openbox.pid
 # 2. App, inside a D-Bus session so the XDG portal can activate:
 dbus-run-session -- env DISPLAY=127.0.0.1:98 \
-  ./src-tauri/target/release/helix > logs/linux-run.log 2>&1 &
+  ./src-tauri/target/release/titer > logs/linux-run.log 2>&1 &
 # 3. Screenshot:
 ffmpeg -y -f x11grab -i 127.0.0.1:98 -frames:v 1 screenshots/linux-launch.png
 ```
 
 Verified 2026-11-08: the app launches (~198 MB RSS, only DRI3
 software-rendering warnings), renders the menu bar
-(Helix/File/Edit/Table/Analysis/Graph/View/Window/Help) and the Table 1
+(Titer/File/Edit/Table/Analysis/Graph/View/Window/Help) and the Table 1
 Column grid — see `screenshots/linux-launch.png`.
 
 **File picker — KNOWN LIMITATION on Linux (verified 2026-11-08, see below):
@@ -303,7 +303,7 @@ when reporting import results.
 - **Two Tauri DMG-step failures, both worked around — use
   `scripts/build-mac-dmg.sh` instead of plain `npm run build`:**
   1. Tauri invokes `bundle_dmg.sh` with a cwd that drops its temp image
-     (`rw.<pid>.Helix_*.dmg`) INSIDE the source folder
+     (`rw.<pid>.Titer_*.dmg`) INSIDE the source folder
      (`bundle/macos/`); hdiutil then copies the growing image into itself
      → `hdiutil: create failed - No space left on device` (real disk had
      24 GiB free). Fix: delete any `rw.*.dmg` under `bundle/` before
@@ -314,7 +314,7 @@ when reporting import results.
      (`Finder got an error: AppleEvent timed out. (-1712)`, same as the
      Cricket 07 osascript note) and the script aborts before finalizing.
      Fix: pass `--skip-jenkins` (skips the Finder AppleScript). The DMG
-     still gets Helix.app + Applications link + background + volume icon,
+     still gets Titer.app + Applications link + background + volume icon,
      just without the Finder window/icon layout dressing.
 - **In-app testing on the Mac, PARTIAL (2026-11-09 ~17:20 PT):** app
   launched fine, File menu lists "Import Prism File…", but after clicking

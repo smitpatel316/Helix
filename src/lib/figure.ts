@@ -161,7 +161,7 @@ export function figureExportSize(
     ? {
         ...px,
         capped: true,
-        reason: `At ${dpi} DPI, the largest figure Helix exports is ${px.width} × ${px.height} px. Choose a lower resolution, or make the figure smaller.`,
+        reason: `At ${dpi} DPI, the largest figure Titer exports is ${px.width} × ${px.height} px. Choose a lower resolution, or make the figure smaller.`,
       }
     : { ...px, capped: false };
 }
@@ -180,7 +180,7 @@ export function validateFigureSize(size: FigureSize): { size?: FigureSize; reaso
   return { size: { widthIn, heightIn } };
 }
 
-/** A resolution as saved, or the default when it is not one Helix offers. */
+/** A resolution as saved, or the default when it is not one Titer offers. */
 export function figureDpi(dpi: unknown): Resolution {
   return typeof dpi === "string" && FIGURE_RESOLUTIONS.includes(dpi as Resolution) ? (dpi as Resolution) : DEFAULT_FIGURE_DPI;
 }
@@ -270,7 +270,7 @@ export function sharedLegendCheck(
 
 // ── Missing graphs ───────────────────────────────────────────────────────
 
-/** Panels whose graph is gone (deleted, or from an older Helix): they stay as
+/** Panels whose graph is gone (deleted, or from an older Titer): they stay as
  *  placeholders naming the graph, and export leaves their cell blank. */
 export function missingPanels(panels: FigurePanel[], nodes: Record<string, ProjectNode>): FigurePanel[] {
   return panels.filter((p) => !nodes[p.graphId] || nodes[p.graphId].type !== "graph");

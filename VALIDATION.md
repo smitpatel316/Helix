@@ -84,15 +84,15 @@ reformulas, rlang, sandwich, scales, vctrs, viridisLite, withr, zoo.
 7. **No `PACKAGES.rds` is vendored.** The installer tries `.rds`, then
    `.gz`, then plain `PACKAGES`, and succeeds on the fallback (one
    harmless console line per install).
-8. **Settings row is not built.** Helix has no Settings view; the helpers
+8. **Settings row is not built.** Titer has no Settings view; the helpers
    for it exist (`installedPackageVersions()`, `packageRepoSource()`,
    `packageDiagnostics()`) and the row lands when a Settings view does.
 9. **License audit (Phase 0).** No third-party code is vendored into
-   Helix source. The `.tgz` files are data artifacts (CRAN packages)
-   that run inside the sandboxed WASM R process, never linked into Helix
+   Titer source. The `.tgz` files are data artifacts (CRAN packages)
+   that run inside the sandboxed WASM R process, never linked into Titer
    code; their licenses (GPL-2/3, LGPL, MIT, Apache-2.0, Unlimited for
    `boot`) are recorded per package in `src/stats/webr.ts` and
-   `webr-repo/MANIFEST.json`, all compatible with Helix's GPL-3.0.
+   `webr-repo/MANIFEST.json`, all compatible with Titer's GPL-3.0.
    The build script itself is original Hatch work (bash + python3 stdlib).
 
 ### Tests

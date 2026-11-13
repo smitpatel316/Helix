@@ -138,7 +138,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
       : undefined;
   const hasData = !xyLack && columns.some((c) => c.values.length > 0);
 
-  // A volcano on a grouped table: Helix computes the DEGs between two of its groups
+  // A volcano on a grouped table: Titer computes the DEGs between two of its groups
   // (per-row Welch t test + BH FDR) and plots them, read like any other table.
   const volcanoGroups =
     family === "volcano" && parent?.tableType === "grouped" && dataset

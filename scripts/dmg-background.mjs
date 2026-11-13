@@ -1,5 +1,5 @@
 // Draws the DMG window's background (src-tauri/icons/dmg-background.png): a light
-// backdrop with an arrow from where Helix sits to where the Applications folder sits
+// backdrop with an arrow from where Titer sits to where the Applications folder sits
 // (positions in tauri.conf.json › bundle › macOS › dmg). Drawn at 2x and marked 144 dpi,
 // so it shows at the window's size, sharp on Retina. Run: node scripts/dmg-background.mjs
 import { writeFileSync } from "node:fs";

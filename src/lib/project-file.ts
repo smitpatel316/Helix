@@ -1,5 +1,5 @@
-// The Helix project file (.hlx): plain JSON, described in FILE-FORMAT.md, so a
-// project is never locked into Helix.
+// The Titer project file (.hlx): plain JSON, described in FILE-FORMAT.md, so a
+// project is never locked into Titer.
 //
 // A file must keep opening across versions, in both directions:
 //   1. Fields are only ever added, never renamed or removed.
@@ -80,7 +80,7 @@ export interface ProjectFilePayload {
   activeNodeId: string | null;
   /** Unknown keys from a newer or hand-edited file (FF-F12): the file envelope's
    *  and the project's, kept verbatim and written back on save, so opening a
-   *  newer file in this Helix doesn't silently lose its forward-compat data.
+   *  newer file in this Titer doesn't silently lose its forward-compat data.
    *  Absent on files this version wrote (nothing unknown to carry). */
   fileUnknowns?: Record<string, unknown>;
   projectUnknowns?: Record<string, unknown>;
@@ -92,7 +92,7 @@ export function serializeProjectFile({ nodes, rootOrder, childOrder, activeNodeI
   // Unknown keys go back where they came from, under the known keys — a
   // hand-edited file can't smuggle a second `nodes` or `app` past the reader.
   const project: ProjectFilePayload = { ...projectUnknowns, nodes, rootOrder, childOrder, activeNodeId };
-  return format({ ...fileUnknowns, app: "helix", schemaVersion: 1, savedAt: new Date().toISOString(), project }, "") + "\n";
+  return format({ ...fileUnknowns, app: "titer", schemaVersion: 1, savedAt: new Date().toISOString(), project }, "") + "\n";
 }
 
 /** Indented JSON, with each list of plain values (a table row, the column names)
@@ -124,7 +124,7 @@ const lower = (v: unknown) => (typeof v === "string" ? v.toLowerCase() : v);
 const defined = <T extends object>(obj: T) =>
   Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T;
 
-/** `obj` with its known keys spelled as Helix writes them, whatever their case. */
+/** `obj` with its known keys spelled as Titer writes them, whatever their case. */
 function canonical(obj: Obj, keys: readonly string[]): Obj {
   const spelling = new Map(keys.map((k) => [k.toLowerCase(), k]));
   return Object.fromEntries(Object.entries(obj).map(([k, v]) => [spelling.get(k.toLowerCase()) ?? k, v]));
@@ -137,7 +137,7 @@ const unknownsOf = (obj: Obj, known: readonly string[]): Obj => {
   return Object.fromEntries(Object.entries(obj).filter(([k]) => !spelling.has(k.toLowerCase())));
 };
 
-// Every field Helix knows, per level. The `satisfies` checks make TypeScript
+// Every field Titer knows, per level. The `satisfies` checks make TypeScript
 // flag any field added to a type but not listed here.
 const FILE_KEYS = ["app", "schemaVersion", "savedAt", "project"];
 const PROJECT_KEYS = ["nodes", "rootOrder", "childOrder", "activeNodeId"] satisfies (keyof ProjectFilePayload)[];
@@ -165,7 +165,7 @@ const OPTIONAL_OPTIONS = {
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",
 } as const satisfies Record<OptionalOption, keyof typeof READ_OPTION>;
-// The retired dose-response graph's own options (before Helix 1.0.7): no
+// The retired dose-response graph's own options (before Titer 1.0.7): no
 // longer a GraphOptions field, but still read — fitsFromDoseGraphs below
 // needs them to turn an old graph into a scatter + analysis — and stripped
 // from every graph on the way out (see parseProjectFile).
@@ -268,7 +268,7 @@ const isIn = (list: object, key: unknown) => typeof key === "string" && Object.h
 
 const isNamed = (v: unknown): v is PaletteColor => typeof v === "string" && Object.hasOwn(NAMED_COLORS, v);
 
-/** Named colors (Helix 1.0's), by key. */
+/** Named colors (Titer 1.0's), by key. */
 function colors(v: unknown): Record<string, PaletteColor> | undefined {
   if (!isObj(v)) return undefined;
   const out = Object.entries(v)
@@ -363,7 +363,7 @@ const READ_OPTION = {
   color: (v: unknown) => (isHex(v) ? v : undefined),
 };
 
-/** Colors a table kept for its graphs before Helix 1.0.3: its series' and its cells'. */
+/** Colors a table kept for its graphs before Titer 1.0.3: its series' and its cells'. */
 type TableColors = { series?: Record<string, PaletteColor>; cells?: Record<string, PaletteColor> };
 
 /** A table's row groups as a file holds them: every band a non-empty, distinct
@@ -618,7 +618,7 @@ function readParams(
   if (!isObj(raw)) return undefined;
   const p = canonical(raw, Object.keys(PARAMS));
   // A param this version doesn't know is kept verbatim — any JSON value, in its
-  // own case (FF-F12): it belongs to a newer Helix (or a hand edit), and this
+  // own case (FF-F12): it belongs to a newer Titer (or a hand edit), and this
   // version's runners only ever read the params they know by name, so keeping
   // it can't change what a test computes or reach R.
   const read = (k: string, v: unknown) => {
@@ -700,7 +700,7 @@ const NODE_TYPES: NodeType[] = ["table", "analysis", "graph", "figure"];
 
 /** A figure's fields as a file holds them, forgivingly: a missing or empty
  *  `panels` opens as an empty figure (not an error); a panel out of range is
- *  clamped into the grid; a `dpi` Helix doesn't offer falls back to 600; a
+ *  clamped into the grid; a `dpi` Titer doesn't offer falls back to 600; a
  *  size outside 1–20 in is brought within, and an aspect beyond 4:1 is
  *  reined in by shrinking the longer side. Unknown figure fields are kept
  *  by the node's spread in `readNode` and written back on save. */
@@ -1037,15 +1037,17 @@ export function parseProjectText(
 }
 
 /** Reads a `.hlx` file forgivingly. `{ error }` only when nothing usable remains;
- *  otherwise the project, what the user should know about it, and whether Helix changed
- *  anything as it read it (`updated`: repaired, or brought up to date from an older Helix),
+ *  otherwise the project, what the user should know about it, and whether Titer changed
+ *  anything as it read it (`updated`: repaired, or brought up to date from an older Titer),
  *  so saving it keeps the project as it is now. */
 export function parseProjectFile(
   raw: unknown,
 ): { project: ProjectFilePayload; issues: ProjectIssue[]; updated: boolean } | { error: string } {
-  if (!isObj(raw)) return { error: "Not a valid Helix project file." };
+  if (!isObj(raw)) return { error: "Not a valid Titer project file." };
   const file = canonical(raw, FILE_KEYS);
-  if (lower(file.app) !== "helix") return { error: "This file was not created by Helix." };
+  // Files from before the rename carry app "helix"; both are accepted.
+  if (lower(file.app) !== "helix" && lower(file.app) !== "titer")
+    return { error: "This file was not created by Titer." };
   const project = isObj(file.project) ? canonical(file.project, PROJECT_KEYS) : null;
   if (!project || !isObj(project.nodes)) return { error: "This file's project data is missing or corrupted." };
 
@@ -1131,7 +1133,7 @@ export function parseProjectFile(
         const rawNodes = isObj(project.nodes) ? project.nodes : undefined;
         const rawNodeObj = rawNodes?.[node.id];
         const rawNode = isObj(rawNodeObj) ? canonical(rawNodeObj, NODE_KEYS) : undefined;
-        colorsFromHelix1(node, tableColors[node.parentId!]?.series, rawNode?.graphOptions);
+        colorsFromTiter1(node, tableColors[node.parentId!]?.series, rawNode?.graphOptions);
       }
       pointsFromCells(node, tableColors[node.parentId!]?.cells);
     }
@@ -1140,7 +1142,7 @@ export function parseProjectFile(
     if (isIn(GRAPHS, node.graphType) && !GRAPH_OPTIONS_BY_TABLE[tableType].some((o) => o.value === node.graphType)) {
       issues.push({
         severity: "warning",
-        message: `Graph “${node.name}” isn't a chart Helix offers for a ${TABLES[tableType].label} table.`,
+        message: `Graph “${node.name}” isn't a chart Titer offers for a ${TABLES[tableType].label} table.`,
       });
     }
     const o = node.graphOptions!;
@@ -1172,14 +1174,14 @@ export function parseProjectFile(
     ...(Object.keys(fileUnknowns).length ? { fileUnknowns } : {}),
     ...(Object.keys(projectUnknowns).length ? { projectUnknowns } : {}),
   };
-  // `updated` compares what Helix knows only: carrying unknowns through is not
+  // `updated` compares what Titer knows only: carrying unknowns through is not
   // a repair, so a newer file that needed no repair still opens unedited.
   const known = { nodes, rootOrder, childOrder, activeNodeId };
   const filed = Object.fromEntries(PROJECT_KEYS.map((k) => [k, project[k]]));
   return { project: read, issues, updated: contents(known) !== contents(filed) };
 }
 
-// ── Dose-response graphs (before Helix 1.0.7) ───────────────────────────
+// ── Dose-response graphs (before Titer 1.0.7) ───────────────────────────
 // A "Dose-response curve" graph fitted its own curve. A curve now always comes from an
 // analysis, as in Prism: each becomes an XY scatter drawing the curve of a new
 // "Nonlinear regression" of the same data set and model, so it looks as it did.
@@ -1207,7 +1209,7 @@ function fitsFromDoseGraphs(nodes: Record<string, ProjectNode>): Record<string, 
       name,
       parentId: graph.parentId,
       analysisType: "nonlinear-regression",
-      // Helix's default then: a 4PL with X as the concentration.
+      // Titer's default then: a 4PL with X as the concentration.
       analysisParams: defined({
         y: typeof doseY === "string" ? doseY : undefined,
         model: oneOf(DOSE_MODELS, doseModel) ?? "sigmoidal-4pl-x",
@@ -1232,16 +1234,16 @@ function fitsFromDoseGraphs(nodes: Record<string, ProjectNode>): Record<string, 
   return fits;
 }
 
-// ── Files from Helix 1.0 ─────────────────────────────────────────────────
+// ── Files from Titer 1.0 ─────────────────────────────────────────────────
 // A graph's colors came from its table (`seriesColors`, named colors), a heatmap
 // had one of three color scales, and a volcano two named colors. A graph saved
-// without a palette gets them back as its own, so it looks as it did: the Helix
+// without a palette gets them back as its own, so it looks as it did: the Titer
 // palette with its table's colors, or its heatmap scale as Plotly drew it.
 
-/** The heatmap scales of Helix 1.0 that the catalog doesn't have, as Plotly defines them. */
+/** The heatmap scales of Titer 1.0 that the catalog doesn't have, as Plotly defines them. */
 const HEATMAP_SCALES: Record<string, { name: string; kind: PaletteKind; stops: [number, string][] }> = {
   "red-blue": {
-    name: "Red/Blue (Helix 1.0)",
+    name: "Red/Blue (Titer 1.0)",
     kind: "diverging",
     stops: [
       [0, "#050AAC"],
@@ -1253,7 +1255,7 @@ const HEATMAP_SCALES: Record<string, { name: string; kind: PaletteKind; stops: [
     ],
   },
   "yellow-red": {
-    name: "Heat (Helix 1.0)",
+    name: "Heat (Titer 1.0)",
     kind: "sequential",
     stops: [
       [0, "#800026"],
@@ -1297,12 +1299,12 @@ function resample(stops: [number, string][]): string[] {
 
 const LEGACY_OPTIONS = ["heatmapColorScale", "volcanoColorUp", "volcanoColorDown", "volcanoPointSize"];
 
-/** A graph without a palette gets Helix 1.0's colors back as its own — but only
+/** A graph without a palette gets Titer 1.0's colors back as its own — but only
  *  for what the file never saved (`saved`: its options as the file held them).
  *  A graph that saved its fill, point size, outline, bar gap or series keeps
  *  them; the rebuild fills in the rest, so a missing palette alone never
  *  rewrites a graph's own options. */
-function colorsFromHelix1(
+function colorsFromTiter1(
   node: ProjectNode,
   tableColors: Record<string, PaletteColor> | undefined,
   saved: unknown,
@@ -1310,7 +1312,7 @@ function colorsFromHelix1(
   const all = node.graphOptions as unknown as Obj;
   const old = canonical(all, LEGACY_OPTIONS);
   const named = (v: unknown, fallback: PaletteColor) => (isNamed(lower(v)) ? (lower(v) as PaletteColor) : fallback);
-  let palette = savedPalette(paletteNamed("helix")!);
+  let palette = savedPalette(paletteNamed("titer")!);
   let colors = tableColors;
   if (node.graphType === "heatmap") {
     const name = lower(old.heatmapColorScale);
@@ -1325,13 +1327,13 @@ function colorsFromHelix1(
     colors && Object.fromEntries(Object.entries(colors).map(([key, c]) => [key, { color: NAMED_COLORS[c] }]));
   const legacy = (k: string) => LEGACY_OPTIONS.some((o) => o.toLowerCase() === k.toLowerCase());
   const options = Object.fromEntries(Object.entries(all).filter(([k]) => !legacy(k)));
-  // Helix 1.0 filled shapes and points half-opaque (a pie's and a volcano's, their type's
+  // Titer 1.0 filled shapes and points half-opaque (a pie's and a volcano's, their type's
   // fill), and set a row's bars side by side; its points had their type's size and
-  // outline (a volcano, the size set on it, within what Helix offers).
+  // outline (a volcano, the size set on it, within what Titer offers).
   const { defaults } = isIn(GRAPHS, node.graphType) ? GRAPHS[node.graphType!] : {};
   const pointSize = within(old.volcanoPointSize, GRAPH_LIMITS.pointSize);
   const fills = { fill: defaults?.fill ?? 0.5, pointFill: defaults?.pointFill ?? 0.5 };
-  // What the file saved, spelled as Helix writes it: the options above already
+  // What the file saved, spelled as Titer writes it: the options above already
   // hold the global defaults for what it didn't, so only this tells the two apart.
   const savedKeys = new Set(
     isObj(saved)
@@ -1340,18 +1342,18 @@ function colorsFromHelix1(
         )
       : [],
   );
-  const helix1: Obj = { ...options };
+  const titer1: Obj = { ...options };
   for (const [key, value] of Object.entries({ ...defaults, ...fills })) {
-    if (!savedKeys.has(key)) helix1[key] = value;
+    if (!savedKeys.has(key)) titer1[key] = value;
   }
-  if (pointSize !== undefined && !savedKeys.has("pointSize")) helix1.pointSize = pointSize;
-  if (!savedKeys.has("barGap")) helix1.barGap = 0;
-  if (series && !savedKeys.has("series")) helix1.series = series;
-  helix1.palette = palette;
-  node.graphOptions = defined(helix1) as unknown as GraphOptions;
+  if (pointSize !== undefined && !savedKeys.has("pointSize")) titer1.pointSize = pointSize;
+  if (!savedKeys.has("barGap")) titer1.barGap = 0;
+  if (series && !savedKeys.has("series")) titer1.series = series;
+  titer1.palette = palette;
+  node.graphOptions = defined(titer1) as unknown as GraphOptions;
 }
 
-/** Points colored in their table's cells (before Helix 1.0.3) keep their color on
+/** Points colored in their table's cells (before Titer 1.0.3) keep their color on
  *  each of its graphs, under any style the graph gives them itself. */
 function pointsFromCells(node: ProjectNode, cells: Record<string, PaletteColor> | undefined) {
   if (!cells) return;

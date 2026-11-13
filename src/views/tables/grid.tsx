@@ -389,8 +389,8 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
       else if (cmd === "delete") clear(range);
       else if (cmd === "exclude") update(toggleExcluded(data, range), "Exclude / Include");
     };
-    window.addEventListener("helix:edit", onEdit);
-    return () => window.removeEventListener("helix:edit", onEdit);
+    window.addEventListener("titer:edit", onEdit);
+    return () => window.removeEventListener("titer:edit", onEdit);
   });
 
   // ── Find ─────────────────────────────────────────────────────────────

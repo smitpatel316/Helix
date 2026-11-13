@@ -90,7 +90,7 @@ const STYLE_OPTIONS: (keyof GraphOptions)[] = [
 
 // This Mac's preferences, never the project's: which sections are open, and the
 // format and resolution of the last export.
-const OPEN_KEY = "helix.graph.openSections";
+const OPEN_KEY = "titer.graph.openSections";
 function readOpen(): Set<string> {
   try {
     const saved = localStorage.getItem(OPEN_KEY);
@@ -100,7 +100,7 @@ function readOpen(): Set<string> {
   }
 }
 
-const EXPORT_KEY = "helix.graph.export";
+const EXPORT_KEY = "titer.graph.export";
 type ExportChoice = { format: ExportFormat; dpi: Resolution };
 function readExport(): ExportChoice {
   try {
