@@ -2835,8 +2835,17 @@ async function run() {
       points: { "Control#1": { color: "#4ADE80" } },
       ...options,
     };
-    // Of the tables here, only a Multiple Variables one changes what a graph plots.
-    const columns = plotColumns(readTable(data), type, opts, data === multiple ? "multiple" : "xy");
+    // Of the tables here, only a Multiple Variables one changes what a graph plots —
+    // and the Bland-Altman fixture, which is a method-comparison table with no X
+    // column, so its true type is "column", not "xy" (FL-ba-lines: passing "xy"
+    // for it made plotColumns drop Method A as if it were X, and the graph
+    // rendered empty — no points, no bias/limits lines).
+    const columns = plotColumns(
+      readTable(data),
+      type,
+      opts,
+      data === multiple ? "multiple" : data === blandAltman ? "column" : "xy",
+    );
     const paint = paintOf(opts, GRAPHS[type].family === "volcano" ? 2 : columns.length);
     out[`graph ${type} ${name}`] = GRAPHS[type].build(columns, opts, paint, readTable(data).titles);
   }
@@ -3980,7 +3989,10 @@ async function disagreements(): Promise<string[]> {
   } else {
     const stat = (label: string) => ba.stats.find((s) => s.label === label)?.value;
     const fig = GRAPHS["bland-altman"].build(
-      plotColumns(readTable(blandAltman), "bland-altman", newGraphOptions("bland-altman"), "xy"),
+      // The fixture is a method-comparison table with no X column, so its
+      // type is "column" — passing "xy" made plotColumns drop Method A as if
+      // it were X (FL-ba-lines) and the graph rendered empty.
+      plotColumns(readTable(blandAltman), "bland-altman", newGraphOptions("bland-altman"), "column"),
       newGraphOptions("bland-altman"),
       paintOf(newGraphOptions("bland-altman"), 2),
       readTable(blandAltman).titles,

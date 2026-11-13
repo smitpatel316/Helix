@@ -1544,6 +1544,49 @@ check("the Bland-Altman graph never plots X as a method on XY tables (FL-f8-grap
   );
 });
 
+// The Bland-Altman graph still draws its lines on a two-method table
+// (FL-ba-lines): the FL-f8-graph fix made plotColumns drop the first column
+// for BA on "xy" tables, which is right for a real XY table — but the
+// reference fixture is a method-comparison table with no X column, so it is
+// modelled as a column table, and its figure must carry the scatter plus the
+// three lines at the analysis's bias and limits. (Passing "xy" for this
+// fixture dropped Method A as if it were X and the graph rendered empty.)
+check("the Bland-Altman graph still draws its lines on a two-method table (FL-ba-lines)", () => {
+  const twoMethods = readTable({
+    columns: ["Title", "Method A", "Method B"],
+    rows: [
+      ["", "12.1", "12.4"],
+      ["", "11.4", "11.9"],
+      ["", "13.2", "13.0"],
+      ["", "12.8", "13.5"],
+      ["", "10.9", "11.2"],
+      ["", "12.5", "12.9"],
+      ["", "11.8", "12.0"],
+      ["", "13.0", "13.6"],
+      ["", "12.2", "12.5"],
+      ["", "11.6", "12.1"],
+    ],
+  });
+  const options = newGraphOptions("bland-altman");
+  deepStrictEqual(
+    plotColumns(twoMethods, "bland-altman", options, "column").map((c) => c.name),
+    ["Method A", "Method B"],
+  );
+  const fig = GRAPHS["bland-altman"].build(
+    plotColumns(twoMethods, "bland-altman", options, "column"),
+    options,
+    paintOf(options, 2),
+  );
+  const traces = fig.data as { mode?: string; y?: number[]; x?: number[] }[];
+  strictEqual(traces.length, 4);
+  strictEqual(traces[0].x?.length, 10);
+  const lines = traces
+    .filter((t) => t.mode === "lines" && t.y?.length === 2 && t.y[0] === t.y[1])
+    .map((t) => t.y![0])
+    .sort((a, b) => a - b);
+  deepStrictEqual(lines, [-0.8506528983575519, -0.36, 0.1306528983575519]);
+});
+
 // ── Row groups (a grouped table's third factor, plan 03) ─────────────────
 
 check("row groups split, resize and merge keeping every row covered", () => {
