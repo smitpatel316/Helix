@@ -153,11 +153,15 @@ export interface ModelSpec {
   /** Coefficient names of the curve's lower/upper asymptotes (4PL only) —
    *  an unknown within the fit's residual scale of one is outside range. */
   asymptotes?: [string, string];
-  /** nls models only: an alternate `m<-nls(...)` assignment to retry once
-   *  with if the primary fit fails (substrate inhibition's Ki start is the
-   *  least robust — plan 09; the 4PLs retry with a relaxed tolerance —
-   *  Linux 4PL fix). `fitNonlinearModel` reports the retry. */
-  retryFit?: string;
+  /** nls models only: alternate `m<-nls(...)` assignments to retry, IN
+   *  ORDER, when the primary fit fails. `fitModelSpec` tries each in turn
+   *  and reports which one converged (`retryMethod`). The 4PLs chain the
+   *  port optimizer first (prism-format parity: it fixes the Gauss-Newton
+   *  stalls) and the relaxed tolerance second (Linux 4PL fix: the
+   *  textbook dose data converges only that way — port fails it with
+   *  "singular convergence (7)"). Order matters: the first success wins.
+   *  Substrate inhibition retries once with its Ki start (plan 09). */
+  retryFits?: { fit: string; method: string }[];
   /** A dose-response curve's formula (its right side) and midpoint, which
    *  comparing two curves shares (upstream 1.0.7). */
   dose?: { expr: string; midpoint: string };
@@ -184,6 +188,14 @@ const FOUR_LOG = "Bottom+(Top-Bottom)/(1+10^((LogEC50-x)*HillSlope))";
 // discarded — the plateau-decay model already relies on this.)
 const FOUR_X = "ifelse(x==0,Bottom,Bottom+(Top-Bottom)/(1+(EC50/x)^HillSlope))";
 const nls200 = (expr: string, start: string) => `nls(y~${expr},start=${start},control=nls.control(maxiter=200))`;
+/** The 4PL retry (Linux 4PL fix): the same nls call with a relaxed
+ *  convergence tolerance. On near-perfect sigmoids the default tol=1e-5
+ *  Gauss-Newton reaches the optimum, then stalls — the residual sum of
+ *  squares is flat while the relative offset oscillates, step-halving
+ *  bottoms out, and nls errors "step factor reduced below 'minFactor'".
+ *  tol=1e-3 converges at the same optimum (verified in R and scipy). */
+const nls200Tol = (expr: string, start: string) =>
+  `nls(y~${expr},start=${start},control=nls.control(maxiter=200,tol=1e-3))`;
 
 export function modelSpec(
   model: NonlinearModel,
@@ -271,20 +283,32 @@ export function modelSpec(
       };
     case "sigmoidal-4pl-logx":
       // X is already log10(dose). EC50 = 10^LogEC50.
-      // The retry is the same fit via the port optimizer (see retryFit):
-      // the primary stays Gauss-Newton, so every pinned 4PL number is
-      // untouched — only a dataset the primary cannot converge on takes
-      // the retry.
+      // The retries are the port optimizer first, then a relaxed tolerance
+      // (see retryFits): the primary stays Gauss-Newton, so every pinned
+      // 4PL number is untouched — only a dataset the primary cannot
+      // converge on takes a retry. Order matters: the first success wins.
       return {
         kind: "nls",
         fit: `m<-${nls200(FOUR_LOG, `list(Bottom=min(y),Top=max(y),LogEC50=median(x),HillSlope=${SIGN})`)}`,
-        // (g) parity: Gauss-Newton stalls ("singular gradient" / "step
-        // factor reduced below 'minFactor'") on flat, ill-determined
-        // curves Prism fits (41 such failures in the corpus sweep, all
-        // log-X) — retry once with the port optimizer, same starts. The
-        // retry only runs when the primary fit fails, so passing fits
-        // never touch it and their pinned values do not move.
-        retryFit: `m<-nls(y~${FOUR_LOG},start=list(Bottom=min(y),Top=max(y),LogEC50=median(x),HillSlope=${SIGN}),algorithm="port",control=nls.control(maxiter=200))`,
+        // (g) parity + C4 chain: Gauss-Newton stalls ("singular gradient"
+        // / "step factor reduced below 'minFactor'") on flat,
+        // ill-determined curves Prism fits (41 such failures in the corpus
+        // sweep, all log-X) — retry with the port optimizer first, same
+        // starts, then with a relaxed tolerance (the Linux 4PL fix: the
+        // textbook dose data converges only that way — port fails it with
+        // "singular convergence (7)"). The retries only run when the
+        // primary fit fails, so passing fits never touch them and their
+        // pinned values do not move. Order matters: the first success wins.
+        retryFits: [
+          {
+            fit: `m<-nls(y~${FOUR_LOG},start=list(Bottom=min(y),Top=max(y),LogEC50=median(x),HillSlope=${SIGN}),algorithm="port",control=nls.control(maxiter=200))`,
+            method: "port",
+          },
+          {
+            fit: `m<-${nls200Tol(FOUR_LOG, `list(Bottom=min(y),Top=max(y),LogEC50=median(x),HillSlope=${SIGN})`)}`,
+            method: "relaxed tolerance",
+          },
+        ],
         terms: ["Bottom", "Top", "LogEC50", "HillSlope"],
         derived: [tenTo("EC50", "LogEC50"), span],
         curveFn:
@@ -294,16 +318,26 @@ export function modelSpec(
       };
     case "sigmoidal-4pl-x":
       // X is the raw concentration; EC50 is fitted directly.
-      // Same port retry as the logx twin, for symmetry: the
+      // Same port-then-relaxed retries as the logx twin, for symmetry: the
       // raw-concentration parameterisation converges at the default
       // tolerance on the textbook data, but a flat-asymptote dataset can
       // stall it the same way.
       return {
         kind: "nls",
         fit: `m<-${nls200(FOUR_X, `list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN})`)}`,
-        // (g) parity: same port retry as the log-X form, for the
-        // Gauss-Newton failures that are not X = 0 artefacts.
-        retryFit: `m<-nls(y~${FOUR_X},start=list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN}),algorithm="port",control=nls.control(maxiter=200))`,
+        // (g) parity + C4 chain: same port-then-relaxed retries as the
+        // log-X form, for the Gauss-Newton failures that are not X = 0
+        // artefacts.
+        retryFits: [
+          {
+            fit: `m<-nls(y~${FOUR_X},start=list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN}),algorithm="port",control=nls.control(maxiter=200))`,
+            method: "port",
+          },
+          {
+            fit: `m<-${nls200Tol(FOUR_X, `list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN})`)}`,
+            method: "relaxed tolerance",
+          },
+        ],
         terms: ["Bottom", "Top", "EC50", "HillSlope"],
         derived: [span],
         nonNegativeX: true,
@@ -510,8 +544,12 @@ export function modelSpec(
         fit: "m<-nls(y~Vmax*x/(Km+x+x^2/Ki),start=list(Vmax=max(y)*1.5,Km=median(x[x>0]),Ki=max(x)),algorithm=\"port\")",
         terms: ["Vmax", "Km", "Ki"],
         curveFn: 'g<-function(xv,p) p[["Vmax"]]*xv/(p[["Km"]]+xv+xv^2/p[["Ki"]])',
-        retryFit:
-          "m<-nls(y~Vmax*x/(Km+x+x^2/Ki),start=list(Vmax=max(y)*1.5,Km=median(x[x>0]),Ki=median(x[x>0])*5),algorithm=\"port\")",
+        retryFits: [
+          {
+            fit: "m<-nls(y~Vmax*x/(Km+x+x^2/Ki),start=list(Vmax=max(y)*1.5,Km=median(x[x>0]),Ki=median(x[x>0])*5),algorithm=\"port\")",
+            method: "port",
+          },
+        ],
       };
     // ── Binding — Competition (plan 28) ─────────────────────────────────
     // Prism's built-in "Two sites — Fit logIC50" fixes BOTH Hill slopes at
@@ -566,7 +604,7 @@ export function modelSpec(
       // practice) and retries once from the half-medians without bounds if
       // port still fails — both start strategies were verified in WebR on
       // the noiseless fixture before implementing (the retry is modelSpec's
-      // retryFit, the substrate-inhibition pattern).
+      // retryFits, the substrate-inhibition pattern).
       const expr = "Bottom+(Top-Bottom)*(FractionHi/(1+x/IC50Hi)+(1-FractionHi)/(1+x/IC50Lo))";
       const geoStart =
         "list(Bottom=min(y),Top=max(y),IC50Hi=10^mean(log10(x[x<=median(x)])),IC50Lo=10^mean(log10(x[x>median(x)])),FractionHi=0.5)";
@@ -588,7 +626,12 @@ export function modelSpec(
           'g<-function(xv,p) p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])*(p[["FractionHi"]]/(1+xv/p[["IC50Hi"]])+(1-p[["FractionHi"]])/(1+xv/p[["IC50Lo"]]))',
         asymptotes: ["Bottom", "Top"],
         dose: { expr, midpoint: "IC50Hi" },
-        retryFit: `m<-nls(y~${expr},start=${medianStart},algorithm="port",control=nls.control(maxiter=200))`,
+        retryFits: [
+          {
+            fit: `m<-nls(y~${expr},start=${medianStart},algorithm="port",control=nls.control(maxiter=200))`,
+            method: "port",
+          },
+        ],
       };
     }
     case "homologous-competition-logx": {
@@ -934,11 +977,17 @@ export function applyFitOptions(spec: ModelSpec, opts: FitOptions): AppliedFitOp
     })),
     ...(spec.curveFn ? { curveFn: substituteCurveFn(spec.curveFn, fixedByVar) } : {}),
     ...(spec.dose ? { dose: { ...spec.dose, expr: substituteFormula(spec.dose.expr, fixedByVar) } } : {}),
-    ...(spec.retryFit
-      ? { retryFit: transformNlsCall(spec.retryFit, fixedByVar, boundsByVar, remainingVars) }
+    ...(spec.retryFits
+      ? {
+          retryFits: spec.retryFits.map((r) => ({
+            fit: transformNlsCall(r.fit, fixedByVar, boundsByVar, remainingVars),
+            method: r.method,
+          })),
+        }
       : {}),
   };
-  if (opts.weights && out.retryFit) out.retryFit = `${out.retryFit.slice(0, -1)},weights=w)`;
+  if (opts.weights && out.retryFits)
+    out.retryFits = out.retryFits.map((r) => ({ ...r, fit: `${r.fit.slice(0, -1)},weights=w)` }));
   return { spec: out, extraAssignments };
 }
 
@@ -1166,13 +1215,17 @@ export interface NonlinearFit {
   /** True when the primary fit failed and the alternate-start retry
    *  (substrate inhibition's Ki) converged instead — the runner notes it. */
   retried?: boolean;
+  /** Which retry converged, when `retried` is true — the `method` of the
+   *  winning `retryFits` entry ("port", "relaxed tolerance", …). The
+   *  runner names it in the result note. */
+  retryMethod?: string;
 }
 
 /** Fit a model spec (not necessarily one of the curated nonlinear models)
  *  and return its coefficients, derived quantities and goodness-of-fit rows —
- *  one R call (two when a spec carries a retry fit and the first attempt
- *  fails). The binding runners (plan 16) fit their own specs through this,
- *  so there is exactly one nls call site in the repo. */
+ *  one R call per attempt: the primary, then each `retryFits` entry in
+ *  order until one converges. The binding runners (plan 16) fit their own
+ *  specs through this, so there is exactly one nls call site in the repo. */
 export async function fitModelSpec(
   xs: number[],
   ys: number[],
@@ -1185,23 +1238,30 @@ export async function fitModelSpec(
   const eff = applied.spec;
   const extra = extraAssignments + applied.extraAssignments;
   const weighted = !!(options?.weights);
-  try {
-    const rCode = `${fitStatementsForSpec(xs, ys, eff, undefined, extra, weighted)}c(${fitEntries(eff)})`;
-    const v = await evalNamedVector(rCode);
-    const { coefficients, derived, stats } = parseFit(v, eff, xs.length, labelTerm);
-    return { coefficients, derived, stats, rCode };
-  } catch (err) {
-    if (!eff.retryFit) throw err;
-    const rCode = `${fitStatementsForSpec(xs, ys, eff, eff.retryFit, extra, weighted)}c(${fitEntries(eff)})`;
-    const v = await evalNamedVector(rCode);
-    const { coefficients, derived, stats } = parseFit(v, eff, xs.length, labelTerm);
-    return { coefficients, derived, stats, rCode, retried: true };
+  const attempts: ({ fit?: string; method?: string } | undefined)[] = [undefined, ...(eff.retryFits ?? [])];
+  let lastErr: unknown;
+  for (const attempt of attempts) {
+    const rCode = `${fitStatementsForSpec(xs, ys, eff, attempt?.fit, extra, weighted)}c(${fitEntries(eff)})`;
+    try {
+      const v = await evalNamedVector(rCode);
+      const { coefficients, derived, stats } = parseFit(v, eff, xs.length, labelTerm);
+      return {
+        coefficients,
+        derived,
+        stats,
+        rCode,
+        ...(attempt ? { retried: true, retryMethod: attempt.method } : {}),
+      };
+    } catch (err) {
+      lastErr = err;
+    }
   }
+  throw lastErr;
 }
 
 /** Fit the curve and return its coefficients, derived quantities and
- *  goodness-of-fit rows — one R call (two when a spec carries a retry fit
- *  and the first attempt fails). */
+ *  goodness-of-fit rows — one R call per attempt (the primary, then each
+ *  retry in order). */
 export async function fitNonlinearModel(
   xs: number[],
   ys: number[],

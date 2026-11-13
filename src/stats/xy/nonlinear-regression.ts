@@ -823,7 +823,7 @@ async function compareModels(
         ? "AICc ties the two models."
         : "AICc could not be computed (too few points for the correction).");
   const sets = [{ name: first.yCol.name, xs: first.xs, ys: first.ys }];
-  return assembleResult(model, spec, xCol, first.yCol, undefined, sets, [parsedA], [], [], titles, first, undefined, params, stats, extraNotes);
+  return assembleResult(model, spec, xCol, first.yCol, undefined, sets, [parsedA], [], [], titles, first, undefined, undefined, params, stats, extraNotes);
 }
 
 /** The default shared parameters for a global fit (plan 26): the dose
@@ -1166,6 +1166,7 @@ export async function runNonlinearRegression(
 
   let v: RVector;
   let retried: boolean | undefined;
+  let retryMethod: string | undefined;
   if (other && second) {
     const rCode = comparisonRCode(spec, first, second, params.compare ?? "ec50");
     try {
@@ -1215,6 +1216,7 @@ export async function runNonlinearRegression(
     try {
       const fitted = await fitModelSpec(first.xs, first.ys, spec, "", termLabel, fitOpts);
       retried = fitted.retried;
+      retryMethod = fitted.retryMethod;
       // Fixed parameters are not in the fit — report them as coefficient
       // rows with no standard error, so the result names what was held.
       for (const name of fixedNames)
@@ -1230,7 +1232,7 @@ export async function runNonlinearRegression(
       // One R call already ran; reuse its entries by re-reading them out of
       // the same shape — simplest is to keep the parsed fit and build the
       // result from it (no second R call).
-      return assembleResult(model, spec, xCol, yCol, other, sets, [fitted], [], [], titles, first, fitted.retried, params);
+      return assembleResult(model, spec, xCol, yCol, other, sets, [fitted], [], [], titles, first, fitted.retried, fitted.retryMethod, params);
     } catch (err) {
       if (isTwoSiteCompetition(model)) return twoSiteError;
       return fitError(err, model);
@@ -1281,7 +1283,7 @@ export async function runNonlinearRegression(
       high: inverted ? null : high,
     };
   });
-  return assembleResult(model, spec, xCol, yCol, other, sets, parsed, interpolated, v, titles, first, retried, params, [], "", invertedCI);
+  return assembleResult(model, spec, xCol, yCol, other, sets, parsed, interpolated, v, titles, first, retried, retryMethod, params, [], "", invertedCI);
 }
 
 /** The notes' weighting / fixed-parameter / bounds sentences (plan 26): a
@@ -1346,6 +1348,7 @@ async function assembleResult(
   _titles: (string | null)[],
   first: { xs: number[]; ys: number[] },
   retried: boolean | undefined,
+  retryMethod: string | undefined,
   params: NonlinearRegressionParams | undefined,
   extraStats: StatRow[] = [],
   comparisonNotes = "",
@@ -1438,13 +1441,18 @@ async function assembleResult(
       );
     extraNotes.push(...fitWarnings(model, coefficients, first.xs));
   }
-  // The 4PL retry (Linux 4PL fix): a near-perfect sigmoid stalls the
-  // default Gauss-Newton fit at the optimum, so the runner retried once
-  // with a relaxed convergence tolerance — say so, or the converged
-  // numbers look like they came from the first attempt.
+  // The 4PL retries: a near-perfect sigmoid stalls the default
+  // Gauss-Newton fit at the optimum, so the runner retried — with the port
+  // optimizer first, then a relaxed convergence tolerance — say which one
+  // converged, or the converged numbers look like they came from the
+  // first attempt.
   if (retried && (model === "sigmoidal-4pl-logx" || model === "sigmoidal-4pl-x")) {
     extraNotes.push(
-      "The first fit did not converge; retried with a relaxed convergence tolerance (tol = 1e-3) and converged.",
+      retryMethod === "relaxed tolerance"
+        ? "The first fit did not converge; retried with a relaxed convergence tolerance (tol = 1e-3) and converged."
+        : retryMethod === "port"
+          ? "The first fit did not converge; retried with the port optimizer and converged."
+          : "The first fit did not converge; retried and converged.",
     );
   }
   // Plan 29: the segmental note states the fitted breakpoint and both
