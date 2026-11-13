@@ -245,6 +245,50 @@ check("a file Helix had to repair or bring up to date opens to be saved; a sound
   strictEqual(read(JSON.stringify(older)).updated, true);
 });
 
+// R3 #22 (rootOrder leg): a table created after a figure goes before the
+// figure in rootOrder, so the save/load round-trip doesn't report the file as
+// updated. Before the fix `create` appended the table after the figure and
+// parseProjectFile's tables-then-figures reorder made every load dirty.
+// (The spar leg was already fixed: a spline-lowess `spar: null` round-trips
+// — project-file.ts keeps it on read instead of stripping it.)
+check("a table created after a figure still opens unedited (R3 #22)", () => {
+  let s = makeInitialState();
+  const t1 = s.rootOrder[0];
+  const figure: ProjectNode = {
+    id: "f1",
+    type: "figure",
+    name: "Figure",
+    parentId: null,
+    panels: [],
+    grid: { rows: 1, cols: 1 },
+    figureSize: { widthIn: 10, heightIn: 7.5 },
+    labelStyle: { position: "top-left", fontSizePt: 12, bold: true },
+    figureTitle: "",
+    sharedLegend: "none",
+    dpi: "600",
+  } as ProjectNode;
+  const second: ProjectNode = {
+    id: "t2",
+    type: "table",
+    name: "Table",
+    parentId: null,
+    tableType: "xy",
+    data: { columns: ["Title", "X", "Y1"], rows: [["a", "1", "2.5"]] },
+  };
+  s = reducer(s, { type: "create", node: figure });
+  s = reducer(s, { type: "create", node: second });
+  deepStrictEqual(s.rootOrder, [t1, "t2", "f1"]);
+  const { updated } = read(
+    serializeProjectFile({
+      nodes: s.nodes,
+      rootOrder: s.rootOrder,
+      childOrder: s.childOrder,
+      activeNodeId: s.activeNodeId,
+    }),
+  );
+  strictEqual(updated, false);
+});
+
 // R2 FF-F12: a newer (or hand-edited) file's unknown keys and params survive a
 // save instead of being dropped or lowercased — the file header's forward-compat
 // promise. Before the fix the top-level and project keys were dropped outright,
