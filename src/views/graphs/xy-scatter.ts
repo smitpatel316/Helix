@@ -29,9 +29,13 @@ function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFig
   const stride = total > XY_SCATTER_MAX_POINTS ? Math.ceil(total / XY_SCATTER_MAX_POINTS) : 1;
   const thin = <T>(values: T[]): T[] => (stride === 1 ? values : values.filter((_, i) => i % stride === 0));
   const data = ySeries.map((y, i) => {
-    // Drawn in X order, not table row order: the line must follow the trend.
-    // Thinned after sorting, so the sampled points keep the trend's shape.
-    const { x, y: yy, rows } = sortPairsByX(pairs[i].x, pairs[i].y, pairs[i].rows);
+    // Sort by X only when the mode draws a line: the line must follow the
+    // trend, not the table's row order. Markers-only has no connecting line,
+    // so the points keep table row order (the reference golden for Height vs
+    // Weight is recorded that way). Thinned after the sort-or-not decision,
+    // so the sampled points keep the shape either way.
+    const sorted = mode !== "markers" ? sortPairsByX(pairs[i].x, pairs[i].y, pairs[i].rows) : pairs[i];
+    const { x, y: yy, rows } = sorted;
     const px = thin(x);
     const py = thin(yy);
     const prows = thin(rows);
