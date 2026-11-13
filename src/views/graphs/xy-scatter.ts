@@ -4,7 +4,7 @@
 import type { GraphOptions } from "../../store/types";
 import type { GraphModule, GraphFigure } from ".";
 import { pairUp, type Column } from "../../lib/dataset";
-import { seriesPoints, xyLayout, type Paint } from "./plot-helpers";
+import { seriesPoints, sortPairsByX, xyLayout, type Paint } from "./plot-helpers";
 import { pointKeyOf } from "../../lib/columns";
 
 function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFigure {
@@ -13,7 +13,9 @@ function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFig
 
   const mode = options.xyStyle === "line" ? "lines" : options.xyStyle === "points+line" ? "lines+markers" : "markers";
   const data = ySeries.map((y, i) => {
-    const { x, y: yy, rows } = pairUp(xCol, y);
+    const pairs = pairUp(xCol, y);
+    // Drawn in X order, not table row order: the line must follow the trend.
+    const { x, y: yy, rows } = sortPairsByX(pairs.x, pairs.y, pairs.rows);
     return {
       type: "scatter",
       mode,

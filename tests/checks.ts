@@ -2427,6 +2427,29 @@ check("series take their own dashes and patterns, and a palette can be reversed"
   deepStrictEqual(read(JSON.stringify(file)).project.nodes.g1.graphOptions!.palette, reversed);
 });
 
+check("a line or area graph draws its points in X order, not table row order", () => {
+  type Trace = { x: number[]; y: number[] };
+  // X out of order in the table: 3, 1, 2 — the drawn line must still run 1, 2, 3,
+  // matching the shape of a fitted overlay plotted on a sorted grid.
+  const xy = {
+    columns: ["Title", "X", "Y"],
+    rows: [
+      [null, "3", "30"],
+      [null, "1", "10"],
+      [null, "2", "20"],
+    ],
+  };
+  const columns = readTable(xy).columns;
+  const scatterOptions: GraphOptions = { ...newGraphOptions("xy-scatter"), xyStyle: "points+line" };
+  const [line] = GRAPHS["xy-scatter"].build(columns, scatterOptions, paintOf(scatterOptions, 1)).data as Trace[];
+  deepStrictEqual(line.x, [1, 2, 3]);
+  deepStrictEqual(line.y, [10, 20, 30]);
+  const areaOptions = newGraphOptions("xy-area");
+  const [area] = GRAPHS["xy-area"].build(columns, areaOptions, paintOf(areaOptions, 1)).data as Trace[];
+  deepStrictEqual(area.x, [1, 2, 3]);
+  deepStrictEqual(area.y, [10, 20, 30]);
+});
+
 check("Match Another Graph… takes only what is ticked, series in order", () => {
   const graph = (type: GraphType, table: string, series: string[], over: Partial<GraphOptions>): Matched => ({
     type,
