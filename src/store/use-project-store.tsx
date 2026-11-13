@@ -14,12 +14,7 @@ import { TABLES } from "../views/tables";
 import { GRAPHS, newGraphOptions } from "../views/graphs";
 import { ANALYSES } from "../stats";
 import { followTable, type TableMove } from "./references";
-import {
-  DEFAULT_FIGURE_DPI,
-  DEFAULT_FIGURE_SIZE,
-  DEFAULT_LABEL_STYLE,
-  newFigurePanels,
-} from "../lib/figure";
+import { DEFAULT_FIGURE_DPI, DEFAULT_FIGURE_SIZE, DEFAULT_LABEL_STYLE, newFigurePanels } from "../lib/figure";
 import type { FigureGrid, FigureLabelStyle, FigurePanel, FigureSize, Resolution, SharedLegend } from "./types";
 
 export type { ProjectNode } from "./types";
@@ -30,7 +25,9 @@ type Selector =
   | { kind: "new-analysis"; tableId: string }
   | { kind: "analysis-params"; tableId: string; testType: AnalysisPickerValue }
   | { kind: "new-graph"; tableId: string }
-  | { kind: "simulate-data"; tableId: string };
+  | { kind: "simulate-data"; tableId: string }
+  | { kind: "converter" }
+  | { kind: "save-prompt" };
 
 /** The project's content: what a file holds, and what Undo brings back. */
 interface Content {
@@ -582,7 +579,9 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     tables: state.rootOrder
       .filter((id) => state.nodes[id]?.type === "table")
       .map((id) => ({ ...outlineNode(state.nodes[id]), children: childrenOf(state, id).map(outlineNode) })),
-    figures: state.rootOrder.filter((id) => state.nodes[id]?.type === "figure").map((id) => outlineNode(state.nodes[id])),
+    figures: state.rootOrder
+      .filter((id) => state.nodes[id]?.type === "figure")
+      .map((id) => outlineNode(state.nodes[id])),
   });
   const outline = React.useMemo<Outline>(
     () => ({ ...JSON.parse(outlineText), activeNodeId: state.activeNodeId }),

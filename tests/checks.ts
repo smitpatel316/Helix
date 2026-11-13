@@ -68,7 +68,8 @@ import {
 } from "../src/lib/palettes";
 import { deletePalette, keepPalette, loadMyPalettes } from "../src/store/my-palettes";
 import { GRAPHS, GRAPH_OPTIONS_BY_TABLE, newGraphOptions, plotColumns, type GraphFigure } from "../src/views/graphs";
-import { isGrouped, isNested, readTable, setColumns, type Dataset } from "../src/lib/dataset";
+import { datasetColumns, isGrouped, isNested, readTable, setColumns, type Dataset } from "../src/lib/dataset";
+import { prepareFit } from "../src/stats/xy/nonlinear-fit";
 import { adjustComparisonRows, adjustPValues, incompleteRows, missingColumn } from "../src/stats/column/base";
 import { droppedPredictorsNote, selectPredictors } from "../src/stats/multiple/predictors";
 import { compareTwoGroupsSpec } from "../src/stats/column/compare-two-groups";
@@ -102,6 +103,7 @@ import { deriveComparisons } from "../src/views/graphs/significance-overlay";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AnalysisResultsView, headline } from "../src/views/analyses/analysis-results-view";
+import { loadPrismSaveChoice, nextSaveAction } from "../src/lib/prism-nudge";
 import { fitWidths, fitZoom } from "../src/store/use-layout";
 import { computeGroupedDEG } from "../src/lib/deg";
 import { logisticCurveNote } from "../src/views/graphs/logistic-curve";
@@ -6263,6 +6265,74 @@ check("the engine window answers R requests through the FIFO, and publishes its 
   ok(/emit\("r-queue"/.test(native), "serveR must publish the queue on \"r-queue\"");
   const view = readFileSync("src/views/analyses/analysis-view.tsx", "utf8");
   ok(/rQueueStatusText\(queue\)/.test(view), "the analysis view must show the queue depth while running");
+});
+
+// ── Open-format nudge (prism-format-work (f)) ─────────────────────────────
+
+check("the save prompt asks once per Prism project, and a remembered choice applies silently", () => {
+  // No Prism origin, or already prompted: straight to the .hlx save.
+  strictEqual(nextSaveAction({ prismOrigin: false, prompted: false, remembered: null }), "save-hlx");
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: true, remembered: null }), "save-hlx");
+  // Prism origin, never prompted, nothing remembered: prompt.
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: false, remembered: null }), "prompt");
+  // Remembered choices apply silently — "don't ask again" (f.4).
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: false, remembered: "hlx" }), "save-hlx");
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: false, remembered: "prism" }), "save-prism");
+  // A remembered choice doesn't matter once prompted: still no prompt.
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: true, remembered: "prism" }), "save-prism");
+  // No localStorage under Node: reads as "no remembered choice", never throws.
+  strictEqual(loadPrismSaveChoice(), null);
+});
+
+// ── Replicate pooling (prism-format-work (b)/(g)) ─────────────────────────
+// An imported Prism analysis names its Y data set ("Control"), not a column
+// — the fit pools the data set's replicate columns, as Prism does.
+check("a nonlinear fit pools a Y data set's replicates, and a column name still fits one column", () => {
+  // (g) fix, 2026-11-11: the fixture as written omitted the Title column,
+  // so readTable ate "X" as row titles and splitXY took "Control_1" as X —
+  // the fit pooled 7 points, not 14. The Title column is the repo
+  // convention (see the fixtures above); with it, X is X again.
+  const columns = readTable({
+    columns: ["Title", "X", "Control_1", "Control_2", "Treated_1"],
+    rows: [
+      ["", "0", "5", "6", "10"],
+      ["", "1", "10", "11", "20"],
+      ["", "2", "20", "21", "40"],
+      ["", "4", "40", "41", "80"],
+      ["", "8", "80", "81", "90"],
+      ["", "16", "90", "91", "95"],
+      ["", "32", "95", "96", "98"],
+    ],
+  }).columns;
+  deepStrictEqual(
+    datasetColumns(columns, "Control").map((c) => c.name),
+    ["Control_1", "Control_2"],
+  );
+  deepStrictEqual(datasetColumns(columns, "Control_1").map((c) => c.name), ["Control_1"]);
+  deepStrictEqual(datasetColumns(columns, "Nope"), []);
+  const pooled = prepareFit(columns, "Control", "sigmoidal-4pl-x");
+  if ("error" in pooled) throw new Error(pooled.error);
+  // 7 rows × 2 replicates = 14 points, named for the data set — and the
+  // X = 0 vehicle point stays in a raw-concentration fit (it is Bottom).
+  strictEqual(pooled.xs.length, 14);
+  strictEqual(pooled.ys.length, 14);
+  strictEqual(pooled.yCol.name, "Control");
+  ok(pooled.xs.includes(0));
+  const single = prepareFit(columns, "Control_1", "sigmoidal-4pl-x");
+  if ("error" in single) throw new Error(single.error);
+  strictEqual(single.xs.length, 7);
+  strictEqual(single.yCol.name, "Control_1");
+  // A log-X curve keeps X = 0: X is already log10(concentration), so 0
+  // is a valid log value (concentration 1), not log(0) — the model never
+  // takes log(X). (The first version of this check expected 12 here, on
+  // the mistaken idea that log-X drops X = 0; it does not, and never did
+  // — the log-X spec sets no positiveX flag, which is why the b-domain
+  // corpus files fit at all with their all-negative log-X values.)
+  const logged = prepareFit(columns, "Control", "sigmoidal-4pl-logx");
+  if ("error" in logged) throw new Error(logged.error);
+  strictEqual(logged.xs.length, 14);
+  ok(logged.xs.includes(0));
+  ok("error" in prepareFit(columns, "Nope", "sigmoidal-4pl-x"));
 });
 
 // ── Run ──────────────────────────────────────────────────────────────────
