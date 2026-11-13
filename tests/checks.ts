@@ -4010,6 +4010,191 @@ check("a chosen predictor holding no numbers is named, not silently dropped", ()
   strictEqual(droppedPredictorsNote([]), "");
 });
 
+// R3-23: the constant-variable check ran on the raw columns, before
+// complete-case filtering — a variable that varies only on rows another
+// variable leaves blank is constant on the complete rows, and prcomp /
+// scale then failed with a raw R error. The check now runs on the aligned
+// (complete-case) columns, so the variable is named instead.
+check("a variable constant only after complete-case filtering names itself in PCA and K-means (R3-23)", async () => {
+  // A varies (1, 2, 5, 5, 5) but is 5, 5, 5 on the complete rows — B is
+  // blank on the two rows where A varies.
+  const data: TableData = {
+    columns: ["Title", "A", "B", "C"],
+    rows: [
+      ["", "1", null, "10"],
+      ["", "2", null, "20"],
+      ["", "5", "1", "30"],
+      ["", "5", "2", "40"],
+      ["", "5", "3", "50"],
+    ],
+  };
+  deepStrictEqual(await runAnalysis("principal-component-analysis", data, { scale: "correlation" }), {
+    error:
+      "“A” is constant — PCA on the correlation matrix cannot standardise a variable with no " +
+      "variation. Remove it from the table, or run PCA on the covariance matrix instead.",
+  });
+  deepStrictEqual(await runAnalysis("k-means", data, { clusters: 2 }), {
+    error:
+      "“A” is constant — K-means clustering cannot standardise a variable with no " +
+      "variation. Remove it from the table, or run without standardisation instead.",
+  });
+  // The same table runs on the settings that do not standardise: a constant
+  // variable contributes no variance / nothing to the distances there.
+  const cov = await runAnalysis("principal-component-analysis", data, { scale: "covariance" });
+  ok(!("error" in cov), `covariance PCA should run, got ${"error" in cov ? cov.error : "ok"}`);
+  const raw = await runAnalysis("k-means", data, { clusters: 2, standardise: false });
+  ok(!("error" in raw), `raw K-means should run, got ${"error" in raw ? raw.error : "ok"}`);
+});
+
+// R3-23: same complete-case leak in Cox PH — a covariate varying only on
+// rows another used column leaves blank was checked on its raw values, then
+// coxph could not estimate it. The check now runs on the aligned columns.
+check("a Cox covariate constant only after complete-case filtering names itself (R3-23)", async () => {
+  // Age varies (20, 30) only on the rows where Trt is blank; it is 40 on
+  // every complete row.
+  const data: TableData = {
+    columns: ["Title", "Time", "Status", "Trt", "Age"],
+    rows: [
+      ["", "1", "1", null, "20"],
+      ["", "2", "1", null, "30"],
+      ["", "3", "0", "1", "40"],
+      ["", "4", "1", "0", "40"],
+      ["", "5", "0", "1", "40"],
+      ["", "6", "1", "0", "40"],
+      ["", "7", "1", "1", "40"],
+      ["", "8", "0", "0", "40"],
+    ],
+  };
+  deepStrictEqual(
+    await runAnalysis("cox-proportional-hazards", data, { time: "Time", status: "Status", covariates: ["Trt", "Age"] }),
+    { error: "Covariate “Age” has no variation." },
+  );
+});
+
+// R3-23: a constant or collinear predictor was aliased by R —
+// summary(m)$coefficients drops the aliased row, so co[t + 1, ] crashed
+// with "subscript out of bounds". The runners now check is.na(coef(m))
+// before indexing and name the aliased predictor instead.
+check("a constant or collinear predictor is named, not a crash, in multiple regression (R3-23)", async () => {
+  const table = (x2: string[]): TableData => ({
+    columns: ["Title", "Y", "X1", "X2"],
+    rows: [
+      ["", "3", "1", x2[0]],
+      ["", "5", "2", x2[1]],
+      ["", "4", "3", x2[2]],
+      ["", "6", "4", x2[3]],
+      ["", "7", "5", x2[4]],
+      ["", "5", "6", x2[5]],
+      ["", "8", "7", x2[6]],
+      ["", "6", "8", x2[7]],
+    ],
+  });
+  const params = { dependent: "Y", predictors: ["X1", "X2"] };
+  deepStrictEqual(await runAnalysis("multiple-regression", table(["5", "5", "5", "5", "5", "5", "5", "5"]), params), {
+    error:
+      "“X2” is constant — Multiple linear regression cannot estimate a slope for a predictor with no " +
+      "variation. Drop or recode the predictor and try again.",
+  });
+  deepStrictEqual(
+    await runAnalysis("multiple-regression", table(["2", "4", "6", "8", "10", "12", "14", "16"]), params),
+    {
+      error:
+        "“X2” is collinear with another predictor — Multiple linear regression cannot estimate a separate " +
+        "coefficient for it. Drop or recode the predictor and try again.",
+    },
+  );
+  // Both predictors constant: every slope is aliased (an intercept-only
+  // fit, whose F statistic is NULL) — still a named error, not a crash.
+  const bothConstant: TableData = {
+    columns: ["Title", "Y", "X1", "X2"],
+    rows: [
+      ["", "3", "5", "5"],
+      ["", "5", "5", "5"],
+      ["", "4", "5", "5"],
+      ["", "6", "5", "5"],
+      ["", "7", "5", "5"],
+      ["", "5", "5", "5"],
+      ["", "8", "5", "5"],
+      ["", "6", "5", "5"],
+    ],
+  };
+  deepStrictEqual(await runAnalysis("multiple-regression", bothConstant, params), {
+    error:
+      "“X1”, “X2” are constant — Multiple linear regression cannot estimate a slope for a predictor with no " +
+      "variation. Drop or recode the predictors and try again.",
+  });
+  // A clean fit still fits: the aliasing guard must not fire on good data.
+  const good = await runAnalysis("multiple-regression", table(["1", "0", "2", "1", "0", "2", "1", "0"]), params);
+  ok(!("error" in good), `clean fit should run, got ${"error" in good ? good.error : "ok"}`);
+});
+
+check("a constant or collinear predictor is named, not a crash, in multiple logistic regression (R3-23)", async () => {
+  const table = (x2: string[]): TableData => ({
+    columns: ["Title", "Y", "X1", "X2"],
+    rows: [
+      ["", "0", "22", x2[0]],
+      ["", "1", "25", x2[1]],
+      ["", "0", "28", x2[2]],
+      ["", "1", "31", x2[3]],
+      ["", "1", "34", x2[4]],
+      ["", "0", "37", x2[5]],
+      ["", "1", "40", x2[6]],
+      ["", "0", "43", x2[7]],
+    ],
+  });
+  const params = { dependent: "Y", predictors: ["X1", "X2"] };
+  deepStrictEqual(
+    await runAnalysis("multiple-logistic-regression", table(["5", "5", "5", "5", "5", "5", "5", "5"]), params),
+    {
+      error:
+        "“X2” is constant — Multiple logistic regression cannot estimate a slope for a predictor with no " +
+        "variation. Drop or recode the predictor and try again.",
+    },
+  );
+  deepStrictEqual(
+    await runAnalysis("multiple-logistic-regression", table(["44", "50", "56", "62", "68", "74", "80", "86"]), params),
+    {
+      error:
+        "“X2” is collinear with another predictor — Multiple logistic regression cannot estimate a separate " +
+        "coefficient for it. Drop or recode the predictor and try again.",
+    },
+  );
+  const good = await runAnalysis("multiple-logistic-regression", table(["1", "0", "2", "1", "0", "2", "1", "0"]), params);
+  ok(!("error" in good), `clean fit should run, got ${"error" in good ? good.error : "ok"}`);
+});
+
+check("a constant or collinear predictor is named, not a crash, in Poisson regression (R3-23)", async () => {
+  const table = (x2: string[]): TableData => ({
+    columns: ["Title", "Y", "X1", "X2"],
+    rows: [
+      ["", "2", "0", x2[0]],
+      ["", "3", "1", x2[1]],
+      ["", "2", "0", x2[2]],
+      ["", "5", "1", x2[3]],
+      ["", "4", "2", x2[4]],
+      ["", "6", "1", x2[5]],
+      ["", "5", "2", x2[6]],
+      ["", "7", "3", x2[7]],
+    ],
+  });
+  const params = { dependent: "Y", predictors: ["X1", "X2"], quasi: false };
+  deepStrictEqual(await runAnalysis("poisson-regression", table(["1", "1", "1", "1", "1", "1", "1", "1"]), params), {
+    error:
+      "“X2” is constant — Poisson regression cannot estimate a slope for a predictor with no " +
+      "variation. Drop or recode the predictor and try again.",
+  });
+  deepStrictEqual(
+    await runAnalysis("poisson-regression", table(["0", "2", "0", "2", "4", "2", "4", "6"]), params),
+    {
+      error:
+        "“X2” is collinear with another predictor — Poisson regression cannot estimate a separate " +
+        "coefficient for it. Drop or recode the predictor and try again.",
+    },
+  );
+  const good = await runAnalysis("poisson-regression", table(["1", "0", "2", "1", "0", "2", "1", "0"]), params);
+  ok(!("error" in good), `clean fit should run, got ${"error" in good ? good.error : "ok"}`);
+});
+
 // M8: a hand-edited or older file may carry y as one bare string — the file
 // reader's `name-or-names` kind permits it — while the runner works with a
 // list. One name must mean one series, never one character per series.

@@ -10,6 +10,7 @@
 // not a column at all never reaches here: runAnalysis errors on it first
 // with missingColumn.
 import { dataGroups } from "../column/base";
+import { sd } from "../../lib/summary";
 import type { Column } from "../types";
 
 export interface PredictorSelection {
@@ -48,4 +49,36 @@ export function droppedPredictorsNote(dropped: string[]): string {
     ` Note: ${names} ${plural ? "were" : "was"} chosen as predictor${plural ? "s" : ""} but hold${plural ? "" : "s"} no numbers, ` +
     `so ${plural ? "they were" : "it was"} left out of the fit — the statistics above describe the fitted predictors only.`
   );
+}
+
+/** The user-facing error when R aliased one or more predictors — the fit's
+ *  `summary(m)$coefficients` drops the aliased rows, so the runner must name
+ *  them from `is.na(coef(m))` instead of indexing the matrix (bug-report
+ *  item 23). `aliased` holds one flag per predictor, in predictor order (1 =
+ *  aliased, as R returns them); `alignedPredictors` holds the complete-case
+ *  values per predictor, so a constant predictor ("no variation") is told
+ *  apart from a collinear one. Returns null when no predictor is flagged. */
+export function aliasedPredictorsError(
+  predictors: Column[],
+  alignedPredictors: number[][],
+  aliased: readonly (number | null | undefined)[],
+  fitName: string,
+): string | null {
+  const idx = predictors.map((_, i) => i).filter((i) => aliased[i] === 1);
+  if (idx.length === 0) return null;
+  const names = (list: number[]) => list.map((i) => `“${predictors[i].name}”`).join(", ");
+  const constant = idx.filter((i) => sd(alignedPredictors[i]) === 0);
+  const collinear = idx.filter((i) => sd(alignedPredictors[i]) !== 0);
+  const parts: string[] = [];
+  if (constant.length > 0) {
+    parts.push(
+      `${names(constant)} ${constant.length > 1 ? "are" : "is"} constant — ${fitName} cannot estimate a slope for a predictor with no variation.`,
+    );
+  }
+  if (collinear.length > 0) {
+    parts.push(
+      `${names(collinear)} ${collinear.length > 1 ? "are" : "is"} collinear with another predictor — ${fitName} cannot estimate a separate coefficient for ${collinear.length > 1 ? "them" : "it"}.`,
+    );
+  }
+  return `${parts.join(" ")} Drop or recode the predictor${idx.length > 1 ? "s" : ""} and try again.`;
 }

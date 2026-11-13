@@ -3,7 +3,7 @@
 // Bespoke runner (not ColumnTestSpec) — needs a chosen response + a coefficients table.
 import type { AnalysisOutcome, Column, MultipleRegressionParams, RegressionCoefficient } from "../types";
 import { describe, pairedGroups, pRow, rVec } from "../column/base";
-import { droppedPredictorsNote, selectPredictors } from "./predictors";
+import { droppedPredictorsNote, selectPredictors, aliasedPredictorsError } from "./predictors";
 import { evalNamedVector } from "../webr";
 
 export async function runMultipleRegression(
@@ -28,16 +28,39 @@ export async function runMultipleRegression(
   const formula = `y~${predictors.map((_, i) => `x${i}`).join("+")}`;
   // Each coefficient row t (0 = intercept) pulled from summary()'s coefficient
   // matrix by explicit index → keyed names, so extraction never depends on order.
+  // A constant or collinear predictor is aliased: coef(m) holds NA for it and
+  // summary()'s matrix DROPS its row, so co[t + 1, ] would read the wrong row
+  // — or crash with "subscript out of bounds" past the last row. The
+  // coefficient pulls are therefore guarded on nal (any NA in coef(m)), and
+  // the aliased predictors are reported by index (al0…), so the runner can
+  // name them instead of indexing the matrix. The F statistic is NULL when
+  // every predictor is aliased (an intercept-only fit), so it is guarded too.
   const coefAssigns = Array.from(
     { length: p + 1 },
-    (_, t) => `b${t}=co[${t + 1},1],se${t}=co[${t + 1},2],t${t}=co[${t + 1},3],pv${t}=co[${t + 1},4]`,
+    (_, t) =>
+      `b${t}=if(nal) NA else co[${t + 1},1],se${t}=if(nal) NA else co[${t + 1},2],` +
+      `t${t}=if(nal) NA else co[${t + 1},3],pv${t}=if(nal) NA else co[${t + 1},4]`,
   );
+  const aliasAssigns = Array.from({ length: p }, (_, i) => `al${i}=as.numeric(na[${i + 2}])`);
   const code =
-    `${decls.join(";")};m<-lm(${formula});s<-summary(m);co<-s$coefficients;f<-s$fstatistic;` +
-    `c(r2=s$r.squared,adjr2=s$adj.r.squared,fstat=unname(f[1]),n=length(y),` +
-    `fp=unname(pf(f[1],f[2],f[3],lower.tail=FALSE)),${coefAssigns.join(",")})`;
+    `${decls.join(";")};m<-lm(${formula});s<-summary(m);co<-s$coefficients;na<-is.na(coef(m));nal<-any(na);f<-s$fstatistic;` +
+    `c(r2=s$r.squared,adjr2=s$adj.r.squared,fstat=if(is.null(f)) NA else unname(f[1]),n=length(y),` +
+    `fp=if(is.null(f)) NA else unname(pf(f[1],f[2],f[3],lower.tail=FALSE)),` +
+    `aliased=as.numeric(nal),${aliasAssigns.join(",")},${coefAssigns.join(",")})`;
 
   const v = await evalNamedVector(code);
+  if (v.aliased === 1) {
+    return {
+      error:
+        aliasedPredictorsError(
+          predictors,
+          aligned.slice(1),
+          predictors.map((_, i) => v[`al${i}`]),
+          "Multiple linear regression",
+        ) ??
+        "The fit could not estimate a separate coefficient for every predictor — two or more predictors carry the same information. Drop one of the collinear predictors and try again.",
+    };
+  }
   const terms = ["Intercept", ...predictors.map((c) => c.name)];
   const coefficients: RegressionCoefficient[] = terms.map((term, t) => ({
     term,
