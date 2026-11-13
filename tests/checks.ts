@@ -109,6 +109,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AnalysisResultsView, headline } from "../src/views/analyses/analysis-results-view";
 import { loadPrismSaveChoice, nextSaveAction } from "../src/lib/prism-nudge";
+import { convertPrism } from "../src/lib/prism";
+import { yieldToPaint } from "../src/lib/yield-to-paint";
 import { fitWidths, fitZoom } from "../src/store/use-layout";
 import { prismDropSkippedMessage } from "../src/store/use-document";
 import { computeGroupedDEG } from "../src/lib/deg";
@@ -7974,6 +7976,47 @@ check("prism-format surface strings say Titer, not Helix (FL-rebrand)", () => {
   );
   const writer = readFileSync(join(root, "src/lib/prism-write.ts"), "utf8");
   ok(writer.includes('createdBy: { name: "Titer"'), "written .prism files must claim createdBy Titer");
+});
+
+// ── FL-r3-convert-stall: the Convert dialog must not wait on a frame ─────
+// Mac proof Take 21 (3cd7dc4): File ▸ Convert stalls BOTH directions in the
+// built app — "Reading tables from 'roundtrip'…" / "Writing 14 tables as
+// .prism…" stuck 60–90 s at 0.0% CPU, Cancel still works, the same file
+// imports via File ▸ Import in seconds. Both directions await the dialog's
+// yield before any work, and the yield was requestAnimationFrame — the only
+// awaited rAF in the app. In the built Tauri webview rAF only fires while
+// the window is the active/key window; driven without focus, the callback
+// never runs and the dialog waits forever. This pins the dialog's own await
+// chain — yield, then the real convertPrism on a real fixture — with rAF
+// stubbed to never fire, the backgrounded-webview condition. A yield that
+// depends on a frame hangs here and the check fails; a yield that doesn't
+// lets the conversion complete.
+check("the Convert dialog finishes when requestAnimationFrame never fires (FL-r3-convert-stall)", async () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const g = globalThis as Record<string, unknown>;
+  const savedRaf = g.requestAnimationFrame;
+  // Backgrounded webview: rAF callbacks never run.
+  g.requestAnimationFrame = () => 0;
+  try {
+    const tables = await Promise.race([
+      (async () => {
+        await yieldToPaint();
+        const data = readFileSync(join(root, "tests/testdata/prism/prism2R-demo_dataset.prism"));
+        const converted = await convertPrism(new Uint8Array(data), "prism2R-demo_dataset.prism");
+        return converted.report.tables.length;
+      })(),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Convert stalled: the dialog's yield never resolved with requestAnimationFrame silenced")),
+          5000,
+        ),
+      ),
+    ]);
+    ok(tables > 0, "expected the fixture to convert at least one table");
+  } finally {
+    if (savedRaf === undefined) delete g.requestAnimationFrame;
+    else g.requestAnimationFrame = savedRaf;
+  }
 });
 
 // ── R3-01: the release pipeline ships the vendored webR repo ─────────────
