@@ -6329,6 +6329,19 @@ check("changes that change nothing, and opening a file, leave no Undo step", () 
 
 // ── The app ──────────────────────────────────────────────────────────────
 
+// F5: the Linux native About dialog drops AboutMetadata.credits (muda:
+// "Windows / Linux: Unsupported") — the tagline and coffee address only
+// reached macOS. The same text rides in `comments` and the address in
+// `website`, the fields the GTK dialog renders; credits stays for macOS.
+check("the About dialog carries the Buy Me a Coffee address where Linux renders it (F5)", () => {
+  const menus = readFileSync(fileURLToPath(new URL("../src/menus.ts", import.meta.url)), "utf8");
+  ok(menus.includes('const COFFEE_URL = "https://www.buymeacoffee.com/smitpatel316"'));
+  ok(menus.includes("comments: ABOUT_CREDITS"), "the tagline + coffee address must ride in comments for Linux");
+  ok(menus.includes("website: COFFEE_URL"), "the coffee address must ride in website for Linux");
+  ok(menus.includes('websiteLabel: "Buy Me a Coffee"'));
+  ok(menus.includes("credits: ABOUT_CREDITS"), "credits stays: it is what macOS renders");
+});
+
 check("menus and pickers name things in title case, as macOS does", () => {
   deepStrictEqual(
     [
