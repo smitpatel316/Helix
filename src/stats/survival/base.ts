@@ -23,5 +23,11 @@ export function survivalGroups(columns: Column[]): SurvivalGroup[] | { error: st
     if (g.x.some((t) => t < 0)) return { error: "Times can't be negative." };
   }
   if (groups.length < 2) return { error: "This analysis compares at least 2 groups holding subjects." };
+  // With no event anywhere there is nothing to compare: survfit/survdiff
+  // return a meaningless chi-square of 0 (P = 1), the Gehan test crashes in
+  // solve() on a singular matrix, and coxph/cox.zph crash subscripting an
+  // empty table. Say so up front, in words, instead of any of that.
+  if (!groups.some((g) => g.y.some((c) => c === 1)))
+    return { error: "No events were recorded — every subject is censored, so there is nothing to compare." };
   return groups;
 }

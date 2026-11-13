@@ -5719,6 +5719,79 @@ check("the survival analysis refuses bad survival data", async () => {
   }
 });
 
+check("the survival analysis and Cox refuse a table with no events at all", async () => {
+  // All subjects censored: the log-rank path used to return a meaningless
+  // chi-square of 0 (P = 1), the Gehan path crashed in solve() on a singular
+  // matrix, and Cox crashed subscripting cox.zph's empty table.
+  const data = logRankTable(
+    ["Title", "Days", "A", "B"],
+    [
+      ["", "3", "0", ""],
+      ["", "5", "0", ""],
+      ["", "7", "", "0"],
+      ["", "8", "", "0"],
+      ["", "10", "0", ""],
+      ["", "12", "", "0"],
+    ],
+  );
+  for (const curveTest of ["logrank", "gehan"] as const) {
+    const out = await runAnalysis("survival", data, { curveTest, correction: "holm" });
+    if (!("error" in out) || !out.error.includes("No events")) {
+      throw new Error(`survival/${curveTest}: expected a "No events" error, got ${JSON.stringify(out).slice(0, 300)}`);
+    }
+  }
+  const cox = await runAnalysis("cox", data, {});
+  if (!("error" in cox) || !cox.error.includes("No events")) {
+    throw new Error(`cox: expected a "No events" error, got ${JSON.stringify(cox).slice(0, 300)}`);
+  }
+});
+
+check("a pairwise Gehan comparison with no events returns NA, not a crash", async () => {
+  // Only group C holds events, so the A–B pair has none: its Gehan test used
+  // to crash in solve() on a singular matrix and abort the whole analysis.
+  const data = logRankTable(
+    ["Title", "Days", "A", "B", "C"],
+    [
+      ["", "3", "0", "", ""],
+      ["", "5", "0", "", ""],
+      ["", "7", "", "0", ""],
+      ["", "8", "", "0", ""],
+      ["", "4", "", "", "1"],
+      ["", "6", "", "", "1"],
+      ["", "9", "", "", "0"],
+    ],
+  );
+  const out = await runAnalysis("survival", data, { curveTest: "gehan", correction: "holm" });
+  if ("error" in out) throw new Error(out.error);
+  strictEqual(out.comparisons![0].p, null, "the event-less A–B pair is open");
+  ok(out.comparisons![1].p !== null && out.comparisons![2].p !== null, "pairs with events still complete");
+  ok(out.stats.find((s) => s.label === "Chi-square")?.value !== null, "the overall Gehan test still runs");
+});
+
+check("Cox regression leaves the proportional-hazards P open when a group is never at risk at an event time", async () => {
+  // Group B's subjects are all censored before A's first event: cox.zph
+  // used to crash subscripting its table and abort the whole regression.
+  const data = logRankTable(
+    ["Title", "Days", "A", "B"],
+    [
+      ["", "10", "1", ""],
+      ["", "12", "1", ""],
+      ["", "15", "0", ""],
+      ["", "1", "", "0"],
+      ["", "2", "", "0"],
+      ["", "2", "", "0"],
+    ],
+  );
+  const out = await runAnalysis("cox", data, {});
+  if ("error" in out) throw new Error(out.error);
+  strictEqual(
+    out.stats.find((s) => s.label === "Proportional hazards test P")?.value,
+    null,
+    "cox.zph could not run on this fit",
+  );
+  strictEqual(out.hazardRatios?.length, 1, "one hazard ratio still reported");
+});
+
 check("frequency bins are left-closed with the last bin closed, and empty bins stay", () => {
   // On-edge values go into the bin above them; the maximum stays in the last bin.
   deepStrictEqual(
