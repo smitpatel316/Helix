@@ -173,7 +173,20 @@ function applyAction(state: ProjectState, action: Action): ProjectState {
       const name = pid === null ? nextName(action.node.name, taken) : uniqueName(action.node.name, taken);
       const node = { ...action.node, name };
       const nodes = { ...state.nodes, [node.id]: node };
-      const rootOrder = pid === null ? [...state.rootOrder, node.id] : state.rootOrder;
+      // A new table goes before the first figure at the project root:
+      // parseProjectFile reorders rootOrder tables-then-figures, so
+      // appending a table after a figure would mark every save/load
+      // round-trip as updated (#22). Figures still append at the end.
+      const firstFigure =
+        node.type === "table"
+          ? state.rootOrder.findIndex((id) => state.nodes[id]?.type === "figure")
+          : -1;
+      const rootOrder =
+        pid === null
+          ? firstFigure === -1
+            ? [...state.rootOrder, node.id]
+            : [...state.rootOrder.slice(0, firstFigure), node.id, ...state.rootOrder.slice(firstFigure)]
+          : state.rootOrder;
       const childOrder =
         pid === null
           ? { ...state.childOrder, [node.id]: [] } // a new table starts empty
