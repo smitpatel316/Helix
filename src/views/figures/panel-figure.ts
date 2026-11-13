@@ -18,10 +18,15 @@ import { GRAPHS, graphSeries, plotColumns, type GraphFigure } from "../graphs";
 import { paintOf } from "../graphs/plot-helpers";
 
 /** The panel's figure, or null when its graph has nothing to draw (no table,
- *  no numeric columns, or an unknown graph type). */
+ *  no numeric columns, or an unknown graph type). With `hideLegend`, the
+ *  panel draws no legend of its own — a figure with a shared legend promises
+ *  "per-panel legends are hidden", so a panel that draws a legend (an XY
+ *  scatter with >1 Y series, a grouped scatter…) must not draw it here.
+ *  The graph's own view is untouched: only figure panels hide it. */
 export function buildPanelFigure(
   graph: ProjectNode,
   nodes: Record<string, ProjectNode>,
+  opts: { hideLegend?: boolean } = {},
 ): GraphFigure | null {
   if (graph.type !== "graph" || !graph.graphType || !Object.hasOwn(GRAPHS, graph.graphType)) return null;
   const parent = graph.parentId ? nodes[graph.parentId] : undefined;
@@ -31,5 +36,6 @@ export function buildPanelFigure(
   const columns = plotColumns(dataset, graph.graphType, options, parent.tableType);
   if (!columns.some((c) => c.values.length > 0)) return null;
   const paint = paintOf(options, graphSeries(graph.graphType, parent.data, parent.tableType, options).length);
-  return GRAPHS[graph.graphType].build(columns, options, paint, dataset.titles);
+  const fig = GRAPHS[graph.graphType].build(columns, options, paint, dataset.titles);
+  return opts.hideLegend ? { ...fig, layout: { ...fig.layout, showlegend: false } } : fig;
 }

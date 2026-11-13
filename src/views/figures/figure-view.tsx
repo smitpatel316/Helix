@@ -444,6 +444,7 @@ export function FigureView({ node }: { node: ProjectNode }) {
                               nodes={nodes}
                               width={w}
                               height={h}
+                              hideLegend={sharedLegend === "shared" && legend.ok}
                               onPlot={(el) => {
                                 if (el) plottedRef.current.set(panel.graphId, el);
                                 else plottedRef.current.delete(panel.graphId);
