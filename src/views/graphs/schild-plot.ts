@@ -58,8 +58,15 @@ export function schildPlotPoints(fit: AnalysisResult, params: DoseResponseSpecia
   }
   if (points.length === 2) {
     const [a, b] = points;
+    // Duplicate antagonist concentrations share one log[B]: the slope
+    // through them divides by zero (±Inf, or NaN when the points
+    // coincide) and is mathematically undefined — report no slope,
+    // points only, rather than a bogus number.
+    if (b.logB === a.logB) return { points, slope: null, intercept: null };
     const slope = (b.logDRminus1 - a.logDRminus1) / (b.logB - a.logB);
-    return { points, slope, intercept: a.logDRminus1 - slope * a.logB };
+    const intercept = a.logDRminus1 - slope * a.logB;
+    if (!Number.isFinite(slope) || !Number.isFinite(intercept)) return { points, slope: null, intercept: null };
+    return { points, slope, intercept };
   }
   return { points, slope: null, intercept: null };
 }
@@ -89,7 +96,9 @@ export function addSchildPlot(
       showlegend: false,
     },
   ];
-  if (slope != null && intercept != null) {
+  // A non-finite slope/intercept is undefined, never a displayable
+  // number: with no slope the points stand alone and the note says why.
+  if (slope != null && intercept != null && Number.isFinite(slope) && Number.isFinite(intercept)) {
     const xs = points.map((p) => p.logB);
     const [xMin, xMax] = [Math.min(...xs), Math.max(...xs)];
     const pad = (xMax - xMin) * 0.1 || 0.5;
@@ -103,6 +112,11 @@ export function addSchildPlot(
       showlegend: false,
     });
     addNote(fig, `Slope = ${num(slope)}<br>Intercept = ${num(intercept)}`, options);
+  } else if (points.length >= 2) {
+    // ≥ 2 points but no slope: the antagonist concentrations do not vary
+    // (duplicates), so the slope is mathematically undefined — say so
+    // instead of printing "Slope = Infinity" or a blank.
+    addNote(fig, "Slope undefined — duplicate antagonist concentrations, so no Schild slope can be determined from these points.", options);
   }
   fig.data = [...traces, ...fig.data];
 }

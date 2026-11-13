@@ -93,6 +93,7 @@ import {
 } from "../src/views/graphs/selection";
 import { genesNamed, VOLCANO_MAX_LOG10 } from "../src/views/graphs/volcano";
 import { addForestPlot } from "../src/views/graphs/forest-plot";
+import { addSchildPlot, schildPlotPoints } from "../src/views/graphs/schild-plot";
 import { examplesFor, matched, type Matched } from "../src/views/graphs/match-graph";
 import type { OutlineNode } from "../src/store/use-project-store";
 import { deriveComparisons } from "../src/views/graphs/significance-overlay";
@@ -130,7 +131,7 @@ import {
 } from "../src/lib/figure";
 import { sampleProject } from "./sample-project";
 import { crc32 } from "node:zlib";
-import type { AnalysisOutcome, AnalysisParams, AnalysisResult, MonteCarloParams, RegressionCoefficient, SimulationSpec } from "../src/stats/types";
+import type { AnalysisOutcome, AnalysisParams, AnalysisResult, DoseResponseSpecialParams, MonteCarloParams, RegressionCoefficient, SimulationSpec } from "../src/stats/types";
 import { simulationRCode, validateSimulationSpec } from "../src/stats/simulation/simulate";
 import { aicc, coefficientsForSet, invertMethod, invertModel, nestedPair } from "../src/stats/xy/nonlinear-regression";
 import { parseInhibitorConcentration } from "../src/stats/xy/enzyme-inhibition";
@@ -3710,6 +3711,40 @@ check("the dose-response — Special wizard completes with X + 1 Y and the fit n
   const ys2 = WIZARDS["dose-response-special"]!.questions({}, readTable(two)).find((q) => q && q.id === "ys");
   ok(ys2 && ys2.kind === "names" && ys2.min === 2, "two Y: the minimum stays 2");
   ok(ys2 && ys2.kind === "names" && /Which Y data sets should be fitted/.test(ys2.ask), "two Y: the usual question");
+});
+
+check("a Schild plot with duplicate antagonist concentrations shows no slope, not Infinity", () => {
+  // G-F10: two antagonist series at the same B share one log[B], so the
+  // two-point slope divides by zero (±Inf, or NaN when the points
+  // coincide) — mathematically undefined, never a number to display.
+  const group = (name: string) => ({ name, mean: null, sd: null, sem: null, median: null, n: 3 });
+  const duplicateFit: AnalysisResult = {
+    testType: "dose-response-special",
+    stats: [],
+    groups: [group("0 M"), group("1e-8 M"), group("10 nM")],
+    notes: "",
+    coefficients: [
+      { term: "pA2", estimate: 8, stdError: null, t: null, p: null },
+      { term: "SchildSlope", estimate: 1, stdError: null, t: null, p: null },
+    ],
+  };
+  const params: DoseResponseSpecialParams = {
+    model: "schild-slope-1",
+    antagonistConcentrations: { "1e-8 M": 1e-8, "10 nM": 1e-8 },
+  };
+  const plot = schildPlotPoints(duplicateFit, params);
+  strictEqual(plot.points.length, 2, "both duplicate-B points are still plotted");
+  strictEqual(plot.slope, null, "duplicate log[B] gives no slope, not ±Inf/NaN");
+  strictEqual(plot.intercept, null, "duplicate log[B] gives no intercept");
+  const opts = newGraphOptions("schild-plot");
+  const fig = { data: [], layout: { annotations: [] } } as unknown as GraphFigure;
+  addSchildPlot(fig, duplicateFit, params, paintOf(opts, 3), opts);
+  const traces = fig.data as { mode?: string }[];
+  ok(traces.some((t) => t.mode === "markers"), "the points are drawn");
+  ok(!traces.some((t) => t.mode === "lines"), "no fitted line is drawn without a slope");
+  const notes = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+  ok(notes.some((a) => a.text?.includes("Slope undefined")), "the note says the slope is undefined");
+  ok(!notes.some((a) => a.text?.includes("Infinity")), "no note prints 'Slope = Infinity'");
 });
 
 check("the ROC wizard asks truth, score and positive class, defaulting to the largest value", () => {
