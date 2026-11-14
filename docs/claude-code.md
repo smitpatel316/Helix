@@ -94,11 +94,15 @@ claude mcp add --scope user titer -- /Applications/Titer.app/Contents/MacOS/tite
 
 Everything after `--` is passed to the bridge untouched; everything before
 it is Claude Code's own options. Environment overrides, if you need them
-(dev only — the discovery file is the normal path):
+(dev only — the discovery file is the normal path). **Put the server
+name before `-e`:** in Claude Code 2.1.325 `-e/--env` is variadic
+(`<env...>`), so an `-e` before the name swallows the name and the add
+fails with `missing required argument 'commandOrUrl'` (verified live;
+the 2.1.138 help text shows `-e` first, but name-first works on both):
 
 ```sh
-claude mcp add --scope user -e TITER_MCP_DISCOVERY=/path/to/discovery.json \
-  titer -- /Applications/Titer.app/Contents/MacOS/titer-stdio-bridge
+claude mcp add --scope user titer -e TITER_MCP_DISCOVERY=/path/to/discovery.json \
+  -- /Applications/Titer.app/Contents/MacOS/titer-stdio-bridge
 ```
 
 **Prerequisite:** the bridge must be staged into the bundle before the DMG
@@ -178,11 +182,20 @@ revision is deliberately not offered: clients lag it. Claude Code's v2
 runtime (MCP TypeScript SDK 2.0 — v2.1.232+ when feature flags are fetched,
 v2.1.274+ by default otherwise) asks the server whether it supports the
 newer revision and uses it with servers that do; with a server that does
-not, it falls back to the 2025-era handshake. **Live verification of that
-fallback against this server is an open item** — see the lane log
-(`~/workspace/.helix-mcp-claude-code/investigations.md`). The CLI on the
-Mac at lane time is 2.1.138, which predates the v2 runtime and negotiates
-2025 directly. To force a runtime for testing:
+not, it falls back to the 2025-era handshake. **Live-verified, server side
+(2026-11-14, lane log):** against a faithful rmcp replica of this server's
+negotiation surface, an `initialize` offering `2026-07-28` was answered
+with `protocolVersion: "2025-11-25"` (HTTP 200, session established) —
+the fallback is designed behaviour in rmcp's `negotiate_protocol_version`
+(a 2026-07-28 offer has no initialize handshake, so the server answers
+its newest version that has one). **Client side:** Claude Code 2.1.325
+connects cleanly (✔ Connected) to the 2025-only server; its `mcp list`
+health check offered `2025-11-25` directly, even with
+`MCP_SDK_GENERATION=v2` / `MCP_PROTOCOL_NEGOTIATION=auto` — the v2
+2026-07-28 probe, if it happens, was not observed from the health-check
+path in a no-auth context (a real session needs sign-in and was not
+attempted). The Mac's installed CLI is 2.1.138, which predates the v2
+runtime and negotiates 2025 directly. To force a runtime for testing:
 `MCP_SDK_GENERATION=v1|v2`, `MCP_PROTOCOL_NEGOTIATION=auto|legacy`.
 
 ## Troubleshooting
