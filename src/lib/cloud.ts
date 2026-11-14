@@ -121,16 +121,22 @@ export interface CloudStatus {
   boxHasBroker: boolean;
   /** Live probe: the broker answered GET /config just now. */
   boxBrokerReachable: boolean;
+  /** Persisted "Always use my own Box app" preference (Settings). */
+  boxPreferByo: boolean;
 }
 
 /** Which path a Box connect would actually take, from the status the
- *  Settings page already holds. Broker first when it answers; the user's
+ *  Settings page already holds. The "prefer my own Box app" toggle wins
+ *  when the user has their own credentials saved (the broker is never
+ *  probed); with the toggle on but no credentials saved, nothing is usable
+ *  under the preference. Otherwise broker first when it answers; the user's
  *  own app credentials when the broker is down; nothing when neither is
  *  available. */
 export type BoxAuthPath = "broker" | "byo" | "none";
 
 export const boxAuthPath = (status: CloudStatus | null): BoxAuthPath => {
   if (!status) return "none";
+  if (status.boxPreferByo) return status.boxHasCredentials ? "byo" : "none";
   if (status.boxBrokerReachable) return "broker";
   if (status.boxHasCredentials) return "byo";
   return "none";

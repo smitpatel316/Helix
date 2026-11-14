@@ -13,11 +13,13 @@
 //! - `BOX_BROKER_PORT` (default `18099`): listen port.
 //! - `BOX_TOKEN_URL` (default `https://api.box.com/oauth2/token`): upstream
 //!   Box token endpoint. Override ONLY for tests against a mock endpoint.
+//! - `BOX_REVOKE_URL` (default `https://api.box.com/oauth2/revoke`):
+//!   upstream Box revoke endpoint. Override ONLY for tests, same as above.
 //!
 //! The broker is stateless: no database, no token storage, no pending map.
 
 use std::{net::SocketAddr, os::unix::fs::PermissionsExt, path::Path};
-use titer_box_broker::{build_router, AppState, ClientSecret, DEFAULT_TOKEN_URL};
+use titer_box_broker::{build_router, AppState, ClientSecret, DEFAULT_REVOKE_URL, DEFAULT_TOKEN_URL};
 
 fn fail(msg: &str) -> ! {
     eprintln!("titer-box-broker: refusing to start: {msg}");
@@ -74,13 +76,17 @@ async fn main() {
         .ok()
         .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_TOKEN_URL.to_string());
+    let revoke_url = std::env::var("BOX_REVOKE_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_REVOKE_URL.to_string());
     let bind = std::env::var("BOX_BROKER_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port: u16 = std::env::var("BOX_BROKER_PORT")
         .ok()
         .and_then(|v| v.trim().parse().ok())
         .unwrap_or(18099);
 
-    let state = match AppState::new(client_id, client_secret, token_url) {
+    let state = match AppState::new(client_id, client_secret, token_url, revoke_url) {
         Ok(s) => s,
         Err(e) => fail(&format!("cannot build HTTP client: {e}")),
     };

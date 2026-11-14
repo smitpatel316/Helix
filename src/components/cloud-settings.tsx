@@ -96,6 +96,22 @@ export function CloudSettingsDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const setPreferByo = async (prefer: boolean) => {
+    setError(null);
+    setNotice(null);
+    try {
+      await native.cloudSetBoxPreferByo(prefer);
+      setNotice(
+        prefer
+          ? "Box sign-in will use your own Box app from now on — the Titer Box app is skipped."
+          : "Box sign-in will use the Titer Box app when it answers.",
+      );
+      await refresh();
+    } catch (err) {
+      setError(cloudErrorMessage(err));
+    }
+  };
+
   return (
     <Dialog
       open={open}
@@ -178,6 +194,20 @@ export function CloudSettingsDialog({ onClose }: { onClose: () => void }) {
               Save Credentials
             </Button>
           </div>
+          <label className="flex items-start gap-2 text-regular">
+            <input
+              type="checkbox"
+              checked={status?.boxPreferByo ?? false}
+              onChange={(e) => void setPreferByo(e.target.checked)}
+            />
+            <span>
+              Always use my own Box app for sign-in
+              <span className="block text-secondary">
+                Skips the Titer Box app. Use this if your Box tenant hasn&apos;t enabled the shared Titer app — sign-in
+                with it fails at Box before Titer can fall back.
+              </span>
+            </span>
+          </label>
         </section>
 
         {notice && <p className="text-regular">{notice}</p>}

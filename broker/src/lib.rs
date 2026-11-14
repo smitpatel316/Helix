@@ -18,10 +18,15 @@
 //! - `POST /exchange` JSON `{"code","code_verifier","redirect_uri"}` ->
 //!   Box token JSON `{"access_token","refresh_token","expires_in","token_type"}`
 //! - `POST /refresh` JSON `{"refresh_token"}` -> new token JSON
+//! - `POST /revoke` JSON `{"token"}` -> `{"revoked":true}`. Revokes the
+//!   token at Box (`POST https://api.box.com/oauth2/revoke` with the
+//!   broker-held client id + secret). The client sends the refresh token
+//!   when it has one (it lives 60 days; the access token only 60 min).
 //!
 //! Upstream: `POST https://api.box.com/oauth2/token` (form-encoded), 30 s
 //! timeout. Error mapping: Box `invalid_grant` -> 400, other Box 4xx -> 400,
-//! Box 5xx or unreachable/timeout -> 502.
+//! Box 5xx or unreachable/timeout -> 502. `/revoke` maps the same way:
+//! Box 4xx -> 400 (code passed through), Box 5xx / unreachable -> 502.
 
 use axum::{
     extract::{ConnectInfo, State},
@@ -41,6 +46,7 @@ use std::{
 use url::Url;
 
 pub const DEFAULT_TOKEN_URL: &str = "https://api.box.com/oauth2/token";
+pub const DEFAULT_REVOKE_URL: &str = "https://api.box.com/oauth2/revoke";
 /// Upstream Box call timeout (task contract).
 pub const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
 /// Rate limit: refill rate, requests per minute.
@@ -85,6 +91,7 @@ pub struct AppState {
     pub client_id: String,
     pub client_secret: ClientSecret,
     pub token_url: String,
+    pub revoke_url: String,
     pub http: reqwest::Client,
     pub limiter: Arc<RateLimiter>,
     pub log: LogSink,
@@ -95,6 +102,7 @@ impl AppState {
         client_id: String,
         client_secret: ClientSecret,
         token_url: String,
+        revoke_url: String,
     ) -> Result<Self, reqwest::Error> {
         let http = reqwest::Client::builder()
             .timeout(UPSTREAM_TIMEOUT)
@@ -103,6 +111,7 @@ impl AppState {
             client_id,
             client_secret,
             token_url,
+            revoke_url,
             http,
             limiter: Arc::new(RateLimiter::new()),
             log: stderr_sink(),
@@ -193,6 +202,13 @@ pub struct ExchangeRequest {
 #[derive(Deserialize)]
 pub struct RefreshRequest {
     pub refresh_token: String,
+}
+
+/// The token to revoke: the client sends the refresh token when it has
+/// one (60-day life), else the access token. Box revokes either.
+#[derive(Deserialize)]
+pub struct RevokeRequest {
+    pub token: String,
 }
 
 /// Box token JSON, passed through verbatim. `refresh_token` is optional in
@@ -307,6 +323,36 @@ async fn exchange_with_box(
     }
 }
 
+/// Revokes one token at Box (`POST {revoke_url}`, form-encoded with the
+/// broker-held client id + secret). Box answers 200 with an empty body on
+/// success; a 4xx carries an error code (passed through, never the
+/// description); 5xx / unreachable is a gateway failure. The token itself
+/// is never logged.
+async fn revoke_with_box(state: &AppState, token: &str) -> Result<(), (StatusCode, Json<ErrorBody>)> {
+    let form = [
+        ("client_id", state.client_id.as_str()),
+        ("client_secret", state.client_secret.expose()),
+        ("token", token),
+    ];
+    let resp = state.http.post(&state.revoke_url).form(&form).send().await.map_err(|_| bad_gateway())?;
+    let status = resp.status();
+    if status.is_success() {
+        Ok(())
+    } else if status.is_client_error() {
+        // Box's revoke error body may be empty; default the code rather
+        // than failing the parse.
+        let code = resp
+            .json::<BoxErrorBody>()
+            .await
+            .ok()
+            .and_then(|b| b.error)
+            .unwrap_or_else(|| "invalid_request".to_string());
+        Err(bad_request(&code))
+    } else {
+        Err(bad_gateway())
+    }
+}
+
 async fn exchange(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -378,6 +424,35 @@ async fn refresh(
     }
 }
 
+async fn revoke(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(req): Json<RevokeRequest>,
+) -> Response {
+    let ip = client_ip(&headers, peer);
+    if let Err(retry_after) = state.limiter.check(ip) {
+        state.log(format!(
+            "rate_limited method=POST path=/revoke ip={ip} retry_after={retry_after}"
+        ));
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(axum::http::header::RETRY_AFTER, retry_after.to_string())],
+            Json(ErrorBody {
+                error: "rate_limited".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    if !non_empty(&req.token) {
+        return bad_request("invalid_request").into_response();
+    }
+    match revoke_with_box(&state, &req.token).await {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "revoked": true }))).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
 /// Access log middleware. Logs method, path, status, and duration only —
 /// never headers, bodies, codes, verifiers, or tokens.
 async fn access_log(
@@ -403,6 +478,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/config", get(config))
         .route("/exchange", post(exchange))
         .route("/refresh", post(refresh))
+        .route("/revoke", post(revoke))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             access_log,
@@ -436,6 +512,11 @@ mod tests {
     /// - "bad-code" / "bad-refresh" -> 400 `{"error":"invalid_grant"}`
     /// - "server-error"            -> 500 `{"error":"server_error"}`
     /// - anything else             -> 200 with sentinel tokens
+    /// The mock also serves the revoke endpoint (`POST /oauth2/revoke`,
+    /// same secret check): "bad-token" -> 400 `{"error":"invalid_request"}`,
+    /// "server-error" -> 500, anything else -> 200 with an empty body,
+    /// exactly like Box. Returns the mock's base URL; the token URL is
+    /// `{base}/oauth2/token`, the revoke URL `{base}/oauth2/revoke`.
     async fn mock_box_server() -> (String, tokio::task::JoinHandle<()>) {
         async fn token(
             axum::Form(form): axum::Form<HashMap<String, String>>,
@@ -476,21 +557,42 @@ mod tests {
                 ),
             }
         }
-        let app = Router::new().route("/oauth2/token", post(token));
+        async fn revoke(axum::Form(form): axum::Form<HashMap<String, String>>) -> (StatusCode, String) {
+            assert_eq!(
+                form.get("client_id").map(String::as_str),
+                Some("TEST_CLIENT_ID")
+            );
+            assert_eq!(
+                form.get("client_secret").map(String::as_str),
+                Some("TEST_CLIENT_SECRET")
+            );
+            match form.get("token").map(String::as_str).unwrap_or("") {
+                "bad-token" => (
+                    StatusCode::BAD_REQUEST,
+                    r#"{"error":"invalid_request"}"#.to_string(),
+                ),
+                "server-error" => (StatusCode::INTERNAL_SERVER_ERROR, r#"{"error":"server_error"}"#.to_string()),
+                _ => (StatusCode::OK, String::new()),
+            }
+        }
+        let app = Router::new()
+            .route("/oauth2/token", post(token))
+            .route("/oauth2/revoke", post(revoke));
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let handle = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
         });
-        (format!("http://{addr}/oauth2/token"), handle)
+        (format!("http://{addr}"), handle)
     }
 
-    fn test_state(token_url: String) -> (AppState, Arc<CapturedLogs>) {
+    fn test_state(base_url: String) -> (AppState, Arc<CapturedLogs>) {
         let logs = Arc::new(CapturedLogs::default());
         let state = AppState::new(
             "TEST_CLIENT_ID".to_string(),
             ClientSecret::new("TEST_CLIENT_SECRET".to_string()),
-            token_url,
+            format!("{base_url}/oauth2/token"),
+            format!("{base_url}/oauth2/revoke"),
         )
         .unwrap()
         .with_log_sink(capturing_sink(logs.clone()));
@@ -596,6 +698,80 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn revoke_happy_path() {
+        let (base, mock) = mock_box_server().await;
+        let (state, _) = test_state(base);
+        let (addr, server) = serve_app(state).await;
+        let c = client();
+        let resp = c
+            .post(format!("http://{addr}/revoke"))
+            .json(&serde_json::json!({"token": "REFRESH-TOKEN-SENTINEL-9c1e"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body: serde_json::Value = resp.json().await.unwrap();
+        assert_eq!(body["revoked"], true);
+        server.abort();
+        mock.abort();
+    }
+
+    #[tokio::test]
+    async fn revoke_bad_token_maps_to_400() {
+        let (base, mock) = mock_box_server().await;
+        let (state, _) = test_state(base);
+        let (addr, server) = serve_app(state).await;
+        let c = client();
+        let resp = c
+            .post(format!("http://{addr}/revoke"))
+            .json(&serde_json::json!({"token": "bad-token"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body: serde_json::Value = resp.json().await.unwrap();
+        assert_eq!(body["error"], "invalid_request");
+        server.abort();
+        mock.abort();
+    }
+
+    #[tokio::test]
+    async fn revoke_box_5xx_maps_to_502() {
+        let (base, mock) = mock_box_server().await;
+        let (state, _) = test_state(base);
+        let (addr, server) = serve_app(state).await;
+        let c = client();
+        let resp = c
+            .post(format!("http://{addr}/revoke"))
+            .json(&serde_json::json!({"token": "server-error"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+        server.abort();
+        mock.abort();
+    }
+
+    #[tokio::test]
+    async fn revoke_empty_token_is_400_without_upstream() {
+        let (base, mock) = mock_box_server().await;
+        let (state, _) = test_state(base);
+        let (addr, server) = serve_app(state).await;
+        let c = client();
+        let resp = c
+            .post(format!("http://{addr}/revoke"))
+            .json(&serde_json::json!({"token": "   "}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body: serde_json::Value = resp.json().await.unwrap();
+        assert_eq!(body["error"], "invalid_request");
+        server.abort();
+        mock.abort();
+    }
+
+    #[tokio::test]
     async fn invalid_grant_maps_to_400() {
         let (token_url, mock) = mock_box_server().await;
         let (state, _) = test_state(token_url);
@@ -656,7 +832,7 @@ mod tests {
         let probe = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let dead = probe.local_addr().unwrap();
         drop(probe);
-        let (state, _) = test_state(format!("http://{dead}/oauth2/token"));
+        let (state, _) = test_state(format!("http://{dead}"));
         let (addr, server) = serve_app(state).await;
         let c = client();
         let resp = c
@@ -703,7 +879,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let mock_addr = listener.local_addr().unwrap();
         let mock = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let (state, _) = test_state(format!("http://{mock_addr}/oauth2/token"));
+        let (state, _) = test_state(format!("http://{mock_addr}"));
         let (addr, server) = serve_app(state).await;
         let c = client();
         let resp = c
@@ -791,6 +967,7 @@ mod tests {
             "ACCESS-TOKEN-SENTINEL-7f3a",
             "REFRESH-TOKEN-SENTINEL-9c1e",
             "TEST_CLIENT_SECRET",
+            "REVOKE-TOKEN-SENTINEL-4444",
         ];
         let _ = c
             .post(format!("http://{addr}/exchange"))
@@ -805,6 +982,12 @@ mod tests {
         let _ = c
             .post(format!("http://{addr}/refresh"))
             .json(&serde_json::json!({"refresh_token": sentinels[2]}))
+            .send()
+            .await
+            .unwrap();
+        let _ = c
+            .post(format!("http://{addr}/revoke"))
+            .json(&serde_json::json!({"token": sentinels[6]}))
             .send()
             .await
             .unwrap();

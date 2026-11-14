@@ -284,6 +284,11 @@ export const openUrl = (url: string) => invoke<void>("open_url", { url });
 /** Connected accounts + whether Box has credentials saved (BYO) or a broker. */
 export const cloudStatus = () => invoke<CloudStatus>("cloud_status");
 
+/** Sets the persisted "Always use my own Box app" preference for Box
+ *  sign-in (skips the Titer broker). */
+export const cloudSetBoxPreferByo = (prefer_byo: boolean) =>
+  invoke<void>("cloud_set_box_prefer_byo", { prefer_byo });
+
 /** Saves the user's own Box app credentials (client id + secret) to the OS
  *  keychain. They are validated at connect time, not here. */
 export const cloudSaveBoxCredentials = (client_id: string, client_secret: string) =>

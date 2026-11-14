@@ -68,6 +68,7 @@ const statusBase: CloudStatus = {
   boxHasCredentials: false,
   boxHasBroker: true,
   boxBrokerReachable: true,
+  boxPreferByo: false,
 };
 strictEqual(boxAuthPath(statusBase), "broker");
 strictEqual(boxAuthPath({ ...statusBase, boxBrokerReachable: false, boxHasCredentials: true }), "byo");
@@ -76,6 +77,11 @@ strictEqual(boxAuthPath({ ...statusBase, boxBrokerReachable: false }), "none");
 strictEqual(boxAuthPath(null), "none");
 // Broker first: reachable broker wins even when BYO credentials exist.
 strictEqual(boxAuthPath({ ...statusBase, boxHasCredentials: true }), "broker");
+// "Always use my own Box app": the toggle wins over a reachable broker
+// when credentials are saved; with no credentials saved, nothing is
+// usable under the preference (the connect errors and says so).
+strictEqual(boxAuthPath({ ...statusBase, boxHasCredentials: true, boxPreferByo: true }), "byo");
+strictEqual(boxAuthPath({ ...statusBase, boxPreferByo: true }), "none");
 
 // ── Recents: legacy strings migrate, new entries keep, junk drops ────────
 deepStrictEqual(parseRecents(["/a/Data.hlx", "/b/Other.hlx"]), [

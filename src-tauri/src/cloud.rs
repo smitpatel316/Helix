@@ -229,6 +229,10 @@ pub trait CloudProvider: Send + Sync {
     async fn get_metadata(&self, file_id: &str) -> Result<RemoteEntry, CloudError>;
     async fn list_revisions(&self, file_id: &str) -> Result<Vec<RemoteVersion>, CloudError>;
     /// Revokes server-side AND deletes the keychain entry (disconnect).
+    /// The local entry is deleted even when the server-side revocation
+    /// fails — the caller must still drop the account, and surface the
+    /// returned error (which says the server-side token may still be
+    /// valid) instead of claiming the sign-in was revoked.
     async fn revoke(&self) -> Result<(), CloudError>;
 }
 

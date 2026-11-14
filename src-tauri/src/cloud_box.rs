@@ -171,20 +171,38 @@ async fn broker_config(http: &reqwest::Client, base_url: &str) -> Result<BrokerC
 }
 
 /// Resolves the credentials for a connect, against `broker_url` (`None` =
-/// no broker configured). Precedence: broker first — probe `/config` with
-/// a short timeout; if it answers, the shared app is the path. If the
-/// broker is unreachable, fall back to BYO when the user has credentials
-/// saved; if neither is available, the error names the broker outage AND
-/// the BYO alternative, so the user knows both halves.
+/// no broker configured). Precedence, unless `prefer_byo` is set: broker
+/// first — probe `/config` with a short timeout; if it answers, the shared
+/// app is the path. If the broker is unreachable, fall back to BYO when the
+/// user has credentials saved; if neither is available, the error names the
+/// broker outage AND the BYO alternative, so the user knows both halves.
+///
+/// With `prefer_byo` set (Settings → "Always use my own Box app"), the
+/// broker is never probed: a tenant that hasn't enabled the shared Titer
+/// app would otherwise hit a Box-side app-not-enabled error at authorize
+/// time, with no way around it in-app. BYO credentials are required — there
+/// is deliberately no silent fallback to the broker, or the preference
+/// would do nothing. `load_byo` is a closure (not a direct keychain read)
+/// so tests can inject credentials without a keychain.
 async fn resolve_credentials_with(
     broker_url: Option<String>,
     http: &reqwest::Client,
+    prefer_byo: bool,
+    load_byo: impl Fn() -> Result<Option<ByoCredentials>, CloudError>,
 ) -> Result<ResolvedCredentials, CloudError> {
+    if prefer_byo {
+        if let Some(creds) = load_byo()? {
+            return Ok(ResolvedCredentials::Byo(creds));
+        }
+        return Err(CloudError::NotConfigured {
+            message: "Box isn't configured yet: you asked to use your own Box app, but no Box app credentials are saved. Add them in Settings → Connected Storage (they stay in the OS keychain), or turn off \"Always use my own Box app\" to use the Titer Box app instead.".into(),
+        });
+    }
     if let Some(base) = broker_url {
         match broker_config(http, &base).await {
             Ok(config) => return Ok(ResolvedCredentials::Broker { client_id: config.client_id }),
             Err(broker_err) => {
-                if let Some(creds) = load_byo_credentials("box")? {
+                if let Some(creds) = load_byo()? {
                     return Ok(ResolvedCredentials::Byo(creds));
                 }
                 let broker_note = match broker_err {
@@ -201,7 +219,7 @@ async fn resolve_credentials_with(
             }
         }
     }
-    if let Some(creds) = load_byo_credentials("box")? {
+    if let Some(creds) = load_byo()? {
         return Ok(ResolvedCredentials::Byo(creds));
     }
     Err(CloudError::NotConfigured {
@@ -209,8 +227,8 @@ async fn resolve_credentials_with(
     })
 }
 
-async fn resolve_credentials(http: &reqwest::Client) -> Result<ResolvedCredentials, CloudError> {
-    resolve_credentials_with(broker_base_url(), http).await
+async fn resolve_credentials(http: &reqwest::Client, prefer_byo: bool) -> Result<ResolvedCredentials, CloudError> {
+    resolve_credentials_with(broker_base_url(), http, prefer_byo, || load_byo_credentials("box")).await
 }
 
 /// The token endpoint's answer.
@@ -371,6 +389,32 @@ async fn exchange_token_broker(
     token_response(response).await
 }
 
+/// Revokes one token through the broker: `POST {base}/revoke`, JSON
+/// `{"token"}` in, `{"revoked":true}` out. The broker revokes it at Box
+/// with the shared app's secret. A 502 means Box was unreachable through
+/// the broker (`Offline`, retryable); any other non-2xx is a provider
+/// error — the caller still deletes the local tokens, but must say the
+/// Box-side token may still be valid.
+async fn revoke_token_broker(http: &reqwest::Client, base_url: &str, token: &str) -> Result<(), CloudError> {
+    let url = format!("{base_url}/revoke");
+    let response = http
+        .post(&url)
+        .json(&serde_json::json!({ "token": token }))
+        .send()
+        .await
+        .map_err(CloudError::from_http)?;
+    let status = response.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    if status.as_u16() == 502 {
+        return Err(CloudError::offline(
+            "Box couldn't be reached through the Titer broker. Check the network and try again.",
+        ));
+    }
+    Err(CloudError::from_status(status))
+}
+
 /// Reads a token endpoint's answer — Box's directly, or the broker's
 /// pass-through of it. A 400 carrying `invalid_grant` is "signed out"
 /// (revoked/expired refresh token, or a used/expired code): the stored
@@ -413,11 +457,13 @@ async fn token_response(response: reqwest::Response) -> Result<BoxTokenResponse,
 /// The credential source is resolved first: broker when it answers
 /// `/config` (its client id goes on the authorize URL, in memory only, and
 /// the code is exchanged through `POST /exchange`), BYO when the broker is
-/// unreachable and the user has credentials saved. The issued tokens are
+/// unreachable and the user has credentials saved — or whenever
+/// `prefer_byo` is set (Settings → "Always use my own Box app"), in which
+/// case the broker is never probed. The issued tokens are
 /// recorded with their source, so refreshes go back through the same one.
-pub async fn connect_box() -> Result<CloudAccount, CloudError> {
+pub async fn connect_box(prefer_byo: bool) -> Result<CloudAccount, CloudError> {
     let http = http_client()?;
-    let resolved = resolve_credentials(&http).await?;
+    let resolved = resolve_credentials(&http, prefer_byo).await?;
     let client_id = resolved.client_id().to_string();
     let source = resolved.source();
     let pkce = new_pkce();
@@ -586,6 +632,39 @@ impl BoxClient {
             None,
         )
         .await
+    }
+
+    /// Revokes a broker-issued pair through the broker (`POST /revoke`
+    /// with the refresh token when there is one, else the access token),
+    /// then deletes the local tokens whatever happens. On broker failure
+    /// the local tokens are still deleted — the account IS disconnected —
+    /// but the error says so plainly: the Box-side token may still be
+    /// valid until it expires, and the user can revoke it at box.com.
+    /// `broker_url` is a parameter (not read from the environment here)
+    /// so tests can point at a mock broker without touching process env.
+    async fn revoke_broker_issued(&self, broker_url: Option<String>) -> Result<(), CloudError> {
+        let (access, refresh) = {
+            let tokens = self.tokens.lock().expect("box token lock");
+            (tokens.access_token.clone(), tokens.refresh_token.clone())
+        };
+        let token = refresh.as_deref().unwrap_or(&access);
+        let result = match broker_url {
+            Some(base) => revoke_token_broker(&self.http, &base, token).await,
+            None => Err(CloudError::provider("The Titer Box broker isn't configured.")),
+        };
+        let _ = crate::cloud::delete_tokens("box", &self.account.id);
+        match result {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let why = match e {
+                    CloudError::Offline { .. } => "the broker couldn't be reached",
+                    _ => "the broker refused the revocation",
+                };
+                Err(CloudError::provider(format!(
+                    "Box sign-in removed from this computer, but the token on Box's side could not be revoked ({why}). It stays valid until it expires — revoke it at box.com if you want it gone now."
+                )))
+            }
+        }
     }
 
     /// Sends `build` with a live token; on 401, refreshes once (forcing it
@@ -827,19 +906,19 @@ impl CloudProvider for BoxClient {
             let tokens = self.tokens.lock().expect("box token lock");
             (tokens.access_token.clone(), tokens.refresh_token.clone(), tokens.issued_via_broker)
         };
-        // Broker-issued tokens: the broker contract has no /revoke, and the
-        // client holds no secret to revoke with directly — so revocation is
-        // local-only: the keychain entry is deleted and the server-side
-        // token simply expires on its own (60 days at most). This is a
-        // known contract gap for the integration lane, not a silent no-op:
-        // the user is told the server side was not revoked.
+        // Broker-issued tokens: revoked at Box through the broker
+        // (`POST /revoke`), then deleted locally. If the broker can't be
+        // reached or refuses, the local tokens are STILL deleted and the
+        // error says the Box-side token may still be valid — the caller
+        // (cloud_disconnect) drops the account from the registry either
+        // way and surfaces that warning, never "revoked and removed".
         // BYO-issued tokens keep the old path: revoke at Box with the saved
         // credentials, then delete locally whatever happens.
         // If the BYO credentials are gone (user deleted them first), there
         // is nothing to revoke with: the local entry is still deleted, and
         // the server-side token simply expires on its own.
         let revoke_result = if issued_via_broker {
-            Ok(())
+            self.revoke_broker_issued(broker_base_url()).await
         } else {
             match load_byo_credentials("box")? {
                 Some(creds) => {
@@ -884,6 +963,7 @@ mod broker_tests {
         refresh_status: u16,
         refresh_invalid_grant: bool,
         refresh_unreachable_box: bool,
+        revoke_status: u16,
     }
 
     impl Default for MockBrokerBehavior {
@@ -895,8 +975,17 @@ mod broker_tests {
                 refresh_status: 200,
                 refresh_invalid_grant: false,
                 refresh_unreachable_box: false,
+                revoke_status: 200,
             }
         }
+    }
+
+    /// A loopback port nothing listens on (bind, take the port, drop it).
+    fn dead_port() -> u16 {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("probe bind");
+        let port = listener.local_addr().expect("probe addr").port();
+        drop(listener);
+        port
     }
 
     /// Starts a mock broker on an ephemeral loopback port, in a detached
@@ -975,6 +1064,14 @@ mod broker_tests {
                             )
                         }
                     }
+                    ("POST", "/revoke") => (
+                        behavior.revoke_status,
+                        if behavior.revoke_status == 200 {
+                            r#"{"revoked":true}"#.to_string()
+                        } else {
+                            r#"{"error":"invalid_client"}"#.to_string()
+                        },
+                    ),
                     _ => (404, "{}".to_string()),
                 };
                 let response = format!(
@@ -1107,8 +1204,148 @@ mod broker_tests {
     async fn resolve_prefers_the_broker_when_it_answers() {
         let (base, _) = start_mock_broker(MockBrokerBehavior::default());
         let http = http_client().expect("http client");
-        let resolved = resolve_credentials_with(Some(base), &http).await.expect("resolve");
+        let resolved = resolve_credentials_with(Some(base), &http, false, || load_byo_credentials("box"))
+            .await
+            .expect("resolve");
         assert_eq!(resolved, ResolvedCredentials::Broker { client_id: "mock-client-id".into() });
         assert_eq!(resolved.source(), SecretSource::Broker);
+    }
+
+    #[tokio::test]
+    async fn resolve_prefer_byo_skips_the_broker() {
+        // The mock broker answers, but the preference wins: the user's own
+        // app is used, and the broker is never probed.
+        let (base, seen) = start_mock_broker(MockBrokerBehavior::default());
+        let http = http_client().expect("http client");
+        let byo = ByoCredentials { client_id: "my-id".into(), client_secret: "my-secret".into() };
+        let resolved = resolve_credentials_with(Some(base), &http, true, || Ok(Some(byo.clone())))
+            .await
+            .expect("resolve");
+        assert_eq!(resolved, ResolvedCredentials::Byo(byo));
+        assert_eq!(resolved.source(), SecretSource::Byo);
+        assert!(seen.lock().expect("seen lock").is_empty(), "broker must not be probed");
+    }
+
+    #[tokio::test]
+    async fn resolve_prefer_byo_without_credentials_errors() {
+        let (base, _) = start_mock_broker(MockBrokerBehavior::default());
+        let http = http_client().expect("http client");
+        let err = resolve_credentials_with(Some(base), &http, true, || Ok(None))
+            .await
+            .expect_err("prefer-byo with no creds must fail");
+        match err {
+            CloudError::NotConfigured { message } => {
+                assert!(message.contains("your own Box app"), "{message}");
+            }
+            other => panic!("expected NotConfigured, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn broker_revoke_sends_the_token() {
+        let (base, seen) = start_mock_broker(MockBrokerBehavior::default());
+        let http = http_client().expect("http client");
+        revoke_token_broker(&http, &base, "REFRESH-1").await.expect("revoke");
+        let seen = seen.lock().expect("seen lock");
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].0, "POST /revoke");
+        let body: serde_json::Value = serde_json::from_str(&seen[0].1).expect("revoke body json");
+        assert_eq!(body, serde_json::json!({ "token": "REFRESH-1" }));
+    }
+
+    #[tokio::test]
+    async fn broker_revoke_400_is_a_provider_error() {
+        let (base, _) = start_mock_broker(MockBrokerBehavior { revoke_status: 400, ..Default::default() });
+        let http = http_client().expect("http client");
+        let err = revoke_token_broker(&http, &base, "TOKEN-1").await.expect_err("400 must fail");
+        assert!(matches!(err, CloudError::Provider { .. }), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn broker_revoke_unreachable_is_offline() {
+        let port = dead_port();
+        let http = http_client().expect("http client");
+        let err = revoke_token_broker(&http, &format!("http://127.0.0.1:{port}"), "TOKEN-1")
+            .await
+            .expect_err("must fail");
+        assert!(matches!(err, CloudError::Offline { .. }), "{err:?}");
+    }
+
+    /// A broker-issued client, built directly (no keychain): the revoke
+    /// path reads the stored pair, never the keychain, for the token.
+    fn broker_issued_client() -> BoxClient {
+        BoxClient {
+            http: http_client().expect("http client"),
+            account: CloudAccount { provider: "box".into(), id: "u1".into(), login: "u1@example.com".into(), name: "Test User".into() },
+            tokens: Mutex::new(TokenSet {
+                access_token: "ACCESS-1".into(),
+                refresh_token: Some("REFRESH-1".into()),
+                expires_at_unix: 0,
+                scope: BOX_SCOPE_READWRITE.into(),
+                issued_via_broker: true,
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn broker_issued_revoke_revokes_at_the_broker() {
+        let (base, seen) = start_mock_broker(MockBrokerBehavior::default());
+        let client = broker_issued_client();
+        client.revoke_broker_issued(Some(base)).await.expect("revoke");
+        let seen = seen.lock().expect("seen lock");
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].0, "POST /revoke");
+        let body: serde_json::Value = serde_json::from_str(&seen[0].1).expect("revoke body json");
+        // The refresh token goes (60-day life), not the access token.
+        assert_eq!(body, serde_json::json!({ "token": "REFRESH-1" }));
+    }
+
+    #[tokio::test]
+    async fn broker_issued_revoke_down_still_deletes_locally_but_warns() {
+        let port = dead_port();
+        let client = broker_issued_client();
+        let err = client
+            .revoke_broker_issued(Some(format!("http://127.0.0.1:{port}")))
+            .await
+            .expect_err("broker-down revoke must fail");
+        match err {
+            CloudError::Provider { message } => {
+                assert!(message.contains("removed from this computer"), "{message}");
+                assert!(message.contains("box.com"), "{message}");
+                assert!(!message.contains("revoked and removed"), "{message}");
+            }
+            other => panic!("expected Provider warning, got {other:?}"),
+        }
+    }
+
+    /// Live plumbing probe (ignored by default): the REAL client exchange
+    /// path against the deployed broker with a fake code. Expects a clean
+    /// provider error (invalid_client from Box via the broker — the broker
+    /// still runs the placeholder secret), no hang, no token stored (this
+    /// fn stores nothing). Run: `cargo test --bin titer cloud
+    /// live_exchange -- --ignored`. If the egress proxy blocks reqwest in
+    /// tests, this fails at connect and the probe falls back to a curl
+    /// POST /exchange (see the lane log).
+    #[tokio::test]
+    #[ignore]
+    async fn live_exchange_invalid_client() {
+        let base = std::env::var("TITER_BOX_BROKER_URL")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "https://box-broker.smitpatel.net".to_string());
+        let http = http_client().expect("http client");
+        let err = exchange_token_broker(
+            &http,
+            &base,
+            "exchange",
+            serde_json::json!({
+                "code": "INT-FAKE-CODE",
+                "code_verifier": "INT-FAKE-VERIFIER",
+                "redirect_uri": "http://127.0.0.1:9/callback",
+            }),
+        )
+        .await
+        .expect_err("a fake code must fail");
+        assert!(matches!(err, CloudError::Provider { .. }), "{err:?}");
     }
 }

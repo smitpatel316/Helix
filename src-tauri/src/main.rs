@@ -405,6 +405,35 @@ fn save_cloud_registry(app: &AppHandle, accounts: &[cloud::CloudAccount]) -> Res
     write_atomically(&file, text.as_bytes()).map_err(|e| cloud::CloudError::provider(e))
 }
 
+/// "Always use my own Box app" (Settings → Connected Storage): a persisted
+/// bool beside the registry (`cloud-settings.json`). When set, Box connects
+/// skip the broker entirely and use the user's own app credentials — the
+/// escape hatch for a tenant that hasn't enabled the shared Titer app.
+/// Missing or unreadable file means "not set" (broker-first, as today).
+fn cloud_settings_file(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|dir| dir.join("cloud-settings.json"))
+}
+
+fn load_box_prefer_byo(app: &AppHandle) -> bool {
+    cloud_settings_file(app)
+        .and_then(|file| fs::read_to_string(file).ok())
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|v| v.get("boxPreferByo")?.as_bool())
+        .unwrap_or(false)
+}
+
+fn save_box_prefer_byo(app: &AppHandle, prefer_byo: bool) -> Result<(), cloud::CloudError> {
+    let Some(file) = cloud_settings_file(app) else {
+        return Err(cloud::CloudError::provider("Couldn't find the app-data folder."));
+    };
+    let text = serde_json::to_string(&serde_json::json!({ "boxPreferByo": prefer_byo }))
+        .map_err(|e| cloud::CloudError::provider(format!("Couldn't record the Box preference: {e}")))?;
+    if let Some(parent) = file.parent() {
+        fs::create_dir_all(parent).map_err(|e| cloud::CloudError::provider(e.to_string()))?;
+    }
+    write_atomically(&file, text.as_bytes()).map_err(|e| cloud::CloudError::provider(e))
+}
+
 fn decode_base64(base64: &str) -> Result<Vec<u8>, cloud::CloudError> {
     BASE64.decode(base64).map_err(|_| cloud::CloudError::provider("That file's bytes couldn't be read."))
 }
@@ -437,6 +466,7 @@ fn cloud_provider(
 /// only — no secrets cross the bridge, ever. `box_broker_reachable` is a
 /// live probe (a short `/config` check): the broker can be configured but
 /// down, and the page shows which path a connect would actually take.
+/// `box_prefer_byo` is the persisted "Always use my own Box app" toggle.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CloudStatus {
@@ -444,6 +474,7 @@ struct CloudStatus {
     box_has_credentials: bool,
     box_has_broker: bool,
     box_broker_reachable: bool,
+    box_prefer_byo: bool,
 }
 
 #[tauri::command]
@@ -453,7 +484,15 @@ async fn cloud_status(app: AppHandle) -> CloudStatus {
         box_has_credentials: matches!(cloud::load_byo_credentials("box"), Ok(Some(_))),
         box_has_broker: cloud_box::broker_configured(),
         box_broker_reachable: cloud_box::broker_available().await,
+        box_prefer_byo: load_box_prefer_byo(&app),
     }
+}
+
+/// Sets the persisted "Always use my own Box app" preference for Box
+/// sign-in (skips the Titer broker; see `load_box_prefer_byo`).
+#[tauri::command]
+fn cloud_set_box_prefer_byo(app: AppHandle, prefer_byo: bool) -> Result<(), cloud::CloudError> {
+    save_box_prefer_byo(&app, prefer_byo)
 }
 
 /// Saves the user's own Box app credentials (client id + secret) to the OS
@@ -473,10 +512,12 @@ fn cloud_save_box_credentials(client_id: String, client_secret: String) -> Resul
 }
 
 /// The Box connect flow (loopback + system browser + immediate exchange).
-/// Records the account in the registry on success.
+/// Records the account in the registry on success. The persisted "Always
+/// use my own Box app" preference is consulted here, so the connect takes
+/// the user's own app when they asked for it.
 #[tauri::command]
 async fn cloud_connect_box(app: AppHandle) -> Result<cloud::CloudAccount, cloud::CloudError> {
-    let account = cloud_box::connect_box().await?;
+    let account = cloud_box::connect_box(load_box_prefer_byo(&app)).await?;
     let mut accounts = load_cloud_registry(&app);
     accounts.retain(|a| !(a.provider == account.provider && a.id == account.id));
     accounts.push(account.clone());
@@ -487,7 +528,11 @@ async fn cloud_connect_box(app: AppHandle) -> Result<cloud::CloudAccount, cloud:
 /// Disconnect: revokes server-side AND deletes the keychain entry, then
 /// drops the account from the registry. The open document and its cache
 /// stay; the next save fails with a clear error and the local-copy escape
-/// hatch.
+/// hatch. `revoke()` deletes the local tokens even when the server-side
+/// revocation fails, so the account is dropped from the registry either
+/// way — and the revoke error is returned (not swallowed), so the user
+/// sees the "token may still be valid at Box" warning instead of a
+/// "revoked and removed" claim that isn't true.
 #[tauri::command]
 async fn cloud_disconnect(
     app: AppHandle,
@@ -496,11 +541,11 @@ async fn cloud_disconnect(
     account_id: String,
 ) -> Result<(), cloud::CloudError> {
     let client = cloud_provider(&app, &mock, &provider, &account_id)?;
-    client.revoke().await?;
+    let revoke_result = client.revoke().await;
     let mut accounts = load_cloud_registry(&app);
     accounts.retain(|a| !(a.provider == provider && a.id == account_id));
     save_cloud_registry(&app, &accounts)?;
-    Ok(())
+    revoke_result
 }
 
 #[tauri::command]
@@ -1048,6 +1093,7 @@ fn main() {
             set_spinner,
             open_url,
             cloud_status,
+            cloud_set_box_prefer_byo,
             cloud_save_box_credentials,
             cloud_connect_box,
             cloud_disconnect,

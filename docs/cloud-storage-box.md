@@ -54,12 +54,18 @@ research §7 Q2).
    the secret. `BOX_BROKER_URL` in `src-tauri/src/cloud_box.rs` points at
    `https://box-broker.smitpatel.net` (Pi + tunnel); the client takes the
    client id from `GET /config` per session (in memory only) and exchanges
-   codes via `POST /exchange`, refreshes via `POST /refresh`. Broker is the
-   default path; BYO stays as the fallback when the broker is unreachable,
-   and refreshes always go back through the source that issued the tokens
-   (`TokenSet.issued_via_broker`). The contract has no `/revoke`, so a
-   broker-issued disconnect is local-only for now (server-side token
-   expires on its own).
+   codes via `POST /exchange`, refreshes via `POST /refresh`, revokes via
+   `POST /revoke` (refresh token when there is one, else the access
+   token). Broker is the default path; BYO stays as the fallback when the
+   broker is unreachable, and refreshes always go back through the source
+   that issued the tokens (`TokenSet.issued_via_broker`). A broker-issued
+   disconnect revokes at Box first; if the broker can't be reached or
+   refuses, the local tokens are still deleted, but the user is told the
+   Box-side token may still be valid until it expires (revoke it at
+   box.com) — never "revoked and removed". Settings has an "Always use my
+   own Box app" toggle: with it on, connects skip the broker entirely, for
+   a tenant that hasn't enabled the shared Titer app (sign-in with it
+   fails at Box before Titer can fall back).
 3. **Shared secret shipped in the binary (rejected).** Anyone can extract
    it from the app; it would let a third party mint tokens for any user
    who authorized the app. Not done, not a fallback.
