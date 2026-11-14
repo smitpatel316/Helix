@@ -629,6 +629,28 @@ function fitRows(derivedSets: DerivedRow[][], statsSets: StatRow[][]): FitRow[] 
   return rows;
 }
 
+/** R: `routOf(x, y, K, q)`, the ROUT method (Motulsky & Brown, BMC Bioinformatics 2006):
+ *  a robust fit of the curve, minimizing the sum of ln(1 + (residual / RSDR)²) (residuals
+ *  taken as Lorentzian), RSDR = P68 × N / (N − K), P68 the 68.27th percentile of the absolute
+ *  residuals, recomputed at each step (as reweighted least squares, weights 1 / (1 + (r /
+ *  RSDR)²)); then, the points ranked by their distance to it, from the 70th percentile on:
+ *  the first whose P (t = |residual| / RSDR, N − K df, two-sided) is under Q(N − (i − 1)) / N
+ *  is an outlier, and every point farther. `out`: the outliers; `rsdr`, `m`: the robust fit.
+ *  (Upstream 1.0.9, verbatim — its ROUT-in-nonlinear-fit wiring is NOT yet ported:
+ *  our runner fits via nonlinear-fit.ts, not upstream's inline `fit()`; a follow-up
+ *  lane wires `params.rout`/`q` through it, reports `curveOutliers` and the
+ *  "Outliers (ROUT)" fit row. The `rout`/`q` params are already in types.) */
+export const R_ROUT_CURVE =
+  `routOf<-function(x,y,K,q){n<-length(y);none<-list(out=rep(FALSE,n),rsdr=NA)\n` +
+  `rsdr<-function(m)quantile(abs(y-fitted(m)),0.6827,type=6,names=FALSE)*n/(n-K)\n` +
+  `m<-tryCatch(fit(x,y),error=function(e)NULL);if(is.null(m)||n<=K+1)return(none)\n` +
+  `for(it in 1:100){s<-rsdr(m);if(!is.finite(s)||s<=0)break;b<-coef(m)\n` +
+  `m2<-tryCatch(fit(x,y,1/(1+((y-fitted(m))/s)^2)),error=function(e)NULL);if(is.null(m2))break\n` +
+  `m<-m2;if(max(abs(coef(m)-b)/pmax(abs(b),1e-12))<1e-10)break}\n` +
+  `s<-rsdr(m);if(!is.finite(s)||s<=0)return(none);r<-abs(y-fitted(m));o<-order(r);out<-rep(FALSE,n)\n` +
+  `for(i in max(1,floor(0.7*n)):n)if(2*pt(-r[o[i]]/s,n-K)<q*(n-(i-1))/n){out[o[i:n]]<-TRUE;break}\n` +
+  `list(out=out,rsdr=s,m=m)}`;
+
 /** R: `interp(m, yu, lo, hi, pos)`, the X the fitted curve `m` gives each Y of `yu` (`ix_i`):
  *  the lowest one within the standards' X (`lo` to `hi`), else below them, else above them, as
  *  far again as their width (for a curve of X > 0, `pos`, a tenth of `lo` and ten times `hi`);
@@ -1210,7 +1232,8 @@ export async function runNonlinearRegression(
   // A Y data set's replicates pool (see datasetColumns): "Control" fits
   // "Control_1..3" together, as Prism does — an imported Prism analysis
   // names its data set, not a column.
-  const yCol = params?.y === undefined ? yCols[0] : datasetColumns(yCols, params.y)[0];
+  const yCol =
+    params?.y === undefined ? yCols[0]?.columns[0] : datasetColumns(yCols.flatMap((s) => s.columns), params.y)[0];
   if (!xCol || !yCol) return { error: xyProblem(columns, params?.y)! };
   // Binding competition (plan 28): Fit Ki needs [L] and Kd (the
   // Cheng–Prusoff divisor 1 + [L]/Kd); the homologous model needs [L] (a
@@ -1295,14 +1318,14 @@ export async function runNonlinearRegression(
       if (!spec.terms.includes(p)) return { error: `“${p}” is not a parameter of “${MODEL_LABEL[model]}”.` };
   }
 
-  const other = comparingSets ? yCols.find((c) => c.name === params.compareWith) : undefined;
+  const other = comparingSets ? yCols.find((c) => c.name === params.compareWith)?.columns[0] : undefined;
   if (comparingSets && !other) return { error: xyProblem(columns, params.compareWith)! };
   if (other && !spec.dose) return { error: "Only dose-response curves can be compared." };
 
   const first = prepareFit(columns, params?.y, model, fixedNames.length);
   if ("error" in first) return first;
   // Weighting needs the fitted points (and, for 1/SD², their rows).
-  const weightResult = computeWeights(weightsScheme, first, yCols);
+  const weightResult = computeWeights(weightsScheme, first, yCols.flatMap((s) => s.columns));
   if ("error" in weightResult) return weightResult;
   const weights = weightResult.weights;
   const fitOpts: FitOptions = {

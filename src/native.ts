@@ -235,6 +235,15 @@ export function onCloseRequested(canClose: () => Promise<boolean>) {
 /** The accent color chosen in System Settings ▸ Appearance (#RRGGBB), or null. */
 export const accentColor = () => (isNative ? invoke<string | null>("accent_color") : Promise.resolve(null));
 
+// One request at a time: two sent together may reach the shell in either order, and a
+// wheel shown after it was taken away would spin for ever.
+let spinner = Promise.resolve();
+
+/** macOS's spinning wheel over this window, centered at `at` (x, y from its top left); null takes it away. */
+export function setSpinner(at: [number, number] | null) {
+  spinner = spinner.then(() => invoke<void>("set_spinner", { at })).catch(() => {});
+}
+
 /** Titer's GitHub page, its releases, or Buy Me a Coffee, in the default browser. */
 export const openLink = (link: "github" | "releases" | "coffee") => void invoke("open_link", { link });
 

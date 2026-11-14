@@ -26,8 +26,11 @@ export async function runSimpleLogisticRegression(
   columns: Column[],
   params: SimpleLogisticRegressionParams | undefined,
 ): Promise<AnalysisOutcome> {
-  const { x: xCol, ys: yCols } = splitXY(columns);
-  const yCol = params?.y === undefined ? yCols[0] : yCols.find((c) => c.name === params.y);
+  const { x: xCol, ys: ySets } = splitXY(columns);
+  // 1.0.9's splitXY groups Y columns into data sets (replicates share a
+  // set); this fit takes one Y column, so flatten back to columns.
+  const yColumns = ySets.flatMap((s) => s.columns);
+  const yCol = params?.y === undefined ? yColumns[0] : yColumns.find((c) => c.name === params.y);
   if (!xCol || !yCol) return { error: xyProblem(columns, params?.y)! };
 
   const { x, y } = pairUp(xCol, yCol);

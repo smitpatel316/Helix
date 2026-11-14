@@ -26,7 +26,7 @@ import { describe } from "../column/base";
 import { num } from "../../lib/format";
 import { fitModelSpec, type ModelSpec } from "./nonlinear-fit";
 import { runGlobalFit, type GlobalModelDef } from "./global-fit";
-import { pairUp, splitXY, xyProblem } from "../../lib/dataset";
+import { splitXY, xyPoints, xyProblem, type DataSet } from "../../lib/dataset";
 
 export const ENZYME_INHIBITION_LABEL: Record<EnzymeInhibitionModel, string> = {
   competitive: "Competitive",
@@ -259,7 +259,7 @@ function equation(
 }
 
 interface SeriesFit {
-  col: Column;
+  col: DataSet;
   I: number;
   x: number[];
   y: number[];
@@ -320,7 +320,7 @@ export async function runEnzymeInhibition(
         error: `“${name}” has no inhibitor concentration — enter [I] for every series (or put it in the column title, e.g. “10 nM”).`,
       };
     if (I < 0) return { error: `“${name}” has an inhibitor concentration below 0 — [I] cannot be negative.` };
-    const { x, y } = pairUp(xCol, col);
+    const { x, y } = xyPoints(xCol, col);
     series.push({ col, I, x, y });
   }
   const dup = series.find((s, i) => series.some((o, j) => j > i && o.I === s.I));
@@ -393,7 +393,7 @@ export async function runEnzymeInhibition(
       subtitle: label,
       ...(eq ? { equation: eq } : {}),
       stats: [...derived, ...stats],
-      groups: (await describe([xCol, ...series.map((s) => s.col)])).groups,
+      groups: (await describe([xCol, ...series.flatMap((s) => s.col.columns)])).groups,
       notes: notes.join(" "),
       coefficients,
     };
@@ -408,13 +408,13 @@ export async function runEnzymeInhibition(
  *  [S] and Km are both supplied. */
 async function runMorrison(
   xCol: Column,
-  yCols: Column[],
+  yCols: DataSet[],
   params: EnzymeInhibitionParams | undefined,
   label: string,
 ): Promise<AnalysisOutcome> {
   const y = normalizeY(params?.y);
   const yCol = y?.length ? yCols.find((c) => c.name === y[0]) : yCols[0];
-  if (!yCol) return { error: xyProblem([xCol, ...yCols])! };
+  if (!yCol) return { error: xyProblem([xCol, ...yCols.flatMap((s) => s.columns)])! };
   const et = params?.enzymeConcentration;
   if (et === undefined || !Number.isFinite(et))
     return { error: "Total enzyme concentration (Et) is required for the Morrison Ki fit." };
@@ -430,7 +430,7 @@ async function runMorrison(
     return { error: "Substrate concentration must be greater than 0." };
   if (km !== undefined && (!Number.isFinite(km) || km <= 0)) return { error: "Km must be greater than 0." };
 
-  const { x: xs, y: ys } = pairUp(xCol, yCol);
+  const { x: xs, y: ys } = xyPoints(xCol, yCol);
   const n = xs.length;
   if (xs.some((x) => x < 0)) return { error: "Inhibitor concentrations cannot be negative." };
   if (new Set(xs).size < 2)
@@ -495,7 +495,7 @@ async function runMorrison(
       subtitle: label,
       ...(eq ? { equation: eq } : {}),
       stats: morrisonStats,
-      groups: (await describe([xCol, yCol])).groups,
+      groups: (await describe([xCol, ...yCol.columns])).groups,
       notes: notes.join(" "),
       coefficients: allCoefficients,
     };

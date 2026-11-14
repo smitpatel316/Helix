@@ -12,7 +12,7 @@ import type { TableMove } from "../../store/references";
 import type { EditCommand } from "../../app-menu";
 import { parseCell } from "../../lib/numeric";
 import { seriesKeyOf } from "../../lib/columns";
-import { isGrouped, isNested } from "../../lib/dataset";
+import { isGrouped, isNested, leadOf } from "../../lib/dataset";
 import { alert, popupMenu } from "../../native";
 import { XIcon } from "@phosphor-icons/react";
 import { cn, IconButton } from "../../ui/controls";
@@ -120,6 +120,8 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
   const grouped = isGrouped(data) || nested;
   const replicates = data.replicates ?? 1;
   const subgroups = data.subgroups ?? 1;
+  // The columns before the groups (Title, and an XY table's X), headed on both rows.
+  const lead = leadOf(data);
   const headH = HEAD_H * (nested ? 3 : grouped ? 2 : 1);
   // Shown headers: the stored columns, then (except for grouped tables, whose columns
   // come from their groups) the names new columns would get. Grouped sub-columns show
@@ -130,7 +132,7 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
     () =>
       grouped
         ? data.columns.map((name, c) =>
-            c > 0 ? name.slice((nested ? name.lastIndexOf(":") : name.indexOf(":")) + 1) : name,
+            c >= lead ? name.slice((nested ? name.lastIndexOf(":") : name.indexOf(":")) + 1) : name,
           )
         : [...data.columns, ...freshColumnNames(data.columns, type, EXTRA_COLS)],
     [data.columns, grouped, nested, type],
@@ -256,7 +258,7 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
       // The bottom header names a replicate ("R1") — renaming it renames its subgroup.
       const parts = name.split(":");
       setEditing({ kind: "subgroup", group: parts[0], key: parts[1], value: parts[1] });
-    } else if (grouped && c > 0) setEditing({ kind: "group", key: seriesKeyOf(name), value: seriesKeyOf(name) });
+    } else if (grouped && c >= lead) setEditing({ kind: "group", key: seriesKeyOf(name), value: seriesKeyOf(name) });
     else setEditing({ kind: "column", c, value: name });
   };
   /** Renames the subgroup of the column `c` belongs to (the subgroup header row). */
@@ -591,7 +593,7 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
         "absolute flex items-center justify-center border-r border-b border-separator px-2 text-secondary",
         selectedCols(c) && "bg-control text-primary",
       )}
-      style={box(c, grouped && c > 0 ? (nested ? 2 * HEAD_H : HEAD_H) : 0, grouped && c === 0 ? headH : HEAD_H)}
+      style={box(c, grouped && c >= lead ? (nested ? 2 * HEAD_H : HEAD_H) : 0, grouped && c < lead ? headH : HEAD_H)}
       onPointerDown={(e) => onColumnDown(e, c)}
       onDoubleClick={() => startRename(c)}
       onContextMenu={(e) => showMenu(e, "column")}
@@ -690,7 +692,7 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
                   // A group spans its subgroups × replicates (nested) or its
                   // replicates (grouped).
                   const spanCols = nested ? subgroups * replicates : replicates;
-                  const lo = 1 + g * spanCols;
+                  const lo = lead + g * spanCols;
                   const hi = lo + spanCols - 1;
                   const key = seriesKeyOf(data.columns[lo] ?? "");
                   const span = { ...box(lo, 0, HEAD_H), width: xs[hi + 1] - xs[lo] };

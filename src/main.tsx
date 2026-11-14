@@ -4,7 +4,7 @@ import { ProjectProvider } from "./store/use-project-store";
 import { LayoutProvider } from "./store/use-layout";
 import { AppShell } from "./components/app-shell";
 import { connectR } from "./stats/webr";
-import { accentColor, cancelR, evalR, isNative, onEngineReset, onFocusChange } from "./native";
+import { accentColor, cancelR, evalR, isNative, onEngineReset, onFocusChange, setSpinner } from "./native";
 import { checkForUpdatesDaily } from "./updates";
 import "./styles.css";
 
@@ -22,6 +22,8 @@ if (isNative) connectR(evalR, cancelR);
 // states (R3-02): listen for its broadcast, so the next analysis
 // reinstalls instead of failing with `there is no package called '…'`.
 void onEngineReset();
+// A wheel left by a page reloaded while an analysis ran (the window keeps it) goes.
+if (isNative) setSpinner(null);
 
 // Whether a newer Titer is out, at most once a day.
 checkForUpdatesDaily();

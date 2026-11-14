@@ -31,7 +31,7 @@ import { describe } from "../column/base";
 import { num } from "../../lib/format";
 import { fitModelSpec, type ModelSpec } from "./nonlinear-fit";
 import { runGlobalFit, type GlobalModelDef } from "./global-fit";
-import { pairUp, splitXY, xyProblem } from "../../lib/dataset";
+import { splitXY, xyPoints, xyProblem, type DataSet } from "../../lib/dataset";
 
 export const BINDING_SATURATION_LABEL: Record<BindingSaturationModel, string> = {
   "one-site-total": "One-site total binding",
@@ -438,7 +438,7 @@ export async function runBindingSaturation(
   const { x: xCol, ys: yCols } = splitXY(columns);
   const yCol = params?.y === undefined ? yCols[0] : yCols.find((c) => c.name === params.y);
   if (!xCol || !yCol) return { error: xyProblem(columns, params?.y)! };
-  let y2Col: Column | undefined;
+  let y2Col: DataSet | undefined;
   if (twoSeries) {
     y2Col = params?.y2 === undefined ? yCols[1] : yCols.find((c) => c.name === params.y2);
     if (!y2Col)
@@ -450,8 +450,8 @@ export async function runBindingSaturation(
 
   // The complete-row set each series fits on; the two-series fit uses the
   // rows complete in both (a series short on points errors naming it).
-  const p1 = pairUp(xCol, yCol);
-  const p2 = y2Col ? pairUp(xCol, y2Col) : null;
+  const p1 = xyPoints(xCol, yCol);
+  const p2 = y2Col ? xyPoints(xCol, y2Col) : null;
   const minPts = twoSite ? 10 : 5;
   if (twoSeries && p2 && y2Col) {
     if (p1.x.length < minPts)
@@ -463,10 +463,34 @@ export async function runBindingSaturation(
         error: `“${y2Col.name}” (nonspecific binding) has only ${p2.x.length} complete points; a two-series ${twoSite ? "two-site" : "one-site"} saturation fit needs at least ${minPts}.`,
       };
   }
-  const rows = p2 ? p1.rows.filter((r) => p2.rows.includes(r)) : p1.rows;
-  const xs = rows.map((r) => xCol.byRow[r]!);
-  const ys = rows.map((r) => yCol.byRow[r]!);
-  const ys2 = y2Col ? rows.map((r) => y2Col!.byRow[r]!) : null;
+  // The two-series fit needs the rows complete in both series, with the
+  // series aligned by row: xyPoints returns points row-sorted (replicates in
+  // column order within a row), so the k-th point of each series at a joint
+  // row pairs with the k-th point of the other. (Single-column sets: exactly
+  // the old byRow behaviour.)
+  const xs: number[] = [];
+  const ys: number[] = [];
+  let ys2: number[] | null = null;
+  if (p2 && y2Col) {
+    ys2 = [];
+    const byRow2 = new Map<number, number[]>();
+    p2.rows.forEach((r, i) => byRow2.set(r, [...(byRow2.get(r) ?? []), i]));
+    const byRow1 = new Map<number, number[]>();
+    p1.rows.forEach((r, i) => byRow1.set(r, [...(byRow1.get(r) ?? []), i]));
+    for (const [r, idxs1] of byRow1) {
+      const idxs2 = byRow2.get(r);
+      if (!idxs2) continue;
+      const k = Math.min(idxs1.length, idxs2.length);
+      for (let j = 0; j < k; j++) {
+        xs.push(p1.x[idxs1[j]]);
+        ys.push(p1.y[idxs1[j]]);
+        ys2.push(p2.y[idxs2[j]]);
+      }
+    }
+  } else {
+    xs.push(...p1.x);
+    ys.push(...p1.y);
+  }
   const n = xs.length;
 
   if (xs.some((x) => x < 0)) return { error: "Concentrations can't be negative." };
@@ -506,9 +530,9 @@ export async function runBindingSaturation(
         : `Binding saturation fit ("${label}") of "${yCol.name}" on "${xCol.name}".`,
       saturationStarts(model, xs, ys),
     ];
-    if (p2 && rows.length < Math.min(p1.x.length, p2.x.length))
+    if (p2 && xs.length < Math.min(p1.x.length, p2.x.length))
       notes.push(
-        `Dropped ${Math.min(p1.x.length, p2.x.length) - rows.length} row(s) where one series was blank; the fit uses the ${rows.length} rows complete in both series.`,
+        `Dropped ${Math.min(p1.x.length, p2.x.length) - xs.length} row(s) where one series was blank; the fit uses the ${xs.length} rows complete in both series.`,
       );
     if (twoSite) {
       const kdHi = coefOf(coefficients, "KdHi");
@@ -543,7 +567,7 @@ export async function runBindingSaturation(
       subtitle: label,
       ...(eq ? { equation: eq } : {}),
       stats: outStats,
-      groups: (await describe([xCol, yCol, ...(y2Col ? [y2Col] : [])])).groups,
+      groups: (await describe([xCol, ...yCol.columns, ...(y2Col ? y2Col.columns : [])])).groups,
       notes: notes.join(" "),
       coefficients,
     };
@@ -565,7 +589,7 @@ export async function runBindingKinetics(
   const { x: xCol, ys: yCols } = splitXY(columns);
   const yCol = params?.y === undefined ? yCols[0] : yCols.find((c) => c.name === params.y);
   if (!xCol || !yCol) return { error: xyProblem(columns, params?.y)! };
-  const { x: xs, y: ys } = pairUp(xCol, yCol);
+  const { x: xs, y: ys } = xyPoints(xCol, yCol);
   const n = xs.length;
 
   if (new Set(xs).size < 2) return { error: "Need at least two different times to fit a kinetics curve." };
@@ -675,7 +699,7 @@ export async function runBindingKinetics(
       subtitle: label,
       ...(eq ? { equation: eq } : {}),
       stats: [...derived, ...konRows, ...stats],
-      groups: (await describe([xCol, yCol])).groups,
+      groups: (await describe([xCol, ...yCol.columns])).groups,
       notes: notes.join(" "),
       coefficients,
     };

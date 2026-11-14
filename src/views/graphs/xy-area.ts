@@ -1,34 +1,41 @@
-// "XY area": each Y series drawn as a line with the area beneath it filled,
-// against the shared X.
+// "XY area": each Y data set drawn as a line with the area beneath it filled,
+// against the shared X (replicates as each X's center, `xyDrawn`).
 import type { GraphOptions } from "../../store/types";
 import type { GraphModule, GraphFigure } from ".";
-import { pairUp, type Column } from "../../lib/dataset";
-import { sortPairsByX, xyLayout, type Paint } from "./plot-helpers";
+import { splitXY, type Column } from "../../lib/dataset";
+import { xyDrawn, xyLayout, type Paint } from "./plot-helpers";
 
 function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFigure {
-  const [xCol, ...ySeries] = columns;
-  if (!xCol || ySeries.length === 0) return { data: [], layout: xyLayout(options, xCol?.name ?? "X", 0) };
+  const { x: xCol, ys } = splitXY(columns);
+  if (!xCol || ys.length === 0) return { data: [], layout: xyLayout(options, columns[0]?.name ?? "X", 0) };
 
-  const data = ySeries.map((y, i) => {
-    const pairs = pairUp(xCol, y);
+  const data = ys.map((set, i) => {
+    // An area joins one value per X: replicates as their center, whatever `xyReplicates`.
+    const raw = xyDrawn(xCol, set, { ...options, xyReplicates: "mean" });
     // Filled in X order, not table row order: the fill must follow the trend.
-    const { x, y: yy } = sortPairsByX(pairs.x, pairs.y);
-    const over = paint.pattern(y.name, i);
+    const order = raw.x.map((_, k) => k).sort((a, b) => raw.x[a] - raw.x[b]);
+    const drawn = {
+      x: order.map((k) => raw.x[k]),
+      y: order.map((k) => raw.y[k]),
+      ...(raw.errors ? { errors: order.map((k) => raw.errors![k]) } : {}),
+    };
+    const over = paint.pattern(set.name, i);
     return {
       type: "scatter",
       mode: "lines",
-      name: y.name,
-      x,
-      y: yy,
-      line: paint.edge(y.name, i),
+      name: set.name,
+      x: drawn.x,
+      y: drawn.y,
+      line: paint.edge(set.name, i),
       fill: "tozeroy",
-      fillcolor: paint.fill(y.name, i),
+      fillcolor: paint.fill(set.name, i),
       ...(over && { fillpattern: over }),
+      ...(drawn.errors ? { error_y: paint.errorBars(set.name, i, drawn.errors) } : {}),
       hoverinfo: "x+y",
     };
   });
 
-  return { data, layout: xyLayout(options, xCol.name, ySeries.length, { zeroBase: true, seriesNames: ySeries.map((y) => y.name) }) };
+  return { data, layout: xyLayout(options, xCol.name, ys.length, { zeroBase: true, seriesNames: ys.map((y) => y.name) }) };
 }
 
 export const xyArea: GraphModule = {

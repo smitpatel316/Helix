@@ -1041,7 +1041,10 @@ export function prepareFit(
   // every replicate point, as Prism does. A plain column name fits that
   // column alone. The pooled yCol keeps the first replicate's cells (so
   // interpolation still reads a Y per row) under the data set's name.
-  const cols = yName === undefined ? (yCols[0] ? [yCols[0]] : []) : datasetColumns(yCols, yName);
+  const cols =
+    yName === undefined
+      ? (yCols[0] ? yCols[0].columns : [])
+      : (yCols.find((s) => s.name === yName)?.columns ?? datasetColumns(yCols.flatMap((s) => s.columns), yName));
   const yCol = cols.length === 1 ? cols[0] : cols.length > 1 ? { ...cols[0], name: yName! } : undefined;
   if (!xCol || !yCol) return { error: xyProblem(columns, yName)! };
 

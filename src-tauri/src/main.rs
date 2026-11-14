@@ -414,6 +414,46 @@ fn accent_color() -> Option<String> {
     }
 }
 
+/// macOS's own spinning wheel over a project window while an analysis runs, centered
+/// `at` (x, y in points from the window's top left); `None` takes it away.
+/// (Upstream 1.0.9; macOS-only — the Linux twin below is a no-op, like accent_color.)
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn set_spinner(window: WebviewWindow, at: Option<(f64, f64)>) {
+    let _ = window.clone().run_on_main_thread(move || unsafe {
+        let Ok(ns_window) = window.ns_window() else { return };
+        let content: *mut AnyObject = objc2::msg_send![ns_window.cast::<AnyObject>(), contentView];
+        if content.is_null() {
+            return;
+        }
+        let views: *mut AnyObject = objc2::msg_send![content, subviews];
+        let count: usize = objc2::msg_send![views, count];
+        for i in 0..count {
+            let view: *mut AnyObject = objc2::msg_send![views, objectAtIndex: i];
+            let spinning: bool = objc2::msg_send![view, isKindOfClass: objc2::class!(NSProgressIndicator)];
+            if spinning {
+                let _: () = objc2::msg_send![view, removeFromSuperview];
+            }
+        }
+        let Some((x, y)) = at else { return };
+        let spinner: *mut AnyObject = objc2::msg_send![objc2::class!(NSProgressIndicator), new];
+        let _: () = objc2::msg_send![spinner, setStyle: 1usize]; // NSProgressIndicatorStyleSpinning
+        let _: () = objc2::msg_send![spinner, setTranslatesAutoresizingMaskIntoConstraints: false];
+        let _: () = objc2::msg_send![content, addSubview: spinner];
+        let _: () = objc2::msg_send![spinner, release]; // the window keeps it
+        for (center, edge, offset) in [
+            (objc2::sel!(centerXAnchor), objc2::sel!(leftAnchor), x),
+            (objc2::sel!(centerYAnchor), objc2::sel!(topAnchor), y),
+        ] {
+            let center: *mut AnyObject = objc2::msg_send![spinner, performSelector: center];
+            let edge: *mut AnyObject = objc2::msg_send![content, performSelector: edge];
+            let placed: *mut AnyObject = objc2::msg_send![center, constraintEqualToAnchor: edge, constant: offset];
+            let _: () = objc2::msg_send![placed, setActive: true];
+        }
+        let _: () = objc2::msg_send![spinner, startAnimation: std::ptr::null::<AnyObject>()];
+    });
+}
+
 /// Titer's GitHub page, its releases, or Buy Me a Coffee, in the default
 /// browser: fixed addresses, so the page can't open anything else.
 #[cfg(target_os = "macos")]
@@ -567,6 +607,11 @@ fn open_link(link: String) {
     };
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
+
+/// Linux: no spinning wheel; the page never shows one here.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn set_spinner(_window: WebviewWindow, _at: Option<(f64, f64)>) {}
 
 // ── R engine ─────────────────────────────────────────────────────────────
 
@@ -723,6 +768,7 @@ fn main() {
             set_recent_documents,
             accent_color,
             open_link,
+            set_spinner,
             eval_r,
             r_result,
             r_ready,

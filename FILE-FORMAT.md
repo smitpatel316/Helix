@@ -84,6 +84,9 @@ analysis or a graph.
   — the bands must tile the table's rows exactly (their counts add up to the row
   count), with non-empty, distinct names. A table without `rowGroups` has no third
   factor; a three-way ANOVA needs at least 2 bands.
+- An XY table whose data sets hold replicates (1.0.9 and later) names them the same
+  way after its X (`"Title", "X", "A:Y1", "A:Y2"…`), with `groups` (its data sets) and
+  `replicates`; without them, each Y column is a data set of its own.
 - A nested table names its sub-columns `<group>:<subgroup>:<replicate>` (`"A:S1:R1"`)
   and gives `groups`, `subgroups` (subgroups per group — each subgroup is one
   animal/subject) and `replicates` (replicate sub-columns per subgroup). Each
@@ -120,7 +123,9 @@ from the table when the file opens, so results always match the data.
 `analysisParams` holds the choices made in the analysis's wizard (see
 `src/stats/types.ts`). `sets` (1.0.5 and later) names the data sets it runs on, in
 order: columns, or a grouped table's groups, or a nested table's groups. Without it, an analysis runs on all of
-them (a two-group test: the first two holding data).
+them (a two-group test: the first two holding data). A linear regression's `x` (1.0.8 and later)
+names its X variable in a Multiple Variables table; without it, X is the
+table's first data column.
 
 ### Graph
 
@@ -188,6 +193,17 @@ A graph's colors and style are its own:
   each sits in its usual place.
 - `xTitleGap`, `yTitleGap`: the space in pixels between each axis title and its tick
   labels, 0 to 40.
+- `xScale`, `yScale` (Helix 1.0.9 and later): `"linear"`, `"log10"` or `"log2"`, each axis's
+  scale (Y is the value axis; X only where it holds numbers). On a log axis, `xMin`/`yMin`
+  and `xMax`/`yMax` are values above 0, and the step is not used.
+- `error`: `"none"`, `"sd"`, `"sem"` or `"ci"` (the 95% CI of the mean, Helix 1.0.9 and later).
+- `stackAs` (Helix 1.0.9 and later): stacked bars show each group's `"values"`, or its
+  `"percent"` of the row's total; a histogram each data set's counts (`"values"`), or
+  their percent of its values.
+- `xyReplicates` (Helix 1.0.9 and later): an XY scatter of replicates draws each X's
+  `"mean"` (its `center`, mean or median, with its `error`), or `"each"` replicate.
+- `binWidth` (Helix 1.0.9 and later): a `"histogram"` graph's bin width, in the values'
+  units; without it (or at 0 and under), R's own bins.
 
 A `"dose-response"` graph (before 1.0.7) fitted its own curve, from `doseY` (its data
 set) and `doseModel`. It opens as an `"xy-scatter"` drawing the curve of a new

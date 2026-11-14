@@ -26,12 +26,8 @@ const optionsFor = (order: AnalysisPickerValue[]): SelectorOption<AnalysisPicker
  *  X + Y data series — so the tests that make statistical sense differ too) and given in a fixed
  *  logical order rather than sorted by label. ANOVA/Kruskal-Wallis and Repeated-measures
  *  ANOVA/Friedman aren't listed individually — Prism-style, one meta entry cascades to whichever
- *  the wizard's Paired?/Gaussian? answers resolve to. Shapiro-Wilk isn't listed
- *  as its own entry either in the plan's reading, but the four normality tests
- *  are selectable only through its wizard (plan 23's "that entry now leads to
- *  the extended wizard"), so the column list offers "Normality tests" —
- *  the "Not sure?" check on every Gaussian? question still runs Shapiro–Wilk
- *  with defaults (see `normality-check.ts`). */
+ *  the wizard's Paired?/Gaussian? answers resolve to. Shapiro-Wilk is its own entry, and is
+ *  offered as "Not sure?" on every Gaussian? question too (see `normality-check.ts`). */
 export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<AnalysisPickerValue>[]> = {
   column: optionsFor([
     "descriptive-statistics",
@@ -66,7 +62,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
   ]),
   grouped: optionsFor(["two-way-anova", "mixed-effects", "three-way-anova", "multiple-t-tests"]),
   nested: optionsFor(["nested-t-test", "nested-anova"]),
-  multiple: optionsFor(["descriptive-statistics", "correlation-matrix", "multiple-regression", "principal-component-analysis", "k-means", "outliers", "multiple-logistic-regression", "poisson-regression", "cox-proportional-hazards"]),
+  multiple: optionsFor(["descriptive-statistics", "shapiro-wilk", "correlation-matrix", "linear-regression", "multiple-regression", "principal-component-analysis", "k-means", "outliers", "multiple-logistic-regression", "poisson-regression", "cox-proportional-hazards"]),
   survival: optionsFor(["survival", "cox"]),
   contingency: [...optionsFor(["chi-square"]), { value: "mcnemar", label: "McNemar's test (paired proportions)" }],
 };

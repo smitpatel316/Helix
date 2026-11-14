@@ -5,7 +5,7 @@
 import { hasXColumn, type TableData, type TableType } from "../../store/types";
 import type { TableMove } from "../../store/references";
 import type { MenuItems } from "../../native";
-import { isGrouped, isNested } from "../../lib/dataset";
+import { isGrouped, isNested, leadOf } from "../../lib/dataset";
 import {
   convertCommaDecimals,
   deleteColumns,
@@ -96,7 +96,12 @@ export function gridMenu({ data, type, zone, range, update, rename, renameGroup,
 
   if (onCells) {
     items.push(SEPARATOR, {
-      text: nested && range.c0 > 0 ? "Rename Subgroup" : grouped && range.c0 > 0 ? "Rename Group" : "Rename Column",
+      text:
+        nested && range.c0 > 0
+          ? "Rename Subgroup"
+          : grouped && range.c0 >= leadOf(data)
+            ? (type === "xy" ? "Rename Data Set" : "Rename Group")
+            : "Rename Column",
       action: () => rename(range.c0),
     });
     // A Nested table has two renameable levels: the subgroup above, and the
@@ -117,7 +122,8 @@ export function gridMenu({ data, type, zone, range, update, rename, renameGroup,
     });
   }
 
-  if (grouped) items.push(SEPARATOR, { text: "Show Groups", action: showGroups });
+  if (grouped || type === "xy")
+    items.push(SEPARATOR, { text: type === "xy" ? "Show Replicates" : "Show Groups", action: showGroups });
 
   if (zone === "row") {
     const text = `Delete ${plural(rows, "Row")}`;

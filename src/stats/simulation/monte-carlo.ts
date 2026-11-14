@@ -28,7 +28,7 @@ import { MONTE_CARLO_REPEATS, MONTE_CARLO_TARGET_STATISTICS } from "../types";
 import { dataGroups, describe } from "../column/base";
 import { evalNumericVector } from "../webr";
 import { computeFrequencyBins } from "../column/frequency-distribution";
-import { pairUp, splitXY } from "../../lib/dataset";
+import { splitXY, xyPoints } from "../../lib/dataset";
 
 /** Sanity guard on repeats × values drawn per repeat (see the header note):
  *  far above anything a 10,000-repeat run needs (10,000 × 200), far below
@@ -151,7 +151,7 @@ export async function runMonteCarlo(
     const { x: xCol, ys } = splitXY(columns);
     const y = params?.y !== undefined ? ys.find((c) => c.name === params.y) : ys[0];
     if (!xCol || !y) return { error: "Monte Carlo needs an X column and a Y data set with values." };
-    const pairs = pairUp(xCol, y);
+    const pairs = xyPoints(xCol, y);
     if (pairs.x.length < 3) {
       return { error: "Monte Carlo needs at least 3 complete X–Y pairs to repeat a regression or correlation." };
     }
