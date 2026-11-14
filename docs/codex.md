@@ -186,7 +186,10 @@ is out of scope for this solution.
   documentation; live CLI check on the Mac (codex-cli 0.169.0, installed
   via npm, no account) — see `~/workspace/.helix-mcp-codex/investigations.md`.
 - Live end-to-end (Codex → bridge → running Titer server →
-  `tools/list`): **pending** — needs a Mac build of Titer with AI
-  connections enabled; tracked in the lane log.
+  `tools/list`): **pending the GUI toggle** — Mac build of this branch
+  exists and runs (see `~/workspace/.helix-mcp-codex/investigations.md`);
+  the server starts only from Settings → AI connections, which needs one
+  click in the app (or the device route). Bridge + CLI + instructions are
+  all verified; only the running-server hop is unproven.
 - Protocol: server negotiates 2025-06-18 / 2025-11-25 only (see
   `docs/mcp-server-contract.md`).
