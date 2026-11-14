@@ -26,6 +26,7 @@ import type {
   CoxPHParams,
   DoseResponseSpecialParams,
   EnzymeInhibitionParams,
+  FractionOfTotalParams,
   FrequencyDistributionParams,
   MultipleTTestsParams,
   NestedAnovaParams,
@@ -1094,6 +1095,46 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       },
     ],
     finish: (a) => ({ type: "area-under-curve", params: { baseline: a.baseline as number } }),
+  },
+
+  // Fraction of total (v2): express each value as a fraction or a percent
+  // of its column total, its row total, or the grand total — Prism's
+  // Analyze > Fraction of Total. The X column (XY tables) is carried into
+  // the result rows; on a Column table every chosen column is its own data
+  // set. (Prism also offers confidence intervals for counts and a
+  // three-totals sheet; both are out of scope for this lane.)
+  "fraction-of-total": {
+    questions: (_, table, tableType) => {
+      const targets = tableType === "xy" ? yNames(table) : dataNames(table);
+      if (!targets.length) return [];
+      return [
+        {
+          id: "ys",
+          ask: "Which data sets should be expressed as a fraction of their total?",
+          kind: "names",
+          options: targets,
+          min: 1,
+        },
+        choice("totalBy", "Divide each value by…", [
+          ["column", "Its column total — each value as a share of its data set"],
+          ["row", "Its row total — each value as a share of its row"],
+          ["grand", "The grand total — each value as a share of all the chosen values"],
+        ]),
+        choice("format", "Show the result as…", [
+          ["fraction", "Fractions (0 to 1)"],
+          ["percent", "Percentages (0 to 100)"],
+        ]),
+      ];
+    },
+    finish: (a, table, tableType) => ({
+      type: "fraction-of-total",
+      params: {
+        ys: a.ys as string[],
+        ...(tableType === "xy" ? { x: table.columns[0]?.name } : {}),
+        totalBy: a.totalBy as FractionOfTotalParams["totalBy"],
+        format: a.format as FractionOfTotalParams["format"],
+      },
+    }),
   },
 
   "nonlinear-regression": {

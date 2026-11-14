@@ -301,6 +301,30 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
+      {result.fractionsOfTotal?.map((col) => {
+        const hasX = col.rows.some((r) => r.x !== undefined);
+        return (
+          <Table
+            key={col.column}
+            title={`Fraction of total — ${col.column}`}
+            columns={[
+              { label: "Row" },
+              ...(hasX ? [{ label: "X", numeric: true }] : []),
+              { label: "Original", numeric: true },
+              { label: "Total", numeric: true },
+              { label: col.format === "percent" ? "Percent of total" : "Fraction of total", numeric: true },
+            ]}
+            rows={col.rows.map((r) => [
+              r.row,
+              ...(hasX ? [num(r.x)] : []),
+              num(r.original),
+              num(r.total),
+              num(r.value),
+            ])}
+          />
+        );
+      })}
+
       {result.outlierGroups?.[0]?.grubbs && (
         <Table
           title="Outliers by column"

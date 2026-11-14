@@ -15,6 +15,7 @@ import type {
   DoseResponseSpecialParams,
   EnzymeInhibitionParams,
   FrequencyDistributionParams,
+  FractionOfTotalParams,
   KMeansParams,
   McNemarParams,
   MixedEffectsParams,
@@ -53,6 +54,7 @@ import { linearRegressionSpec, runLinearRegressions } from "./xy/linear-regressi
 import { demingRegressionSpec } from "./xy/deming-regression";
 import { runLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
+import { runFractionOfTotal } from "./xy/fraction-of-total";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
 import { runBindingKinetics, runBindingSaturation } from "./xy/binding";
 import { runEnzymeInhibition } from "./xy/enzyme-inhibition";
@@ -170,6 +172,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Area under the curve",
     minColumns: 2,
     run: (c, p) => runAreaUnderCurve(c, p as AreaUnderCurveParams),
+  },
+  "fraction-of-total": {
+    label: "Fraction of total",
+    minColumns: 1,
+    run: (c, p, t) => runFractionOfTotal(c, p as FractionOfTotalParams, t),
   },
   "nonlinear-regression": {
     label: "Nonlinear regression",

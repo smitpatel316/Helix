@@ -15,6 +15,7 @@ export type AnalysisType =
   | "linear-regression"
   | "deming-regression"
   | "area-under-curve"
+  | "fraction-of-total"
   | "nonlinear-regression"
   | "logistic-regression"
   | "two-way-anova"
@@ -255,6 +256,29 @@ export interface LogisticRegressionParams {
 export interface AreaUnderCurveParams {
   /** Baseline Y value the area is measured from (peaks are heights above it). */
   baseline: number;
+}
+
+/** The totals "fraction-of-total" divides by (Prism's Fraction of Total):
+ *  each value's own column total, its row total (across the chosen data
+ *  sets), or the grand total of all the chosen values. */
+export const FRACTION_OF_TOTAL_TOTALS = ["column", "row", "grand"] as const;
+export type FractionOfTotalTotal = (typeof FRACTION_OF_TOTAL_TOTALS)[number];
+
+/** Whether "fraction-of-total" reports fractions (0 to 1) or percentages
+ *  (0 to 100) — Prism's "Fractions"/"Percentages" choice. */
+export const FRACTION_OF_TOTAL_FORMATS = ["fraction", "percent"] as const;
+export type FractionOfTotalFormat = (typeof FRACTION_OF_TOTAL_FORMATS)[number];
+
+/** Params for "fraction-of-total": which columns to divide (`ys`), how the
+ *  total is defined, whether the result is a fraction or a percent, and —
+ *  for XY tables — the X column whose values label the result rows. */
+export interface FractionOfTotalParams {
+  /** Omitted: every numeric column except `x` — the wizard always sets it. */
+  ys?: string[];
+  /** XY tables only: the X column, for the result rows' X values. */
+  x?: string;
+  totalBy: FractionOfTotalTotal;
+  format: FractionOfTotalFormat;
 }
 
 /** The curves a nonlinear regression fits. `-logx`/`-x` say whether X is log(concentration)
@@ -798,6 +822,7 @@ export type AnalysisParams = DataSetsParam &
     | LinearRegressionParams
     | DemingRegressionParams
     | AreaUnderCurveParams
+    | FractionOfTotalParams
     | NonlinearRegressionParams
     | BindingSaturationParams
     | BindingKineticsParams
@@ -977,6 +1002,30 @@ export interface AreaUnderCurveRow {
   n: number;
 }
 
+/** One divided value ("fraction-of-total"): the original value, the total
+ *  it was divided by, and the resulting fraction (or percent). `value` is
+ *  null when the total is 0 — the cell is blank, never NaN or Infinity.
+ *  `row` is the row title, or the row number when the table has none; `x`
+ *  is the X value at that row (XY tables only). */
+export interface FractionOfTotalRow {
+  row: string;
+  x?: number | null;
+  original: number;
+  total: number;
+  value: number | null;
+}
+
+/** One column's divided values ("fraction-of-total"): the total divided by
+ *  — the column total, or the grand total — and whether the values are
+ *  fractions or percentages. In row-total mode each row has its own total,
+ *  so `total` is null and every row carries its own. */
+export interface FractionOfTotalColumn {
+  column: string;
+  total: number | null;
+  format: FractionOfTotalFormat;
+  rows: FractionOfTotalRow[];
+}
+
 /** One row of "outliers" results: one column's outlier count, with ROUT's robust mean
  *  (ROUT), or the mean after removing flagged outliers (`mean`, Grubbs). */
 interface OutlierGroupRow {
@@ -1141,6 +1190,9 @@ export interface AnalysisResult {
   correlations?: CorrelationRow[];
   /** Optional per-Y area-under-curve table ("area-under-curve"). */
   areas?: AreaUnderCurveRow[];
+  /** Optional per-column divided values ("fraction-of-total"): one table
+   *  per column, each with the total divided by recorded. */
+  fractionsOfTotal?: FractionOfTotalColumn[];
   /** Optional per-column outlier summary ("outliers"). */
   outlierGroups?: OutlierGroupRow[];
   /** Optional per-group survival summary ("survival"). */

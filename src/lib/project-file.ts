@@ -44,6 +44,8 @@ import {
   DOSE_MODELS,
   DOSE_RESPONSE_SPECIAL_MODELS,
   ENZYME_INHIBITION_MODELS,
+  FRACTION_OF_TOTAL_FORMATS,
+  FRACTION_OF_TOTAL_TOTALS,
   MONTE_CARLO_STATISTICS,
   MONTE_CARLO_TARGETS,
   NONLINEAR_MODELS,
@@ -218,6 +220,9 @@ const PARAMS = {
   fixed: "numbers-by-name",
   bounds: "number-pairs-by-name",
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q, lambda: "number",
+  // Fraction of total (v2): which total each value is divided by, and
+  // whether the result is a fraction or a percent.
+  totalBy: FRACTION_OF_TOTAL_TOTALS, format: FRACTION_OF_TOTAL_FORMATS,
   alpha: { min: 0.001, max: 0.5 }, iterate: "yes/no",
   f: "number", spar: "number", df: "number",
   y: "name-or-names", y2: "name", ys: "names", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names",
