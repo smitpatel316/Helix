@@ -64,7 +64,7 @@ export function FloatingNotesLayer({ node }: { node: ProjectNode }) {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState("");
   const [drag, setDrag] = React.useState<{ id: string; x: number; y: number } | null>(null);
-  const dragStart = React.useRef<{ px: number; py: number; x: number; y: number; moved: boolean } | null>(null);
+  const dragStart = React.useRef<{ px: number; py: number; x: number; y: number; moved: boolean; onText: boolean } | null>(null);
 
   const setNotes = (next: FloatingNote[]) => updateFloatingNotes(node.id, next);
   // A pointer position in the layer's own px (the layer may sit inside a
@@ -105,7 +105,20 @@ export function FloatingNotesLayer({ node }: { node: ProjectNode }) {
             onPointerDown={(e) => {
               if ((e.target as HTMLElement).closest("textarea,button,input")) return;
               const p = toLayer(e);
-              dragStart.current = { px: p.x, py: p.y, x: note.x, y: note.y, moved: false };
+              // Record whether the press landed on the note text NOW:
+              // setPointerCapture below retargets every later event for
+              // this pointer to the note container, so e.target on
+              // pointerup is the container and can never match
+              // [data-note-text] — a click on the text would never edit.
+              // (Reading e.target here is safe: capture is set after it.)
+              dragStart.current = {
+                px: p.x,
+                py: p.y,
+                x: note.x,
+                y: note.y,
+                moved: false,
+                onText: (e.target as HTMLElement).closest("[data-note-text]") !== null,
+              };
               (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
             }}
             onPointerMove={(e) => {
@@ -129,11 +142,21 @@ export function FloatingNotesLayer({ node }: { node: ProjectNode }) {
                 const y = Math.max(0, start.y + (p.y - start.py));
                 setDrag(null);
                 setNotes(notes.map((n) => (n.id === note.id ? { ...n, x, y } : n)));
-              } else if ((e.target as HTMLElement).closest("[data-note-text]")) {
-                // A click on the text edits it (a drag never does).
+              } else if (start.onText) {
+                // A click on the text edits it (a drag never does). The
+                // press target was recorded on pointerdown — e.target
+                // here is the note container (pointer capture), not the
+                // element under the pointer, so it must not be consulted.
                 setDraft(note.text);
                 setEditingId(note.id);
               }
+            }}
+            onPointerCancel={() => {
+              // A cancelled gesture (e.g. the window lost focus mid-drag)
+              // aborts: drop the drag preview, commit nothing, and leave
+              // no stale dragStart behind for the next pointer.
+              dragStart.current = null;
+              setDrag(null);
             }}
           >
             <div className="flex items-center justify-between px-1.5 pt-1">
