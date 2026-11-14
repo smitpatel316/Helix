@@ -743,8 +743,11 @@ impl ServerHandler for TiterMcpServer {
 
     /// Only the revisions clients actually speak (2025-06-18 / 2025-11-25).
     /// 2026-07-28 is not offered: clients lag it.
-    fn supported_protocol_versions(&self) -> Vec<ProtocolVersion> {
-        SUPPORTED_PROTOCOL_VERSIONS.to_vec()
+    /// (rmcp 3.8+ wants `Cow<'static, [ProtocolVersion]>` here, not `Vec` —
+    /// fixed 2026-11-14 by the v3/claude-code lane; the `Vec` form never
+    /// compiled against rmcp 3.8 or the locked 3.10.)
+    fn supported_protocol_versions(&self) -> std::borrow::Cow<'static, [ProtocolVersion]> {
+        std::borrow::Cow::Borrowed(SUPPORTED_PROTOCOL_VERSIONS)
     }
 }
 
