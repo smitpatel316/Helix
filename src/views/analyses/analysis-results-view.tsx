@@ -85,12 +85,15 @@ export function headline(stats: StatRow[]): number | null {
 // prettier-ignore
 const DESCRIPTIVE_ROWS: [string, (g: GroupDescriptives) => React.ReactNode][] = [
   ["N", (g) => g.n],
+  ["Sum", (g) => num(g.sum)],
   ["Mean", (g) => num(g.mean)],
   ["SD", (g) => num(g.sd)],
   ["SEM", (g) => num(g.sem)],
   ["95% CI of mean", (g) => (g.ciLow == null && g.ciHigh == null ? "—" : `${num(g.ciLow)} to ${num(g.ciHigh)}`)],
   ["Coefficient of variation", (g) => (g.cv == null ? "—" : `${num(g.cv)}%`)],
   ["Geometric mean", (g) => num(g.geoMean)],
+  ["Skewness", (g) => num(g.skewness)],
+  ["Kurtosis", (g) => num(g.kurtosis)],
   ["Minimum", (g) => num(g.min)],
   ["25th percentile", (g) => num(g.q1)],
   ["Median", (g) => num(g.median)],

@@ -1025,6 +1025,13 @@ export interface GroupDescriptives {
   q3?: number | null;
   cv?: number | null;
   geoMean?: number | null;
+  /** Sum of the column's values (always defined). */
+  sum?: number | null;
+  /** Moment skewness g1 = m3/m2^1.5 (none under 3 values or on a constant column). */
+  skewness?: number | null;
+  /** Excess kurtosis b2 − 3 = m4/m2^2 − 3, so a normal distribution is ~0
+   *  (none under 3 values or on a constant column). */
+  kurtosis?: number | null;
 }
 
 /** One displayed statistic. `p: true` marks a P value (rendered with significance colour + stars). */

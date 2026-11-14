@@ -9795,6 +9795,46 @@ check("prune-rows wizard asks for the condition and finishes with its params", (
   });
 });
 
+check("descriptive statistics reports sum, moment skewness and excess kurtosis, pinned by hand", async () => {
+  // Skewness is the moment coefficient g1 = m3/m2^1.5 and kurtosis is the excess
+  // b2 − 3 = m4/m2^2 − 3 (a normal distribution is ~0); both are NA under 3 values
+  // or on a constant column. Values below are hand-computed (exact rational arithmetic).
+  const table: TableData = {
+    columns: ["Title", "Skewed", "Symmetric", "Pair", "Constant"],
+    rows: [
+      ["", "1", "1", "4", "5"],
+      ["", "2", "2", "6", "5"],
+      ["", "2", "3", "", "5"],
+      ["", "3", "4", "", "5"],
+      ["", "3", "5", "", "5"],
+      ["", "3", "", "", "5"],
+      ["", "4", "", "", "5"],
+      ["", "4", "", "", "5"],
+      ["", "5", "", "", "5"],
+      ["", "10", "", "", "5"],
+    ],
+  };
+  const out = await runAnalysis("descriptive-statistics", table);
+  if ("error" in out) throw new Error(`descriptive statistics should run, got ${out.error}`);
+  const [skewed, symmetric, pair, constant] = out.groups;
+  const close = (got: number | null | undefined, want: number, label: string) => {
+    if (got == null || Math.abs(got - want) > 1e-9) throw new Error(`${label}: got ${got}, by hand ${want}`);
+  };
+  close(skewed.sum, 37, "Skewed sum");
+  close(skewed.skewness, 1.6689330728161373, "Skewed skewness");
+  close(skewed.kurtosis, 2.238725728502388, "Skewed kurtosis");
+  close(symmetric.sum, 15, "Symmetric sum");
+  close(symmetric.skewness, 0, "Symmetric skewness");
+  close(symmetric.kurtosis, -1.3, "Symmetric kurtosis");
+  // Two values still sum, but have no skewness or kurtosis; a constant column has none either.
+  close(pair.sum, 10, "Pair sum");
+  if (pair.skewness != null || pair.kurtosis != null)
+    throw new Error(`Pair skewness/kurtosis should be null, got ${pair.skewness}, ${pair.kurtosis}`);
+  close(constant.sum, 50, "Constant sum");
+  if (constant.skewness != null || constant.kurtosis != null)
+    throw new Error(`Constant skewness/kurtosis should be null, got ${constant.skewness}, ${constant.kurtosis}`);
+});
+
 // ── Run ──────────────────────────────────────────────────────────────────
 
 // Descriptives are computed by R since the v1.0.7 rebase, so checks that run
