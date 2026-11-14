@@ -125,6 +125,10 @@ import {
   sturgesCount,
 } from "../src/stats/column/frequency-distribution";
 import { transformValue } from "../src/stats/column/transform-data";
+import {
+  concentrationFactor,
+  convertConcentration,
+} from "../src/stats/column/transform-concentrations";
 import { makeInitialState, reducer } from "../src/store/use-project-store";
 import { isNewer, latestVersion } from "../src/lib/version";
 import { decideUpdate, type ChannelManifest } from "../src/lib/channel";
@@ -7415,6 +7419,64 @@ check("a constant column bins into one bin, and bad binning is an error, not a c
   const few = await runAnalysis("frequency-distribution", table([5]), { binMode: "auto" });
   if (!("error" in few) || !few.error.includes("at least 2 values"))
     throw new Error(`expected the too-few-values error, got ${JSON.stringify(few)}`);
+});
+
+check("transform concentrations converts between molar units by exact powers of 1000", async () => {
+  // Each molar step is ×1000, up and down the scale.
+  strictEqual(concentrationFactor("µM", "nM"), 1000);
+  strictEqual(concentrationFactor("M", "pM"), 1e12);
+  strictEqual(concentrationFactor("nM", "µM"), 0.001);
+  strictEqual(concentrationFactor("mM", "mM"), 1);
+  strictEqual(convertConcentration(1, "µM", "nM"), 1000);
+  strictEqual(convertConcentration(2.5, "mM", "µM"), 2500);
+  strictEqual(convertConcentration(500, "nM", "µM"), 0.5);
+  const table = (values: (number | string)[]): TableData => ({
+    columns: ["Title", "Dose"],
+    rows: values.map((v) => [null, String(v)]),
+  });
+  const out = await runAnalysis("transform-concentrations", table([1, 2.5]), {
+    column: "Dose",
+    fromUnit: "µM",
+    toUnit: "nM",
+  });
+  if ("error" in out) throw new Error(out.error);
+  deepStrictEqual(
+    out.convertedColumns?.[0].values.map((v) => [v.row, v.original, v.converted]),
+    [
+      [1, 1, 1000],
+      [2, 2.5, 2500],
+    ],
+  );
+  // The source column is untouched: the table still holds the originals.
+  deepStrictEqual(readTable(table([1, 2.5])).columns[0].values, [1, 2.5]);
+  // A column with no numeric values, and a column that is gone, are clean
+  // errors — and a non-numeric cell is skipped and counted in the notes,
+  // not converted.
+  const noNumbers = await runAnalysis("transform-concentrations", table(["abc"]), {
+    column: "Dose",
+    fromUnit: "µM",
+    toUnit: "nM",
+  });
+  if (!("error" in noNumbers) || !noNumbers.error.includes("no numeric values"))
+    throw new Error(`expected the no-numeric-values error, got ${JSON.stringify(noNumbers)}`);
+  const gone = await runAnalysis("transform-concentrations", table([1]), {
+    column: "Gone",
+    fromUnit: "µM",
+    toUnit: "nM",
+  });
+  if (!("error" in gone) || !gone.error.includes("no longer in the table"))
+    throw new Error(`expected the missing-column error, got ${JSON.stringify(gone)}`);
+  const mixed = await runAnalysis("transform-concentrations", table([1, "abc", 2]), {
+    column: "Dose",
+    fromUnit: "µM",
+    toUnit: "nM",
+  });
+  if ("error" in mixed) throw new Error(mixed.error);
+  deepStrictEqual(
+    mixed.convertedColumns?.[0].values.map((v) => v.converted),
+    [1000, 2000],
+  );
+  ok(mixed.notes.includes("1 non-numeric cell ignored"));
 });
 
 check("Sturges, pretty breaks and nice widths match R's rules", () => {

@@ -2,7 +2,7 @@
 // step, each answer choosing the next question. A wizard only declares its questions
 // and how the answers make the test's params; analysis-wizard.tsx asks them.
 // A test without an entry here runs as soon as it is picked.
-import { DOSE_MODELS, MONTE_CARLO_REPEATS, MONTE_CARLO_TARGET_STATISTICS, NONLINEAR_MODELS, ROUT_Q, routQError, type LinearRegressionParams, type MonteCarloStatistic, type MonteCarloTarget, type NonlinearModel } from "../../stats/types";
+import { DOSE_MODELS, CONCENTRATION_UNITS, MONTE_CARLO_REPEATS, MONTE_CARLO_TARGET_STATISTICS, NONLINEAR_MODELS, ROUT_Q, routQError, type ConcentrationUnit, type LinearRegressionParams, type MonteCarloStatistic, type MonteCarloTarget, type NonlinearModel } from "../../stats/types";
 import type { TableType } from "../../store/types";
 import { MODEL_LABEL, termLabel } from "../../stats/xy/nonlinear-regression";
 import { modelSpec } from "../../stats/xy/nonlinear-fit";
@@ -38,6 +38,7 @@ import type {
   SplineLowessParams,
   ThreeWayAnovaParams,
   TransformFunction,
+  TransformConcentrationsParams,
   TwoWayAnovaParams,
   XYCorrelationParams,
 } from "../../stats/types";
@@ -774,6 +775,39 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
     finish: (a) => ({
       type: "transform-data",
       params: withSets(a, { function: (a.function as TransformFunction | undefined) ?? "log10" }),
+    }),
+  },
+  // Transform concentrations (v2): one numeric column (an XY table's X
+  // dose column, or any Y / Column-table column) between molar units.
+  // The target list leaves the source unit out — converting a unit to
+  // itself is a no-op, not a conversion. Mass units are not offered:
+  // they need a molecular weight this operation does not collect.
+  "transform-concentrations": {
+    questions: (a, table) => {
+      const units: [string, string][] = CONCENTRATION_UNITS.map((u) => [u, u]);
+      return [
+        choice(
+          "column",
+          "Which column holds the concentrations to convert?",
+          names(dataNames(table)),
+          false,
+          "This table has no numeric column to convert. Enter concentrations in a column first.",
+        ),
+        choice("fromUnit", "Which unit are the values in now?", units),
+        choice(
+          "toUnit",
+          "Which unit should they be converted to?",
+          units.filter(([u]) => u !== a.fromUnit),
+        ),
+      ];
+    },
+    finish: (a) => ({
+      type: "transform-concentrations",
+      params: {
+        column: a.column as string,
+        fromUnit: a.fromUnit as ConcentrationUnit,
+        toUnit: a.toUnit as ConcentrationUnit,
+      } as TransformConcentrationsParams,
     }),
   },
 

@@ -35,6 +35,7 @@ import type {
   ShapiroWilkParams,
   SplineLowessParams,
   ThreeWayAnovaParams,
+  TransformConcentrationsParams,
   TwoWayAnovaParams,
   XYCorrelationParams,
 } from "./types";
@@ -80,6 +81,7 @@ import { runBlandAltman } from "./column/bland-altman";
 import { runRocCurve } from "./column/roc-curve";
 import { runFrequencyDistribution } from "./column/frequency-distribution";
 import { runTransformData } from "./column/transform-data";
+import { runTransformConcentrations } from "./column/transform-concentrations";
 import { runMonteCarlo } from "./simulation/monte-carlo";
 import type { MonteCarloParams } from "./types";
 import type { TableData } from "../store/types";
@@ -312,6 +314,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     minColumns: 1,
     run: (c, p) => runTransformData(c, p as TransformDataParams),
   },
+  "transform-concentrations": {
+    label: "Transform concentrations",
+    minColumns: 1,
+    run: (c, p) => runTransformConcentrations(c, p as TransformConcentrationsParams),
+  },
   // minColumns is a floor only: compare-two-groups needs 2 data sets, the
   // others 1 — the runner validates per target (as enzyme-inhibition does
   // for its per-model minimum).
@@ -363,12 +370,12 @@ export function runAnalysis(
   // sets `y`, so its fits hit this path while the `y`-less fixtures did not).
   // prettier-ignore
   const named = params as
-    { x?: string; y?: string | string[]; ys?: string[]; y2?: string; dependent?: string; reference?: string; control?: string; compareWith?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string } | undefined;
+    { x?: string; y?: string | string[]; ys?: string[]; y2?: string; column?: string; dependent?: string; reference?: string; control?: string; compareWith?: string; predictors?: string[]; datasets?: string[]; time?: string; status?: string; covariates?: string[]; stratifyBy?: string } | undefined;
   // prettier-ignore
   const chosen = [
     ...(Array.isArray(named?.y) ? named.y : named?.y !== undefined ? [named.y] : []),
     ...(named?.ys ?? []),
-    named?.x, named?.y2, named?.dependent, named?.reference, named?.control, named?.compareWith, ...(named?.predictors ?? []), ...(named?.datasets ?? []), named?.time, named?.status, ...(named?.covariates ?? []), named?.stratifyBy,
+    named?.x, named?.y2, named?.column, named?.dependent, named?.reference, named?.control, named?.compareWith, ...(named?.predictors ?? []), ...(named?.datasets ?? []), named?.time, named?.status, ...(named?.covariates ?? []), named?.stratifyBy,
   ];
   const gone =
     params?.sets?.find((name) => !table.sets.some((s) => s.name === name)) ??

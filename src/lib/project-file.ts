@@ -36,6 +36,7 @@ import {
   BINDING_KINETICS_MODELS,
   BINDING_SATURATION_MODELS,
   BIN_MODES,
+  CONCENTRATION_UNITS,
   CORRECTIONS,
   CURVE_COMPARISONS,
   CORRELATION_METHODS,
@@ -222,6 +223,9 @@ const PARAMS = {
   alpha: { min: 0.001, max: 0.5 }, iterate: "yes/no",
   f: "number", spar: "number", df: "number",
   y: "name-or-names", y2: "name", ys: "names", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names",
+  // Transform concentrations (v2): the column to convert, and the units
+  // it is in now vs. the units it is converted to.
+  column: "name", fromUnit: CONCENTRATION_UNITS, toUnit: CONCENTRATION_UNITS,
   ligandConcentration: "number", ligandKd: "number", fitKi: "yes/no", koff: "number", hotNM: "number", time0: "number",
   enzymeConcentration: "number", substrateConcentration: "number", kmForMorrison: "number",
   inhibitorConcentrations: "numbers-by-name",
