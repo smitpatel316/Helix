@@ -182,10 +182,7 @@ fn load_config(explicit_discovery: Option<&Path>) -> Result<BridgeConfig, String
         if token.is_none() {
             token = Some(disc.token);
         }
-        protocol_version = disc
-            .protocol_versions
-            .and_then(|v| v.into_iter().next())
-            .or(disc._legacy_protocol_version);
+        protocol_version = disc.protocol_versions.and_then(|v| v.into_iter().next()).or(disc._legacy_protocol_version);
     }
 
     match (url, token) {
@@ -618,10 +615,7 @@ mod tests {
         .unwrap();
         assert_eq!(full.endpoint.as_deref(), Some("http://127.0.0.1:47231/mcp"));
         assert_eq!(full.token, "abc");
-        assert_eq!(
-            full.protocol_versions,
-            Some(vec!["2025-11-25".to_string(), "2025-06-18".to_string()])
-        );
+        assert_eq!(full.protocol_versions, Some(vec!["2025-11-25".to_string(), "2025-06-18".to_string()]));
         let minimal: Discovery =
             serde_json::from_str(r#"{"endpoint":"http://127.0.0.1:47231/mcp","token":"abc"}"#).unwrap();
         assert!(minimal.protocol_versions.is_none());
