@@ -52,6 +52,7 @@ import {
   NORMALIZE_METHODS,
   NORMALIZE_ZERO_DEFS,
   POSTHOC_TARGETS,
+  PRUNE_ROWS_CONDITIONS,
   RANK_POSTHOCS,
   REMOVE_BASELINE_METHODS,
   ROUT_Q,
@@ -229,6 +230,8 @@ const PARAMS = {
   // Normalize (v2): how each value is rescaled, and the values it needs.
   normalizeMethod: NORMALIZE_METHODS, asPercent: "yes/no", zeroDef: NORMALIZE_ZERO_DEFS, hundredDef: NORMALIZE_HUNDRED_DEFS,
   zeroConstant: "number", hundredConstant: "number",
+  // Prune rows (v2): the condition, and the threshold/range it needs.
+  condition: PRUNE_ROWS_CONDITIONS, threshold: "number", low: "number", high: "number",
   alpha: { min: 0.001, max: 0.5 }, iterate: "yes/no",
   f: "number", spar: "number", df: "number",
   y: "name-or-names", y2: "name", ys: "names", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names",

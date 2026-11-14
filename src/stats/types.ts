@@ -48,7 +48,8 @@ export type AnalysisType =
   | "transform-data"
   | "transform-concentrations"
   | "normalize"
-  | "transpose";
+  | "transpose"
+  | "prune-rows";
 
 /** What the New Analysis picker offers: a test, or "Compare more than two groups",
  *  which its wizard resolves to one-way ANOVA, Kruskal-Wallis, repeated-measures ANOVA
@@ -289,6 +290,25 @@ export interface RemoveBaselineParams {
   controls?: string[];
   /** The baseline value (method "constant"). */
   constant?: number;
+}
+
+export const PRUNE_ROWS_CONDITIONS = ["empty", "below", "above", "outside"] as const;
+export type PruneRowsCondition = (typeof PRUNE_ROWS_CONDITIONS)[number];
+
+/** Params for "prune-rows": which columns to prune on (`ys`), the
+ *  condition, and — for XY tables — the X column whose values label the
+ *  result rows. */
+export interface PruneRowsParams {
+  /** Omitted: every numeric column except `x` — the wizard always sets it. */
+  ys?: string[];
+  /** XY tables only: the X column, for the result rows' X values. */
+  x?: string;
+  condition: PruneRowsCondition;
+  /** The threshold (conditions "below" / "above"). */
+  threshold?: number;
+  /** The range's ends (condition "outside"). */
+  low?: number;
+  high?: number;
 }
 
 /** The curves a nonlinear regression fits. `-logx`/`-x` say whether X is log(concentration)
@@ -910,6 +930,7 @@ export type AnalysisParams = DataSetsParam &
     | DemingRegressionParams
     | AreaUnderCurveParams
     | RemoveBaselineParams
+    | PruneRowsParams
     | NonlinearRegressionParams
     | BindingSaturationParams
     | BindingKineticsParams
@@ -1105,6 +1126,23 @@ export interface BaselineRemovedColumn {
   baseline: number;
   method: string;
   rows: BaselineRemovedRow[];
+}
+/** One kept or pruned row ("prune-rows"): the row title (or row number),
+ *  the X value at that row (XY tables only), and the value held in each
+ *  chosen column (`null`: blank). */
+export interface PrunedRowsRow {
+  row: string;
+  x?: number | null;
+  values: (number | null)[];
+}
+
+/** The rows "prune-rows" kept and dropped: the chosen columns, then the
+ *  kept rows and the pruned rows — the pruned ones listed so what was
+ *  dropped stays visible, and recoverable from the untouched source. */
+export interface PrunedRowsResult {
+  columns: string[];
+  kept: PrunedRowsRow[];
+  pruned: PrunedRowsRow[];
 }
 
 /** One row of "area-under-curve" results: one Y series' trapezoidal AUC vs. X. */
@@ -1350,6 +1388,9 @@ export interface AnalysisResult {
   /** Optional per-column baseline-subtracted values ("remove-baseline"):
    *  one table per column, each with the baseline used recorded. */
   baselineRemoved?: BaselineRemovedColumn[];
+  /** Optional kept and pruned rows ("prune-rows"): the kept rows, then
+   *  the pruned rows listed so what was dropped stays visible. */
+  prunedRows?: PrunedRowsResult;
   /** Optional per-column outlier summary ("outliers"). */
   outlierGroups?: OutlierGroupRow[];
   /** Optional per-group survival summary ("survival"). */

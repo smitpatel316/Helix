@@ -363,6 +363,35 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
           />
         ))}
 
+      {result.prunedRows && (
+        <>
+          {[
+            { title: "Kept rows", rows: result.prunedRows.kept },
+            ...(result.prunedRows.pruned.length > 0
+              ? [{ title: "Pruned rows", rows: result.prunedRows.pruned }]
+              : []),
+          ].map(({ title, rows }) => {
+            const hasX = rows.some((r) => r.x !== undefined);
+            return (
+              <Table
+                key={title}
+                title={title}
+                columns={[
+                  { label: "Row" },
+                  ...(hasX ? [{ label: "X", numeric: true }] : []),
+                  ...result.prunedRows!.columns.map((c) => ({ label: c, numeric: true })),
+                ]}
+                rows={rows.map((r) => [
+                  r.row,
+                  ...(hasX ? [num(r.x)] : []),
+                  ...r.values.map((v) => num(v)),
+                ])}
+              />
+            );
+          })}
+        </>
+      )}
+
       {result.outlierGroups?.[0]?.grubbs && (
         <Table
           title="Outliers by column"

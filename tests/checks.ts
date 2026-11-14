@@ -9191,6 +9191,189 @@ check("transpose refuses a table Prism could not transpose", async () => {
   );
 });
 
+// Prune rows (v2): drop rows matching a condition — empty, below a
+// threshold, above a threshold, or outside a range — from the chosen
+// columns, listing what was dropped; the source table is never touched.
+check("prune rows drops empty rows and lists what was dropped", async () => {
+  const table: TableData = {
+    columns: ["Title", "A", "B"],
+    rows: [
+      ["", "4", "2"],
+      ["", "10", "8"],
+      ["", "", ""],
+      ["", "7", ""],
+      ["", "", "20"],
+    ],
+  };
+  const out = await runAnalysis("prune-rows", table, { ys: ["A", "B"], condition: "empty" });
+  if ("error" in out) throw new Error(out.error);
+  strictEqual(out.testType, "prune-rows");
+  strictEqual(out.subtitle, "Prune rows (empty rows)");
+  deepStrictEqual(
+    out.stats.map((s) => [s.label, s.value]),
+    [
+      ["Rows in table", 5],
+      ["Rows kept", 4],
+      ["Rows pruned", 1],
+    ],
+  );
+  deepStrictEqual(out.prunedRows?.columns, ["A", "B"]);
+  deepStrictEqual(
+    out.prunedRows?.kept.map((r) => [r.row, r.values]),
+    [
+      ["Row 1", [4, 2]],
+      ["Row 2", [10, 8]],
+      ["Row 4", [7, null]],
+      ["Row 5", [null, 20]],
+    ],
+  );
+  deepStrictEqual(
+    out.prunedRows?.pruned.map((r) => [r.row, r.values]),
+    [["Row 3", [null, null]]],
+  );
+  ok(out.notes.includes("held no value in any chosen data set"));
+  ok(out.notes.includes("Row 3"));
+  ok(out.notes.includes("The original table is unchanged"));
+  // The descriptives are of the kept values, not the originals.
+  deepStrictEqual(
+    out.groups.map((g) => [g.name, g.mean, g.n]),
+    [
+      ["A", 7, 3],
+      ["B", 10, 3],
+    ],
+  );
+});
+
+check("prune rows drops rows below, above, or outside a threshold, and errors clearly", async () => {
+  const table: TableData = {
+    columns: ["Title", "A", "B"],
+    rows: [
+      ["", "4", "2"],
+      ["", "10", "8"],
+      ["", "", ""],
+      ["", "7", ""],
+      ["", "", "20"],
+    ],
+  };
+  // Below: a row is dropped when every value it holds is below the
+  // threshold — a row holding no value at all is kept (use "empty" for it).
+  const below = await runAnalysis("prune-rows", table, { ys: ["A", "B"], condition: "below", threshold: 9 });
+  if ("error" in below) throw new Error(below.error);
+  deepStrictEqual(
+    below.prunedRows?.pruned.map((r) => r.row),
+    ["Row 1", "Row 4"],
+  );
+  deepStrictEqual(
+    below.prunedRows?.kept.map((r) => r.row),
+    ["Row 2", "Row 3", "Row 5"],
+  );
+  deepStrictEqual(
+    below.groups.map((g) => [g.name, g.mean, g.n]),
+    [
+      ["A", 10, 1],
+      ["B", 14, 2],
+    ],
+  );
+  // Above: only the row whose every value is above the threshold goes.
+  const above = await runAnalysis("prune-rows", table, { ys: ["A", "B"], condition: "above", threshold: 9 });
+  if ("error" in above) throw new Error(above.error);
+  deepStrictEqual(
+    above.prunedRows?.pruned.map((r) => r.row),
+    ["Row 5"],
+  );
+  // Outside: every held value below the low end or above the high end.
+  const outside = await runAnalysis("prune-rows", table, {
+    ys: ["A", "B"],
+    condition: "outside",
+    low: 5,
+    high: 15,
+  });
+  if ("error" in outside) throw new Error(outside.error);
+  deepStrictEqual(
+    outside.prunedRows?.pruned.map((r) => r.row),
+    ["Row 1", "Row 5"],
+  );
+  // An XY table carries X into the kept and pruned rows.
+  const xy: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "10", "5"],
+      ["", "1", "", ""],
+      ["", "2", "14", "9"],
+    ],
+  };
+  const xyOut = await runAnalysis("prune-rows", xy, { ys: ["Y1", "Y2"], x: "Time", condition: "empty" });
+  if ("error" in xyOut) throw new Error(xyOut.error);
+  deepStrictEqual(
+    xyOut.prunedRows?.pruned.map((r) => [r.row, r.x]),
+    [["Row 2", 1]],
+  );
+  deepStrictEqual(
+    xyOut.prunedRows?.kept.map((r) => r.x),
+    [0, 2],
+  );
+  // Errors name the problem instead of dropping something wrong.
+  deepStrictEqual(await runAnalysis("prune-rows", table, { ys: ["A"], condition: "below" }), {
+    error: "Enter a threshold value to prune against.",
+  });
+  deepStrictEqual(
+    await runAnalysis("prune-rows", table, { ys: ["A"], condition: "outside", low: 10, high: 5 }),
+    { error: "The range's low end (10) must be below its high end (5)." },
+  );
+  deepStrictEqual(
+    await runAnalysis(
+      "prune-rows",
+      { columns: ["Title", "A"], rows: [["", "1"], ["", "2"]] },
+      { ys: ["A"], condition: "below", threshold: 10 },
+    ),
+    { error: "Every row matches the condition, so no rows would be kept." },
+  );
+  deepStrictEqual(await runAnalysis("prune-rows", table, { ys: ["A"], condition: "nope" as never }), {
+    error: "Unknown prune condition: “nope”.",
+  });
+  deepStrictEqual(await runAnalysis("prune-rows", table, { ys: ["Nope"], condition: "empty" }), {
+    error: "The column “Nope” is no longer in the table. Create this analysis again to choose another.",
+  });
+});
+
+check("prune-rows wizard asks for the condition and finishes with its params", () => {
+  const data: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "10", "5"],
+      ["", "1", "12", "7"],
+    ],
+  };
+  const table = readTable(data);
+  const wizard = WIZARDS["prune-rows"]!;
+  // The follow-up question depends on the condition answered.
+  deepStrictEqual(
+    wizard.questions({ condition: "empty", ys: ["Y1"] }, table, "xy").filter(Boolean).map((q) => (q as Question).id),
+    ["ys", "condition"],
+  );
+  deepStrictEqual(
+    wizard.questions({ condition: "below", ys: ["Y1"] }, table, "xy").filter(Boolean).map((q) => (q as Question).id),
+    ["ys", "condition", "threshold"],
+  );
+  deepStrictEqual(
+    wizard.questions({ condition: "outside", ys: ["Y1"] }, table, "xy").filter(Boolean).map((q) => (q as Question).id),
+    ["ys", "condition", "low", "high"],
+  );
+  deepStrictEqual(wizard.finish({ ys: ["Y1", "Y2"], condition: "below", threshold: 9 }, table, "xy"), {
+    type: "prune-rows",
+    params: { ys: ["Y1", "Y2"], x: "Time", condition: "below", threshold: 9 },
+  });
+  deepStrictEqual(wizard.finish({ ys: ["Y1"], condition: "outside", low: 5, high: 15 }, table, "xy"), {
+    type: "prune-rows",
+    params: { ys: ["Y1"], x: "Time", condition: "outside", low: 5, high: 15 },
+  });
+  // A Column table has no X column to carry into the result rows.
+  deepStrictEqual(wizard.finish({ ys: ["Y1"], condition: "empty" }, table, "column"), {
+    type: "prune-rows",
+    params: { ys: ["Y1"], condition: "empty" },
+  });
+});
+
 // ── Run ──────────────────────────────────────────────────────────────────
 
 // Descriptives are computed by R since the v1.0.7 rebase, so checks that run

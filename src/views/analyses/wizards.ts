@@ -33,6 +33,7 @@ import type {
   NormalizeParams,
   OneSampleTParams,
   RemoveBaselineParams,
+  PruneRowsParams,
   SurvivalParams,
   CoxParams,
   PrincipalComponentAnalysisParams,
@@ -1213,6 +1214,63 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         ...(a.baselineMethod === "mean-first-n" ? { firstN: a.firstN as number } : {}),
         ...(a.baselineMethod === "mean-of-controls" ? { controls: a.controls as string[] } : {}),
         ...(a.baselineMethod === "constant" ? { constant: a.constant as number } : {}),
+      },
+    }),
+  },
+
+  "prune-rows": {
+    questions: (a, table, tableType) => {
+      const targets = tableType === "xy" ? yNames(table) : dataNames(table);
+      if (!targets.length) return [];
+      const condition = a.condition as string | undefined;
+      return [
+        {
+          id: "ys",
+          ask: "Which data sets should rows be pruned from?",
+          kind: "names",
+          options: targets,
+          min: 1,
+        },
+        choice("condition", "Which rows should be dropped?", [
+          ["empty", "Empty rows — the row holds no value in any chosen data set"],
+          ["below", "Rows below a threshold — every value in the row is below it"],
+          ["above", "Rows above a threshold — every value in the row is above it"],
+          ["outside", "Rows outside a range — every value in the row is outside it"],
+        ]),
+        (condition === "below" || condition === "above") && {
+          id: "threshold",
+          ask:
+            condition === "below"
+              ? "Drop rows whose every value is below what threshold?"
+              : "Drop rows whose every value is above what threshold?",
+          kind: "number",
+          label: "Threshold value",
+          initial: 0,
+        },
+        condition === "outside" && {
+          id: "low",
+          ask: "What is the low end of the range? Rows whose every value is below it (or above the high end) are dropped.",
+          kind: "number",
+          label: "Low end of the range",
+          initial: 0,
+        },
+        condition === "outside" && {
+          id: "high",
+          ask: "What is the high end of the range? Rows whose every value is above it (or below the low end) are dropped.",
+          kind: "number",
+          label: "High end of the range",
+          initial: 100,
+        },
+      ];
+    },
+    finish: (a, table, tableType) => ({
+      type: "prune-rows",
+      params: {
+        ys: a.ys as string[],
+        ...(tableType === "xy" ? { x: table.columns[0]?.name } : {}),
+        condition: a.condition as PruneRowsParams["condition"],
+        ...(a.condition === "below" || a.condition === "above" ? { threshold: a.threshold as number } : {}),
+        ...(a.condition === "outside" ? { low: a.low as number, high: a.high as number } : {}),
       },
     }),
   },

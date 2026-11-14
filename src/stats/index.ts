@@ -17,6 +17,7 @@ import type {
   EnzymeInhibitionParams,
   FrequencyDistributionParams,
   TransformDataParams,
+  PruneRowsParams,
   KMeansParams,
   McNemarParams,
   MixedEffectsParams,
@@ -58,6 +59,7 @@ import { demingRegressionSpec } from "./xy/deming-regression";
 import { runSimpleLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runRemoveBaseline } from "./xy/remove-baseline";
+import { runPruneRows } from "./xy/prune-rows";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
 import { runBindingKinetics, runBindingSaturation } from "./xy/binding";
 import { runEnzymeInhibition } from "./xy/enzyme-inhibition";
@@ -184,6 +186,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Remove baseline",
     minColumns: 1,
     run: (c, p, t) => runRemoveBaseline(c, p as RemoveBaselineParams, t),
+  },
+  "prune-rows": {
+    label: "Prune rows",
+    minColumns: 1,
+    run: (c, p, t) => runPruneRows(c, p as PruneRowsParams, t),
   },
   "nonlinear-regression": {
     label: "Nonlinear regression",
