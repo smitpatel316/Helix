@@ -26,7 +26,7 @@ list is declared (tool names are owned by `docs/mcp-server-contract.md`).
 
 The manifest declares **no** user configuration. In particular it does NOT
 ask the user for the bearer token: the bridge reads it from Titer's local
-discovery file (`<app-data>/mcp.json`, mode 0600) at startup, so the token
+discovery file (`<app-data>/mcp/discovery.json`, mode 0600) at startup, so the token
 never enters Claude Desktop's config and never goes stale on rotation. See
 `docs/stdio-bridge.md` §2 for the decision and security reasoning.
 
