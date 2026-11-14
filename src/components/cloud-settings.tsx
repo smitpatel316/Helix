@@ -6,16 +6,17 @@
 // Why Box asks for a client secret: Box's token endpoint mandates one
 // (its authorization-server metadata lists only `client_secret_basic` and
 // `client_secret_post` — no secret-less method), so the standard
-// public-client + PKCE flow can't complete for Box. Until Smit decides who
-// owns the shared Box app (or the Titer broker is built), connecting uses
-// the user's own Box app credentials (bring-your-own), stored in the
-// keychain. No secret ships in the app.
+// public-client + PKCE flow can't complete for Box. By default connecting
+// uses the Titer Box app through the first-party broker (no credentials
+// needed — the broker holds the secret); the user's own Box app credentials
+// (bring-your-own, stored in the keychain) are the fallback when the broker
+// is unreachable. No secret ships in the app.
 import * as React from "react";
 import { Button } from "../ui/controls";
 import { Dialog } from "../ui/dialog";
 import { useProjectStore } from "../store/use-project-store";
 import * as native from "../native";
-import { cloudErrorMessage, type CloudStatus } from "../lib/cloud";
+import { boxAuthPath, cloudErrorMessage, type CloudStatus } from "../lib/cloud";
 
 export function CloudSettingsDialog({ onClose }: { onClose: () => void }) {
   const { selector } = useProjectStore();
@@ -52,6 +53,7 @@ export function CloudSettingsDialog({ onClose }: { onClose: () => void }) {
 
   const boxAccounts = status?.accounts.filter((a) => a.provider === "box") ?? [];
   const configured = status?.boxHasCredentials ?? false;
+  const authPath = boxAuthPath(status);
 
   const connect = async () => {
     setConnecting(true);
@@ -120,12 +122,21 @@ export function CloudSettingsDialog({ onClose }: { onClose: () => void }) {
               ))}
             </ul>
           )}
+          <p className="text-regular text-secondary">
+            {authPath === "broker"
+              ? "Box sign-in uses the Titer Box app (broker) — no credentials needed."
+              : authPath === "byo"
+                ? status?.boxHasBroker
+                  ? "The Titer Box app is unreachable right now — Box sign-in will use your own Box app credentials."
+                  : "Box sign-in uses your own Box app credentials."
+                : "Box sign-in isn't set up yet — paste your own Box app credentials below, or wait for the Titer Box app."}
+          </p>
           <div>
             <Button variant="accent" disabled={connecting || !native.isNative} onClick={() => void connect()}>
               {connecting ? "Waiting for Box sign-in…" : "Connect Box"}
             </Button>
           </div>
-          {!configured && !status?.boxHasBroker && (
+          {authPath === "none" && (
             <p className="text-regular text-secondary">
               Box sign-in needs a Box app first: paste your own app&apos;s client ID and secret below (they stay in the
               OS keychain — no secret ever ships in Titer), or wait for the shared Titer Box app. If your Box is a UCSF

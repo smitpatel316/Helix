@@ -244,6 +244,13 @@ pub struct TokenSet {
     /// Unix seconds when the access token expires (0 = unknown/expired).
     pub expires_at_unix: i64,
     pub scope: String,
+    /// Which credential source issued this pair. Box refresh tokens are
+    /// bound to the issuing client id + secret, so a refresh MUST go back
+    /// through the same source (broker or BYO) — the other side answers
+    /// invalid_grant. `false` (default) is BYO, which also covers every
+    /// token saved before the broker existed.
+    #[serde(default)]
+    pub issued_via_broker: bool,
 }
 
 impl std::fmt::Debug for TokenSet {
@@ -253,6 +260,7 @@ impl std::fmt::Debug for TokenSet {
             .field("refresh_token", &self.refresh_token.as_ref().map(|_| "<redacted>"))
             .field("expires_at_unix", &self.expires_at_unix)
             .field("scope", &self.scope)
+            .field("issued_via_broker", &self.issued_via_broker)
             .finish()
     }
 }
@@ -310,7 +318,7 @@ pub fn delete_tokens(provider: &str, account_id: &str) -> Result<(), CloudError>
 /// BYO OAuth credentials, as stored in the keychain (JSON). The secret is
 /// never logged, never put in a file, and never sent anywhere but the
 /// provider's token endpoint.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ByoCredentials {
     pub client_id: String,
     pub client_secret: String,
@@ -934,8 +942,20 @@ mod tests {
             refresh_token: Some("SECRET-REFRESH".into()),
             expires_at_unix: 0,
             scope: "root_readwrite".into(),
+            issued_via_broker: true,
         };
         let shown = format!("{tokens:?}");
         assert!(!shown.contains("SECRET-ACCESS") && !shown.contains("SECRET-REFRESH"), "{shown}");
+    }
+
+    #[test]
+    fn token_set_without_issued_via_broker_deserializes_as_byo() {
+        // Tokens saved before the broker existed carry no flag; they must
+        // keep refreshing through BYO, never silently switch to the broker.
+        let old: TokenSet = serde_json::from_str(
+            r#"{"access_token":"a","refresh_token":"r","expires_at_unix":0,"scope":"root_readwrite"}"#,
+        )
+        .expect("old token json");
+        assert!(!old.issued_via_broker);
     }
 }

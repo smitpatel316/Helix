@@ -434,21 +434,25 @@ fn cloud_provider(
 
 /// What the Settings → Connected Storage page shows: the accounts, and
 /// whether Box has credentials saved (BYO) or a broker to use. Booleans
-/// only — no secrets cross the bridge, ever.
+/// only — no secrets cross the bridge, ever. `box_broker_reachable` is a
+/// live probe (a short `/config` check): the broker can be configured but
+/// down, and the page shows which path a connect would actually take.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CloudStatus {
     accounts: Vec<cloud::CloudAccount>,
     box_has_credentials: bool,
     box_has_broker: bool,
+    box_broker_reachable: bool,
 }
 
 #[tauri::command]
-fn cloud_status(app: AppHandle) -> CloudStatus {
+async fn cloud_status(app: AppHandle) -> CloudStatus {
     CloudStatus {
         accounts: load_cloud_registry(&app),
         box_has_credentials: matches!(cloud::load_byo_credentials("box"), Ok(Some(_))),
-        box_has_broker: cloud_box::BOX_BROKER_URL.is_some(),
+        box_has_broker: cloud_box::broker_configured(),
+        box_broker_reachable: cloud_box::broker_available().await,
     }
 }
 

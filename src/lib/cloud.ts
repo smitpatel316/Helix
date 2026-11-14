@@ -119,7 +119,22 @@ export interface CloudStatus {
   accounts: CloudAccount[];
   boxHasCredentials: boolean;
   boxHasBroker: boolean;
+  /** Live probe: the broker answered GET /config just now. */
+  boxBrokerReachable: boolean;
 }
+
+/** Which path a Box connect would actually take, from the status the
+ *  Settings page already holds. Broker first when it answers; the user's
+ *  own app credentials when the broker is down; nothing when neither is
+ *  available. */
+export type BoxAuthPath = "broker" | "byo" | "none";
+
+export const boxAuthPath = (status: CloudStatus | null): BoxAuthPath => {
+  if (!status) return "none";
+  if (status.boxBrokerReachable) return "broker";
+  if (status.boxHasCredentials) return "byo";
+  return "none";
+};
 
 /** A cloud failure, as the shell serializes it (`{ kind, ... }`). */
 export type CloudError =
