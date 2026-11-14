@@ -7248,7 +7248,7 @@ check("the Match popup menu passes an explicit position and window, with a re-en
   ok(match.includes("await choose(event);"));
 });
 
-check("Open Recent reads only a list of paths", () => {
+check("Open Recent loads FileHandle entries, migrating legacy plain paths", () => {
   const stored: Record<string, string> = {};
   const storage = {
     getItem: (k: string) => stored[k] ?? null,
@@ -7260,8 +7260,21 @@ check("Open Recent reads only a list of paths", () => {
       stored["titer.recent"] = bad;
       deepStrictEqual(loadRecents(), []);
     }
+    // Legacy plain-path strings migrate to local entries.
     stored["titer.recent"] = '["/a.hlx", 3, "/b.hlx"]';
-    deepStrictEqual(loadRecents(), ["/a.hlx", "/b.hlx"]);
+    deepStrictEqual(loadRecents(), [
+      { kind: "local", path: "/a.hlx" },
+      { kind: "local", path: "/b.hlx" },
+    ]);
+    // New-format entries (local + remote) load as-is.
+    stored["titer.recent"] = JSON.stringify([
+      { kind: "local", path: "/a.hlx" },
+      { kind: "remote", provider: "box", accountId: "u1", fileId: "123", path: "/Research/Data.hlx" },
+    ]);
+    deepStrictEqual(loadRecents(), [
+      { kind: "local", path: "/a.hlx" },
+      { kind: "remote", provider: "box", accountId: "u1", fileId: "123", path: "/Research/Data.hlx" },
+    ]);
   } finally {
     delete (globalThis as { localStorage?: unknown }).localStorage;
   }

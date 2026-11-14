@@ -40,18 +40,38 @@ esac
 
 for TARGET in $TARGETS; do
   echo "=== $TARGET: tauri build (DMG step may succeed or fail) ==="
-  npx tauri build --target "$TARGET" || true
+  # Fail-hard guard (2026-11-14, cloud-box lane): a failed `tauri build`
+  # used to fall through to the stale-DMG check below and "verify" a DMG
+  # left in bundle/dmg/ by a previous lane — which was then installed by
+  # mistake. Record the build start and only trust a DMG (or .app) newer
+  # than it; anything older is stale and must never pass as this run's build.
+  STAMP="$(mktemp /tmp/titer-build-start.XXXXXX)"
+  TAURI_EXIT=0
+  npx tauri build --target "$TARGET" || TAURI_EXIT=$?
   BUNDLE="src-tauri/target/$TARGET/release/bundle"
   # Stray temp images from failed runs must not sit in the source folder.
   find "$BUNDLE" -name 'rw.*.dmg' -delete || true
   DMG_NAME="Titer_${VERSION}_aarch64.dmg"
   [ "$TARGET" = "x86_64-apple-darwin" ] && DMG_NAME="Titer_${VERSION}_x64.dmg"
-  if [ -f "$BUNDLE/dmg/$DMG_NAME" ]; then
+  if [ -f "$BUNDLE/dmg/$DMG_NAME" ] && [ "$BUNDLE/dmg/$DMG_NAME" -nt "$STAMP" ]; then
     # Tauri's own DMG step succeeded this run. The manual step would fail
     # with "hdiutil: convert failed - File exists", so skip it and verify.
     echo "=== $TARGET: Tauri already produced $DMG_NAME — verifying ==="
     hdiutil verify "$BUNDLE/dmg/$DMG_NAME"
   else
+    # A DMG older than the build start is stale (a previous lane's) — it
+    # must never pass as this run's build. Remove it and take the manual path.
+    rm -f "$BUNDLE/dmg/$DMG_NAME"
+    # If Tauri failed AND the .app is not fresh either, the build itself
+    # failed (e.g. a cargo error) — fail hard instead of bundling stale output.
+    # (A DMG-step-only failure still leaves a fresh .app, so the manual
+    # bundle below keeps working for that case.)
+    APP_BIN="$BUNDLE/macos/Titer.app/Contents/MacOS/titer"
+    if [ "$TAURI_EXIT" -ne 0 ] && { [ ! -f "$APP_BIN" ] || [ ! "$APP_BIN" -nt "$STAMP" ]; }; then
+      echo "ERROR: tauri build failed for $TARGET (exit $TAURI_EXIT) and no fresh .app was produced — refusing to bundle a stale build" >&2
+      rm -f "$STAMP"
+      exit 1
+    fi
     echo "=== $TARGET: manual DMG bundle -> $BUNDLE/dmg/$DMG_NAME ==="
     (cd /tmp && bash "$ROOT/$BUNDLE/dmg/bundle_dmg.sh" --skip-jenkins \
       --volname Titer \
@@ -77,4 +97,5 @@ for TARGET in $TARGETS; do
   done
   ls -lh "$BUNDLE/dmg/$DMG_NAME"
   shasum -a 256 "$BUNDLE/dmg/$DMG_NAME"
+  rm -f "$STAMP"
 done

@@ -646,7 +646,7 @@ impl CloudProvider for BoxClient {
                 {
                     Ok(r) if r.status().is_success() => Ok(()),
                     Ok(r) => Err(CloudError::from_status(r.status())),
-                    Err(e) => Err(CloudError::from_http(&e)),
+                    Err(e) => Err(CloudError::from_http(e)),
                 }
             }
             Err(_) => Ok(()),

@@ -28,6 +28,7 @@ use std::{
     sync::mpsc,
     time::Duration,
 };
+use tauri::Manager;
 
 /// The provider ids the file layer knows. Only `box` is wired to a real
 /// provider in this slice; `mock` is the in-memory fake the file layer,
@@ -90,8 +91,9 @@ impl CloudError {
     /// A reqwest failure, sorted into offline vs provider. A connect error
     /// or a timeout is the network being gone; anything else is the
     /// provider's fault. Never includes the error's text (it can echo URLs
-    /// with query strings).
-    pub fn from_http(err: &reqwest::Error) -> Self {
+    /// with query strings). Takes the error by value so it plugs straight
+    /// into `map_err` (`fn(Error) -> CloudError`).
+    pub fn from_http(err: reqwest::Error) -> Self {
         if err.is_connect() || err.is_timeout() {
             CloudError::offline("Couldn't reach the cloud provider. Check the network and try again.")
         } else {
@@ -432,6 +434,9 @@ pub fn url_encode(value: &str) -> String {
 pub fn wait_for_code(port: u16, expected_state: &str, timeout: Duration) -> Result<String, CloudError> {
     let listener = TcpListener::bind(("127.0.0.1", port))
         .map_err(|e| CloudError::provider(format!("Couldn't start the sign-in listener: {e}")))?;
+    // The spawned thread must own everything it touches (`'static`): copy
+    // the expected state instead of borrowing it across the spawn.
+    let expected_state = expected_state.to_string();
     let (tx, rx) = mpsc::channel::<Result<String, CloudError>>();
     std::thread::spawn(move || {
         let result = (|| -> Result<String, CloudError> {
@@ -485,7 +490,7 @@ pub fn wait_for_code(port: u16, expected_state: &str, timeout: Duration) -> Resu
                 return Err(CloudError::Cancelled { message: format!("Sign-in was refused ({error}).") });
             }
             match (params.get("code"), params.get("state")) {
-                (Some(code), Some(state)) if state == expected_state => Ok(code.clone()),
+                (Some(code), Some(state)) if state == &expected_state => Ok(code.clone()),
                 (Some(_), Some(_)) => {
                     Err(CloudError::Cancelled { message: "Sign-in state didn't match. Try connecting again.".into() })
                 }
