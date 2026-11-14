@@ -574,10 +574,12 @@ fn run_loop(client: &Client, cfg: &mut BridgeConfig) -> i32 {
 }
 
 /// `--check`: verify the bridge can reach the server with a real
-/// `initialize` handshake (protocolVersion 2025-11-25), then close the
-/// session again. A bare `ping` is NOT a reliable probe: the server's
-/// session manager rejects non-initialize requests without a session, so a
-/// ping would report a healthy server as unreachable. Exit 0 = ok,
+/// `initialize` handshake (protocolVersion 2025-11-25), a `ping` on the
+/// established session, then close the session again. A bare `ping` is NOT
+/// a reliable probe: the server's session manager rejects non-initialize
+/// requests without a session, so a ping would report a healthy server as
+/// unreachable — initialize first (v3/claude-code fix), ping on that
+/// session, then DELETE it (v3/claude-desktop). Exit 0 = ok,
 /// 1 = server unreachable or handshake refused, 2 = no discovery/token.
 fn probe(client: &Client, cfg: &mut BridgeConfig) -> i32 {
     let init = serde_json::json!({
@@ -603,6 +605,35 @@ fn probe(client: &Client, cfg: &mut BridgeConfig) -> i32 {
             if !ok {
                 eprintln!("titer-stdio-bridge: server refused the initialize handshake.");
                 return 1;
+            }
+            // Ping on the established session: proves the session id the
+            // server issued round-trips (not just that initialize answered).
+            let ping = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "titer-bridge-check-ping",
+                "method": "ping",
+            });
+            let ping_line = ping.to_string();
+            match forward(client, cfg, &mut session_id, DEFAULT_PROTOCOL_VERSION, &ping_line, &Value::Null, false) {
+                ForwardOutcome::Messages(_) => {}
+                ForwardOutcome::NoResponse => {
+                    eprintln!("titer-stdio-bridge: server accepted ping but returned no response.");
+                    if let Some(sid) = session_id.as_deref() {
+                        close_session(client, cfg, DEFAULT_PROTOCOL_VERSION, sid);
+                    }
+                    return 1;
+                }
+                ForwardOutcome::Failed(err) => {
+                    let message = serde_json::from_str::<Value>(&err)
+                        .ok()
+                        .and_then(|v| v.get("error")?.get("message")?.as_str().map(str::to_string))
+                        .unwrap_or(err);
+                    eprintln!("titer-stdio-bridge: {message}");
+                    if let Some(sid) = session_id.as_deref() {
+                        close_session(client, cfg, DEFAULT_PROTOCOL_VERSION, sid);
+                    }
+                    return 1;
+                }
             }
             if let Some(sid) = session_id.as_deref() {
                 close_session(client, cfg, DEFAULT_PROTOCOL_VERSION, sid);
@@ -643,7 +674,7 @@ fn print_usage() {
          OPTIONS\n\
          \x20 --discovery <path>  Read server URL + token from this file instead of\n\
          \x20                     <app-data>/mcp/discovery.json (TITER_MCP_DISCOVERY does the same).\n\
-         \x20 --check             Initialize-handshake probe, then close the session\n\
+         \x20 --check             Initialize + ping probe, then close the session\n\
          \x20                     and exit (0 = reachable).\n\
          \x20 --help              Show this help.\n\
          \x20 --version           Show the version.\n\

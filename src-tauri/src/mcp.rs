@@ -40,17 +40,16 @@
 // If rmcp 3.8.0 is not on the index at first build, fall back to 3.7 —
 // ServerConfig exists in both.
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as B64, Engine as _};
+use rmcp::transport::streamable_http_server::{
+    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
     schemars, tool, tool_handler, tool_router, Json, ServerHandler,
 };
-use rmcp::transport::streamable_http_server::{
-    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
-};
 use serde::{Deserialize, Serialize};
 use std::{
-    borrow::Cow,
     collections::{HashMap, HashSet},
     fs,
     io::Read,
@@ -65,8 +64,7 @@ use tokio_util::sync::CancellationToken;
 
 /// The MCP spec revisions this server negotiates. 2026-07-28 is
 /// deliberately absent: clients lag it (see the module docs).
-const SUPPORTED_PROTOCOL_VERSIONS: &[ProtocolVersion] =
-    &[ProtocolVersion::V_2025_11_25, ProtocolVersion::V_2025_06_18];
+const SUPPORTED_PROTOCOL_VERSIONS: &[ProtocolVersion] = &[ProtocolVersion::V_2025_11_25, ProtocolVersion::V_2025_06_18];
 
 /// Preferred listen ports, tried in order on 127.0.0.1; the first free one
 /// wins and is written to the discovery file (see docs/mcp-server-contract.md).
@@ -224,13 +222,15 @@ impl McpState {
         project_id: Option<&str>,
     ) -> Result<(String, serde_json::Value), String> {
         if let Some(id) = project_id {
-            return snapshots
-                .get(id)
-                .map(|snap| (id.to_string(), snap.clone()))
-                .ok_or_else(|| format!("No open project with id “{id}”. Ask titer_list_projects for the open projects."));
+            return snapshots.get(id).map(|snap| (id.to_string(), snap.clone())).ok_or_else(|| {
+                format!("No open project with id “{id}”. Ask titer_list_projects for the open projects.")
+            });
         }
         let Some(id) = last_published else {
-            return Err("No project is open in Titer yet, or none has published its state. Open a project and ask again.".into());
+            return Err(
+                "No project is open in Titer yet, or none has published its state. Open a project and ask again."
+                    .into(),
+            );
         };
         snapshots
             .get(id)
@@ -322,22 +322,19 @@ pub async fn mcp_set_enabled(app: AppHandle, state: State<'_, McpState>, enabled
     let service = StreamableHttpService::new(
         move || Ok(TiterMcpServer::new(server_state.clone())),
         LocalSessionManager::default().into(),
-        StreamableHttpServerConfig::default()
-            .with_cancellation_token(cancel.child_token())
-            .with_allowed_hosts(["localhost", "127.0.0.1", "::1"]),
+        StreamableHttpServerConfig::default().with_cancellation_token(cancel.child_token()).with_allowed_hosts([
+            "localhost",
+            "127.0.0.1",
+            "::1",
+        ]),
     );
     let auth_state = state.inner.clone();
     let router = axum::Router::new()
         .nest_service(MCP_PATH, service)
-        .layer(axum::middleware::from_fn_with_state(
-            McpState { inner: auth_state },
-            auth_middleware,
-        ));
+        .layer(axum::middleware::from_fn_with_state(McpState { inner: auth_state }, auth_middleware));
     let shutdown = cancel.clone();
     let handle = tauri::async_runtime::spawn(async move {
-        let _ = axum::serve(listener, router)
-            .with_graceful_shutdown(async move { shutdown.cancelled().await })
-            .await;
+        let _ = axum::serve(listener, router).with_graceful_shutdown(async move { shutdown.cancelled().await }).await;
     });
     {
         let mut inner = state.lock();
@@ -555,7 +552,13 @@ impl TiterMcpServer {
     #[tool(
         name = "titer_list_projects",
         description = "List the projects open in Titer, with their tables, analyses, graphs and figures (and the ids the other tools take).",
-        annotations(title = "List projects", read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false)
+        annotations(
+            title = "List projects",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn list_projects(&self) -> Result<Json<serde_json::Value>, String> {
         let out = project_listing(&self.state.snapshots());
@@ -568,7 +571,13 @@ impl TiterMcpServer {
     #[tool(
         name = "titer_list_tables",
         description = "List the data tables in a project: id, name, table type and size. Omit project_id for the front project.",
-        annotations(title = "List tables", read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false)
+        annotations(
+            title = "List tables",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn list_tables(&self, Parameters(args): Parameters<ProjectArgs>) -> Result<Json<serde_json::Value>, String> {
         let snapshots = self.state.snapshots();
@@ -579,11 +588,21 @@ impl TiterMcpServer {
         })();
         match result {
             Ok(out) => {
-                self.state.log_call("titer_list_tables", serde_json::json!({ "project_id": args.project_id }), true, None);
+                self.state.log_call(
+                    "titer_list_tables",
+                    serde_json::json!({ "project_id": args.project_id }),
+                    true,
+                    None,
+                );
                 Ok(Json(out))
             }
             Err(e) => {
-                self.state.log_call("titer_list_tables", serde_json::json!({ "project_id": args.project_id }), false, Some(&e));
+                self.state.log_call(
+                    "titer_list_tables",
+                    serde_json::json!({ "project_id": args.project_id }),
+                    false,
+                    Some(&e),
+                );
                 Err(e)
             }
         }
@@ -595,7 +614,13 @@ impl TiterMcpServer {
     #[tool(
         name = "titer_read_table_summary",
         description = "Read a table's summary: columns with roles, row count, value ranges and units where recorded. Returns cell values only when include_values is true (capped at max_rows, default 100).",
-        annotations(title = "Read table summary", read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false)
+        annotations(
+            title = "Read table summary",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn read_table_summary(
         &self,
@@ -627,7 +652,13 @@ impl TiterMcpServer {
     #[tool(
         name = "titer_read_results",
         description = "Read the result of a named analysis (statistics, p-values, confidence intervals, notes) as computed in this Titer session. If the analysis has not been run since Titer opened, the result says so (status not_computed) — open the analysis in Titer to run it.",
-        annotations(title = "Read results", read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false)
+        annotations(
+            title = "Read results",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn read_results(&self, Parameters(args): Parameters<ResultsArgs>) -> Result<Json<serde_json::Value>, String> {
         let snapshots = self.state.snapshots();
@@ -655,7 +686,13 @@ impl TiterMcpServer {
     #[tool(
         name = "titer_read_graph",
         description = "Read what a graph shows: its type, source table, titles and labels, the analyses it draws from, and the figures it belongs to.",
-        annotations(title = "Read graph", read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false)
+        annotations(
+            title = "Read graph",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn read_graph(&self, Parameters(args): Parameters<GraphArgs>) -> Result<Json<serde_json::Value>, String> {
         let snapshots = self.state.snapshots();
@@ -710,10 +747,11 @@ impl ServerHandler for TiterMcpServer {
 
     /// Only the revisions clients actually speak (2025-06-18 / 2025-11-25).
     /// 2026-07-28 is not offered: clients lag it.
-    /// (rmcp 3.8's trait takes Cow, not Vec — the 3.2-era Vec signature
-    /// does not compile against the pinned 3.8.)
-    fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
-        Cow::Borrowed(SUPPORTED_PROTOCOL_VERSIONS)
+    /// (rmcp 3.8+ takes `Cow<'static, [ProtocolVersion]>`, not `Vec` —
+    /// the 3.2-era Vec signature never compiled against rmcp 3.8 or the
+    /// locked 3.10; fixed 2026-11-14 in the v3/codex + v3/claude-code lanes.)
+    fn supported_protocol_versions(&self) -> std::borrow::Cow<'static, [ProtocolVersion]> {
+        std::borrow::Cow::Borrowed(SUPPORTED_PROTOCOL_VERSIONS)
     }
 }
 
@@ -721,10 +759,7 @@ impl ServerHandler for TiterMcpServer {
 
 fn nodes_of(snapshot: &serde_json::Value) -> &serde_json::Map<String, serde_json::Value> {
     static EMPTY: std::sync::OnceLock<serde_json::Map<String, serde_json::Value>> = std::sync::OnceLock::new();
-    snapshot
-        .get("nodes")
-        .and_then(|n| n.as_object())
-        .unwrap_or_else(|| EMPTY.get_or_init(serde_json::Map::new))
+    snapshot.get("nodes").and_then(|n| n.as_object()).unwrap_or_else(|| EMPTY.get_or_init(serde_json::Map::new))
 }
 
 fn find_node<'a>(snapshot: &'a serde_json::Value, id: &str) -> Option<&'a serde_json::Value> {
@@ -783,10 +818,8 @@ fn project_listing(snapshots: &HashMap<String, serde_json::Value>) -> serde_json
 
 fn list_tables(project_id: &str, snapshot: &serde_json::Value) -> serde_json::Value {
     let mut tables = Vec::new();
-    let mut entries: Vec<(&String, &serde_json::Value)> = nodes_of(snapshot)
-        .iter()
-        .filter(|(_, n)| n.get("type").and_then(|v| v.as_str()) == Some("table"))
-        .collect();
+    let mut entries: Vec<(&String, &serde_json::Value)> =
+        nodes_of(snapshot).iter().filter(|(_, n)| n.get("type").and_then(|v| v.as_str()) == Some("table")).collect();
     entries.sort_by_key(|(_, n)| node_name(n));
     for (id, node) in entries {
         let data = node.get("data");
@@ -810,14 +843,23 @@ fn list_tables(project_id: &str, snapshot: &serde_json::Value) -> serde_json::Va
 /// A column's role, from the table type and its place — the store records
 /// no explicit roles, so the shape is the role (roadmap §2).
 fn column_role(table_type: &str, data_col: usize, data: &serde_json::Value) -> String {
-    let usize_or = |key: &str, fallback: usize| data.get(key).and_then(|v| v.as_u64()).map(|v| v as usize).unwrap_or(fallback);
+    let usize_or =
+        |key: &str, fallback: usize| data.get(key).and_then(|v| v.as_u64()).map(|v| v as usize).unwrap_or(fallback);
     // Group letters (A, B, …) only reach Z; past that, the group number.
     let group_name = |g: usize| {
-        if g < 26 { format!("{}", (b'A' + g as u8) as char) } else { format!("{}", g + 1) }
+        if g < 26 {
+            format!("{}", (b'A' + g as u8) as char)
+        } else {
+            format!("{}", g + 1)
+        }
     };
     match table_type {
         "xy" => {
-            if data_col == 0 { "X".to_string() } else { format!("Y (replicate {})", data_col) }
+            if data_col == 0 {
+                "X".to_string()
+            } else {
+                format!("Y (replicate {})", data_col)
+            }
         }
         "survival" => {
             if data_col == 0 {
@@ -858,7 +900,11 @@ fn unit_hint(header: &str) -> Option<String> {
     let open = header.rfind('[')?;
     let close = header[open..].find(']')?;
     let unit = header[open + 1..open + close].trim();
-    if unit.is_empty() { None } else { Some(unit.to_string()) }
+    if unit.is_empty() {
+        None
+    } else {
+        Some(unit.to_string())
+    }
 }
 
 /// A cell as a number, when it is one: JSON numbers, or strings that parse.
@@ -867,7 +913,11 @@ fn cell_number(cell: &serde_json::Value) -> Option<f64> {
         serde_json::Value::Number(n) => n.as_f64(),
         serde_json::Value::String(s) => {
             let s = s.trim();
-            if s.is_empty() { None } else { s.parse::<f64>().ok().filter(|v| v.is_finite()) }
+            if s.is_empty() {
+                None
+            } else {
+                s.parse::<f64>().ok().filter(|v| v.is_finite())
+            }
         }
         _ => None,
     }
@@ -880,10 +930,14 @@ fn table_summary(
     include_values: bool,
     max_rows: usize,
 ) -> Result<serde_json::Value, String> {
-    let node = find_node(snapshot, table_id)
-        .ok_or_else(|| format!("No table with id “{table_id}” in project {project_id}. Ask titer_list_tables for the ids."))?;
+    let node = find_node(snapshot, table_id).ok_or_else(|| {
+        format!("No table with id “{table_id}” in project {project_id}. Ask titer_list_tables for the ids.")
+    })?;
     if node.get("type").and_then(|v| v.as_str()) != Some("table") {
-        return Err(format!("“{table_id}” is not a table (it is a {}).", node.get("type").and_then(|v| v.as_str()).unwrap_or("node")));
+        return Err(format!(
+            "“{table_id}” is not a table (it is a {}).",
+            node.get("type").and_then(|v| v.as_str()).unwrap_or("node")
+        ));
     }
     let table_type = node.get("tableType").and_then(|v| v.as_str()).unwrap_or("column");
     let data = node.get("data").cloned().unwrap_or(serde_json::Value::Null);
@@ -895,11 +949,7 @@ fn table_summary(
     let rows: Vec<Vec<serde_json::Value>> = data
         .get("rows")
         .and_then(|r| r.as_array())
-        .map(|rs| {
-            rs.iter()
-                .map(|row| row.as_array().cloned().unwrap_or_default())
-                .collect()
-        })
+        .map(|rs| rs.iter().map(|row| row.as_array().cloned().unwrap_or_default()).collect())
         .unwrap_or_default();
     // Excluded cells ("row,col" in full-grid coords) stay in the table but
     // are dropped from every analysis and graph — and from these ranges.
@@ -988,13 +1038,7 @@ fn table_summary(
             let cells: Vec<serde_json::Value> = row
                 .iter()
                 .enumerate()
-                .map(|(c, cell)| {
-                    if excluded.contains(&(r, c)) {
-                        serde_json::Value::Null
-                    } else {
-                        cell.clone()
-                    }
-                })
+                .map(|(c, cell)| if excluded.contains(&(r, c)) { serde_json::Value::Null } else { cell.clone() })
                 .collect();
             values.push(serde_json::json!({ "row": r, "cells": cells }));
         }
@@ -1017,10 +1061,9 @@ fn read_results(
 ) -> serde_json::Value {
     let node = find_node(snapshot, analysis_id);
     let (name, analysis_type) = match node {
-        Some(n) if n.get("type").and_then(|v| v.as_str()) == Some("analysis") => (
-            node_name(n).to_string(),
-            n.get("analysisType").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        ),
+        Some(n) if n.get("type").and_then(|v| v.as_str()) == Some("analysis") => {
+            (node_name(n).to_string(), n.get("analysisType").and_then(|v| v.as_str()).unwrap_or("").to_string())
+        }
         Some(_) => {
             return serde_json::json!({
                 "status": "not_an_analysis",
@@ -1072,10 +1115,14 @@ fn read_results(
 }
 
 fn read_graph(project_id: &str, snapshot: &serde_json::Value, graph_id: &str) -> Result<serde_json::Value, String> {
-    let node = find_node(snapshot, graph_id)
-        .ok_or_else(|| format!("No graph with id “{graph_id}” in project {project_id}. Ask titer_list_projects for the ids."))?;
+    let node = find_node(snapshot, graph_id).ok_or_else(|| {
+        format!("No graph with id “{graph_id}” in project {project_id}. Ask titer_list_projects for the ids.")
+    })?;
     if node.get("type").and_then(|v| v.as_str()) != Some("graph") {
-        return Err(format!("“{graph_id}” is not a graph (it is a {}).", node.get("type").and_then(|v| v.as_str()).unwrap_or("node")));
+        return Err(format!(
+            "“{graph_id}” is not a graph (it is a {}).",
+            node.get("type").and_then(|v| v.as_str()).unwrap_or("node")
+        ));
     }
     let options = node.get("graphOptions").cloned().unwrap_or(serde_json::Value::Null);
     // The sibling analyses this graph draws from (significance brackets,
@@ -1106,14 +1153,13 @@ fn read_graph(project_id: &str, snapshot: &serde_json::Value, graph_id: &str) ->
         }
     }
     let (source_id, source_name, source_type) = match node.get("parentId").and_then(|v| v.as_str()) {
-        Some(parent) => find_node(snapshot, parent).map_or(
-            (parent.to_string(), None, None),
-            |n| (
+        Some(parent) => find_node(snapshot, parent).map_or((parent.to_string(), None, None), |n| {
+            (
                 parent.to_string(),
                 Some(node_name(n).to_string()),
                 n.get("tableType").and_then(|v| v.as_str()).map(display_table_type),
-            ),
-        ),
+            )
+        }),
         None => ("".to_string(), None, None),
     };
     Ok(serde_json::json!({
