@@ -5521,6 +5521,108 @@
   ],
   "notes": "Ordinary least-squares linear regression of each Y data set on “X”, each on its own. Assumes a linear relationship and homoscedastic residuals."
  },
+ "linear-regression xy {\"ys\":[\"Y1\",\"Y2\"],\"forceOrigin\":false,\"weights\":\"1/y\"}": {
+  "testType": "linear-regression",
+  "subtitle": "Simple linear regression",
+  "stats": [],
+  "fit": {
+   "sets": [
+    "Y1",
+    "Y2"
+   ],
+   "rows": [
+    {
+     "label": "Slope",
+     "values": [
+      1.993741298,
+      2.018519171
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       1.925598081,
+       2.061884515
+      ],
+      [
+       1.922168547,
+       2.114869796
+      ]
+     ]
+    },
+    {
+     "label": "Y-intercept",
+     "values": [
+      1.055346692,
+      2.011223022
+     ]
+    },
+    {
+     "label": "95% CI",
+     "ranges": [
+      [
+       0.8787052117,
+       1.231988173
+      ],
+      [
+       1.726417635,
+       2.296028409
+      ]
+     ]
+    },
+    {
+     "label": "R squared",
+     "values": [
+      0.9988307318,
+      0.9988191032
+     ]
+    },
+    {
+     "label": "P value (slope ≠ 0)",
+     "values": [
+      4.997847543e-10,
+      5.231499898e-7
+     ],
+     "p": true
+    },
+    {
+     "label": "N",
+     "values": [
+      8,
+      6
+     ]
+    }
+   ]
+  },
+  "groups": [
+   {
+    "name": "X",
+    "mean": 3.625,
+    "sd": 2.669269563,
+    "sem": 0.9437293044,
+    "median": 3.5,
+    "n": 8
+   },
+   {
+    "name": "Y1",
+    "mean": 9.033333333,
+    "sd": 5.503635162,
+    "sem": 1.834545054,
+    "median": 9.1,
+    "n": 9
+   },
+   {
+    "name": "Y2",
+    "mean": 10.21428571,
+    "sd": 5.455709111,
+    "sem": 2.062064219,
+    "median": 9.7,
+    "n": 7
+   }
+  ],
+  "notes": "Ordinary least-squares linear regression of each Y data set on “X”, each on its own. Weighted by 1/Y; R² is weighted."
+ },
  "linear-regression xyReps {\"ys\":[\"A\",\"B\"],\"forceOrigin\":true}": {
   "testType": "linear-regression",
   "subtitle": "Simple linear regression (through origin)",
@@ -10075,10 +10177,6 @@
    {
     "label": "Intercept 95% CI upper",
     "value": 1.17016352
-   },
-   {
-    "label": "Pearson r",
-    "value": 0.9992303609
    },
    {
     "label": "R squared",
