@@ -100,7 +100,14 @@ interface AtRiskRow {
  *  with the bottom margin grown to fit, so the rows sit below the axis title.
  *  The ticks are set explicitly on the X axis, so the columns ARE the major
  *  ticks. `showarrow: false` throughout: the view only lets arrowed texts be
- *  dragged, so the table stays put. */
+ *  dragged, so the table stays put.
+ *  Plotly's "paper" coordinates are fractions of the PLOT area, not the
+ *  figure: x = 0 / y = 0 is the plot's bottom-left corner (the X-axis line).
+ *  So the rows below the axis sit at NEGATIVE paper-y, and the labels left
+ *  of the axis at negative paper-x — px below/left of the plot edges over
+ *  the plot's size. (Dividing px-from-figure-bottom by the figure height
+ *  read as a fraction of the plot instead, landing the table inside the
+ *  plot over the curves — Mac GUI proof, nar1.) */
 function addAtRiskTable(
   fig: GraphFigure,
   groups: { name: string; color: string; atRisk: (t: number) => number; censored?: (t: number) => number }[],
@@ -134,10 +141,15 @@ function addAtRiskTable(
   xaxis.tickmode = "array";
   xaxis.tickvals = ticks;
   xaxis.ticktext = ticks.map((t) => num(t));
-  // Rows are laid out from the figure's bottom up: bottom pad, then the table
-  // (title first), then a gap, the axis title, and the tick labels to the plot.
-  const labelX = (marginL - 8) / width;
-  const rowY = (i: number) => (bottomPad + (nRows - i - 0.5) * rowH) / height;
+  // Rows are laid out from the axis line down, in paper units of the plot
+  // area: the tick labels, the axis title, a gap, then the table (title
+  // first). The bottom pad stays in the margin budget, so the last row ends
+  // that far above the figure's bottom edge.
+  const finalMargin = fig.layout.margin as Record<string, number>;
+  const plotW = width - marginL - (finalMargin.r ?? 16);
+  const plotH = height - (finalMargin.t ?? 16) - (finalMargin.b ?? 16);
+  const labelX = -8 / plotW; // labels' right edge 8px left of the axis line
+  const rowY = (i: number) => -(tickArea + titleArea + gap + (i + 0.5) * rowH) / plotH;
   const font = { color: INK, size: fs };
   const annotations: unknown[] = [
     {

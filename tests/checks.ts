@@ -7539,6 +7539,70 @@ check("a survival curve draws its Number at Risk table on survival.pzfx", () => 
   ]);
 });
 
+check("a survival curve's Number at Risk table sits below the X axis, not in the plot", () => {
+  // Plotly's "paper" coordinates are fractions of the PLOT area, not the
+  // figure: y = 0 is the X-axis line and x = 0 its left end — so a table
+  // below the axis needs negative paper-y, and labels left of the axis
+  // negative paper-x. The old code divided px-from-figure-bottom by the
+  // figure height, which Plotly read as a fraction of the plot: the table
+  // landed inside the plot, over the curves and the "20" tick label, with
+  // the tick-0 column colliding with the row labels (Mac GUI proof, nar1).
+  // The placement is pinned here in figure JSON: every table annotation
+  // below the axis line, inside the grown bottom margin, rows in order,
+  // labels left of the axis inside the widened left margin.
+  const assertPlaced = (fig: GraphFigure, options: GraphOptions) => {
+    const margin = fig.layout.margin as { l: number; r: number; t: number; b: number };
+    const plotW = options.width - margin.l - margin.r;
+    const plotH = options.height - margin.t - margin.b;
+    ok(plotW > 0 && plotH > 0, "plot area exists");
+    const annotations = (fig.layout.annotations as { xref?: string; yref?: string; x?: number; y?: number; text?: string }[] | undefined) ?? [];
+    const labels = annotations.filter((a) => a.xref === "paper");
+    const counts = annotations.filter((a) => a.xref === "x");
+    ok(labels.length > 1 && counts.length > 0, "table has a title, rows and counts");
+    // Rows below the axis line, inside the grown bottom margin.
+    for (const a of [...labels, ...counts]) {
+      ok(a.y! < 0, `table text ${JSON.stringify(a.text)} sits below the axis (y=${a.y})`);
+      ok(a.y! > -margin.b / plotH, `table text ${JSON.stringify(a.text)} stays inside the bottom margin (y=${a.y})`);
+    }
+    // Rows descend in order: title closest to the axis, then each group.
+    for (let i = 1; i < labels.length; i++)
+      ok(labels[i]!.y! < labels[i - 1]!.y!, `row ${i} sits below row ${i - 1}`);
+    // The title row clears the tick labels and the axis title (both sit
+    // between the axis line and the table).
+    ok(
+      -labels[0]!.y! * plotH > options.fontSize + options.xTitleGap + options.fontSize + 8,
+      `title row clears the tick labels and axis title (y=${labels[0]!.y})`,
+    );
+    // Labels left of the axis line, inside the widened left margin.
+    for (const a of labels) {
+      ok(a.x! < 0, `label ${JSON.stringify(a.text)} sits left of the axis (x=${a.x})`);
+      ok(a.x! > -margin.l / plotW, `label ${JSON.stringify(a.text)} stays inside the left margin (x=${a.x})`);
+    }
+    // Each count sits on its own row.
+    const ticks = (fig.layout.xaxis as { tickvals?: number[] }).tickvals ?? [];
+    labels.slice(1).forEach((label, k) => {
+      const row = counts.slice(k * ticks.length, (k + 1) * ticks.length);
+      strictEqual(row.length, ticks.length, `row ${label.text} has a count per tick`);
+      ok(row.every((c) => c.y === label.y), `row ${label.text} counts sit on the row`);
+    });
+  };
+  const { table } = importedTable("survival");
+  const options = newGraphOptions("survival");
+  assertPlaced(GRAPHS.survival.build(readTable(table.data!).columns, options, paintOf(options, 3)), options);
+  // Counts mode: same placement, fewer rows (no censored rows).
+  const countsOptions: GraphOptions = { ...newGraphOptions("survival"), survivalMode: "counts" };
+  const countsData = {
+    columns: ["Title", "X", "A", "B"],
+    rows: [
+      [null, "0", "10", "4"],
+      [null, "10", "8", "4"],
+      [null, "20", "5", "2"],
+      [null, "30", "5", "0"],
+    ],
+  };
+  assertPlaced(GRAPHS.survival.build(readTable(countsData).columns, countsOptions, paintOf(countsOptions, 2)), countsOptions);
+});
+
 check(".pzfx import reads a Contingency table", () => {
   const { table } = importedTable("contingency");
   strictEqual(table.tableType, "contingency");
