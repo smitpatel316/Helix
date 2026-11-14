@@ -51,6 +51,7 @@
   "bundle": {
     "active": true,
     "targets": ["app", "dmg"],
+    "externalBin": ["binaries/titer-stdio-bridge"],
     "category": "Education",
     "copyright": "© 2026 mickaphd",
     "icon": ["icons/icon.png", "icons/icon.icns"],
