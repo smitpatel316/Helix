@@ -86,6 +86,7 @@ import { runFrequencyDistribution } from "./column/frequency-distribution";
 import { runTransformData } from "./column/transform-data";
 import { runTransformConcentrations } from "./column/transform-concentrations";
 import { runNormalize } from "./xy/normalize";
+import { runTranspose } from "./column/transpose";
 import { runMonteCarlo } from "./simulation/monte-carlo";
 import type { MonteCarloParams } from "./types";
 import type { TableData } from "../store/types";
@@ -340,6 +341,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Monte Carlo simulation",
     minColumns: 1,
     run: (c, p) => runMonteCarlo(c, p as MonteCarloParams),
+  },
+  "transpose": {
+    label: "Transpose rows/columns",
+    minColumns: 1,
+    run: (c, _p, t) => runTranspose(c, t),
   },
 };
 
