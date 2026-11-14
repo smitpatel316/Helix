@@ -15,6 +15,14 @@ import {
   setRQueueSnapshot,
   type RQueueSnapshot,
 } from "./stats/r-queue";
+import type {
+  CloudAccount,
+  CloudStatus,
+  ProviderId,
+  RemoteDownload,
+  RemoteEntry,
+  RemoteVersion,
+} from "./lib/cloud";
 
 /** False when the UI runs in a plain browser (`npm run web`, for development) or in the tests. */
 export const isNative = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -265,6 +273,79 @@ export const applyUpdate = (path: string, version: string) =>
 /** Quits through the normal flow, as Titer ▸ Quit does: each project
  *  window asks about its unsaved changes first. */
 export const quitApp = () => invoke("quit_app");
+/** Opens a URL in the default browser. Only provider authorize hosts are
+ *  allowed (the shell refuses anything else) — used for OAuth sign-in, so
+ *  the webview never sees credentials. */
+export const openUrl = (url: string) => invoke<void>("open_url", { url });
+
+// ── Cloud storage (v2 item 75, Box first) ────────────────────────────────
+// The page only ever sees account identity, listings, and file bytes — never
+// a token. All errors arrive as `{ kind, ... }` (see src/lib/cloud.ts).
+/** Connected accounts + whether Box has credentials saved (BYO) or a broker. */
+export const cloudStatus = () => invoke<CloudStatus>("cloud_status");
+
+/** Saves the user's own Box app credentials (client id + secret) to the OS
+ *  keychain. They are validated at connect time, not here. */
+export const cloudSaveBoxCredentials = (client_id: string, client_secret: string) =>
+  invoke<void>("cloud_save_box_credentials", { client_id, client_secret });
+
+/** The Box connect flow: opens Box sign-in in the system browser and waits
+ *  for it (up to 5 minutes). Resolves with the connected account. */
+export const cloudConnectBox = () => invoke<CloudAccount>("cloud_connect_box");
+
+/** Disconnect: revokes server-side AND deletes the keychain entry. */
+export const cloudDisconnect = (provider: ProviderId, account_id: string) =>
+  invoke<void>("cloud_disconnect", { provider, account_id });
+
+/** The entries of a remote folder (`"0"` is the Box root). */
+export const cloudList = (provider: ProviderId, account_id: string, folder_id: string) =>
+  invoke<RemoteEntry[]>("cloud_list", { provider, account_id, folder_id });
+
+/** Downloads a remote file (and writes the local cache copy). */
+export const cloudDownload = (provider: ProviderId, account_id: string, file_id: string) =>
+  invoke<RemoteDownload>("cloud_download", { provider, account_id, file_id });
+
+/** The cache copy of a remote file, for opening while offline. */
+export const cloudReadCache = (provider: ProviderId, file_id: string, name: string) =>
+  invoke<RemoteDownload>("cloud_read_cache", { provider, file_id, name });
+
+/** Saves a new remote version, conditional on `expected_version` when
+ *  given (`null` = overwrite anyway — the conflict dialog's explicit third
+ *  choice only). Returns the new version. */
+export const cloudUpload = (
+  provider: ProviderId,
+  account_id: string,
+  file_id: string,
+  name: string,
+  base64: string,
+  expected_version: string | null,
+) => invoke<RemoteVersion>("cloud_upload", { provider, account_id, file_id, name, base64, expected_version });
+
+/** A new remote file in `folder_id` ("Save as a copy" lands here). */
+export const cloudUploadNew = (
+  provider: ProviderId,
+  account_id: string,
+  folder_id: string,
+  name: string,
+  base64: string,
+) => invoke<RemoteEntry>("cloud_upload_new", { provider, account_id, folder_id, name, base64 });
+
+export const cloudCreateFolder = (provider: ProviderId, account_id: string, parent_id: string, name: string) =>
+  invoke<RemoteEntry>("cloud_create_folder", { provider, account_id, parent_id, name });
+
+export const cloudMove = (
+  provider: ProviderId,
+  account_id: string,
+  file_id: string,
+  new_parent_id: string,
+  is_folder: boolean,
+) => invoke<RemoteEntry>("cloud_move", { provider, account_id, file_id, new_parent_id, is_folder });
+
+export const cloudMetadata = (provider: ProviderId, account_id: string, file_id: string) =>
+  invoke<RemoteEntry>("cloud_metadata", { provider, account_id, file_id });
+
+export const cloudRevisions = (provider: ProviderId, account_id: string, file_id: string) =>
+  invoke<RemoteVersion[]>("cloud_revisions", { provider, account_id, file_id });
 
 /** Calls `handler` now and whenever the window enters or leaves full screen. */
 export function onFullscreenChange(handler: (fullscreen: boolean) => void) {
