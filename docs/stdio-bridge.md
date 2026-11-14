@@ -136,11 +136,15 @@ The requirement is a **clear error, not a hang or a crash**:
 - **Client gone** (stdin EOF / stdout broken pipe): exit **0**, quietly
   (stdin EOF also closes the server session with DELETE first).
 - **`--check`:** a real `initialize` handshake (protocolVersion 2025-11-25),
-  then the session is closed again; exit 0 = reachable, 1 = server
-  unreachable or handshake refused, 2 = no discovery/token. A bare `ping`
-  is NOT a reliable probe — the server's session manager rejects
-  non-initialize requests without a session. For the Settings panel's
-  future "Test connection" button and for support.
+  then a `ping` on the established session (proves the issued session id
+  round-trips), then the session is closed again; exit 0 = reachable, 1 =
+  server unreachable or handshake refused, 2 = no discovery/token. A bare
+  `ping` is NOT a reliable probe — the server's session manager rejects
+  non-initialize requests without a session, so a bare ping would report a
+  healthy server as unreachable (initialize-first fix from the
+  v3/claude-code lane; ping step + DELETE from the v3/claude-desktop lane,
+  combined in the v3/mcp-integration reconciliation). For the Settings
+  panel's future "Test connection" button and for support.
 
 Exit codes: 0 normal, 1 server unreachable / HTTP setup failed,
 2 config or argument error.
@@ -276,3 +280,15 @@ succeeds without restarting Claude.
    (Phase 2, roadmap §1 flow) downloads/opens it.
 5. Sequential-processing limit (§3) — revisit if the server gains real
    concurrency; a threaded bridge is a small, contained change.
+6. **Integration reconciliation (v3/mcp-integration, Nov 14):** the four
+   provider lanes each fixed the same bridge contract and the server's
+   first-compile bugs — reconciled here into one branch: Desktop's bridge
+   is the base (strict superset of Antigravity's item-1-only fix);
+   `--check` is initialize → ping (v3/claude-code) → DELETE
+   (v3/claude-desktop); `mcp.rs` keeps the v3/codex `instructions`
+   (all five tools named in the first 512 chars) on the v3/claude-code
+   rustfmt-clean file, with the `Cow` fix in fully-qualified form;
+   `scripts/build-stdio-bridge.sh` progress goes to stderr (v3/codex);
+   `src-tauri/Cargo.lock` pins rmcp 3.10 (v3/claude-code). All four
+   providers' artifacts (docs, configs, .mcpb, plugin) are intact.
+   Log: `~/workspace/.helix-mcp-recon/investigations.md`.
