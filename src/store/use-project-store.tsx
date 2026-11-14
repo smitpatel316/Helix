@@ -27,7 +27,8 @@ type Selector =
   | { kind: "new-graph"; tableId: string }
   | { kind: "simulate-data"; tableId: string }
   | { kind: "converter" }
-  | { kind: "save-prompt" };
+  | { kind: "save-prompt" }
+  | { kind: "ai-connections" };
 
 /** The project's content: what a file holds, and what Undo brings back. */
 interface Content {

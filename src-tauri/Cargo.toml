@@ -14,6 +14,15 @@ tauri-plugin-window-state = "2"
 percent-encoding = "2"
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# v3 Phase 1 (MCP server, "The pipe"): the official Rust MCP SDK + the HTTP
+# layer it mounts into. rmcp "3.8" for the ServerConfig API (3.7 works too);
+# pin the exact version in Cargo.lock at the first build. No "transport-io":
+# stdio belongs to the bridge lane, not this server.
+rmcp = { version = "3.8", features = ["server", "macros", "transport-streamable-http-server"] }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net", "io-util"] }
+tokio-util = "0.7"
 
 # macOS-only: the private-API feature and the Objective-C bridge. The Linux
 # build (dev/test) compiles without them; the Mac DMG build is unchanged.
