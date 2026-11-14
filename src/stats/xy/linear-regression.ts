@@ -110,8 +110,11 @@ export const linearRegressionSpec: ColumnTestSpec<LinearRegressionParams> = {
         { label: "Y-intercept", value: v.intercept },
         { label: "Intercept 95% CI lower", value: v.interceptCiLo },
         { label: "Intercept 95% CI upper", value: v.interceptCiHi },
-        { label: "Pearson r", value: v.r }, // of the data: says nothing of a line through the origin
       );
+      // r is the unweighted cor(x,y): on a weighted fit r² ≠ the weighted R²,
+      // so no r is shown (Prism shows none either) — same rule as the
+      // multi-Y table below.
+      if (((params ?? DEFAULTS).weights ?? "none") === "none") rows.push({ label: "Pearson r", value: v.r });
     }
     rows.push({ label: "R squared", value: v.r2 }, pRow("P value (slope ≠ 0)", v.p));
     return rows;
@@ -151,11 +154,44 @@ export async function runLinearRegressions(
   const few = sets.find((_, i) => points[i].x.length < 3);
   if (few) return { error: `“${few.name}” needs at least 3 points to be regressed on X.` };
   const origin = params.forceOrigin;
+  // The multi-Y path never passes through the spec's check(), so weight
+  // validity is checked here, per set on the paired points — the same
+  // rules as the single-Y check, naming the set that fails them.
+  const weights = params.weights ?? "none";
+  if ((weights as string) === "1/sd2")
+    return {
+      error:
+        "Weighting by 1/SD² needs replicate SDs, which linear regression doesn't see — use nonlinear regression with the same weighting.",
+    };
+  if (weights !== "none") {
+    for (let i = 0; i < sets.length; i++) {
+      const p = points[i];
+      const bad =
+        (weights === "1/y" && p.y.some((v) => v <= 0)) ||
+        (weights === "1/y2" && p.y.some((v) => v === 0)) ||
+        (weights === "1/x" && p.x.some((v) => v <= 0)) ||
+        (weights === "1/x2" && p.x.some((v) => v === 0));
+      if (!bad) continue;
+      const need =
+        weights === "1/y"
+          ? "Weighting by 1/Y needs all Y > 0 — some fitted Y are ≤ 0."
+          : weights === "1/y2"
+            ? "Weighting by 1/Y² needs Y ≠ 0 — some fitted Y are 0."
+            : weights === "1/x"
+              ? "Weighting by 1/X needs all X > 0 — some fitted X are ≤ 0."
+              : "Weighting by 1/X² needs X ≠ 0 — some fitted X are 0.";
+      return { error: `“${sets[i]!.name}”: ${need}` };
+    }
+  }
+  // Weights are per set: 1/Y and 1/Y² read that set's own Y (1/X and 1/X²
+  // read the shared X), so the w vector is built inside each set's R code.
+  const wAssign = weights === "none" ? "" : `w<-${WEIGHT_R[weights]};`;
+  const wArg = weights === "none" ? "" : ",weights=w";
   const v = await evalNamedVector(
     points
       .map(
         (p, i) =>
-          `x<-${rVec(p.x)};y<-${rVec(p.y)};m<-lm(${origin ? "y~x+0" : "y~x"});s<-summary(m);ci<-confint(m);k<-${origin ? 1 : 2};` +
+          `x<-${rVec(p.x)};y<-${rVec(p.y)};${wAssign}m<-lm(${origin ? "y~x+0" : "y~x"}${wArg});s<-summary(m);ci<-confint(m);k<-${origin ? 1 : 2};` +
           `v${i}<-c(slope=unname(coef(m)[k]),slo=ci[k,1],shi=ci[k,2],` +
           `b=${origin ? "0" : "unname(coef(m)[1])"},blo=${origin ? "NA" : "ci[1,1]"},bhi=${origin ? "NA" : "ci[1,2]"},` +
           `r=${origin ? "NA" : "cor(x,y)"},r2=s$r.squared,p=s$coefficients[k,4],n=length(y))`,
@@ -169,12 +205,10 @@ export async function runLinearRegressions(
     { label: "Slope", values: of("slope") },
     { label: "95% CI", ranges: range("slo", "shi") },
     { label: "Y-intercept", values: of("b") },
-    ...(origin
-      ? []
-      : [
-          { label: "95% CI", ranges: range("blo", "bhi") },
-          { label: "Pearson r", values: of("r") },
-        ]),
+    ...(origin ? [] : [{ label: "95% CI", ranges: range("blo", "bhi") }]),
+    // No Pearson r on a weighted fit (it is the unweighted cor(x,y), so
+    // r² ≠ the weighted R²) — same rule as the single-Y table above.
+    ...(origin || weights !== "none" ? [] : [{ label: "Pearson r", values: of("r") }]),
     { label: "R squared", values: of("r2") },
     { label: "P value (slope ≠ 0)", values: of("p"), p: true },
     { label: "N", values: of("n") },
@@ -188,6 +222,9 @@ export async function runLinearRegressions(
       .groups,
     notes:
       `Ordinary least-squares linear regression of each Y data set on “${x.name}”, each on its own` +
-      `${origin ? ", forced through the origin" : ""}. Assumes a linear relationship and homoscedastic residuals.`,
+      `${origin ? ", forced through the origin" : ""}. ` +
+      (weights === "none"
+        ? "Assumes a linear relationship and homoscedastic residuals."
+        : `Weighted by ${WEIGHT_LABEL[weights]}; R² is weighted.`),
   };
 }

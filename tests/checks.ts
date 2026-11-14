@@ -1630,6 +1630,61 @@ check("the Bland-Altman wizard never offers the X column as a method on XY table
   ok(secondOneY.emptyMessage?.includes("only one Y data set"));
 });
 
+check("the linear-regression wizard weights every Y set it is asked to fit", async () => {
+  const wizard = WIZARDS["linear-regression"]!;
+  const data: TableData = {
+    columns: ["Title", "X", "Y1", "Y2"],
+    rows: [
+      ["", "1", "2.0", "3.0"],
+      ["", "2", "3.9", "5.1"],
+      ["", "3", "6.2", "7.0"],
+      ["", "4", "7.8", "10.2"],
+      ["", "5", "10.5", "12.1"],
+      ["", "6", "11.9", "15.3"],
+      ["", "7", "14.8", "16.0"],
+      ["", "8", "15.5", "20.4"],
+      ["", "9", "19.0", "21.2"],
+      ["", "10", "20.3", "25.1"],
+    ],
+  };
+  const table = readTable(data);
+  const asked = (a: Answers) => wizard.questions(a, table, "xy").filter(Boolean) as Question[];
+  // The wizard asks weights on an XY table and lets several Y sets be picked.
+  const weights = asked({}).find((q) => q.id === "weights") as Question;
+  if (weights.kind !== "choice") throw new Error("weights is not a choice question");
+  deepStrictEqual(
+    weights.options.map((o) => o.value),
+    ["none", "1/y", "1/y2", "1/x", "1/x2"],
+  );
+  deepStrictEqual(wizard.finish({ ys: ["Y1", "Y2"], origin: "no", weights: "1/y" }, table), {
+    type: "linear-regression",
+    params: { ys: ["Y1", "Y2"], forceOrigin: false, weights: "1/y" },
+  });
+  // Those params must actually weight each set: R's weighted lm slopes are
+  // 2.04868 and 2.38165 (the unweighted ones are 2.05636 and 2.41939).
+  const out = await runAnalysis("linear-regression", data, {
+    ys: ["Y1", "Y2"],
+    forceOrigin: false,
+    weights: "1/y",
+  });
+  if ("error" in out) throw new Error(out.error);
+  const slopes = out.fit?.rows.find((r) => r.label === "Slope")?.values;
+  ok(slopes && Math.abs(slopes[0]! - 2.0486847584757886) < 1e-9);
+  ok(slopes && Math.abs(slopes[1]! - 2.381647696450292) < 1e-9);
+  ok(!out.fit?.rows.some((r) => r.label === "Pearson r"));
+  ok(out.notes.includes("Weighted by 1/Y"));
+  // A weighted single-Y fit shows no Pearson r either: r is the unweighted
+  // cor(x,y), so r² ≠ the weighted R² in the same table.
+  const single = await runAnalysis("linear-regression", data, { y: "Y1", forceOrigin: false, weights: "1/y" });
+  if ("error" in single) throw new Error(single.error);
+  ok(!single.stats.some((s) => s.label === "Pearson r"));
+  ok(Math.abs((single.stats.find((s) => s.label === "Slope")?.value ?? NaN) - 2.0486847584757886) < 1e-9);
+  // …while an unweighted fit still shows it.
+  const plain = await runAnalysis("linear-regression", data, { y: "Y1", forceOrigin: false });
+  if ("error" in plain) throw new Error(plain.error);
+  ok(plain.stats.some((s) => s.label === "Pearson r"));
+});
+
 check("the Bland-Altman graph never plots X as a method on XY tables (FL-f8-graph)", () => {
   const xy = readTable({
     columns: ["Title", "Time", "Method A", "Method B"],

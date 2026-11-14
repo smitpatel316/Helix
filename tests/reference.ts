@@ -2214,6 +2214,9 @@ const ANALYSES: [string, TableData, AnalysisType, AnalysisParams?][] = [
   ["xy", xy, "area-under-curve", { baseline: 2 }],
   ["xyReps", xyReps, "linear-regression", { y: "A", forceOrigin: false }],
   ["xy", xy, "linear-regression", { ys: ["Y1", "Y2", "Y3"], forceOrigin: false }],
+  // Bug-sweep cycle 1: weights on several Y sets — each set is weighted on
+  // its own (1/Y reads that set's Y), pinned against R's weighted lm.
+  ["xy", xy, "linear-regression", { ys: ["Y1", "Y2"], forceOrigin: false, weights: "1/y" }],
   ["xyReps", xyReps, "linear-regression", { ys: ["A", "B"], forceOrigin: true }],
   ["doseTwo", doseTwo, "nonlinear-regression", { ys: ["Control", "Treated"], model: "sigmoidal-4pl-logx" }],
   ["xyReps", xyReps, "linear-regression", { y: "B", forceOrigin: true }],
@@ -3122,6 +3125,60 @@ async function disagreements(): Promise<string[]> {
     const many = "error" in lines ? null : lines.fit?.rows[0].values?.[i];
     if (slope == null || many == null || Math.abs(slope - many) > 1e-9)
       out.push(`Slope of ${y} regressed with others: ${many}, alone ${slope}`);
+  }
+  // Bug-sweep cycle 1: weighted fits. Several Y data sets fitted together
+  // are each fitted as alone, weighted — the multi-Y path used to drop the
+  // weights entirely — and a weighted fit shows no Pearson r: r is the
+  // unweighted cor(x,y), so r² ≠ the weighted R² in the same table.
+  const weightedLines = await runAnalysis("linear-regression", xy, {
+    ys: ["Y1", "Y2"],
+    forceOrigin: false,
+    weights: "1/y",
+  });
+  if (!("error" in weightedLines) && weightedLines.fit?.rows.some((w) => w.label === "Pearson r"))
+    out.push("Multi-Y weighted fit still shows a Pearson r row");
+  for (const [i, y] of ["Y1", "Y2"].entries()) {
+    const alone = await runAnalysis("linear-regression", xy, { y, forceOrigin: false, weights: "1/y" });
+    if (!("error" in alone) && alone.stats.some((s) => s.label === "Pearson r"))
+      out.push(`Weighted fit of ${y} still shows a Pearson r row`);
+    const pts = xyPoints(
+      x!,
+      ys.find((s) => s.name === y)!,
+    );
+    const lm = await evalNamedVector(
+      `x<-${rVec(pts.x)};y<-${rVec(pts.y)};m<-lm(y~x,weights=1/y);` + `c(s=unname(coef(m)[2]),r2=summary(m)$r.squared)`,
+    );
+    const slopeOf = (r: AnalysisResult | { error: string }, k: number) =>
+      "error" in r
+        ? null
+        : r.fit
+          ? r.fit.rows.find((w) => w.label === "Slope")?.values?.[k]
+          : r.stats.find((s) => s.label === "Slope")?.value;
+    const r2Of = (r: AnalysisResult | { error: string }, k: number) =>
+      "error" in r
+        ? null
+        : r.fit
+          ? r.fit.rows.find((w) => w.label === "R squared")?.values?.[k]
+          : r.stats.find((s) => s.label === "R squared")?.value;
+    const togetherSlope = slopeOf(weightedLines, i);
+    const aloneSlope = slopeOf(alone, 0);
+    const togetherR2 = r2Of(weightedLines, i);
+    const aloneR2 = r2Of(alone, 0);
+    if (
+      togetherSlope == null ||
+      aloneSlope == null ||
+      lm.s == null ||
+      Math.abs(togetherSlope - aloneSlope) > 1e-9 ||
+      Math.abs(togetherSlope - lm.s) > 1e-9 ||
+      togetherR2 == null ||
+      aloneR2 == null ||
+      lm.r2 == null ||
+      Math.abs(togetherR2 - aloneR2) > 1e-9 ||
+      Math.abs(togetherR2 - lm.r2) > 1e-9
+    )
+      out.push(
+        `Weighted regression of ${y}: together slope ${togetherSlope} R² ${togetherR2}, alone ${aloneSlope} ${aloneR2}, R lm ${lm.s} ${lm.r2}`,
+      );
   }
   // With replicates, every replicate is a point of the regression (R's lm on them all), and
   // an area joins each X's mean.
