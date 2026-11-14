@@ -1,0 +1,23 @@
+[package]
+name = "titer-box-broker"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "First-party Box OAuth token broker for Titer: holds the Box client secret and exchanges codes / refresh tokens. Exchange-only, stateless, never stores or logs tokens."
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# rustls, not OpenSSL: no system TLS dependency on any target (same choice as src-tauri).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"
+
+[profile.release]
+opt-level = "s"
+strip = true
+
+[dev-dependencies]
+# Only tests use it (oneshot requests against the router).
+tower = { version = "0.5", features = ["util"] }
