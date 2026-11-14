@@ -19,6 +19,7 @@ import {
   type RQueueSnapshot,
 } from "../src/stats/r-queue";
 import { parseProjectFile, parseProjectText, readPalette, serializeProjectFile, type ProjectFilePayload } from "../src/lib/project-file";
+import { kaplanMeier } from "../src/lib/kaplan-meier";
 import {
   DEFAULT_GRAPH_OPTIONS,
   GRAPH_LIMITS,
@@ -4362,6 +4363,72 @@ check("a survival group with zero complete pairs draws no point", () => {
   ok(traces.every((t) => t.legendgroup !== "B"), "no trace for the group with no data");
 });
 
+check("kaplanMeier reports the subjects at risk before each time", () => {
+  // Deaths at 1 and 2, then one subject censored at 5: at risk 3, 3, 2, 1.
+  const km = kaplanMeier([1, 2, 5], [1, 1, 0]);
+  deepStrictEqual([km.riskT, km.risk], [
+    [0, 1, 2, 5],
+    [3, 3, 2, 1],
+  ]);
+  // No events at all: still at risk before each censoring.
+  const allCensored = kaplanMeier([3, 5], [0, 0]);
+  deepStrictEqual([allCensored.riskT, allCensored.risk], [
+    [0, 3, 5],
+    [2, 2, 1],
+  ]);
+});
+
+check("a survival curve without the at-risk table leaves the X axis alone", () => {
+  const options: GraphOptions = { ...newGraphOptions("survival"), survivalShowAtRisk: false };
+  const data = {
+    columns: ["Title", "X", "A"],
+    rows: [
+      [null, "1", "1"],
+      [null, "2", "1"],
+      [null, "5", "0"],
+    ],
+  };
+  const fig = GRAPHS.survival.build(readTable(data).columns, options, paintOf(options, 1));
+  const annotations = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+  ok(!annotations.some((a) => a.text?.includes("Number at risk")), "no table title");
+  strictEqual((fig.layout.xaxis as { tickvals?: unknown }).tickvals, undefined, "no explicit ticks");
+});
+
+check("a survival counts curve tabulates survivors at risk, with no censored row", () => {
+  const options: GraphOptions = { ...newGraphOptions("survival"), survivalMode: "counts" };
+  const data = {
+    columns: ["Title", "X", "A", "B"],
+    rows: [
+      [null, "0", "10", "4"],
+      [null, "10", "8", "4"],
+      [null, "20", "5", "2"],
+      [null, "30", "5", "0"],
+    ],
+  };
+  const fig = GRAPHS.survival.build(readTable(data).columns, options, paintOf(options, 2));
+  deepStrictEqual((fig.layout.xaxis as { tickvals?: number[] }).tickvals, [0, 10, 20, 30]);
+  deepStrictEqual(tableRows(fig), [
+    { label: "A", values: ["10", "8", "5", "5"] },
+    { label: "B", values: ["4", "4", "2", "0"] },
+  ]);
+});
+
+/** The Number at Risk table's rows, read off a figure: the paper-anchored labels
+ *  in order, each followed by its counts (the `xref: "x"` annotations). */
+function tableRows(fig: GraphFigure): { label: string; values: string[] }[] {
+  const annotations = (fig.layout.annotations as { xref?: string; x?: number; text?: string }[] | undefined) ?? [];
+  const rows: { label: string; values: string[] }[] = [];
+  for (const a of annotations) {
+    if (a.xref === "paper") {
+      if (a.text === "<b>Number at risk</b>") continue;
+      rows.push({ label: a.text ?? "", values: [] });
+    } else if (a.xref === "x") {
+      rows.at(-1)?.values.push(a.text ?? "");
+    }
+  }
+  return rows;
+}
+
 check("texts moved by hand stay where they were dropped", () => {
   // What Plotly reports of a move: the legend, a color legend, a named text; a
   // significance label has no name, so it isn't one.
@@ -7441,6 +7508,35 @@ check("the survival analysis reproduces the log-rank value on survival.pzfx", as
   close(stat("Chi-square"), 4.844, 1e-3, "chi-square");
   strictEqual(stat("df"), 2);
   close(stat("P value"), 0.0888, 1e-3, "P value");
+});
+
+check("a survival curve draws its Number at Risk table on survival.pzfx", () => {
+  // "Three groups": Control N=10, Treatment A N=10, Treatment B N=7, last
+  // time 378 — the table's columns are the X-axis major ticks (0, 100, 200,
+  // 300), set explicitly so the counts align with them.
+  const { table } = importedTable("survival");
+  const options = newGraphOptions("survival");
+  const fig = GRAPHS.survival.build(readTable(table.data!).columns, options, paintOf(options, 3));
+  deepStrictEqual((fig.layout.xaxis as { tickvals?: number[] }).tickvals, [0, 100, 200, 300]);
+  const annotations = (fig.layout.annotations as { xref?: string; x?: number; text?: string; showarrow?: boolean }[] | undefined) ?? [];
+  // Every count sits on a tick's X; no table text is draggable (no arrows).
+  ok(
+    annotations
+      .filter((a) => a.xref === "x")
+      .every((a, i) => a.x === [0, 100, 200, 300][i % 4]),
+    "counts sit on the tick X positions",
+  );
+  ok(annotations.every((a) => a.showarrow === false), "no table text is draggable");
+  // At-risk counts are subjects with time ≥ tick; cumulative censored are
+  // subjects censored before the tick.
+  deepStrictEqual(tableRows(fig), [
+    { label: "Control", values: ["10", "7", "5", "3"] },
+    { label: "Control censored", values: ["0", "0", "1", "1"] },
+    { label: "Treatment A", values: ["10", "9", "5", "1"] },
+    { label: "Treatment A censored", values: ["0", "0", "2", "2"] },
+    { label: "Treatment B", values: ["7", "7", "7", "4"] },
+    { label: "Treatment B censored", values: ["0", "0", "0", "1"] },
+  ]);
 });
 
 check(".pzfx import reads a Contingency table", () => {

@@ -5,7 +5,7 @@
 
 const Z95 = 1.959963984540054;
 
-interface KaplanMeier {
+export interface KaplanMeier {
   /** The curve's steps, from (0, 1): a step at each time with an event, then on to the last
    *  subject followed. */
   t: number[];
@@ -16,6 +16,12 @@ interface KaplanMeier {
   /** The subjects censored without an event: their times, on the curve. */
   censorT: number[];
   censorS: number[];
+  /** Subjects at risk just before each distinct time (`riskT[0]` = 0, `risk[0]` =
+   *  every subject): the count the Number at Risk table shows at each X tick —
+   *  R survfit's `n.risk` convention. `risk[k]` is the at-risk count before the
+   *  events/censors at `riskT[k]` are removed. */
+  riskT: number[];
+  risk: number[];
 }
 
 /** The Kaplan-Meier curve of subjects followed for `times`, `codes` 1 (event) or 0 (censored). */
@@ -28,6 +34,8 @@ export function kaplanMeier(times: number[], codes: number[]): KaplanMeier {
     upper: [null],
     censorT: [],
     censorS: [],
+    riskT: [0],
+    risk: [times.length],
   };
   let atRisk = times.length;
   let survival = 1;
@@ -35,6 +43,9 @@ export function kaplanMeier(times: number[], codes: number[]): KaplanMeier {
   let i = 0;
   while (i < order.length) {
     const time = times[order[i]];
+    // At risk just before this time's events/censors are removed.
+    km.riskT.push(time);
+    km.risk.push(atRisk);
     let events = 0;
     let censored = 0;
     while (i < order.length && times[order[i]] === time) {

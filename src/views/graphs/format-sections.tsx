@@ -1058,6 +1058,13 @@ function linesGroup({ graphType, options, set }: SectionContext) {
         onChange={(lineWidth) => set({ lineWidth })}
       />
       <DashRow value={options.lineDash} onChange={(lineDash) => set({ lineDash })} />
+      {graphType === "survival" && (
+        <Toggle
+          label="Show number at risk table"
+          checked={options.survivalShowAtRisk}
+          onChange={(survivalShowAtRisk) => set({ survivalShowAtRisk })}
+        />
+      )}
       {graphType === "survival" && options.survivalMode === "codes" && (
         <>
           <Toggle

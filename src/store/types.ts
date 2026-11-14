@@ -223,6 +223,7 @@ export interface GraphOptions {
   survivalMode: Choice<"survivalMode">;
   survivalShowCensors: boolean;
   survivalShowBand: boolean; // each Kaplan-Meier curve's 95% confidence band (event codes)
+  survivalShowAtRisk: boolean; // the Number at Risk table under the curve, at each X-axis major tick
   // Volcano plot of a Multiple Variables or XY table: it plots columns the user already
   // has. `volcanoX`/`volcanoY`/`volcanoLabel` are column names:
   // X = effect size (e.g. log2 fold change; an XY table's X column), Y = a significance
@@ -323,6 +324,7 @@ export const DEFAULT_GRAPH_OPTIONS: GraphOptions = {
   survivalMode: "codes",
   survivalShowCensors: true,
   survivalShowBand: false,
+  survivalShowAtRisk: true,
   volcanoYIsPValue: true,
   volcanoFcThreshold: 1,
   volcanoPThreshold: -Math.log10(0.05),

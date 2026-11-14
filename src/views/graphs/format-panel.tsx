@@ -83,6 +83,7 @@ const STYLE_OPTIONS: (keyof GraphOptions)[] = [
   "errorDirection",
   "survivalShowCensors",
   "survivalShowBand",
+  "survivalShowAtRisk",
   "pieShowPercent",
   "heatmapShowValues",
   "heatmapShowScale",
