@@ -2730,6 +2730,45 @@ check("a global homologous fit with Kd = [L] fits instead of failing on false co
   ok(logKd != null && Math.abs(logKd) < 0.1, `fitted LogKd should be ~0 (Kd = [L]), got ${logKd}`);
 });
 
+// F5-hom: the R3-11x pin's fixture passes at unit level, but the verifier's
+// exact GUI table rounded to 6 decimals (values as a user would type them)
+// fails the global homologous fit with "false convergence (8)" in BOTH
+// sharing configs — port is a knife-edge on the stacked start (moving the
+// LogKd start by +0.0002, or the Y values by 1e-9, flips the primary), and
+// the R3-11x single +0.01 nudge fails there too (singular convergence (7)
+// on the rounded data). The restart ladder rescues it. The exact-data
+// fixture is pinned alongside it: the GUI config itself must keep fitting.
+check("a global homologous fit on the verifier's table (exact and 6dp-rounded) fits in both sharing configs", async () => {
+  const xs = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
+  const y1 = [59.7512437811, 59.621736019, 57.319047619, 53.6736470252, 42.9333333333, 29.6712943361, 17.8333333333, 13.3741743576, 10.6803921569, 10.5142403356, 9.8998003992];
+  const y2 = [57.263681592, 56.360649218, 55.5380952381, 50.5149646739, 42.0666666667, 28.1027296193, 18.4166666667, 12.4254656397, 11.231372549, 10.0985283188, 10.2948103792];
+  const r6 = (v: number[]) => v.map((x) => Number(x.toFixed(6)));
+  const cases: { label: string; a: number[]; b: number[]; shared?: string[] }[] = [
+    { label: "exact data, usual shared params", a: y1, b: y2 },
+    { label: "exact data, LogKd only", a: y1, b: y2, shared: ["LogKd"] },
+    { label: "6dp-rounded data, usual shared params", a: r6(y1), b: r6(y2) },
+    { label: "6dp-rounded data, LogKd only", a: r6(y1), b: r6(y2), shared: ["LogKd"] },
+  ];
+  for (const c of cases) {
+    const table: TableData = {
+      columns: ["Title", "X", "Y1", "Y2"],
+      rows: xs.map((x, i) => ["", String(x), String(c.a[i]), String(c.b[i])]),
+    };
+    const h = await runAnalysis("nonlinear-regression", table, {
+      y: "Y1",
+      model: "homologous-competition-logx",
+      globalY: ["Y2"],
+      ligandConcentration: 1,
+      ...(c.shared ? { sharedParams: c.shared } : {}),
+    });
+    ok(!("error" in h), `global homologous fit (${c.label}) failed: ${"error" in h ? h.error : ""}`);
+    const r2 = h.fit?.rows.find((r) => r.label === "R squared")?.values;
+    ok(r2?.length === 2 && r2.every((v) => v != null && Number.isFinite(v) && v > 0.9), `per-series R² should be finite and > 0.9 (${c.label}), got ${r2}`);
+    const logKd = h.coefficients?.find((cc) => cc.term === "LogKd")?.estimate;
+    ok(logKd != null && Math.abs(logKd) < 0.1, `fitted LogKd should be ~0 (Kd = [L]) (${c.label}), got ${logKd}`);
+  }
+});
+
 // Plan 26: only nested model pairs get the F test, and AICc matches R
 // (line AICc −19.5734 for RSS 0.3112, n = 8, k = 2 — verified in R).
 check("only nested model pairs get the F test", () => {

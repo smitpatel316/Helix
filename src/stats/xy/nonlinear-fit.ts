@@ -747,6 +747,27 @@ export function formulaVariables(spec: ModelSpec): string[] | undefined {
   return startVariables(spec.fit.slice(startAt + 7));
 }
 
+/** The model's data-driven start expressions (`Name=expr` over `x`/`y`,
+ *  in start-list order) — what the single-curve fit starts from. Only a
+ *  plain `list(...)` start qualifies: a 5PL's `c(as.list(coef(...)), S=1)`
+ *  start needs its inner fit first, so it returns undefined. The global
+ *  fit's restart ladder (F5-hom) evaluates these per series to rebuild
+ *  stacked starts far from the singles' fitted values. */
+export function startExpressions(spec: ModelSpec): { name: string; expr: string }[] | undefined {
+  const startAt = spec.fit.indexOf(",start=list(");
+  if (startAt < 0) return undefined;
+  const s = spec.fit.slice(startAt + 7);
+  const close = matchParen(s, 4);
+  if (close < 0) return undefined;
+  const out: { name: string; expr: string }[] = [];
+  for (const e of splitTopLevel(s.slice(5, close))) {
+    const m = e.trim().match(/^([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.+)$/s);
+    if (!m) return undefined;
+    out.push({ name: m[1], expr: m[2].trim() });
+  }
+  return out.length ? out : undefined;
+}
+
 /** Variable names of one start expression (`list(...)` / `c(...)`). */
 function startVariables(expr: string): string[] | undefined {
   const s = expr.trim();

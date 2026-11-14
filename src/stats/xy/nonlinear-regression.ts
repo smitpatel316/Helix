@@ -40,11 +40,18 @@ import {
   modelSpec,
   parseFit,
   prepareFit,
+  startExpressions,
   type DerivedRow,
   type FitOptions,
   type ModelSpec,
 } from "./nonlinear-fit";
-import { runGlobalFit, type GlobalModelDef, type GlobalParamDef } from "./global-fit";
+import {
+  runGlobalFit,
+  type GlobalFitResult,
+  type GlobalFitSeries,
+  type GlobalModelDef,
+  type GlobalParamDef,
+} from "./global-fit";
 // The overlay's closed-form evaluator, reused for a global fit's per-series
 // R² (the fit and the overlay can never disagree). This closes an import
 // cycle with fitted-curve.ts (it imports termLabel/positiveXOnly from here),
@@ -1019,7 +1026,7 @@ async function runGlobalNonlinear(
     },
   };
   const fitSeries = series.map((s) => ({ name: s.name, x: s.xs, y: s.ys, covariate: 0 }));
-  let result;
+  let result: GlobalFitResult | undefined;
   try {
     result = await runGlobalFit(fitSeries, def);
   } catch (err) {
@@ -1028,31 +1035,92 @@ async function runGlobalNonlinear(
     // the data determine a parameter exactly — homologous data with Kd =
     // [L] give LogKd = 0 in both series — the stacked start sits exactly
     // on the optimum and port misfires with "false convergence (8)": it
-    // cannot take a first step from the optimum. Retry once from starts
-    // nudged a hair off the fitted values (kept inside their bounds when
-    // the parameter has them); the retry only runs when the primary fails
-    // this way, so passing fits never touch it (the single-curve runner's
-    // retryFits precedent).
-    if (!message.includes("false convergence")) {
+    // cannot take a first step from the optimum.
+    //
+    // F5-hom: the R3-11x single +0.01 nudge does not rescue the general
+    // case. Port's convergence here is a knife-edge on the stacked start:
+    // on the verifier's global homologous fixture, moving the LogKd start
+    // by +0.0002, or the Y values by 1e-9, flips the primary between
+    // converging and "false convergence (8)" — and the +0.01 retry fails
+    // there too (it lands on "singular convergence (7)" for the 6dp-rounded
+    // fixture, and on (8) again for a +0.001 start offset). A single
+    // restart in one direction at one magnitude can itself land on a
+    // failing point, so a convergence failure now tries a ladder of
+    // restarts, first success wins: nudge the starts down 1%, nudge them
+    // up 10%, then rebuild them from the model's own data-driven start
+    // expressions, stacked per series (far from the optimum by
+    // construction — LogKd starts at median(X), Bmax from the span — so
+    // port has a gradient to follow). The ladder only runs when the
+    // primary already failed this way, so passing fits never touch it
+    // (the single-curve runner's retryFits precedent).
+    if (!message.includes("Convergence failure")) {
       return {
         error: `The global fit could not be fitted (${message}). A shared parameter may be unidentifiable from one data set — try sharing fewer parameters, or fit each data set separately.`,
       };
     }
-    const nudged: GlobalModelDef = {
+    const clamp = (p: GlobalParamDef, x: number) =>
+      Math.min(Math.max(x, p.lower ?? -Infinity), p.upper ?? Infinity);
+    const nudged = (dir: number, mag: number): GlobalModelDef => ({
       ...def,
       params: def.params.map((p) => ({
         ...p,
-        start: (s) => {
+        start: (s: GlobalFitSeries[]) => {
           const v = p.start(s);
-          const off = (x: number) =>
-            Math.min(Math.max(x + 0.01 * (1 + Math.abs(x)), p.lower ?? -Infinity), p.upper ?? Infinity);
+          const off = (x: number) => clamp(p, x + dir * mag * (1 + Math.abs(x)));
           return Array.isArray(v) ? v.map(off) : off(v);
         },
       })),
+    });
+    // The data-driven restart: the model's own start expressions
+    // (startExpressions — what the single-curve fit starts from),
+    // evaluated on each series' points, shared as their mean, per-series
+    // as their vector, clamped into bounds. Unavailable when the spec has
+    // no plain list( start (a 5PL's inner-fit start), or when an
+    // expression does not evaluate — the nudge restarts still stand.
+    const dataDriven = async (): Promise<GlobalModelDef | undefined> => {
+      const exprs = startExpressions(spec);
+      if (!exprs) return undefined;
+      const byName = new Map<string, number[]>();
+      for (const s of series) {
+        let v: RVector;
+        try {
+          v = await evalNamedVector(
+            `x<-${rVec(s.xs)};y<-${rVec(s.ys)};c(${exprs.map((e) => `${e.name}=${e.expr}`).join(",")})`,
+          );
+        } catch {
+          return undefined;
+        }
+        for (const e of exprs) {
+          const val = v[e.name];
+          if (val == null || !Number.isFinite(val)) return undefined;
+          const arr = byName.get(e.name) ?? [];
+          arr.push(val);
+          byName.set(e.name, arr);
+        }
+      }
+      const params: GlobalParamDef[] = [];
+      for (const p of def.params) {
+        const vals = byName.get(p.name);
+        if (!vals || vals.length !== series.length) return undefined;
+        const start = p.shared
+          ? clamp(p, vals.reduce((a, b) => a + b, 0) / vals.length)
+          : vals.map((x) => clamp(p, x));
+        params.push({ ...p, start: () => start });
+      }
+      return { ...def, params };
     };
-    try {
-      result = await runGlobalFit(fitSeries, nudged);
-    } catch {
+    const restarts: GlobalModelDef[] = [nudged(-1, 0.01), nudged(1, 0.1)];
+    const driven = await dataDriven();
+    if (driven) restarts.push(driven);
+    for (const restart of restarts) {
+      try {
+        result = await runGlobalFit(fitSeries, restart);
+        break;
+      } catch {
+        // Try the next restart; the original error is reported below.
+      }
+    }
+    if (result === undefined) {
       return {
         error: `The global fit could not be fitted (${message}). A shared parameter may be unidentifiable from one data set — try sharing fewer parameters, or fit each data set separately.`,
       };
