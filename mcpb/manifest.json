@@ -1,0 +1,50 @@
+{
+  "author": {
+    "name": "Smit Patel",
+    "url": "https://smitpatel.net"
+  },
+  "compatibility": {
+    "claude_desktop": ">=1.0.0",
+    "platforms": [
+      "darwin",
+      "win32"
+    ]
+  },
+  "description": "Connect Claude Desktop to Titer, the free Prism-compatible statistics and graphing app for researchers. Claude talks to Titer on your own machine \u2014 your data never leaves your computer.",
+  "display_name": "Titer",
+  "icon": "icon.png",
+  "keywords": [
+    "statistics",
+    "graphing",
+    "research",
+    "science",
+    "prism"
+  ],
+  "license": "GPL-3.0-or-later",
+  "long_description": "Titer is a free, open-source (GPL-3.0) statistics and graphing app for researchers. This extension lets Claude Desktop drive Titer through its built-in MCP server: list projects and tables, read results, run analyses, and build figures \u2014 all on your machine, over loopback only.\n\nBefore installing: in Titer, open Settings \u2192 AI connections and turn on 'Allow AI apps to connect'. The bridge reads Titer's local connection file to find the server; no token or setup is needed here.",
+  "manifest_version": "0.3",
+  "name": "titer",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/smitpatel316/Helix.git"
+  },
+  "server": {
+    "entry_point": "server/titer-stdio-bridge",
+    "mcp_config": {
+      "args": [],
+      "command": "${__dirname}/server/titer-stdio-bridge",
+      "env": {},
+      "platform_overrides": {
+        "win32": {
+          "args": [],
+          "command": "${__dirname}/server/titer-stdio-bridge.exe",
+          "env": {}
+        }
+      }
+    },
+    "type": "binary"
+  },
+  "support": "https://github.com/smitpatel316/Helix/issues",
+  "tools_generated": true,
+  "version": "1.0.0"
+}
