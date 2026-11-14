@@ -83,7 +83,16 @@ import { kruskalWallisSpec } from "../src/stats/column/kruskal-wallis";
 import { anovaSpec } from "../src/stats/column/anova";
 import { dagostinoPearson } from "../src/stats/column/shapiro-wilk";
 import { runRout } from "../src/stats/column/rout";
-import { parseGroupLevels, toggled, WIZARDS, type Answers, type Question } from "../src/views/analyses/wizards";
+import {
+  CHECKLIST_KEYS,
+  CHECKLISTS,
+  checklistFor,
+  parseGroupLevels,
+  toggled,
+  WIZARDS,
+  type Answers,
+  type Question,
+} from "../src/views/analyses/wizards";
 import { initialAnswer } from "../src/views/analyses/analysis-wizard";
 import { checkNormality } from "../src/views/analyses/normality-check";
 import { addNote, curveXs, groupedBarLayout, groupedScatterLayout, heatmapLayout, legendRightMargin, legendWidthPx, movedText, paintOf, vectorTraces, visibleOutline, withCaps, xyLayout } from "../src/views/graphs/plot-helpers";
@@ -2223,6 +2232,116 @@ check("comparing groups asks equal SDs, then offers the comparisons that fit and
     posthoc: "t3",
     equalSd: false,
   });
+});
+
+// Analysis checklists (v2, research 16): every checklist is written from the
+// statistical definitions, in our own words — and the wizard's checklist
+// follows the branch its answers build (parametric vs rank-based, paired or
+// not), so the setup shows the assumptions for the test that will actually run.
+check("analysis checklists follow the t-test branch the answers build", () => {
+  const table = readTable({ columns: ["Title", "A", "B", "C"], rows: [["", "1", "2", "3"]] });
+  const two = WIZARDS["compare-two-groups"]!.checklist!;
+  strictEqual(two({ paired: "unpaired", gaussian: "yes" }, table)!.title, "Unpaired t test — checklist");
+  strictEqual(two({ paired: "paired", gaussian: "yes" }, table)!.title, "Paired t test — checklist");
+  strictEqual(two({ paired: "unpaired", gaussian: "no" }, table)!.title, "Mann-Whitney test — checklist");
+  strictEqual(two({ paired: "paired", gaussian: "no" }, table)!.title, "Wilcoxon signed-rank test (paired) — checklist");
+  // Unanswered, the first options (unpaired, Gaussian) give the unpaired t test.
+  strictEqual(two({}, table)!.title, "Unpaired t test — checklist");
+  ok(two({ paired: "unpaired", gaussian: "yes" }, table)!.items.some((i) => i.assumption.includes("similar spread")));
+  const one = WIZARDS["one-sample-t"]!.checklist!;
+  strictEqual(one({ gaussian: "yes" }, table)!.title, "One-sample t test — checklist");
+  strictEqual(one({ gaussian: "no" }, table)!.title, "Wilcoxon signed-rank test — checklist");
+  // Unanswered, the first option (Gaussian) gives the t test.
+  strictEqual(one({}, table)!.title, "One-sample t test — checklist");
+  // Multiple t tests run the same per-row test, so they share its checklist.
+  const many = WIZARDS["multiple-t-tests"]!.checklist!;
+  strictEqual(many({ paired: "unpaired", gaussian: "yes" }, table)!.title, "Unpaired t test — checklist");
+  strictEqual(many({ paired: "paired", gaussian: "no" }, table)!.title, "Wilcoxon signed-rank test (paired) — checklist");
+});
+
+check("analysis checklists cover the ANOVA family", () => {
+  const table = readTable({ columns: ["Title", "A", "B", "C"], rows: [["", "1", "2", "3"]] });
+  const many = WIZARDS["compare-many-groups"]!.checklist!;
+  strictEqual(many({ paired: "unpaired", gaussian: "yes" }, table)!.title, "One-way ANOVA — checklist");
+  strictEqual(many({ paired: "unpaired", gaussian: "no" }, table)!.title, "Kruskal-Wallis test — checklist");
+  strictEqual(many({ paired: "paired", gaussian: "yes" }, table)!.title, "Repeated-measures ANOVA — checklist");
+  strictEqual(many({ paired: "paired", gaussian: "no" }, table)!.title, "Friedman test — checklist");
+  // Unanswered, the first options (unpaired, Gaussian) give the one-way ANOVA.
+  strictEqual(many({}, table)!.title, "One-way ANOVA — checklist");
+  ok(many({ paired: "paired", gaussian: "yes" }, table)!.items.some((i) => i.assumption.includes("Sphericity")));
+  const twoWay = WIZARDS["two-way-anova"]!.checklist!;
+  strictEqual(twoWay({}, table)!.title, "Two-way ANOVA — checklist");
+  strictEqual(twoWay({ design: "repeated-measures" }, table)!.title, "Repeated-measures two-way ANOVA — checklist");
+  strictEqual(twoWay({ design: "nonparametric" }, table)!.title, "Scheirer-Ray-Hare test — checklist");
+  ok(twoWay({}, table)!.items.some((i) => i.assumption.includes("interaction first")));
+  strictEqual(WIZARDS["three-way-anova"]!.checklist!({}, table)!.title, "Three-way ANOVA — checklist");
+});
+
+check("analysis checklists cover regression, survival and correlation", () => {
+  const table = readTable({ columns: ["Title", "A", "B", "C"], rows: [["", "1", "2", "3"]] });
+  const linear = WIZARDS["linear-regression"]!.checklist!({}, table)!;
+  strictEqual(linear.title, "Linear regression — checklist");
+  ok(linear.items.some((i) => i.assumption.includes("straight")));
+  const nonlinear = WIZARDS["nonlinear-regression"]!.checklist!({}, table)!;
+  strictEqual(nonlinear.title, "Nonlinear regression — checklist");
+  ok(nonlinear.items.some((i) => i.assumption.includes("mechanism")));
+  const survival = WIZARDS["survival"]!.checklist!({}, table)!;
+  strictEqual(survival.title, "Survival analysis (log-rank) — checklist");
+  ok(survival.items.some((i) => i.assumption.includes("Censoring")));
+  const cox = WIZARDS["cox-proportional-hazards"]!.checklist!({}, table)!;
+  strictEqual(cox.title, "Cox proportional-hazards regression — checklist");
+  ok(cox.items.some((i) => i.assumption.includes("proportional")));
+  const corr = WIZARDS["correlation"]!.checklist!;
+  strictEqual(corr({ method: "pearson" }, table)!.title, "Pearson correlation — checklist");
+  strictEqual(corr({ method: "spearman" }, table)!.title, "Spearman correlation — checklist");
+  ok(corr({ method: "pearson" }, table)!.items.some((i) => i.assumption.includes("straight line")));
+  ok(corr({ method: "spearman" }, table)!.items.some((i) => i.assumption.includes("monotonic")));
+  // The matrix wizard offers the same choice of coefficient.
+  const matrix = WIZARDS["correlation-matrix"]!.checklist!;
+  strictEqual(matrix({ method: "spearman" }, table)!.title, "Spearman correlation — checklist");
+  strictEqual(matrix({}, table)!.title, "Pearson correlation — checklist");
+});
+
+// Every checklist is complete (title, when-to-use, at least three items, each
+// item a real assumption), every key resolves, and the wizards that have no
+// checklist yet say so by having none — the coverage boundary is pinned, so a
+// checklist cannot silently disappear or a wizard silently gain a broken one.
+check("every analysis checklist is complete and the coverage boundary holds", () => {
+  for (const key of CHECKLIST_KEYS) {
+    const list = checklistFor(key)!;
+    ok(list.title.endsWith(" — checklist"), key);
+    ok(list.whenToUse.length > 0, key);
+    ok(list.items.length >= 3, key);
+    for (const item of list.items) ok(item.assumption.length > 0, key);
+  }
+  strictEqual(checklistFor("no-such-checklist"), undefined);
+  const table = readTable({ columns: ["Title", "A", "B", "C"], rows: [["", "1", "2", "3"]] });
+  const withChecklist = Object.entries(WIZARDS).filter(([, w]) => w?.checklist !== undefined);
+  deepStrictEqual(
+    withChecklist.map(([name]) => name).sort(),
+    [
+      "compare-many-groups",
+      "compare-two-groups",
+      "correlation",
+      "correlation-matrix",
+      "cox-proportional-hazards",
+      "linear-regression",
+      "multiple-t-tests",
+      "nonlinear-regression",
+      "one-sample-t",
+      "survival",
+      "three-way-anova",
+      "two-way-anova",
+    ],
+  );
+  for (const [, w] of withChecklist) {
+    const list = w!.checklist!({}, table)!;
+    ok(CHECKLIST_KEYS.includes(Object.entries(CHECKLISTS).find(([, c]) => c === list)![0] as never), list.title);
+  }
+  // Wizards outside the covered set have no checklist (yet).
+  for (const name of ["descriptive-statistics", "chi-square", "monte-carlo", "mixed-effects"] as const) {
+    strictEqual(WIZARDS[name]!.checklist, undefined);
+  }
 });
 
 // Welch's ANOVA + unequal-SD post-hocs (plan 34): Games-Howell and

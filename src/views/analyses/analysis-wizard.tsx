@@ -13,7 +13,16 @@ import { useAnalysisLauncher } from "./use-analysis-launcher";
 import { analysisLabel } from ".";
 import { packageGate } from "../../stats";
 import { ensurePackages } from "../../stats/webr";
-import { chosenSets, parseUnknowns, toggled, WIZARDS, type Answer, type Answers, type Question, type Wizard } from "./wizards";
+import {
+  chosenSets,
+  parseUnknowns,
+  toggled,
+  WIZARDS,
+  type Answer,
+  type Answers,
+  type Question,
+  type Wizard,
+} from "./wizards";
 
 const NOT_SURE = { value: "check", label: "Not sure — check for normality first (Shapiro-Wilk)" };
 
@@ -87,6 +96,10 @@ function Steps({
   const emptyMessage =
     "There's nothing to choose here — the table doesn't have the data this question needs. Go back and pick a different option, or add data to the table first.";
   const [value, setValue] = React.useState<Answer | null>(() => initialAnswer(q, undefined));
+  // The checklist for the test being built, following the answers so far
+  // (the current step's answer counts too, so the checklist switches branch
+  // as soon as the user picks parametric vs non-parametric).
+  const checklist = wizard.checklist?.({ ...answers, [q.id]: value ?? undefined }, table, tableType);
 
   const go = (to: number, a: Answers) => {
     const next = asked(a)[to];
@@ -198,6 +211,20 @@ function Steps({
       {!checking && (
         <div ref={field}>
           <AnswerField question={q} value={value} onChange={setValue} />
+          {checklist && (
+            <section className="mt-4 rounded-lg border border-separator px-4 py-3">
+              <p className="text-strong">{checklist.title}</p>
+              <p className="mt-1 text-small text-secondary">{checklist.whenToUse}</p>
+              <ul className="mt-2 list-disc pl-5 marker:text-secondary">
+                {checklist.items.map((item) => (
+                  <li key={item.assumption} className="mt-1 text-regular">
+                    {item.assumption}
+                    {item.ifNot && <span className="block text-small text-secondary">If not: {item.ifNot}</span>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
       )}
     </Dialog>

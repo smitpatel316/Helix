@@ -221,6 +221,33 @@ export interface Wizard {
   questions: (a: Answers, table: Dataset, tableType?: TableType) => (Question | false)[];
   /** The test to create, once every question is answered. */
   finish: (a: Answers, table: Dataset, tableType?: TableType) => { type: AnalysisType; params?: AnalysisParams };
+  /** The assumptions checklist for the test this wizard is building, given
+   *  the answers so far — so the checklist follows the branch taken (a
+   *  parametric answer gets the t-test checklist, a non-parametric one the
+   *  rank-test checklist). Absent: the wizard has no checklist yet, and the
+   *  setup shows none. */
+  checklist?: (a: Answers, table: Dataset, tableType?: TableType) => AnalysisChecklist | undefined;
+}
+
+/** One line of an analysis checklist: an assumption to check before running
+ *  the test, and what it means (or what to do instead) when it does not hold.
+ *  Content is written from the statistical definitions, in our own words. */
+export interface ChecklistItem {
+  /** The assumption or condition, in plain words. */
+  assumption: string;
+  /** What it means / what to do instead when it does not hold. */
+  ifNot?: string;
+}
+
+/** A checklist for one analysis: when the test is the right one, and the
+ *  assumptions to check before running it. Shown in the setup wizard,
+ *  alongside the questions — not buried in the results. */
+export interface AnalysisChecklist {
+  /** Short heading, e.g. "One-sample t test — checklist". */
+  title: string;
+  /** When this test is the right one. */
+  whenToUse: string;
+  items: ChecklistItem[];
 }
 
 const choice = (
@@ -318,6 +345,677 @@ const isGroupedTable = (table: Dataset) =>
 const GAUSSIAN = "Assume the data are sampled from Gaussian (normal) distributions?";
 const PAIRED = "How were the data collected?";
 
+/** The key of a checklist in CHECKLISTS. */
+export type ChecklistKey =
+  | "one-sample-t"
+  | "wilcoxon-signed-rank"
+  | "two-sample-t"
+  | "paired-t"
+  | "mann-whitney"
+  | "wilcoxon-paired"
+  | "anova"
+  | "kruskal-wallis"
+  | "rm-anova"
+  | "friedman"
+  | "two-way-anova"
+  | "two-way-anova-rm"
+  | "two-way-anova-srh"
+  | "three-way-anova"
+  | "linear-regression"
+  | "nonlinear-regression"
+  | "survival"
+  | "cox-ph"
+  | "correlation-pearson"
+  | "correlation-spearman";
+
+/** The assumption checklists: one per analysis (or per branch of one — a
+ *  t test and its rank-based alternative check different things). Content is
+ *  factual assumption lists written in our own words from the statistical
+ *  definitions; each item says what to do when the assumption does not hold,
+ *  so the checklist is advice, not just a warning. */
+export const CHECKLISTS: Record<ChecklistKey, AnalysisChecklist> = {
+  "one-sample-t": {
+    title: "One-sample t test — checklist",
+    whenToUse:
+      "Use this when you have one group of numbers and want to test whether its mean differs from a value you chose before seeing the data.",
+    items: [
+      {
+        assumption: "The values are numbers on a continuous scale — measurements, not counts or categories.",
+        ifNot: "For counts or categories a t test does not apply; use a test built for that kind of data.",
+      },
+      {
+        assumption:
+          "Each value is independent — no value is a repeat measurement of another, and no two values come from the same subject.",
+        ifNot: "Repeated or matched values need a paired test instead.",
+      },
+      {
+        assumption:
+          "The values are roughly symmetric around their mean (no strong skew), or the sample is large enough that the mean still behaves well.",
+        ifNot:
+          "With skewed data or a small sample, use the Wilcoxon signed-rank test (answer “No” to the Gaussian question) or transform the data first.",
+      },
+      {
+        assumption: "No single value dominates the result — check for extreme outliers before trusting the mean.",
+        ifNot: "Investigate outliers first; one extreme value can move the mean and the P value a lot.",
+      },
+      {
+        assumption:
+          "The hypothetical value was picked before looking at the data, not chosen to match the observed mean.",
+        ifNot: "Testing against a value picked from the same data makes the P value meaningless.",
+      },
+    ],
+  },
+  "wilcoxon-signed-rank": {
+    title: "Wilcoxon signed-rank test — checklist",
+    whenToUse:
+      "Use this when you have one group of numbers and want to test whether its median differs from a chosen value, without assuming the values follow a normal distribution.",
+    items: [
+      {
+        assumption:
+          "The values are numbers on a continuous scale, or at least ordered — the test ranks the distances from the hypothetical value.",
+        ifNot: "For unordered categories this test does not apply.",
+      },
+      {
+        assumption: "Each value is independent — no value is a repeat measurement of another.",
+        ifNot: "Repeated or matched values need a paired test instead.",
+      },
+      {
+        assumption: "The values are roughly symmetric around their median, so the median is a fair centre to test.",
+        ifNot:
+          "With a strongly lopsided distribution, consider the sign test, which only asks whether values fall above or below the hypothetical value.",
+      },
+      {
+        assumption:
+          "The hypothetical value was picked before looking at the data, not chosen to match the observed median.",
+        ifNot: "Testing against a value picked from the same data makes the P value meaningless.",
+      },
+    ],
+  },
+  "two-sample-t": {
+    title: "Unpaired t test — checklist",
+    whenToUse: "Use this when you have two independent groups of numbers and want to test whether their means differ.",
+    items: [
+      {
+        assumption:
+          "The two groups are independent — no subject appears in both groups, and no value in one group is matched to a value in the other.",
+        ifNot: "Matched or repeated measurements need a paired t test instead.",
+      },
+      {
+        assumption: "The outcome is a number on a continuous scale in both groups.",
+        ifNot: "For counts or categories a t test does not apply; use a test built for that kind of data.",
+      },
+      {
+        assumption:
+          "Each group is roughly symmetric around its mean (no strong skew), or each group is large enough that its mean still behaves well.",
+        ifNot:
+          "With skewed data or small groups, use the Mann-Whitney test (answer “No” to the Gaussian question) or transform the data first.",
+      },
+      {
+        assumption: "The two groups have similar spread — the t test pools their variances.",
+        ifNot:
+          "When the spreads clearly differ, use Welch's t test (answer “No” to the equal-variances question); it does not pool the variances.",
+      },
+      {
+        assumption: "No single value dominates either group — check for extreme outliers before trusting the means.",
+        ifNot: "Investigate outliers first; one extreme value can move a mean and the P value a lot.",
+      },
+    ],
+  },
+  "paired-t": {
+    title: "Paired t test — checklist",
+    whenToUse:
+      "Use this when each value in one group is matched to one value in the other — the same subject measured twice, or matched pairs — and you want to test whether the mean difference is zero.",
+    items: [
+      {
+        assumption:
+          "The pairing is real: each pair belongs together (same subject, or a deliberate match), and the difference within a pair is what matters.",
+        ifNot:
+          "If the groups are actually independent, use an unpaired t test — pairing unrelated values throws away information.",
+      },
+      {
+        assumption:
+          "The differences between pairs are roughly symmetric around their mean (no strong skew), or there are enough pairs that the mean difference still behaves well.",
+        ifNot:
+          "With skewed differences or few pairs, use the Wilcoxon signed-rank test (answer “No” to the Gaussian question) or transform the data first.",
+      },
+      {
+        assumption:
+          "The pairs are independent of each other — no subject appears in two pairs, and no pair shares a subject with another.",
+        ifNot: "Overlapping pairs need a model that accounts for the sharing, such as a mixed-effects analysis.",
+      },
+      {
+        assumption:
+          "No single pair dominates the result — check the largest differences before trusting the mean difference.",
+        ifNot:
+          "Investigate extreme pairs first; one wild difference can move the mean difference and the P value a lot.",
+      },
+    ],
+  },
+  "mann-whitney": {
+    title: "Mann-Whitney test — checklist",
+    whenToUse:
+      "Use this when you have two independent groups and want to test whether one tends to give larger values than the other, without assuming either group follows a normal distribution.",
+    items: [
+      {
+        assumption:
+          "The two groups are independent — no subject appears in both groups, and no value in one group is matched to a value in the other.",
+        ifNot: "Matched or repeated measurements need a paired rank test instead.",
+      },
+      {
+        assumption:
+          "The outcome is at least ordered — numbers, or ranks such as scores — so that values from the two groups can be ranked together.",
+        ifNot: "For unordered categories this test does not apply.",
+      },
+      {
+        assumption: "Each group's values are independent of each other within the group.",
+        ifNot: "Repeated measurements within a group need a model that accounts for the repeats.",
+      },
+      {
+        assumption:
+          "If you want to read the result as a difference in medians, the two distributions have similar shapes and differ mainly in where they sit.",
+        ifNot:
+          "When the shapes differ a lot, the test still works, but report it as one group tending to larger values — not as a median difference.",
+      },
+    ],
+  },
+  "wilcoxon-paired": {
+    title: "Wilcoxon signed-rank test (paired) — checklist",
+    whenToUse:
+      "Use this when each value in one group is matched to one value in the other and you want to test whether the median difference is zero, without assuming the differences follow a normal distribution.",
+    items: [
+      {
+        assumption:
+          "The pairing is real: each pair belongs together (same subject, or a deliberate match), and the difference within a pair is what matters.",
+        ifNot:
+          "If the groups are actually independent, use the Mann-Whitney test — pairing unrelated values throws away information.",
+      },
+      {
+        assumption:
+          "The differences are roughly symmetric around their median, so the median is a fair centre to test.",
+        ifNot:
+          "With a strongly lopsided set of differences, consider the sign test, which only asks whether differences fall above or below zero.",
+      },
+      {
+        assumption: "The pairs are independent of each other — no subject appears in two pairs.",
+        ifNot: "Overlapping pairs need a model that accounts for the sharing.",
+      },
+    ],
+  },
+  anova: {
+    title: "One-way ANOVA — checklist",
+    whenToUse:
+      "Use this when you have three or more independent groups of numbers and want to test whether any group's mean differs from the others.",
+    items: [
+      {
+        assumption: "The groups are independent — no subject appears in more than one group.",
+        ifNot: "Matched or repeated measurements need a repeated-measures ANOVA instead.",
+      },
+      {
+        assumption: "The outcome is a number on a continuous scale in every group.",
+        ifNot: "For counts or categories an ANOVA does not apply; use a test built for that kind of data.",
+      },
+      {
+        assumption:
+          "Each group is roughly symmetric around its mean (no strong skew), or each group is large enough that its mean still behaves well.",
+        ifNot:
+          "With skewed data or small groups, use the Kruskal-Wallis test (answer “No” to the Gaussian question) or transform the data first.",
+      },
+      {
+        assumption: "The groups have similar spread — the ANOVA pools their variances.",
+        ifNot:
+          "When the spreads clearly differ, use Welch's ANOVA (answer “No” to the equal-SDs question); it does not pool the variances.",
+      },
+      {
+        assumption: "No single value dominates any group — check for extreme outliers before trusting the means.",
+        ifNot: "Investigate outliers first; one extreme value can move a group mean and the P value a lot.",
+      },
+      {
+        assumption:
+          "The comparisons you will run afterwards were planned before seeing the results — the ANOVA only says that some difference exists, not where it is.",
+        ifNot:
+          "Comparisons picked because the data looked interesting need a stricter correction for multiple testing.",
+      },
+    ],
+  },
+  "kruskal-wallis": {
+    title: "Kruskal-Wallis test — checklist",
+    whenToUse:
+      "Use this when you have three or more independent groups and want to test whether one tends to give larger values than the others, without assuming any group follows a normal distribution.",
+    items: [
+      {
+        assumption: "The groups are independent — no subject appears in more than one group.",
+        ifNot: "Matched or repeated measurements need the Friedman test instead.",
+      },
+      {
+        assumption:
+          "The outcome is at least ordered — numbers, or ranks such as scores — so that values from all groups can be ranked together.",
+        ifNot: "For unordered categories this test does not apply.",
+      },
+      {
+        assumption: "Each group's values are independent of each other within the group.",
+        ifNot: "Repeated measurements within a group need a model that accounts for the repeats.",
+      },
+      {
+        assumption:
+          "If you want to read the result as a difference in medians, the distributions have similar shapes and differ mainly in where they sit.",
+        ifNot:
+          "When the shapes differ a lot, the test still works, but report it as one group tending to larger values — not as a median difference.",
+      },
+    ],
+  },
+  "rm-anova": {
+    title: "Repeated-measures ANOVA — checklist",
+    whenToUse:
+      "Use this when the same subjects are measured under three or more conditions and you want to test whether any condition's mean differs from the others.",
+    items: [
+      {
+        assumption: "Every subject was measured in every condition — the matching is what gives this test its power.",
+        ifNot:
+          "A subject missing a condition drops out of the analysis entirely; with patchy data, consider a mixed-effects model instead.",
+      },
+      {
+        assumption: "The outcome is a number on a continuous scale in every condition.",
+        ifNot: "For counts or categories this test does not apply.",
+      },
+      {
+        assumption:
+          "Each condition is roughly symmetric around its mean (no strong skew), or there are enough subjects that the means still behave well.",
+        ifNot:
+          "With skewed data or few subjects, use the Friedman test (answer “No” to the Gaussian question) or transform the data first.",
+      },
+      {
+        assumption: "Sphericity holds: the differences between every pair of conditions vary by similar amounts.",
+        ifNot:
+          "When sphericity is doubtful, apply the Geisser-Greenhouse correction (answer “No” to the sphericity question); it widens the P value to allow for the uneven differences.",
+      },
+      {
+        assumption: "The subjects are independent of each other — no subject's values influence another's.",
+        ifNot:
+          "Subjects measured in clusters (for example, animals from the same litter) need a model that accounts for the clustering.",
+      },
+    ],
+  },
+  friedman: {
+    title: "Friedman test — checklist",
+    whenToUse:
+      "Use this when the same subjects are measured under three or more conditions and you want to test whether one condition tends to give larger values than the others, without assuming any condition follows a normal distribution.",
+    items: [
+      {
+        assumption: "Every subject was measured in every condition — the matching is what gives this test its power.",
+        ifNot: "A subject missing a condition drops out; with patchy data, consider a mixed-effects model instead.",
+      },
+      {
+        assumption:
+          "The outcome is at least ordered — numbers, or ranks such as scores — so that each subject's values can be ranked across conditions.",
+        ifNot: "For unordered categories this test does not apply.",
+      },
+      {
+        assumption: "The blocks (subjects) are independent of each other.",
+        ifNot: "Subjects measured in clusters need a model that accounts for the clustering.",
+      },
+    ],
+  },
+  "two-way-anova": {
+    title: "Two-way ANOVA — checklist",
+    whenToUse:
+      "Use this when two factors (for example, treatment and time) may each affect a numeric outcome, and you want to test both factors and whether they interact.",
+    items: [
+      {
+        assumption:
+          "The observations are independent — no subject appears in more than one cell, unless the design is repeated-measures.",
+        ifNot: "Repeated measurements need the repeated-measures design (choose it in the wizard).",
+      },
+      {
+        assumption: "The outcome is a number on a continuous scale.",
+        ifNot: "For counts or categories an ANOVA does not apply.",
+      },
+      {
+        assumption:
+          "The residuals — what is left after the factors explain what they can — are roughly symmetric, with similar spread in every cell.",
+        ifNot:
+          "With skewed residuals or very uneven spread between cells, use the Scheirer-Ray-Hare test (answer “non-parametric” to the design question) or transform the data first.",
+      },
+      {
+        assumption:
+          "You read the interaction first: if the factors interact, the effect of one factor depends on the other, so a single main-effect summary misleads.",
+        ifNot:
+          "With a significant interaction, compare the groups within each level of the other factor instead of reporting the main effects alone.",
+      },
+      {
+        assumption:
+          "Each cell holds enough replicates to estimate its mean and spread — one value per cell can test the factors but cannot test the interaction.",
+        ifNot:
+          "Without replicates, the interaction cannot be separated from noise; replicate within cells if the interaction matters.",
+      },
+    ],
+  },
+  "two-way-anova-rm": {
+    title: "Repeated-measures two-way ANOVA — checklist",
+    whenToUse:
+      "Use this when two factors may affect a numeric outcome and one of them is repeated within each subject (for example, every subject measured at several times, under several treatments).",
+    items: [
+      {
+        assumption:
+          "Every subject was measured at every level of the repeated factor — the matching is what gives this test its power.",
+        ifNot:
+          "A subject missing a level drops out of that comparison; with patchy data, consider a mixed-effects model instead.",
+      },
+      {
+        assumption: "The outcome is a number on a continuous scale.",
+        ifNot: "For counts or categories this test does not apply.",
+      },
+      {
+        assumption: "The residuals are roughly symmetric, with similar spread in every cell.",
+        ifNot:
+          "With skewed residuals or very uneven spread, use the Scheirer-Ray-Hare test or transform the data first.",
+      },
+      {
+        assumption:
+          "Sphericity holds for the repeated factor: the differences between every pair of its levels vary by similar amounts.",
+        ifNot:
+          "When sphericity is doubtful, apply the Geisser-Greenhouse correction (answer “No” to the sphericity question).",
+      },
+      {
+        assumption:
+          "You read the interaction first: if the factors interact, the effect of one factor depends on the other, so a single main-effect summary misleads.",
+        ifNot:
+          "With a significant interaction, compare the groups within each level of the other factor instead of reporting the main effects alone.",
+      },
+    ],
+  },
+  "two-way-anova-srh": {
+    title: "Scheirer-Ray-Hare test — checklist",
+    whenToUse:
+      "Use this when two factors may affect an outcome and you want to test both factors and their interaction, without assuming the outcome follows a normal distribution.",
+    items: [
+      {
+        assumption: "The observations are independent — no subject appears in more than one cell.",
+        ifNot: "Repeated measurements need a repeated-measures or mixed-effects design instead.",
+      },
+      {
+        assumption: "The outcome is at least ordered, so that all values can be ranked together.",
+        ifNot: "For unordered categories this test does not apply.",
+      },
+      {
+        assumption:
+          "The cells have similar distribution shapes if you want to read the result as a difference in medians.",
+        ifNot:
+          "When the shapes differ a lot, report the result as one cell tending to larger values — not as a median difference.",
+      },
+      {
+        assumption:
+          "The interaction result is treated as approximate: ranking the data first makes the interaction test less exact than the main-effect tests.",
+        ifNot:
+          "If the interaction is the question that matters most, consider transforming the data and running a parametric two-way ANOVA instead.",
+      },
+    ],
+  },
+  "three-way-anova": {
+    title: "Three-way ANOVA — checklist",
+    whenToUse:
+      "Use this when three factors may each affect a numeric outcome, and you want to test all three factors and how they interact.",
+    items: [
+      {
+        assumption: "The observations are independent — no subject appears in more than one cell.",
+        ifNot: "Repeated measurements need a repeated-measures or mixed-effects design instead.",
+      },
+      {
+        assumption: "The outcome is a number on a continuous scale.",
+        ifNot: "For counts or categories an ANOVA does not apply.",
+      },
+      {
+        assumption: "The residuals are roughly symmetric, with similar spread in every cell.",
+        ifNot: "With skewed residuals or very uneven spread, transform the data first or use a rank-based test.",
+      },
+      {
+        assumption:
+          "Each cell holds enough replicates to estimate the three-way interaction — the number of cells grows fast with three factors.",
+        ifNot: "Without replicates in every cell, the higher-order interactions cannot be separated from noise.",
+      },
+      {
+        assumption:
+          "You decided before running which comparisons matter: with three factors, the list of possible interactions is long and most of them will be hard to interpret.",
+        ifNot:
+          "Comparisons picked because the data looked interesting need a stricter correction for multiple testing.",
+      },
+      {
+        assumption:
+          "You read the interactions before the main effects: a significant interaction means the effect of one factor depends on the others.",
+        ifNot:
+          "With a significant interaction, compare the groups within each level of the other factors instead of reporting the main effects alone.",
+      },
+    ],
+  },
+  "linear-regression": {
+    title: "Linear regression — checklist",
+    whenToUse:
+      "Use this when you want to describe how a numeric Y changes with X, or predict Y from X, and the relationship looks like a straight line.",
+    items: [
+      {
+        assumption: "The relationship is straight — check a scatter plot of Y against X before fitting, not after.",
+        ifNot:
+          "A curved relationship needs a curve fit (nonlinear regression) or a transformation, not a straight line through a curve.",
+      },
+      {
+        assumption:
+          "Each point is independent — no point is a repeat measurement of another, and no two points share a subject.",
+        ifNot: "Repeated measurements need a model that accounts for the repeats, such as a mixed-effects analysis.",
+      },
+      {
+        assumption: "The scatter around the line is similar all along X — no funnel shape that widens or narrows.",
+        ifNot:
+          "When the scatter grows with Y, weight the points (the wizard offers 1/Y or 1/Y² weighting) or transform Y first.",
+      },
+      {
+        assumption:
+          "The residuals — the distances from the line — are roughly symmetric, which matters most for small samples and for confidence intervals.",
+        ifNot: "With skewed residuals, transform Y first or use a robust fit.",
+      },
+      {
+        assumption:
+          "No single point drags the line: check points with extreme X (high leverage) and points far from the line.",
+        ifNot: "Investigate influential points first; one point can move the slope and the P value a lot.",
+      },
+      {
+        assumption: "X is measured precisely, or nearly so — the fit assumes the scatter is all in Y.",
+        ifNot: "When both X and Y carry similar measurement error, use Deming regression instead.",
+      },
+      {
+        assumption:
+          "Forcing the line through the origin is only justified when Y really is zero at X = 0 — the wizard asks, and “No” is the safe default.",
+        ifNot: "Forcing through the origin when it does not hold bends the whole line and biases the slope.",
+      },
+    ],
+  },
+  "nonlinear-regression": {
+    title: "Nonlinear regression — checklist",
+    whenToUse:
+      "Use this when Y follows a curve with X — a dose-response, a growth or decay, a binding curve — and you want the curve's parameters (such as EC50 or a rate constant) rather than just a line.",
+    items: [
+      {
+        assumption:
+          "The curve's shape comes from the mechanism or prior knowledge — a dose-response, a decay, a binding model — not from trying shapes until one happens to fit.",
+        ifNot:
+          "A shape picked because it fits this data set will flatter the data and its parameters will not generalise.",
+      },
+      {
+        assumption:
+          "Every parameter means something and the data can pin it down: enough points spread across the curve, including near its bends and plateaus.",
+        ifNot:
+          "Parameters the data cannot see (for example, a top plateau with no points near it) come back with absurd values and wide intervals — fix them or collect the missing points.",
+      },
+      {
+        assumption: "The residuals are independent, with similar spread all along X.",
+        ifNot: "When the scatter grows with Y, weight the points or transform Y first.",
+      },
+      {
+        assumption: "The starting values are sensible — the fit searches from them and can stall on a bad start.",
+        ifNot:
+          "If the fit fails or looks wrong, start from values read off the data (for example, the half-maximal X) rather than the defaults.",
+      },
+      {
+        assumption:
+          "Replicates at each X help judge lack of fit: without them, a curve can look good while missing the true shape.",
+        ifNot:
+          "With no replicates, check the residuals for a pattern (runs of points above, then below, the curve) — a pattern means the shape is wrong.",
+      },
+      {
+        assumption:
+          "The fitted parameters, not the R² alone, are what you report — a flexible curve can hug the points while its parameters stay meaningless.",
+        ifNot:
+          "Compare candidate shapes by whether their parameters are stable and interpretable, not only by which fits tightest.",
+      },
+    ],
+  },
+  survival: {
+    title: "Survival analysis (log-rank) — checklist",
+    whenToUse:
+      "Use this when you compare how long subjects survive (or stay event-free) in two or more groups, with some subjects still event-free when follow-up ends.",
+    items: [
+      {
+        assumption: "The groups were defined before follow-up started — not picked after seeing who lived longest.",
+        ifNot: "Groups defined from the outcome make the comparison circular.",
+      },
+      {
+        assumption:
+          "Censoring is unrelated to the chance of the event: a subject who leaves follow-up early is no sicker or healthier than one who stays.",
+        ifNot:
+          "When sicker subjects drop out first, the curves are biased — the comparison no longer measures the groups, it measures who stayed.",
+      },
+      {
+        assumption:
+          "Follow-up ran long enough to see events in each group — a comparison with almost no events has almost no power.",
+        ifNot:
+          "With too few events, report the curves and the follow-up time, and treat the P value as the weak evidence it is.",
+      },
+      {
+        assumption:
+          "The log-rank test compares the whole curves, giving each event time similar weight — it does not assume the curves keep a fixed ratio.",
+        ifNot:
+          "When the curves cross, a single summary such as a hazard ratio misleads; describe where the curves differ instead.",
+      },
+      {
+        assumption:
+          "The test is about events, not subjects: what matters is how many events happened, not only how many subjects were enrolled.",
+        ifNot: "A large study with few events is still a small study for this test.",
+      },
+      {
+        assumption:
+          "When three or more groups are compared pair by pair, the P values are corrected for multiple testing.",
+        ifNot:
+          "Uncorrected pairwise P values overstate the evidence; the wizard offers Holm or false-discovery-rate correction.",
+      },
+    ],
+  },
+  "cox-ph": {
+    title: "Cox proportional-hazards regression — checklist",
+    whenToUse:
+      "Use this when you want to estimate how variables change the hazard (the event rate) over follow-up time, while allowing for subjects who are still event-free when follow-up ends.",
+    items: [
+      {
+        assumption:
+          "The hazards stay proportional: the ratio between two subjects' hazards does not drift over follow-up time.",
+        ifNot:
+          "When the ratio changes with time, a single hazard ratio misleads — stratify, or let the effect vary with time.",
+      },
+      {
+        assumption:
+          "Censoring is unrelated to the chance of the event: a subject who leaves follow-up early is no sicker or healthier than one who stays.",
+        ifNot: "When sicker subjects drop out first, the hazard ratios are biased.",
+      },
+      {
+        assumption:
+          "There are enough events for the variables fitted — roughly ten events per variable is a common rule of thumb.",
+        ifNot:
+          "With too few events per variable, the estimates swing wildly; fit fewer variables or collect more follow-up.",
+      },
+      {
+        assumption:
+          "The covariates are measured before follow-up (or handled as time-varying with care) — a variable measured after the event cannot explain it.",
+        ifNot:
+          "Variables recorded after the event, or changed by the treatment, do not belong in the model as ordinary covariates.",
+      },
+      {
+        assumption:
+          "No two covariates are near-duplicates of each other — strongly correlated variables split one effect between them and inflate the uncertainty.",
+        ifNot: "Drop or combine near-duplicate variables before fitting.",
+      },
+      {
+        assumption:
+          "Tied event times are handled by the method the wizard asks about — Efron is the usual default; with many ties the choice matters.",
+        ifNot: "With heavy ties, check that the hazard ratios do not hinge on the tie method.",
+      },
+    ],
+  },
+  "correlation-pearson": {
+    title: "Pearson correlation — checklist",
+    whenToUse:
+      "Use this when you want one number for how closely two numeric variables move together in a straight line.",
+    items: [
+      {
+        assumption: "Both variables are numbers on a continuous scale.",
+        ifNot: "For ordered ranks or categories, use Spearman correlation instead.",
+      },
+      {
+        assumption:
+          "The relationship is a straight line — check a scatter plot first; a strong curve can still give a weak r.",
+        ifNot:
+          "A curved but consistent relationship needs Spearman correlation (monotonic, not necessarily straight) or a curve fit.",
+      },
+      {
+        assumption: "No single point dominates the result — one extreme pair can create a correlation, or hide one.",
+        ifNot: "Investigate outlying pairs first; report r with and without them if they matter.",
+      },
+      {
+        assumption:
+          "The pairs are independent — no subject contributes two pairs, and no pair shares a subject with another.",
+        ifNot: "Repeated measurements need a method that accounts for the repeats.",
+      },
+      {
+        assumption:
+          "A strong correlation does not mean one variable causes the other — a third variable, or the study design, may explain both.",
+        ifNot: "Treat r as a measure of association, and look for the cause elsewhere.",
+      },
+    ],
+  },
+  "correlation-spearman": {
+    title: "Spearman correlation — checklist",
+    whenToUse:
+      "Use this when you want one number for how consistently two variables rise (or fall) together, without assuming the relationship is a straight line or the values follow a normal distribution.",
+    items: [
+      {
+        assumption:
+          "Both variables are at least ordered — numbers, or ranks such as scores — so that their values can be ranked.",
+        ifNot: "For unordered categories this test does not apply.",
+      },
+      {
+        assumption:
+          "The relationship is monotonic: as one rises, the other consistently rises (or consistently falls), even if not in a straight line.",
+        ifNot:
+          "A U-shaped or other non-monotonic relationship gives a Spearman r near zero even when the variables are strongly related — plot the data first.",
+      },
+      {
+        assumption: "The pairs are independent — no subject contributes two pairs.",
+        ifNot: "Repeated measurements need a method that accounts for the repeats.",
+      },
+      {
+        assumption:
+          "A strong correlation does not mean one variable causes the other — a third variable, or the study design, may explain both.",
+        ifNot: "Treat r as a measure of association, and look for the cause elsewhere.",
+      },
+    ],
+  },
+};
+
+/** The checklist for `key`, or undefined for an unknown key. */
+export function checklistFor(key: string): AnalysisChecklist | undefined {
+  return (CHECKLISTS as Record<string, AnalysisChecklist | undefined>)[key];
+}
+
+/** The checklist keys, in the order they are defined — so a caller can check
+ *  that every key a wizard can resolve is a real checklist. */
+export const CHECKLIST_KEYS = Object.keys(CHECKLISTS) as ChecklistKey[];
+
 export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
   "descriptive-statistics": {
     questions: (_, table) => someSets(table, 1),
@@ -380,6 +1078,14 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           tails: a.tails as CompareTwoGroupsParams["tails"],
         }),
       };
+    },
+    // The checklist follows the branch: parametric or rank-based, paired or not.
+    // Unanswered, the first options (unpaired, Gaussian) give the unpaired t test.
+    checklist: (a) => {
+      const [paired, gaussian] = [a.paired === "paired", a.gaussian !== "no"];
+      return CHECKLISTS[
+        gaussian ? (paired ? "paired-t" : "two-sample-t") : paired ? "wilcoxon-paired" : "mann-whitney"
+      ];
     },
   },
 
@@ -454,6 +1160,14 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       };
       const rm = type === "rm-anova" && { sphericity: a.sphericity === "yes" };
       return { type, params: withSets(a, { posthoc: a.posthoc, ...anova, ...rm }) as AnalysisParams };
+    },
+    // The checklist follows the branch: which of the four tests the answers build.
+    // Unanswered, the first options (unpaired, Gaussian) give the one-way ANOVA.
+    checklist: (a) => {
+      const paired = a.paired === "paired";
+      const key: ChecklistKey =
+        a.gaussian !== "no" ? (paired ? "rm-anova" : "anova") : paired ? "friedman" : "kruskal-wallis";
+      return CHECKLISTS[key];
     },
   },
 
@@ -621,6 +1335,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         tails: a.tails as OneSampleTParams["tails"],
       }),
     }),
+    checklist: (a) => CHECKLISTS[a.gaussian === "no" ? "wilcoxon-signed-rank" : "one-sample-t"],
   },
 
   outliers: {
@@ -1089,6 +1804,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         ...(a.mode === "two-datasets" ? { datasets: [a.first as string, a.second as string] as [string, string] } : {}),
       },
     }),
+    checklist: (a) => CHECKLISTS[a.method === "spearman" ? "correlation-spearman" : "correlation-pearson"],
   },
 
   "linear-regression": {
@@ -1128,6 +1844,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           : {}),
       },
     }),
+    checklist: () => CHECKLISTS["linear-regression"],
   },
 
   "deming-regression": {
@@ -1618,6 +2335,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         },
       };
     },
+    checklist: () => CHECKLISTS["nonlinear-regression"],
   },
 
   // A nonlinear regression whose unknowns (a Y, no X) are read off the curve; the 3PLs,
@@ -2084,6 +2802,15 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         }),
       };
     },
+    // The checklist follows the design: ordinary, repeated-measures, or rank-based.
+    checklist: (a) =>
+      CHECKLISTS[
+        a.design === "repeated-measures"
+          ? "two-way-anova-rm"
+          : a.design === "nonparametric"
+            ? "two-way-anova-srh"
+            : "two-way-anova"
+      ],
   },
 
   "three-way-anova": {
@@ -2118,6 +2845,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           : {}),
       }),
     }),
+    checklist: () => CHECKLISTS["three-way-anova"],
   },
 
   "nested-anova": {
@@ -2171,6 +2899,15 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         correction: a.correction as MultipleTTestsParams["correction"],
       }),
     }),
+    // The per-row test's assumptions are the two-group ones (the multiple-comparison
+    // correction is already a wizard question, not a checklist item).
+    // Unanswered, the first options (unpaired, Gaussian) give the unpaired t test.
+    checklist: (a) => {
+      const [paired, gaussian] = [a.paired === "paired", a.gaussian !== "no"];
+      return CHECKLISTS[
+        gaussian ? (paired ? "paired-t" : "two-sample-t") : paired ? "wilcoxon-paired" : "mann-whitney"
+      ];
+    },
   },
 
   "correlation-matrix": {
@@ -2185,6 +2922,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       type: "correlation-matrix",
       params: withSets(a, { method: a.method as CorrelationParams["method"] }),
     }),
+    checklist: (a) => CHECKLISTS[a.method === "spearman" ? "correlation-spearman" : "correlation-pearson"],
   },
 
   "multiple-regression": {
@@ -2229,6 +2967,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         correction: (a.correction ?? "holm") as SurvivalParams["correction"],
       },
     }),
+    checklist: () => CHECKLISTS["survival"],
   },
 
   cox: {
@@ -2396,6 +3135,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         ...(a.stratifyBy !== undefined && a.stratifyBy !== "none" ? { stratifyBy: a.stratifyBy as string } : {}),
       },
     }),
+    checklist: () => CHECKLISTS["cox-ph"],
   },
 
   "chi-square": {
