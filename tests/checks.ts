@@ -8460,6 +8460,321 @@ check("a nonlinear fit pools a Y data set's replicates, and a column name still 
   ok("error" in prepareFit(columns, "Nope", "sigmoidal-4pl-x"));
 });
 
+// Normalize (v2): rescale each value as a percent/fraction of a reference,
+// or on a 0–100% scale — recording the reference used per column, leaving
+// un-normalizable values blank (never NaN), and never touching the source.
+check("normalize rescales each value as a percent of the largest value", async () => {
+  const table: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "20", "8"],
+      ["", "1", "10", "4"],
+      ["", "2", "30", "12"],
+      ["", "3", "40", "16"],
+    ],
+  };
+  const out = await runAnalysis("normalize", table, {
+    ys: ["Y1", "Y2"],
+    x: "Time",
+    normalizeMethod: "percent-of-largest",
+  });
+  if ("error" in out) throw new Error(out.error);
+  strictEqual(out.testType, "normalize");
+  deepStrictEqual(
+    out.normalized?.map((c) => [c.column, c.method, c.reference]),
+    [
+      ["Y1", "Percent of largest value", 40],
+      ["Y2", "Percent of largest value", 16],
+    ],
+  );
+  deepStrictEqual(
+    out.normalized?.[0].rows.map((r) => [r.x, r.original, r.normalized]),
+    [
+      [0, 20, 50],
+      [1, 10, 25],
+      [2, 30, 75],
+      [3, 40, 100],
+    ],
+  );
+  deepStrictEqual(
+    out.normalized?.[1].rows.map((r) => r.normalized),
+    [50, 25, 75, 100],
+  );
+  // The reference is also in the stats, so it survives without the rows.
+  deepStrictEqual(
+    out.stats.map((s) => [s.label, s.value]),
+    [
+      ["100% reference for “Y1”", 40],
+      ["100% reference for “Y2”", 16],
+    ],
+  );
+  ok(out.notes.includes("Largest value: 40"));
+  // The descriptives are of the normalized values, not the originals.
+  deepStrictEqual(
+    out.groups.map((g) => [g.name, g.mean, g.n]),
+    [
+      ["Y1", 62.5, 4],
+      ["Y2", 62.5, 4],
+    ],
+  );
+  // The source table is unchanged — the normalized values live in the result only.
+  deepStrictEqual(table.rows, [
+    ["", "0", "20", "8"],
+    ["", "1", "10", "4"],
+    ["", "2", "30", "12"],
+    ["", "3", "40", "16"],
+  ]);
+});
+
+check("normalize offers the smallest value, the first value, and fractions", async () => {
+  const table: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "20", "8"],
+      ["", "1", "10", "4"],
+      ["", "2", "30", "12"],
+      ["", "3", "40", "16"],
+    ],
+  };
+  const smallest = await runAnalysis("normalize", table, {
+    ys: ["Y1"],
+    x: "Time",
+    normalizeMethod: "percent-of-smallest",
+  });
+  if ("error" in smallest) throw new Error(smallest.error);
+  strictEqual(smallest.normalized?.[0].reference, 10);
+  deepStrictEqual(
+    smallest.normalized?.[0].rows.map((r) => r.normalized),
+    [200, 100, 300, 400],
+  );
+  // The first value is not the smallest here, so this pins the two apart.
+  const first = await runAnalysis("normalize", table, {
+    ys: ["Y1"],
+    x: "Time",
+    normalizeMethod: "percent-of-first",
+  });
+  if ("error" in first) throw new Error(first.error);
+  strictEqual(first.normalized?.[0].reference, 20);
+  deepStrictEqual(
+    first.normalized?.[0].rows.map((r) => r.normalized),
+    [100, 50, 150, 200],
+  );
+  // A fraction is the same scale un-multiplied: 1 = 100%.
+  const fraction = await runAnalysis("normalize", table, {
+    ys: ["Y1"],
+    x: "Time",
+    normalizeMethod: "percent-of-largest",
+    asPercent: false,
+  });
+  if ("error" in fraction) throw new Error(fraction.error);
+  strictEqual(fraction.normalized?.[0].asPercent, false);
+  deepStrictEqual(
+    fraction.normalized?.[0].rows.map((r) => r.normalized),
+    [0.5, 0.25, 0.75, 1],
+  );
+});
+
+check("normalize takes its 100% reference from controls or a constant", async () => {
+  const table: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "20", "8"],
+      ["", "1", "10", "4"],
+      ["", "2", "30", "12"],
+      ["", "3", "40", "16"],
+    ],
+  };
+  // Mean of the controls averages every value in the control column(s).
+  const controls = await runAnalysis("normalize", table, {
+    ys: ["Y1"],
+    x: "Time",
+    normalizeMethod: "percent-of-mean-controls",
+    controls: ["Y2"],
+  });
+  if ("error" in controls) throw new Error(controls.error);
+  strictEqual(controls.normalized?.[0].reference, 10);
+  deepStrictEqual(
+    controls.normalized?.[0].rows.map((r) => r.normalized),
+    [200, 100, 300, 400],
+  );
+  ok(controls.notes.includes("Mean of “Y2”"));
+  const constant = await runAnalysis("normalize", table, {
+    ys: ["Y1"],
+    x: "Time",
+    normalizeMethod: "percent-of-constant",
+    constant: 20,
+  });
+  if ("error" in constant) throw new Error(constant.error);
+  strictEqual(constant.normalized?.[0].reference, 20);
+  deepStrictEqual(
+    constant.normalized?.[0].rows.map((r) => r.normalized),
+    [100, 50, 150, 200],
+  );
+  // Errors name the problem instead of normalizing against something wrong.
+  deepStrictEqual(
+    await runAnalysis("normalize", table, {
+      ys: ["Y1"],
+      x: "Time",
+      normalizeMethod: "percent-of-mean-controls",
+      controls: ["Nope"],
+    }),
+    { error: "The column “Nope” is no longer in the table. Create this analysis again to choose another." },
+  );
+  deepStrictEqual(
+    await runAnalysis("normalize", table, {
+      ys: ["Y1"],
+      x: "Time",
+      normalizeMethod: "percent-of-constant",
+    }),
+    { error: "Enter the constant value that is 100%." },
+  );
+  deepStrictEqual(
+    await runAnalysis("normalize", table, {
+      ys: ["Y1"],
+      x: "Time",
+      normalizeMethod: "bogus",
+    } as never),
+    { error: "Unknown normalize method: “bogus”." },
+  );
+});
+
+check("normalize maps a 0–100% scale from its two ends", async () => {
+  const table: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "20", "8"],
+      ["", "1", "10", "4"],
+      ["", "2", "30", "12"],
+      ["", "3", "40", "16"],
+    ],
+  };
+  // 0% = first row's value (20), 100% = last row's value (40).
+  const out = await runAnalysis("normalize", table, {
+    ys: ["Y1"],
+    x: "Time",
+    normalizeMethod: "zero-to-hundred",
+    zeroDef: "first",
+    hundredDef: "last",
+  });
+  if ("error" in out) throw new Error(out.error);
+  deepStrictEqual(
+    out.normalized?.map((c) => [c.column, c.reference, c.hundred]),
+    [["Y1", 20, 40]],
+  );
+  deepStrictEqual(
+    out.normalized?.[0].rows.map((r) => r.normalized),
+    [0, -50, 50, 100],
+  );
+  deepStrictEqual(
+    out.stats.map((s) => [s.label, s.value]),
+    [
+      ["0% reference for “Y1”", 20],
+      ["100% reference for “Y1”", 40],
+    ],
+  );
+  // The defaults are smallest (0%) and largest (100%).
+  const defaults = await runAnalysis("normalize", table, {
+    ys: ["Y1"],
+    x: "Time",
+    normalizeMethod: "zero-to-hundred",
+  });
+  if ("error" in defaults) throw new Error(defaults.error);
+  deepStrictEqual(
+    defaults.normalized?.map((c) => [c.reference, c.hundred]),
+    [[10, 40]],
+  );
+  ok(Math.abs(defaults.normalized![0].rows[0].normalized! - 100 / 3) < 1e-9);
+  strictEqual(defaults.normalized![0].rows[3].normalized, 100);
+});
+
+check("normalize leaves un-normalizable values blank, never NaN", async () => {
+  // A zero 100% reference: dividing by it is undefined for every value.
+  const zeros: TableData = {
+    columns: ["Title", "Time", "Y1"],
+    rows: [
+      ["", "0", "0"],
+      ["", "1", "0"],
+      ["", "2", "0"],
+    ],
+  };
+  const out = await runAnalysis("normalize", zeros, {
+    ys: ["Y1"],
+    x: "Time",
+    normalizeMethod: "percent-of-largest",
+  });
+  if ("error" in out) throw new Error(out.error);
+  deepStrictEqual(
+    out.normalized?.[0].rows.map((r) => r.normalized),
+    [null, null, null],
+  );
+  deepStrictEqual(out.groups, []);
+  ok(out.notes.includes("no value could be normalized"));
+  ok(out.notes.includes("the 100% reference is 0"));
+  // A 0–100% scale with no range (0% = 100%) is blank the same way.
+  const flat: TableData = {
+    columns: ["Title", "Time", "Y1"],
+    rows: [
+      ["", "0", "5"],
+      ["", "1", "5"],
+      ["", "2", "5"],
+    ],
+  };
+  const ranged = await runAnalysis("normalize", flat, {
+    ys: ["Y1"],
+    x: "Time",
+    normalizeMethod: "zero-to-hundred",
+  });
+  if ("error" in ranged) throw new Error(ranged.error);
+  deepStrictEqual(
+    ranged.normalized?.[0].rows.map((r) => r.normalized),
+    [null, null, null],
+  );
+  ok(ranged.notes.includes("the 0% and 100% values are equal"));
+});
+
+check("normalize wizard asks for the scale and finishes with its params", () => {
+  const data: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "20", "8"],
+      ["", "1", "10", "4"],
+    ],
+  };
+  const table = readTable(data);
+  const wizard = WIZARDS["normalize"]!;
+  // The follow-up questions depend on the method answered.
+  deepStrictEqual(
+    wizard.questions({ normalizeMethod: "percent-of-mean-controls", ys: ["Y1"] }, table, "xy").filter(Boolean).map((q) => (q as Question).id),
+    ["ys", "normalizeMethod", "scale", "controls"],
+  );
+  deepStrictEqual(
+    wizard.questions({ normalizeMethod: "zero-to-hundred", ys: ["Y1"], zeroDef: "constant", hundredDef: "constant" }, table, "xy").filter(Boolean).map((q) => (q as Question).id),
+    ["ys", "normalizeMethod", "zeroDef", "zeroConstant", "hundredDef", "hundredConstant"],
+  );
+  deepStrictEqual(
+    wizard.finish({ ys: ["Y1", "Y2"], normalizeMethod: "percent-of-largest", scale: "fraction" }, table, "xy"),
+    {
+      type: "normalize",
+      params: { ys: ["Y1", "Y2"], x: "Time", normalizeMethod: "percent-of-largest", asPercent: false },
+    },
+  );
+  deepStrictEqual(
+    wizard.finish({ ys: ["Y1"], normalizeMethod: "zero-to-hundred", zeroDef: "constant", zeroConstant: 0, hundredDef: "constant", hundredConstant: 100 }, table, "xy"),
+    {
+      type: "normalize",
+      params: { ys: ["Y1"], x: "Time", normalizeMethod: "zero-to-hundred", zeroDef: "constant", hundredDef: "constant", zeroConstant: 0, hundredConstant: 100 },
+    },
+  );
+  // A Column table has no X column to carry into the result rows.
+  deepStrictEqual(
+    wizard.finish({ ys: ["Y1"], normalizeMethod: "percent-of-constant", constant: 20 }, table, "column"),
+    {
+      type: "normalize",
+      params: { ys: ["Y1"], normalizeMethod: "percent-of-constant", asPercent: true, constant: 20 },
+    },
+  );
+});
+
 // ── Run ──────────────────────────────────────────────────────────────────
 
 // Descriptives are computed by R since the v1.0.7 rebase, so checks that run

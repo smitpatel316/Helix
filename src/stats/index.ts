@@ -22,6 +22,7 @@ import type {
   MultipleLogisticRegressionParams,
   MultipleTTestsParams,
   NestedAnovaParams,
+  NormalizeParams,
   LinearRegressionParams,
   LogisticRegressionParams,
   NonlinearRegressionParams,
@@ -78,6 +79,7 @@ import { runMixedEffects } from "./mixed/mixed-effects";
 import { runBlandAltman } from "./column/bland-altman";
 import { runRocCurve } from "./column/roc-curve";
 import { runFrequencyDistribution } from "./column/frequency-distribution";
+import { runNormalize } from "./xy/normalize";
 import { runMonteCarlo } from "./simulation/monte-carlo";
 import type { MonteCarloParams } from "./types";
 import type { TableData } from "../store/types";
@@ -304,6 +306,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Frequency distribution",
     minColumns: 1,
     run: (c, p) => runFrequencyDistribution(c, p as FrequencyDistributionParams),
+  },
+  "normalize": {
+    label: "Normalize",
+    minColumns: 1,
+    run: (c, p, t) => runNormalize(c, p as NormalizeParams, t),
   },
   // minColumns is a floor only: compare-two-groups needs 2 data sets, the
   // others 1 — the runner validates per target (as enzyme-inhibition does

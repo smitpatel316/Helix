@@ -529,6 +529,36 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
           />
         ))}
 
+      {result.normalized?.map((col) => {
+        const hasX = col.rows.some((r) => r.x !== undefined);
+        const zeroToHundred = col.hundred !== undefined;
+        return (
+          <Table
+            key={col.column}
+            title={`Normalized — ${col.column}`}
+            columns={[
+              { label: "Row" },
+              ...(hasX ? [{ label: "X", numeric: true }] : []),
+              { label: "Original", numeric: true },
+              ...(zeroToHundred
+                ? [
+                    { label: "0% reference", numeric: true },
+                    { label: "100% reference", numeric: true },
+                  ]
+                : [{ label: "100% reference", numeric: true }]),
+              { label: col.asPercent ? "Normalized (%)" : "Normalized (fraction)", numeric: true },
+            ]}
+            rows={col.rows.map((r) => [
+              r.row,
+              ...(hasX ? [num(r.x)] : []),
+              num(r.original),
+              ...(zeroToHundred ? [num(col.reference), num(col.hundred)] : [num(col.reference)]),
+              num(r.normalized),
+            ])}
+          />
+        );
+      })}
+
       {result.rocCurve && result.rocCurve.length > 0 && (
         <Table
           title="Sensitivity and specificity at each threshold"
