@@ -3,6 +3,7 @@ dist/
 r-packages/
 src-tauri/target/
 src-tauri/gen/
+broker/target/
 .DS_Store
 
 # Linux dev/test run artefacts (logs, pid files, probe scripts)
