@@ -50,7 +50,8 @@ export type AnalysisType =
   | "normalize"
   | "transpose"
   | "prune-rows"
-  | "fraction-of-total";
+  | "fraction-of-total"
+  | "row-means-totals";
 
 /** What the New Analysis picker offers: a test, or "Compare more than two groups",
  *  which its wizard resolves to one-way ANOVA, Kruskal-Wallis, repeated-measures ANOVA
@@ -956,6 +957,7 @@ export type AnalysisParams = DataSetsParam &
     | RemoveBaselineParams
     | PruneRowsParams
     | FractionOfTotalParams
+    | RowMeansTotalsParams
     | NonlinearRegressionParams
     | BindingSaturationParams
     | BindingKineticsParams
@@ -1192,6 +1194,37 @@ export interface FractionOfTotalColumn {
   total: number | null;
   format: FractionOfTotalFormat;
   rows: FractionOfTotalRow[];
+}
+
+/** Params for "row-means-totals": which columns to summarise across each
+ *  row (`ys`), and — for XY tables — the X column whose values label the
+ *  result rows. */
+export interface RowMeansTotalsParams {
+  /** Omitted: every numeric column except `x` — the wizard always sets it. */
+  ys?: string[];
+  /** XY tables only: the X column, for the result rows' X values. */
+  x?: string;
+}
+
+/** One row's summary ("row-means-totals"): the total, mean, SD, SEM, median,
+ *  t-based 95% CI of the mean, %CV and geometric mean of the values that row
+ *  holds across the chosen data sets. `row` is the row title, or the row
+ *  number when the table has none; `x` is the X value at that row (XY tables
+ *  only). SD, SEM, CI and %CV are null on a one-value row; the geometric mean
+ *  is null unless every value is above 0. */
+export interface RowMeansRow {
+  row: string;
+  x?: number | null;
+  n: number;
+  total: number;
+  mean: number | null;
+  sd: number | null;
+  sem: number | null;
+  median: number | null;
+  ciLow: number | null;
+  ciHigh: number | null;
+  cv: number | null;
+  geoMean: number | null;
 }
 
 /** One row of "area-under-curve" results: one Y series' trapezoidal AUC vs. X. */
@@ -1443,6 +1476,10 @@ export interface AnalysisResult {
   /** Optional per-column divided values ("fraction-of-total"): one table
    *  per column, each with the total divided by recorded. */
   fractionsOfTotal?: FractionOfTotalColumn[];
+  /** Optional per-row summaries ("row-means-totals"): one row per table
+   *  row holding a value, with that row's total, mean, SD, SEM, 95% CI,
+   *  %CV, median and geometric mean across the chosen data sets. */
+  rowMeans?: RowMeansRow[];
   /** Optional per-column outlier summary ("outliers"). */
   outlierGroups?: OutlierGroupRow[];
   /** Optional per-group survival summary ("survival"). */

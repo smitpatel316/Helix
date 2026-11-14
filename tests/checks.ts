@@ -1973,18 +1973,20 @@ check("the three-way ANOVA is offered only with at least 2 row bands", () => {
     ],
   };
   const values = (data?: TableData) => analysisOptionsForTable("grouped", data).map((o) => o.value);
-  deepStrictEqual(values(withBands), ["two-way-anova", "mixed-effects", "three-way-anova", "multiple-t-tests"]);
+  deepStrictEqual(values(withBands), ["two-way-anova", "mixed-effects", "three-way-anova", "multiple-t-tests", "row-means-totals"]);
   deepStrictEqual(values({ ...withBands, rowGroups: [{ name: "All rows", count: 2 }] }), [
     "two-way-anova",
     "mixed-effects",
     "multiple-t-tests",
+    "row-means-totals",
   ]);
   deepStrictEqual(values({ ...withBands, rowGroups: undefined }), [
     "two-way-anova",
     "mixed-effects",
     "multiple-t-tests",
+    "row-means-totals",
   ]);
-  deepStrictEqual(values(), ["two-way-anova", "mixed-effects", "multiple-t-tests"]);
+  deepStrictEqual(values(), ["two-way-anova", "mixed-effects", "multiple-t-tests", "row-means-totals"]);
 });
 
 // The native Analysis menu's effect depends on this key, not on the table data
@@ -7047,6 +7049,166 @@ check("fraction-of-total wizard asks for the total and the format, and finishes 
   strictEqual(columnOrder[columnOrder.indexOf("fraction-of-total") - 1], "frequency-distribution");
   const xyOrder = analysisOptionsForTable("xy").map((o) => o.value);
   strictEqual(xyOrder[xyOrder.indexOf("fraction-of-total") - 1], "area-under-curve");
+});
+
+// Row means / totals (v2): each row summarised across its data sets — total,
+// mean, SD, SEM, median, t-based 95% CI of the mean, %CV and geometric mean —
+// for XY and Grouped tables. The definitions are the per-column descriptives',
+// transposed to rows: a one-value row has no SD, SEM, CI or %CV, and the
+// geometric mean needs every value above 0.
+check("row means and totals summarises each row across its data sets", async () => {
+  const table: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "10", "30"],
+      ["", "1", "30", "20"],
+      ["", "2", "5", ""],
+      ["", "3", "0", "4"],
+    ],
+  };
+  const out = await runAnalysis("row-means-totals", table, {
+    ys: ["Y1", "Y2"],
+    x: "Time",
+  });
+  if ("error" in out) throw new Error(out.error);
+  strictEqual(out.testType, "row-means-totals");
+  // Totals, means, medians and N are exact; the rest are pinned to 1e-9
+  // (R's sd/qt in doubles, against the same formulas worked out by hand).
+  deepStrictEqual(
+    out.rowMeans?.map((r) => [r.row, r.x, r.n, r.total, r.mean, r.median]),
+    [
+      ["Row 1", 0, 2, 40, 20, 20],
+      ["Row 2", 1, 2, 50, 25, 25],
+      ["Row 3", 2, 1, 5, 5, 5],
+      ["Row 4", 3, 2, 4, 2, 2],
+    ],
+  );
+  const close = (got: number | null, want: number | null) =>
+    (got == null && want == null) || (got != null && want != null && Math.abs(got - want) < 1e-9);
+  const expected: [number | null, number | null, number | null, number | null, number | null, number | null][] = [
+    // sd, sem, CI low, CI high, %CV, geometric mean — row [10, 30].
+    [14.142135623730951, 10, -107.06204736432096, 147.06204736432096, 70.71067811865476, 17.32050807568877],
+    // Row [30, 20].
+    [7.0710678118654755, 5, -38.53102368216048, 88.53102368216048, 28.284271247461902, 24.49489742783178],
+    // Row [5]: one value, so no SD, SEM, CI or %CV — but a geometric mean.
+    [null, null, null, null, null, 5],
+    // Row [0, 4]: a 0 kills the geometric mean, not the rest.
+    [2.8284271247461903, 2, -23.41240947286419, 27.41240947286419, 141.4213562373095, null],
+  ];
+  ok(out.rowMeans?.length === expected.length);
+  out.rowMeans?.forEach((r, i) => {
+    const [sd, sem, lo, hi, cv, gm] = expected[i];
+    ok(
+      close(r.sd, sd) && close(r.sem, sem) && close(r.ciLow, lo) && close(r.ciHigh, hi) && close(r.cv, cv) && close(r.geoMean, gm),
+      `row ${i + 1}: got sd ${r.sd} sem ${r.sem} CI ${r.ciLow}–${r.ciHigh} CV ${r.cv} gm ${r.geoMean}`,
+    );
+  });
+  deepStrictEqual(out.stats, []);
+  deepStrictEqual(out.groups, []);
+  ok(out.notes.includes("single value"));
+  ok(out.notes.includes("geometric mean"));
+  // Errors name the problem instead of summarising something wrong.
+  deepStrictEqual(
+    await runAnalysis("row-means-totals", {
+      columns: ["Title", "Time", "Y1", "Y2"],
+      rows: [
+        ["", "0", "", ""],
+        ["", "1", "", ""],
+      ],
+    }),
+    { error: "No Y column holds numbers yet." },
+  );
+  deepStrictEqual(
+    await runAnalysis("row-means-totals", table, { ys: ["Y3"], x: "Time" }),
+    { error: "“Y3” holds no numbers yet." },
+  );
+  deepStrictEqual(
+    await runAnalysis("row-means-totals", table, { ys: ["Nope"], x: "Time" }),
+    { error: "The column “Nope” is no longer in the table. Create this analysis again to choose another." },
+  );
+});
+
+check("row means and totals runs on a grouped table, across every replicate", async () => {
+  const grouped: TableData = {
+    columns: ["Title", "A:Y1", "A:Y2", "B:Y1", "B:Y2"],
+    rows: [
+      ["Day 1", "1", "2", "3", "4"],
+      ["Day 2", "10", "20", "30", "40"],
+    ],
+    groups: 2,
+    replicates: 2,
+  };
+  const out = await runAnalysis("row-means-totals", grouped, { ys: ["A", "B"] });
+  if ("error" in out) throw new Error(out.error);
+  deepStrictEqual(
+    out.rowMeans?.map((r) => [r.row, r.x, r.n, r.total, r.mean, r.median]),
+    [
+      ["Day 1", undefined, 4, 10, 2.5, 2.5],
+      ["Day 2", undefined, 4, 100, 25, 25],
+    ],
+  );
+  const close = (got: number | null, want: number) => got != null && Math.abs(got - want) < 1e-9;
+  const [first, second] = out.rowMeans ?? [];
+  ok(first && close(first.sd, 1.2909944487358056) && close(first.sem, 0.6454972243679028));
+  ok(first && close(first.ciLow, 0.445739743239121) && close(first.ciHigh, 4.5542602567608785));
+  ok(first && close(first.cv, 51.63977794943222) && close(first.geoMean, 2.213363839400643));
+  ok(second && close(second.sd, 12.909944487358056) && close(second.sem, 6.454972243679028));
+  ok(second && close(second.ciLow, 4.457397432391211) && close(second.ciHigh, 45.54260256760879));
+  ok(second && close(second.cv, 51.639777949432215) && close(second.geoMean, 22.133638394006436));
+  ok(out.notes.includes("“A”, “B”"));
+});
+
+check("row-means-totals wizard asks for the data sets, and finishes with its params", () => {
+  const data: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "10", "30"],
+      ["", "1", "30", "20"],
+    ],
+  };
+  const table = readTable(data);
+  const wizard = WIZARDS["row-means-totals"]!;
+  deepStrictEqual(
+    wizard.questions({}, table, "xy").filter(Boolean).map((q) => (q as Question).id),
+    ["ys"],
+  );
+  deepStrictEqual(
+    wizard.questions({}, table, "xy").filter(Boolean).map((q) => (q as Question).kind),
+    ["names"],
+  );
+  deepStrictEqual(wizard.finish({ ys: ["Y1", "Y2"] }, table, "xy"), {
+    type: "row-means-totals",
+    params: { ys: ["Y1", "Y2"], x: "Time" },
+  });
+  // A Grouped table offers its groups (each spanning its replicates), and
+  // carries no X column into the result rows.
+  const grouped: TableData = {
+    columns: ["Title", "A:Y1", "A:Y2", "B:Y1", "B:Y2"],
+    rows: [["Day 1", "1", "2", "3", "4"]],
+    groups: 2,
+    replicates: 2,
+  };
+  const gtable = readTable(grouped);
+  deepStrictEqual(
+    wizard.questions({}, gtable, "grouped").filter(Boolean).map((q) => (q as Question).id),
+    ["ys"],
+  );
+  const namesQ = wizard.questions({}, gtable, "grouped")[0];
+  ok(namesQ && namesQ.kind === "names");
+  deepStrictEqual(namesQ.kind === "names" ? namesQ.options : [], ["A", "B"]);
+  deepStrictEqual(wizard.finish({ ys: ["A"] }, gtable, "grouped"), {
+    type: "row-means-totals",
+    params: { ys: ["A"] },
+  });
+  // The menu offers it after Fraction of total on XY tables, and last
+  // (after Multiple t tests) on grouped tables.
+  const xyOrder = analysisOptionsForTable("xy").map((o) => o.value);
+  strictEqual(xyOrder[xyOrder.indexOf("row-means-totals") - 1], "fraction-of-total");
+  const groupedOrder = analysisOptionsForTable("grouped").map((o) => o.value);
+  strictEqual(groupedOrder[groupedOrder.indexOf("row-means-totals") - 1], "multiple-t-tests");
+  strictEqual(groupedOrder[groupedOrder.length - 1], "row-means-totals");
+  // Not offered on column tables: per-column descriptives already cover them.
+  ok(!analysisOptionsForTable("column").some((o) => o.value === "row-means-totals"));
 });
 
 // ── Undo and names ───────────────────────────────────────────────────────

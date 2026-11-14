@@ -19,6 +19,7 @@ import type {
   TransformDataParams,
   PruneRowsParams,
   FractionOfTotalParams,
+  RowMeansTotalsParams,
   KMeansParams,
   McNemarParams,
   MixedEffectsParams,
@@ -62,6 +63,7 @@ import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runRemoveBaseline } from "./xy/remove-baseline";
 import { runPruneRows } from "./xy/prune-rows";
 import { runFractionOfTotal } from "./xy/fraction-of-total";
+import { runRowMeansTotals } from "./xy/row-means-totals";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
 import { runBindingKinetics, runBindingSaturation } from "./xy/binding";
 import { runEnzymeInhibition } from "./xy/enzyme-inhibition";
@@ -198,6 +200,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Fraction of total",
     minColumns: 1,
     run: (c, p, t) => runFractionOfTotal(c, p as FractionOfTotalParams, t),
+  },
+  "row-means-totals": {
+    label: "Row means and totals",
+    minColumns: 1,
+    run: (c, p, t) => runRowMeansTotals(c, p as RowMeansTotalsParams, t),
   },
   "nonlinear-regression": {
     label: "Nonlinear regression",

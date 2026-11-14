@@ -416,6 +416,38 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         );
       })}
 
+      {result.rowMeans && result.rowMeans.length > 0 && (
+        <Table
+          title="Row means and totals"
+          columns={[
+            { label: "Row" },
+            ...(result.rowMeans.some((r) => r.x !== undefined) ? [{ label: "X", numeric: true }] : []),
+            { label: "N", numeric: true },
+            { label: "Total", numeric: true },
+            { label: "Mean", numeric: true },
+            { label: "SD", numeric: true },
+            { label: "SEM", numeric: true },
+            { label: "95% CI of mean", numeric: true },
+            { label: "%CV", numeric: true },
+            { label: "Median", numeric: true },
+            { label: "Geometric mean", numeric: true },
+          ]}
+          rows={result.rowMeans.map((r) => [
+            r.row,
+            ...(result.rowMeans!.some((w) => w.x !== undefined) ? [num(r.x)] : []),
+            r.n,
+            num(r.total),
+            num(r.mean),
+            num(r.sd),
+            num(r.sem),
+            r.ciLow == null && r.ciHigh == null ? "—" : `${num(r.ciLow)} to ${num(r.ciHigh)}`,
+            r.cv == null ? "—" : `${num(r.cv)}%`,
+            num(r.median),
+            num(r.geoMean),
+          ])}
+        />
+      )}
+
       {result.outlierGroups?.[0]?.grubbs && (
         <Table
           title="Outliers by column"

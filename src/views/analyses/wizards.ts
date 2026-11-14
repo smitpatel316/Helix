@@ -35,6 +35,7 @@ import type {
   RemoveBaselineParams,
   PruneRowsParams,
   FractionOfTotalParams,
+  RowMeansTotalsParams,
   SurvivalParams,
   CoxParams,
   PrincipalComponentAnalysisParams,
@@ -1314,6 +1315,36 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         totalBy: a.totalBy as FractionOfTotalParams["totalBy"],
         format: a.format as FractionOfTotalParams["format"],
       },
+    }),
+  },
+
+  "row-means-totals": {
+    questions: (_, table, tableType) => {
+      // XY: the Y data sets; Grouped: the groups (each spanning its
+      // replicate columns), so a row is summarised across every replicate.
+      const targets =
+        tableType === "xy"
+          ? yNames(table)
+          : tableType === "grouped"
+            ? table.sets.filter((s) => s.columns.some((c) => c.values.length > 0)).map((s) => s.name)
+            : dataNames(table);
+      if (!targets.length) return [];
+      return [
+        {
+          id: "ys",
+          ask: "Which data sets should each row be summarised across?",
+          kind: "names",
+          options: targets,
+          min: 1,
+        },
+      ];
+    },
+    finish: (a, table, tableType) => ({
+      type: "row-means-totals",
+      params: {
+        ys: a.ys as string[],
+        ...(tableType === "xy" ? { x: table.columns[0]?.name } : {}),
+      } satisfies RowMeansTotalsParams,
     }),
   },
 
