@@ -9,6 +9,8 @@ import { onFullscreenChange } from "../native";
 import { UniversalModal } from "./universal-modal";
 import { Dialog } from "../ui/dialog";
 import { ConverterDialog } from "./converter-dialog";
+import { AiConnectionsDialog } from "./ai-connections-dialog";
+import { useMcpSnapshotPublisher } from "../store/mcp-publish";
 import { SavePromptDialog } from "./save-prompt-dialog";
 import { TABLE_TYPE_OPTIONS } from "../views/tables";
 import { TableDetail } from "../views/tables/table-detail";
@@ -29,6 +31,8 @@ const HIDDEN_SIDEBAR = {
 export function AppShell() {
   const documentActions = useDocument();
   useAppMenu(documentActions);
+  // v3 Phase 1: this window's project goes to the MCP server on every edit.
+  useMcpSnapshotPublisher();
   const { projectUpdated, dismissProjectUpdated } = documentActions;
   const { sidebar } = useLayout();
   const [fullscreen, setFullscreen] = React.useState(false);
@@ -93,6 +97,8 @@ export function AppShell() {
       />
 
       <ConverterDialog />
+
+      <AiConnectionsDialog />
 
       <SavePromptDialog onChoose={(choice, remember) => documentActions.resolveSavePrompt(choice, remember)} />
 
