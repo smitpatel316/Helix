@@ -7192,7 +7192,7 @@ check("the Match popup menu passes an explicit position and window, with a re-en
   ok(match.includes("await choose(event);"));
 });
 
-check("Open Recent reads only a list of paths", () => {
+check("Open Recent reads local and remote entries, tolerating legacy and bad stored data", () => {
   const stored: Record<string, string> = {};
   const storage = {
     getItem: (k: string) => stored[k] ?? null,
@@ -7205,7 +7205,15 @@ check("Open Recent reads only a list of paths", () => {
       deepStrictEqual(loadRecents(), []);
     }
     stored["titer.recent"] = '["/a.hlx", 3, "/b.hlx"]';
-    deepStrictEqual(loadRecents(), ["/a.hlx", "/b.hlx"]);
+    deepStrictEqual(loadRecents(), [
+      { kind: "local", path: "/a.hlx" },
+      { kind: "local", path: "/b.hlx" },
+    ]);
+    stored["titer.recent"] =
+      '[{"kind":"remote","provider":"box","accountId":"u1","fileId":"f9","path":"/Budget.hlx"},{"kind":"remote","provider":"box","accountId":"u1","path":"/NoId.hlx"}]';
+    deepStrictEqual(loadRecents(), [
+      { kind: "remote", provider: "box", accountId: "u1", fileId: "f9", path: "/Budget.hlx" },
+    ]);
   } finally {
     delete (globalThis as { localStorage?: unknown }).localStorage;
   }
