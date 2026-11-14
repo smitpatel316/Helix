@@ -14,11 +14,14 @@ export function WithInspector({
   title,
   tag,
   inspector,
+  actions,
   children,
 }: {
   title: string;
   tag?: string;
   inspector: React.ReactNode;
+  /** Buttons at the toolbar's right end, beside the inspector's toggle. */
+  actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const { inspector: open, inspectorWidth, setLayout, setInspectorHere } = useLayout();
@@ -30,7 +33,16 @@ export function WithInspector({
   return (
     <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col">
-        <Toolbar title={title} tag={tag} actions={!open && <InspectorToggle />} />
+        <Toolbar
+          title={title}
+          tag={tag}
+          actions={
+            <>
+              {actions}
+              {!open && <InspectorToggle />}
+            </>
+          }
+        />
         {children}
       </div>
       <SidePanel

@@ -19,6 +19,8 @@ import {
   type RQueueSnapshot,
 } from "../src/stats/r-queue";
 import { parseProjectFile, parseProjectText, readPalette, serializeProjectFile, type ProjectFilePayload } from "../src/lib/project-file";
+import { writePrism } from "../src/lib/prism-write";
+import JSZip from "jszip";
 import {
   DEFAULT_GRAPH_OPTIONS,
   GRAPH_LIMITS,
@@ -774,6 +776,94 @@ check("a saved project reads back identical", () => {
   const { project, issues } = read(serializeProjectFile(payload));
   deepStrictEqual(project, payload);
   deepStrictEqual(issues, []);
+});
+
+// Floating notes (v2): color-coded notes pinned to a sheet — shown on screen,
+// never printed or exported. They live on the sheet's node, so a save keeps
+// them and a reload brings them back, on any sheet type.
+check("a floating note survives a save and reload, on any sheet", () => {
+  const noted: ProjectFilePayload = {
+    ...payload,
+    nodes: {
+      ...payload.nodes,
+      t1: {
+        ...table,
+        floatingNotes: [{ id: "n1", text: "Check this outlier", color: "pink", x: 120, y: 40 }],
+      },
+      g1: {
+        ...graph,
+        floatingNotes: [{ id: "n2", text: "Review with Mansi", color: "yellow", x: 30, y: 200 }],
+      },
+    },
+  };
+  const { project, issues, updated } = read(serializeProjectFile(noted));
+  deepStrictEqual(project, noted);
+  deepStrictEqual(issues, []);
+  strictEqual(updated, false);
+  // An emptied list reads as no notes, like a sheet that never had any.
+  const file = JSON.parse(serializeProjectFile(noted));
+  file.project.nodes.t1.floatingNotes = [];
+  strictEqual("floatingNotes" in read(JSON.stringify(file)).project.nodes.t1, false);
+});
+
+check("a floating note's unreadable values are dropped or repaired, and said", () => {
+  const file = JSON.parse(serializeProjectFile(payload));
+  file.project.nodes.t1.floatingNotes = [
+    { id: "n1", text: "kept", color: "pink", x: 10, y: 20 },
+    { id: "n2", text: "wrong color", color: "orange", x: 10, y: 20 }, // falls back to yellow
+    { id: "n3", text: 42, color: "yellow", x: 10, y: 20 }, // no text: dropped
+    { id: "n1", text: "same id twice", color: "yellow", x: 10, y: 20 }, // duplicate: dropped
+    { id: "n5", text: "off the top", color: "blue", x: -5, y: "high" }, // repaired to 0, 0
+  ];
+  const { project, issues, updated } = read(JSON.stringify(file));
+  deepStrictEqual(project.nodes.t1.floatingNotes, [
+    { id: "n1", text: "kept", color: "pink", x: 10, y: 20 },
+    { id: "n2", text: "wrong color", color: "yellow", x: 10, y: 20 },
+    { id: "n5", text: "off the top", color: "blue", x: 0, y: 0 },
+  ]);
+  strictEqual(updated, true);
+  ok(issues.some((i) => i.message.includes("floating note")));
+});
+
+check("a floating note never reaches a .prism export", async () => {
+  const marker = "NOT-FOR-EXPORT-7f3a";
+  const written = await writePrism(
+    {
+      nodes: {
+        table_1: {
+          id: "table_1",
+          type: "table",
+          name: "Minimal",
+          parentId: null,
+          tableType: "column",
+          data: { columns: ["Title", "A"], rows: [[null, "1"], [null, "2"]] },
+          floatingNotes: [{ id: "n1", text: marker, color: "yellow", x: 10, y: 20 }],
+        },
+      },
+      rootOrder: ["table_1"],
+      childOrder: { table_1: [] },
+      activeNodeId: "table_1",
+    },
+    "1.2.0",
+  );
+  const zip = await JSZip.loadAsync(written.bytes);
+  const texts = await Promise.all(
+    Object.values(zip.files)
+      .filter((f) => !f.dir)
+      .map((f) => f.async("string")),
+  );
+  ok(!texts.some((t) => t.includes(marker)), "note text leaked into the .prism file");
+  ok(!texts.some((t) => t.includes("floatingNotes")), "floatingNotes field leaked into the .prism file");
+});
+
+check("floating notes are hidden when printing", () => {
+  // The exporters render the Plotly figure, never this DOM layer, so the
+  // print stylesheet is the print half of the exclusion — and the pin that
+  // it exists (same static-read shape as the figure-export pins below).
+  const css = readFileSync("src/styles.css", "utf8");
+  ok(css.includes("@media print"), "no print stylesheet");
+  ok(css.includes(".floating-notes-layer"), "notes layer not hidden in print");
+  ok(/@media print\s*\{[^}]*display:\s*none/.test(css), "print rule doesn't hide the notes");
 });
 
 check("only the project is saved (no app state, no file path)", () => {
@@ -3591,6 +3681,24 @@ check("deleting a column drops its points' styles, even with no move given", () 
     label: "Delete Column",
   });
   deepStrictEqual(s.nodes.g9.graphOptions!.points, { "A#0": { size: 9 } });
+});
+
+check("a floating note's edits undo as one change, and clearing them drops the field", () => {
+  let s = makeInitialState();
+  const tableId = s.rootOrder[0];
+  const first = [{ id: "n1", text: "first", color: "yellow" as const, x: 10, y: 20 }];
+  const second = [{ id: "n1", text: "second", color: "pink" as const, x: 10, y: 20 }];
+  s = reducer(s, { type: "updateFloatingNotes", id: tableId, notes: first, at: 1000 });
+  deepStrictEqual(s.nodes[tableId].floatingNotes, first);
+  // A quick second edit (typing, recoloring) merges with the first in Undo.
+  s = reducer(s, { type: "updateFloatingNotes", id: tableId, notes: second, at: 1500 });
+  deepStrictEqual(s.nodes[tableId].floatingNotes, second);
+  s = reducer(s, { type: "undo" });
+  strictEqual(s.nodes[tableId].floatingNotes, undefined);
+  // Deleting the last note leaves no empty field behind.
+  s = reducer(s, { type: "updateFloatingNotes", id: tableId, notes: first, at: 3000 });
+  s = reducer(s, { type: "updateFloatingNotes", id: tableId, notes: [], at: 4000 });
+  strictEqual("floatingNotes" in s.nodes[tableId], false);
 });
 
 // ── Graphs ───────────────────────────────────────────────────────────────

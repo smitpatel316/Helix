@@ -106,3 +106,15 @@
 .checkerboard {
   background: repeating-conic-gradient(#e6e6e6 0 25%, #fff 0 50%) 0 0 / 16px 16px;
 }
+
+/* ── Floating notes ──────────────────────────────────────────────────
+ * Shown on screen only, never printed: a printed sheet (or a print to PDF)
+ * is the record, and Prism's floating notes likewise never print. The
+ * exporters never see them either — they render the Plotly figure, not
+ * this DOM layer — so this rule is the print half of the exclusion. */
+@media print {
+  .floating-notes-layer,
+  .floating-note-add {
+    display: none !important;
+  }
+}

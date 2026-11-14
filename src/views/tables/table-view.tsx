@@ -25,6 +25,7 @@ import {
 import { isGrouped, isNested } from "../../lib/dataset";
 import { seriesKeyOf } from "../../lib/columns";
 import { confirmDelete } from "../../native";
+import { AddFloatingNoteButton, FloatingNotesLayer } from "../../components/floating-notes";
 import { TABLES } from ".";
 
 // ── View ───────────────────────────────────────────────────────────────
@@ -45,27 +46,44 @@ export function TableView({ node }: { node: ProjectNode }) {
       showGroups={() => setLayout({ inspector: true })}
     />
   );
+  // The sheet the notes pin to: the grid fills it, and the layer covers it.
+  const sheet = (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {grid}
+      <FloatingNotesLayer node={node} />
+    </div>
+  );
 
   // An XY table has settings of its own: its replicates. A grouped or nested
   // table has settings of its own: its groups.
   if (node.tableType === "xy") {
     return (
-      <WithInspector title={node.name} tag={tag} inspector={<ReplicatesPanel data={data} update={update} />}>
-        {grid}
+      <WithInspector
+        title={node.name}
+        tag={tag}
+        inspector={<ReplicatesPanel data={data} update={update} />}
+        actions={<AddFloatingNoteButton node={node} />}
+      >
+        {sheet}
       </WithInspector>
     );
   }
   if (!isGrouped(data) && !isNested(data)) {
     return (
       <>
-        <Toolbar title={node.name} tag={tag} />
-        {grid}
+        <Toolbar title={node.name} tag={tag} actions={<AddFloatingNoteButton node={node} />} />
+        {sheet}
       </>
     );
   }
   return (
-    <WithInspector title={node.name} tag={tag} inspector={<GroupsPanel data={data} update={update} />}>
-      {grid}
+    <WithInspector
+      title={node.name}
+      tag={tag}
+      inspector={<GroupsPanel data={data} update={update} />}
+      actions={<AddFloatingNoteButton node={node} />}
+    >
+      {sheet}
     </WithInspector>
   );
 }

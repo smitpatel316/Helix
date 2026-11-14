@@ -49,7 +49,12 @@ it: your data are never locked into Titer.
 
 Every item has `id`, `type` (`"table"`, `"analysis"`, `"graph"` or `"figure"`),
 `name`, and `parentId`: `null` for a table or a figure, the table's id for an
-analysis or a graph.
+analysis or a graph. Any item may also carry `floatingNotes`: color-coded notes
+pinned to that sheet for review, as `{ "id", "text", "color", "x", "y" }` per
+note — `color` one of `"yellow"`, `"gray"`, `"green"`, `"pink"`, `"blue"`, and
+`x`/`y` the note's position in pixels from the sheet's top-left. Notes are
+shown on screen only: they are never printed and never reach an exported
+figure or a `.prism` file. An item with no notes leaves the field out.
 
 ### Data table
 

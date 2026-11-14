@@ -38,6 +38,7 @@ import { addLogisticCurve as addAnalysisLogisticCurve } from "./fitted-curve";
 import { useStartAnalysis } from "../analyses/use-analysis-launcher";
 import { loadPlotly } from "./plotly";
 import { fitZoom } from "../../store/use-layout";
+import { AddFloatingNoteButton, FloatingNotesLayer } from "../../components/floating-notes";
 import { addRegression } from "./regression-overlay";
 import { addDeming } from "./deming-overlay";
 import { addObservedFitted } from "./observed-fitted";
@@ -751,6 +752,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
     <WithInspector
       title={node.name}
       tag={titleCase(GRAPHS[type].label)}
+      actions={<AddFloatingNoteButton node={node} />}
       inspector={
         <FormatPanel
           graphId={node.id}
@@ -874,6 +876,10 @@ export function GraphView({ node }: { node: ProjectNode }) {
                   >
                     {Math.round(box.width)} × {Math.round(box.height)} px
                   </p>
+                  {/* Floating notes, pinned to the sheet in its own px: inside the
+                      scaled sheet they zoom with it, and the exporters render the
+                      Plotly figure only, so they never reach an exported image. */}
+                  <FloatingNotesLayer node={node} />
                 </div>
               </div>
             </div>

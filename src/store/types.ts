@@ -420,6 +420,22 @@ export interface Place {
   y: number;
 }
 
+/** A floating note's color: Prism's sticky-note colors (Yellow, Gray) plus
+ *  three more, so notes can be color-coded for review. */
+export type FloatingNoteColor = "yellow" | "gray" | "green" | "pink" | "blue";
+export const FLOATING_NOTE_COLORS: FloatingNoteColor[] = ["yellow", "gray", "green", "pink", "blue"];
+
+/** A color-coded note pinned to a sheet (data, results or graph) for review
+ *  or collaboration — shown on screen only, never printed or exported.
+ *  `x`/`y` are px from the sheet's top-left corner, like `Place`. */
+export interface FloatingNote {
+  id: string;
+  text: string;
+  color: FloatingNoteColor;
+  x: number;
+  y: number;
+}
+
 /** An outline color that is the color of what it outlines. */
 export const SAME_AS_FILL = "fill";
 
@@ -483,6 +499,9 @@ export interface ProjectNode {
   type: NodeType;
   name: string;
   parentId: string | null;
+  /** Floating notes pinned to this sheet (any type): shown on screen, never
+   *  printed or exported. Omitted when the sheet has none. */
+  floatingNotes?: FloatingNote[];
   tableType?: TableType;
   data?: TableData;
   /** Analysis nodes only: which statistical test this node runs. */

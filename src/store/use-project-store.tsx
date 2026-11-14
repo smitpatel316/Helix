@@ -2,6 +2,7 @@ import * as React from "react";
 
 import {
   NODE_NAMES,
+  type FloatingNote,
   type NodeType,
   type ProjectNode,
   type TableData,
@@ -75,6 +76,7 @@ type Action =
   /** `label` names the edit in the Edit menu; `move`: what it renamed or moved. */
   | { type: "updateTable"; id: string; data: TableData; label: string; move?: TableMove }
   | { type: "updateGraph"; id: string; options: GraphOptions; at: number }
+  | { type: "updateFloatingNotes"; id: string; notes: FloatingNote[]; at: number }
   | {
       type: "updateFigure";
       id: string;
@@ -246,6 +248,20 @@ function applyAction(state: ProjectState, action: Action): ProjectState {
         isDirty: true,
       };
     }
+    case "updateFloatingNotes": {
+      const node = state.nodes[action.id];
+      if (!node) return state;
+      // No notes left reads as no field, so an emptied sheet saves clean
+      // and an older file still opens identical.
+      const next = { ...node };
+      if (action.notes.length) next.floatingNotes = action.notes;
+      else delete next.floatingNotes;
+      return {
+        ...state,
+        nodes: { ...state.nodes, [action.id]: next },
+        isDirty: true,
+      };
+    }
     case "updateFigure": {
       const node = state.nodes[action.id];
       if (!node || node.type !== "figure") return state;
@@ -325,6 +341,7 @@ const UNDOABLE = new Set<Action["type"]>([
   "remove",
   "updateTable",
   "updateGraph",
+  "updateFloatingNotes",
   "updateFigure",
   "reorderRoot",
   "reorderChildren",
@@ -344,6 +361,8 @@ function changeName(action: Action): string {
       return action.label;
     case "updateGraph":
       return "Format Change";
+    case "updateFloatingNotes":
+      return "Note Change";
     case "updateFigure":
       return "Figure Change";
     default:
@@ -361,9 +380,11 @@ export function reducer(state: ProjectState, action: Action): ProjectState {
   const change =
     action.type === "updateGraph"
       ? { key: `graph ${action.id}`, at: action.at }
-      : action.type === "updateFigure"
-        ? { key: `figure ${action.id}`, at: action.at }
-        : null;
+      : action.type === "updateFloatingNotes"
+        ? { key: `notes ${action.id}`, at: action.at }
+        : action.type === "updateFigure"
+          ? { key: `figure ${action.id}`, at: action.at }
+          : null;
   const merged = change && state.lastChange?.key === change.key && change.at - state.lastChange.at < MERGE_MS;
   const before = {
     label: changeName(action),
@@ -411,6 +432,8 @@ interface ProjectActions {
    *  and the rows it moved, which the table's analyses and graphs then follow. */
   updateTable: (id: string, data: TableData, label: string, move?: TableMove) => void;
   updateGraph: (id: string, options: GraphOptions) => void;
+  /** Replaces a sheet's floating notes (an empty list clears them). */
+  updateFloatingNotes: (id: string, notes: FloatingNote[]) => void;
   openSelector: (selector: Selector) => void;
   closeSelector: () => void;
   reorderTables: (order: string[]) => void;
@@ -556,6 +579,8 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       removeNode: (id) => dispatch({ type: "remove", id }),
       updateTable: (id, data, label, move) => dispatch({ type: "updateTable", id, data, label, move }),
       updateGraph: (id, options) => dispatch({ type: "updateGraph", id, options, at: Date.now() }),
+      updateFloatingNotes: (id, notes) =>
+        dispatch({ type: "updateFloatingNotes", id, notes, at: Date.now() }),
       openSelector: (selector) => dispatch({ type: "openSelector", selector }),
       closeSelector: () => dispatch({ type: "closeSelector" }),
       reorderTables: (order) => dispatch({ type: "reorderRoot", order }),

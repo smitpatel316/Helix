@@ -15,6 +15,9 @@ import {
   GRAPH_LIMITS,
   clamp,
   type FigurePanel,
+  FLOATING_NOTE_COLORS,
+  type FloatingNote,
+  type FloatingNoteColor,
   type Limits,
   type GraphOptions,
   type GraphPalette,
@@ -152,7 +155,7 @@ const FILE_KEYS = ["app", "schemaVersion", "savedAt", "project"];
 const PROJECT_KEYS = ["nodes", "rootOrder", "childOrder", "activeNodeId"] satisfies (keyof ProjectFilePayload)[];
 // prettier-ignore
 const NODE_KEYS = Object.keys({
-  id: 1, type: 1, name: 1, parentId: 1, tableType: 1, data: 1,
+  id: 1, type: 1, name: 1, parentId: 1, floatingNotes: 1, tableType: 1, data: 1,
   analysisType: 1, analysisParams: 1, graphType: 1, graphOptions: 1,
   panels: 1, grid: 1, figureSize: 1, labelStyle: 1, figureTitle: 1, sharedLegend: 1, dpi: 1,
 } satisfies Record<keyof ProjectNode, 1>);
@@ -736,6 +739,54 @@ function readParams(
   return defined({ ...fill, ...defined(sanitized) }) as unknown as AnalysisParams;
 }
 
+/** A sheet's floating notes as a file holds them, forgivingly: a note with no
+ *  readable text is left out (a note is its text); an unknown color falls back
+ *  to yellow and a missing id is given one, so the note itself survives; a
+ *  position that isn't a number lands at the sheet's top-left. Anything
+ *  dropped or repaired is warned about once, naming the sheet. An empty list
+ *  reads as no notes, like a sheet that never had any. */
+function readFloatingNotes(raw: unknown, label: string, issues: ProjectIssue[]): FloatingNote[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) {
+    issues.push({
+      severity: "warning",
+      message: `Sheet “${label}” had floating notes that couldn't be read; they were left out.`,
+    });
+    return undefined;
+  }
+  const seen = new Set<string>();
+  let dropped = 0;
+  let repaired = 0;
+  const notes: FloatingNote[] = [];
+  for (const entry of raw) {
+    if (!isObj(entry) || typeof entry.text !== "string") {
+      dropped++;
+      continue;
+    }
+    const id = typeof entry.id === "string" && entry.id !== "" ? entry.id : `note_${Math.random().toString(36).slice(2, 10)}`;
+    if (seen.has(id)) {
+      dropped++;
+      continue;
+    }
+    seen.add(id);
+    const color = oneOf(FLOATING_NOTE_COLORS, entry.color);
+    // A note off the sheet's top or left edge can't be reached to drag back.
+    const x = isFiniteNumber(entry.x) ? Math.max(0, entry.x) : 0;
+    const y = isFiniteNumber(entry.y) ? Math.max(0, entry.y) : 0;
+    if (color === undefined || !isFiniteNumber(entry.x) || !isFiniteNumber(entry.y)) repaired++;
+    notes.push({ id, text: entry.text, color: (color ?? "yellow") as FloatingNoteColor, x, y });
+  }
+  if (dropped || repaired) {
+    issues.push({
+      severity: "warning",
+      message: `Sheet “${label}” had ${dropped + repaired === 1 ? "a floating note" : `${dropped + repaired} floating notes`} that couldn't be read as saved${
+        dropped ? `; ${dropped} ${dropped === 1 ? "was" : "were"} left out` : ""
+      }${repaired ? `; ${repaired} ${repaired === 1 ? "was" : "were"} repaired` : ""}.`,
+    });
+  }
+  return notes.length ? notes : undefined;
+}
+
 const NODE_TYPES: NodeType[] = ["table", "analysis", "graph", "figure"];
 
 /** A figure's fields as a file holds them, forgivingly: a missing or empty
@@ -809,6 +860,11 @@ function readNode(
     name: cellText(n.name) ?? "Untitled",
     parentId: typeof n.parentId === "string" ? n.parentId : null,
   } as ProjectNode;
+  // Floating notes are the sheet's own (any type): read forgivingly, and leave
+  // the field off when the sheet has none, so an older file still opens clean.
+  const floatingNotes = readFloatingNotes(n.floatingNotes, node.name, issues);
+  if (floatingNotes) node.floatingNotes = floatingNotes;
+  else delete node.floatingNotes;
 
   if (type === "table") {
     const read = isObj(n.data) ? readData(n.data, lower(n.tableType)) : null;
