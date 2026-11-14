@@ -44,16 +44,22 @@ research §7 Q2).
 1. **Bring-your-own credentials (built).** The user pastes their own Box
    app's client ID + secret in Settings → Connected Storage; they go
    straight to the OS keychain (one entry, `box:credentials`) and are sent
-   only to Box's token endpoint. This is what `connect_box()` uses today.
+   only to Box's token endpoint. This is the fallback when the broker is
+   unreachable, and the refresh path for tokens it issued.
    Friction: the user must create a Custom App → User Authentication
    (OAuth 2.0) in the Box Developer Console and enable `root_readwrite`.
    (Matches research §7 Q3.)
-2. **Tiny local broker (designed, not built).** A small server holds the
+2. **Tiny first-party broker (built, live).** A small server holds the
    client secret and exchanges codes for tokens; the desktop app never sees
-   the secret. `BOX_BROKER_URL` in `src-tauri/src/cloud_box.rs` is `None`
-   until this exists; the connect flow reports "not configured" and points
-   at BYO in the meantime. Needs: hosting (Pi + tunnel is the natural
-   home), an endpoint the app can reach, and Smit's call on who runs it.
+   the secret. `BOX_BROKER_URL` in `src-tauri/src/cloud_box.rs` points at
+   `https://box-broker.smitpatel.net` (Pi + tunnel); the client takes the
+   client id from `GET /config` per session (in memory only) and exchanges
+   codes via `POST /exchange`, refreshes via `POST /refresh`. Broker is the
+   default path; BYO stays as the fallback when the broker is unreachable,
+   and refreshes always go back through the source that issued the tokens
+   (`TokenSet.issued_via_broker`). The contract has no `/revoke`, so a
+   broker-issued disconnect is local-only for now (server-side token
+   expires on its own).
 3. **Shared secret shipped in the binary (rejected).** Anyone can extract
    it from the app; it would let a third party mint tokens for any user
    who authorized the app. Not done, not a fallback.

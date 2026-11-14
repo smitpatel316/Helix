@@ -7,6 +7,7 @@
 import { deepStrictEqual, ok, strictEqual } from "node:assert/strict";
 import {
   base64ToBytes,
+  boxAuthPath,
   bytesToBase64,
   cloudErrorMessage,
   copyName,
@@ -18,6 +19,7 @@ import {
   isOfflineError,
   localHandle,
   remoteHandle,
+  type CloudStatus,
 } from "../src/lib/cloud";
 import { parseRecents } from "../src/store/recents";
 
@@ -59,6 +61,21 @@ ok(!isOfflineError(null));
 strictEqual(cloudErrorMessage(conflict), "The file changed in the cloud since it was opened.");
 strictEqual(cloudErrorMessage(new Error("plain")), "plain");
 strictEqual(cloudErrorMessage("raw"), "raw");
+
+// ── Box auth path (Settings status line: broker vs BYO vs none) ──────────
+const statusBase: CloudStatus = {
+  accounts: [],
+  boxHasCredentials: false,
+  boxHasBroker: true,
+  boxBrokerReachable: true,
+};
+strictEqual(boxAuthPath(statusBase), "broker");
+strictEqual(boxAuthPath({ ...statusBase, boxBrokerReachable: false, boxHasCredentials: true }), "byo");
+strictEqual(boxAuthPath({ ...statusBase, boxBrokerReachable: false, boxHasBroker: false, boxHasCredentials: true }), "byo");
+strictEqual(boxAuthPath({ ...statusBase, boxBrokerReachable: false }), "none");
+strictEqual(boxAuthPath(null), "none");
+// Broker first: reachable broker wins even when BYO credentials exist.
+strictEqual(boxAuthPath({ ...statusBase, boxHasCredentials: true }), "broker");
 
 // ── Recents: legacy strings migrate, new entries keep, junk drops ────────
 deepStrictEqual(parseRecents(["/a/Data.hlx", "/b/Other.hlx"]), [
