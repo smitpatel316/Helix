@@ -155,6 +155,14 @@ export const BIN_MODES = ["auto", "width", "count"] as const;
 /** ROUT's Q, in percent. */
 export const ROUT_Q = { min: 0.01, max: 50 };
 
+/** ROUT's Q (%) must lie in 0.01–50: at 0 (or below) no point's FDR-adjusted P
+ *  can ever fall below Q, so nothing is ever flagged; above 50 nearly every
+ *  point with P < 1 is flagged. Shared by the wizard question and the runner
+ *  so both reject the same values with the same message. */
+export function routQError(q: number): string | undefined {
+  return q >= 0.01 && q <= 50 ? undefined : "Q must be between 0.01 and 50.";
+}
+
 /** Params for "compare-two-groups": resolves to Student/Welch t-test, paired
  *  t-test, ratio t-test, Mann-Whitney, or Wilcoxon signed-rank, Prism-wizard style. */
 export interface CompareTwoGroupsParams {
@@ -759,7 +767,7 @@ export interface RocPoint {
 }
 
 /** The data sets an analysis runs on, in this order: columns, or a grouped table's groups.
- *  Absent (files before Helix 1.0.5): all of them, the first two for a two-group test. */
+ *  Absent (files before Titer 1.0.5): all of them, the first two for a two-group test. */
 interface DataSetsParam {
   sets?: string[];
 }
@@ -916,7 +924,8 @@ export interface FitRow {
 /** An unknown read off a standard curve: its row, its Y, the X the curve gives it (null when
  *  the curve never reaches that Y), 10^X when X is a log, and whether X lies beyond the
  *  standards' X. `low`/`high` are the 95% CI of the interpolated X, from inverting the
- *  curve's 95% confidence band (null where the band never reaches the Y). */
+ *  curve's 95% confidence band (null where the band never reaches the Y, and null where
+ *  the inversion comes back inverted, low above high, on a non-monotonic curve). */
 export interface InterpolatedRow {
   label: string;
   y: number;

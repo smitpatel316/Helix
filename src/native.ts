@@ -9,7 +9,12 @@ import { Image } from "@tauri-apps/api/image";
 import { Menu, Submenu, type MenuOptions } from "@tauri-apps/api/menu";
 import { message, save } from "@tauri-apps/plugin-dialog";
 import type { RVector } from "./stats/webr";
-import { interruptR } from "./stats/webr";
+import { cancelActiveEvals, interruptR, resetR } from "./stats/webr";
+import {
+  createEvalQueue,
+  setRQueueSnapshot,
+  type RQueueSnapshot,
+} from "./stats/r-queue";
 
 /** False when the UI runs in a plain browser (`npm run web`, for development) or in the tests. */
 export const isNative = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -43,10 +48,10 @@ export async function confirmDelete(title: string, detail: string): Promise<bool
   return answer === "Delete" || answer === "Ok";
 }
 
-/** A Download / Later prompt for a newer version of Helix. */
+/** A Download / Later prompt for a newer version of Titer. */
 export async function askToDownload(version: string): Promise<boolean> {
-  const answer = await message("Download it from GitHub, then replace Helix in your Applications folder.", {
-    title: `Helix ${version} is available`,
+  const answer = await message("Download it from GitHub, then replace Titer in your Applications folder.", {
+    title: `Titer ${version} is available`,
     kind: "info",
     buttons: { ok: "Download", cancel: "Later" },
   });
@@ -71,7 +76,7 @@ export function writeFile(path: string, data: string | Uint8Array) {
   return invoke("write_file", bytes, { headers: { path: encodeURIComponent(path) } });
 }
 
-/** My Palettes' file in Helix's data folder: its text ("" before the first), and a new one. */
+/** My Palettes' file in Titer's data folder: its text ("" before the first), and a new one. */
 export const readMyPalettes = () => invoke<string>("read_my_palettes");
 export const writeMyPalettes = (text: string) => invoke("write_my_palettes", { text });
 
@@ -86,10 +91,12 @@ export function evalR(code: string): Promise<RVector> {
   });
 }
 
-/** From a project window: stop the R running in the engine, if one is. The
- *  shell drops the waiting requests and tells the engine window to interrupt
- *  its R; a dropped request never resolves — the caller's own watchdog
- *  rejects with the timeout/cancel error instead. Best effort, never throws. */
+/** From a project window: stop this window's own R work in the engine, if
+ *  any is. The shell drops only this window's waiting requests and tells
+ *  the engine window which ones, so a queued evaluation is dequeued
+ *  without touching R — another window's in-flight install is left alone
+ *  (FL-F14). From the engine window (its stuck-engine recovery) it drops
+ *  every waiting request instead. Best effort, never throws. */
 export async function cancelR(): Promise<void> {
   if (!isNative) return;
   try {
@@ -100,19 +107,83 @@ export async function cancelR(): Promise<void> {
   }
 }
 
-/** In the engine window: answers every request with `evaluate`. */
+/** In the engine window: answers every request with `evaluate`, one at a
+ *  time, in arrival order — the app's explicit FIFO (M17: webR serializes
+ *  internally too, but that queue is invisible; this one publishes its
+ *  state on "r-queue" so project windows can show a queue position instead
+ *  of bare "Running…"). A request cancelled by its window is dequeued
+ *  (FL-F14), so a queued check's cancel never touches the running
+ *  evaluation; a request whose caller gave up some other way still runs
+ *  once when it reaches the front — the shell discards its late result —
+ *  so a cancelled caller never wedges the queue. */
 export async function serveR(evaluate: (code: string) => Promise<RVector>) {
+  // The engine (re)started: until it says it is ready, no request may be
+  // sent straight to it (R3-03). The shell clears its `ready` flag here,
+  // so a request arriving between this window's listeners attaching and
+  // `r_ready` is queued once and re-sent once — never emitted twice.
+  await invoke("r_starting");
+  const queue = createEvalQueue((snapshot) => {
+    setRQueueSnapshot(snapshot);
+    // Best effort: project windows listen for "r-queue" and show the depth.
+    void getCurrentWebviewWindow().emit("r-queue", snapshot).catch(() => {});
+  });
   await getCurrentWebviewWindow().listen<[number, string]>("r-eval", ({ payload: [id, code] }) =>
-    evaluate(code).then(
+    queue.enqueue(() => evaluate(code), id).then(
       (values) => invoke("r_result", { id, values }),
       (err: unknown) => invoke("r_result", { id, error: err instanceof Error ? err.message : String(err) }),
     ),
   );
-  // A project window asked R to stop (its watchdog fired, or the user hit
-  // Cancel): interrupt this window's R. If the channel cannot be
-  // interrupted, the evaluation's own watchdog restarts the engine.
-  await getCurrentWebviewWindow().listen("r-interrupt", () => interruptR());
+  // A project window cancelled its own requests (its watchdog fired, or
+  // the user hit Cancel): the shell dropped them and sends their ids.
+  // Dequeue the ones still waiting — without touching R — and interrupt R
+  // only if the evaluation now running is one of them. A queued cancel
+  // used to clear every window's waiting requests and restart the engine,
+  // killing another window's in-flight install (FL-F14).
+  await getCurrentWebviewWindow().listen<number[]>("r-cancel", ({ payload: ids }) => {
+    if (queue.cancel(ids).runningCancelled) {
+      // A bare interrupt is a no-op on Tauri's PostMessage channel, so it
+      // alone would leave the engine wedged until the 5-minute watchdog
+      // budget ran out (R3-03): abort this window's live evaluations too,
+      // which starts their watchdog's 5-second grace — if R is still stuck
+      // after it, the engine is abandoned and reloaded (onEngineStuck).
+      // The queue runs one evaluation at a time, and `runningCancelled`
+      // means that one is the canceller's, so no other window's work is
+      // touched.
+      interruptR();
+      cancelActiveEvals();
+    }
+  });
+  // The engine window itself asked R to stop (its stuck-engine recovery,
+  // before the reload): interrupt this window's R, and abort its live
+  // evaluations so the watchdog's grace / reload escalation runs even
+  // where the interrupt itself is a no-op (R3-03).
+  await getCurrentWebviewWindow().listen("r-interrupt", () => {
+    interruptR();
+    cancelActiveEvals();
+  });
   await invoke("r_ready");
+}
+
+/** In a project window: keeps this window's copy of the R queue's state
+ *  current (the engine window publishes "r-queue" whenever it changes).
+ *  No-op outside the app (tests, `npm run web`) — the snapshot stays null
+ *  there. Returns the unlisten function. */
+export async function onRQueue() {
+  if (!isNative) return () => {};
+  return getCurrentWebviewWindow().listen<RQueueSnapshot>("r-queue", ({ payload }) => setRQueueSnapshot(payload));
+}
+
+/** In a project window: the engine window (re)started, so its R is fresh
+ *  with an empty VFS — this window's installed-package states are void
+ *  with it (R3-02). Clear them (`resetR`), or the next analysis would see
+ *  its packages `ready`, skip the install, and fail with `there is no
+ *  package called '…'` in the fresh engine. The shell broadcasts
+ *  "r-reset" from `r_ready` (main.rs) on every engine start, including
+ *  the first boot (when there is nothing to clear). No-op outside the app.
+ *  Returns the unlisten function. */
+export async function onEngineReset() {
+  if (!isNative) return () => {};
+  return getCurrentWebviewWindow().listen("r-reset", () => resetR());
 }
 
 // ── Window ─────────────────────────────────────────────────────────────
@@ -131,7 +202,7 @@ export function setRecentDocuments(paths: string[]) {
 }
 
 /** Run `canClose` whenever the window is about to close (red button, ⌘W, ⌘Q). A window
- *  that stays open while Helix quits stops the quitting. */
+ *  that stays open while Titer quits stops the quitting. */
 export function onCloseRequested(canClose: () => Promise<boolean>) {
   if (!isNative) return () => {};
   const off = win().onCloseRequested(async (event) => {
@@ -145,8 +216,8 @@ export function onCloseRequested(canClose: () => Promise<boolean>) {
 /** The accent color chosen in System Settings ▸ Appearance (#RRGGBB), or null. */
 export const accentColor = () => (isNative ? invoke<string | null>("accent_color") : Promise.resolve(null));
 
-/** Helix's website, GitHub page, releases or Buy Me a Coffee page, in the default browser. */
-export const openLink = (link: "website" | "github" | "releases" | "coffee") => void invoke("open_link", { link });
+/** Titer's GitHub page, its releases, or Buy Me a Coffee, in the default browser. */
+export const openLink = (link: "github" | "releases" | "coffee") => void invoke("open_link", { link });
 
 /** Calls `handler` now and whenever the window enters or leaves full screen. */
 export function onFullscreenChange(handler: (fullscreen: boolean) => void) {
@@ -192,7 +263,7 @@ export const newProject = () => invoke("new_project");
 /** File ▸ Open…: the Open panel, then the chosen project opens as `openProjects` decides. */
 export const chooseProject = () => invoke("choose_project");
 
-/** File ▸ Import Prism File…: the Open panel for a Prism `.pzfx` file.
+/** File ▸ Import Prism File…: the Open panel for a Prism file (`.pzfx` or `.prism`).
  *  Non-blocking: the invoke returns at once, and the shell emits
  *  "prism-file-picked" with the path, or null on Cancel, once the user
  *  picks. A blocking picker here deadlocked the app (Nov 9, macOS +
@@ -210,6 +281,16 @@ export async function onPrismFilePicked(handler: (path: string | null) => void) 
 
 /** A Prism `.pzfx` file's text, for import. */
 export const readPrismText = (path: string) => invoke<string>("read_prism_text", { path });
+
+/** A Prism `.prism` file's bytes, for import — a `.prism` file is a ZIP, so
+ *  text won't do. The shell returns base64; this decodes it. */
+export async function readPrismBytes(path: string): Promise<Uint8Array> {
+  const base64 = await invoke<string>("read_prism_bytes", { path });
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
 
 /** In the engine window: calls `handler` when the last project window has closed. */
 export function onNoWindows(handler: () => void) {
@@ -243,7 +324,7 @@ export function onDrop(handler: (paths: string[]) => void) {
 export type MenuItems = NonNullable<MenuOptions["items"]>;
 
 // Menus made here live in the shell until closed, even once replaced: each one is
-// closed when it's done with, or they would pile up until Helix quits.
+// closed when it's done with, or they would pile up until Titer quits.
 let menuBar: (Menu | Submenu)[] = [];
 // One menu bar is installed at a time, in the order asked: an earlier one, slower to
 // build, never ends up over a later one.

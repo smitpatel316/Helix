@@ -80,7 +80,7 @@ import { runFrequencyDistribution } from "./column/frequency-distribution";
 import { runMonteCarlo } from "./simulation/monte-carlo";
 import type { MonteCarloParams } from "./types";
 import type { TableData } from "../store/types";
-import { readTable, setColumns, type Column } from "../lib/dataset";
+import { datasetColumns, readTable, setColumns, type Column } from "../lib/dataset";
 import { ensurePackages, packageErrorMessage, packageStatus } from "./webr";
 
 /** How every test runs: the columns of its data sets (`sets`, all by default), the
@@ -354,7 +354,14 @@ export function runAnalysis(
   ];
   const gone =
     params?.sets?.find((name) => !table.sets.some((s) => s.name === name)) ??
-    chosen.find((name) => name !== undefined && !table.columns.some((c) => c.name === name));
+    chosen.find(
+      (name) =>
+        name !== undefined &&
+        // A Y data set's replicates pool (see datasetColumns): "Control"
+        // names "Control_1..3", so it counts as present.
+        !table.columns.some((c) => c.name === name) &&
+        datasetColumns(table.columns, name).length === 0,
+    );
   if (gone) return Promise.resolve({ error: missingColumn(gone) });
   const byTest = results.get(data) ?? new Map<string, Promise<AnalysisOutcome>>();
   results.set(data, byTest);
@@ -376,7 +383,13 @@ export function runAnalysis(
         }
       }
       try {
-        return await analysis.run(columns, params, table.titles, data.rowGroups);
+        const outcome = await analysis.run(columns, params, table.titles, data.rowGroups);
+        // A failed run is not cached — whether the runner threw (below) or
+        // returned an error outcome (a bad fit, a timeout, a cancel): asking
+        // again runs it for real instead of replaying the stale error.
+        // Without this, the Retry button after a timeout/cancel was a no-op.
+        if ("error" in outcome) byTest.delete(key);
+        return outcome;
       } catch (err: unknown) {
         // A failure (an R error, R not starting) is shown, not kept: asking again retries.
         byTest.delete(key);

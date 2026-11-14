@@ -1,7 +1,7 @@
 // How numbers and P values are written everywhere (results, graph notes, brackets), and
 // names in menus and pickers.
 
-/** A number as Helix shows it: 4 significant figures, "—" when missing. */
+/** A number as Titer shows it: 4 significant figures, "—" when missing. */
 export function num(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
   return Number.isInteger(value) ? String(value) : Number(value.toPrecision(4)).toString();

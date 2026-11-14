@@ -4,7 +4,7 @@
 // patients. Every table type, each with the test its data call for and graphs drawn as
 // they would be published (one color per treatment arm throughout), on realistic data
 // drawn from a fixed seed. Every variant of every test is checked by the reference tests,
-// not here. `npm run sample` writes it to `samples/Helix Sample.hlx`; `npm test` checks
+// not here. `npm run sample` writes it to `samples/Titer Sample.hlx`; `npm test` checks
 // that every analysis in it runs and every graph draws.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -601,9 +601,9 @@ export const sampleProject: ProjectFilePayload = { nodes, rootOrder, childOrder,
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const folder = new URL("../samples/", import.meta.url);
   mkdirSync(folder, { recursive: true });
-  writeFileSync(new URL("Helix Sample.hlx", folder), serializeProjectFile(sampleProject));
+  writeFileSync(new URL("Titer Sample.hlx", folder), serializeProjectFile(sampleProject));
   const count = (type: string) => Object.values(nodes).filter((n) => n.type === type).length;
   console.log(
-    `samples/Helix Sample.hlx: ${count("table")} tables, ${count("analysis")} analyses, ${count("graph")} graphs, ${count("figure")} figures.`,
+    `samples/Titer Sample.hlx: ${count("table")} tables, ${count("analysis")} analyses, ${count("graph")} graphs, ${count("figure")} figures.`,
   );
 }

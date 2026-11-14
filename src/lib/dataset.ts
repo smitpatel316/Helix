@@ -97,6 +97,19 @@ export function splitXY(columns: Column[]): { x?: Column; ys: Column[] } {
   return { x: x?.values.length ? x : undefined, ys: ys.filter((c) => c.values.length > 0) };
 }
 
+/** The columns of one Y data set: the column itself, or its replicate
+ *  columns ("Control" → "Control_1", "Control_2", …). Prism stores
+ *  replicates as one data set and fits every replicate point; a Titer fit
+ *  that names the data set does the same, so an imported Prism analysis
+ *  runs on the points Prism fitted. A plain column name is unchanged. */
+export function datasetColumns(columns: Column[], name: string): Column[] {
+  const exact = columns.find((c) => c.name === name);
+  if (exact) return [exact];
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const replicate = new RegExp(`^${escaped}_\\d+$`);
+  return columns.filter((c) => replicate.test(c.name));
+}
+
 /** Why an XY table can't be analyzed or drawn yet, if it can't: X (its first data column)
  *  needs numbers, and so does a Y column — `y`, when one is chosen. */
 export function xyProblem(columns: Column[], y?: string): string | undefined {

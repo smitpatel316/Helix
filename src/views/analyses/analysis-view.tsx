@@ -9,7 +9,8 @@ import { ANALYSES } from "../../stats";
 import { cancelActiveEvals } from "../../stats/webr";
 import { titleCase } from "../../lib/format";
 import { AnalysisResultsView } from "./analysis-results-view";
-import { useAnalysis } from "./use-analysis";
+import { useAnalysis, useRQueue } from "./use-analysis";
+import { rQueueStatusText } from "../../stats/r-queue";
 
 /** "1:23" for the elapsed running time. */
 function formatElapsed(ms: number): string {
@@ -23,6 +24,7 @@ export function AnalysisView({ node }: { node: ProjectNode }) {
   // Bumps to re-run the test after an error, a timeout or a cancel.
   const [retryNonce, setRetryNonce] = React.useState(0);
   const outcome = useAnalysis(node.analysisType, data, node.analysisParams, { retryKey: retryNonce });
+  const queue = useRQueue();
   const running = Boolean(data && !outcome);
   const errored = Boolean(data && outcome && "error" in outcome);
   const [elapsedMs, setElapsedMs] = React.useState(0);
@@ -45,7 +47,7 @@ export function AnalysisView({ node }: { node: ProjectNode }) {
             <p className="text-regular text-secondary">
               {!data
                 ? "This analysis has no source table."
-                : (outcome?.error ?? `Running… ${formatElapsed(elapsedMs)}`)}
+                : (outcome?.error ?? `Running… ${formatElapsed(elapsedMs)}${rQueueStatusText(queue)}`)}
             </p>
             {running && <Button onClick={() => cancelActiveEvals()}>Cancel</Button>}
             {errored && (

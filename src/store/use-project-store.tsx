@@ -14,12 +14,7 @@ import { TABLES } from "../views/tables";
 import { GRAPHS, newGraphOptions } from "../views/graphs";
 import { ANALYSES } from "../stats";
 import { followTable, type TableMove } from "./references";
-import {
-  DEFAULT_FIGURE_DPI,
-  DEFAULT_FIGURE_SIZE,
-  DEFAULT_LABEL_STYLE,
-  newFigurePanels,
-} from "../lib/figure";
+import { DEFAULT_FIGURE_DPI, DEFAULT_FIGURE_SIZE, DEFAULT_LABEL_STYLE, newFigurePanels } from "../lib/figure";
 import type { FigureGrid, FigureLabelStyle, FigurePanel, FigureSize, Resolution, SharedLegend } from "./types";
 
 export type { ProjectNode } from "./types";
@@ -30,7 +25,9 @@ type Selector =
   | { kind: "new-analysis"; tableId: string }
   | { kind: "analysis-params"; tableId: string; testType: AnalysisPickerValue }
   | { kind: "new-graph"; tableId: string }
-  | { kind: "simulate-data"; tableId: string };
+  | { kind: "simulate-data"; tableId: string }
+  | { kind: "converter" }
+  | { kind: "save-prompt" };
 
 /** The project's content: what a file holds, and what Undo brings back. */
 interface Content {
@@ -43,6 +40,9 @@ interface Content {
 
 interface ProjectState extends Content {
   activeNodeId: string | null;
+  /** Unknown keys from a newer/hand-edited file's envelopes (FF-F12), carried through save. */
+  fileUnknowns?: Record<string, unknown>;
+  projectUnknowns?: Record<string, unknown>;
   selector: Selector | null;
   /** Path of the `.hlx` file this project was opened from / last saved to. */
   filePath: string | null;
@@ -101,8 +101,10 @@ type Action =
       rootOrder: string[];
       childOrder: Record<string, string[]>;
       activeNodeId: string | null;
+      fileUnknowns?: Record<string, unknown>;
+      projectUnknowns?: Record<string, unknown>;
       filePath: string | null;
-      /** Changed as it was read (repaired, or from an older Helix): to be saved. */
+      /** Changed as it was read (repaired, or from an older Titer): to be saved. */
       edited?: boolean;
     }
   | { type: "markSaved"; filePath: string; savedRevision: number };
@@ -171,7 +173,20 @@ function applyAction(state: ProjectState, action: Action): ProjectState {
       const name = pid === null ? nextName(action.node.name, taken) : uniqueName(action.node.name, taken);
       const node = { ...action.node, name };
       const nodes = { ...state.nodes, [node.id]: node };
-      const rootOrder = pid === null ? [...state.rootOrder, node.id] : state.rootOrder;
+      // A new table goes before the first figure at the project root:
+      // parseProjectFile reorders rootOrder tables-then-figures, so
+      // appending a table after a figure would mark every save/load
+      // round-trip as updated (#22). Figures still append at the end.
+      const firstFigure =
+        node.type === "table"
+          ? state.rootOrder.findIndex((id) => state.nodes[id]?.type === "figure")
+          : -1;
+      const rootOrder =
+        pid === null
+          ? firstFigure === -1
+            ? [...state.rootOrder, node.id]
+            : [...state.rootOrder.slice(0, firstFigure), node.id, ...state.rootOrder.slice(firstFigure)]
+          : state.rootOrder;
       const childOrder =
         pid === null
           ? { ...state.childOrder, [node.id]: [] } // a new table starts empty
@@ -281,6 +296,8 @@ function applyAction(state: ProjectState, action: Action): ProjectState {
         rootOrder: action.rootOrder,
         childOrder: action.childOrder,
         activeNodeId: action.activeNodeId,
+        ...(action.fileUnknowns ? { fileUnknowns: action.fileUnknowns } : {}),
+        ...(action.projectUnknowns ? { projectUnknowns: action.projectUnknowns } : {}),
         selector: null,
         filePath: action.filePath,
         isDirty: action.edited ?? false,
@@ -405,6 +422,8 @@ interface ProjectActions {
     rootOrder: string[];
     childOrder: Record<string, string[]>;
     activeNodeId: string | null;
+    fileUnknowns?: Record<string, unknown>;
+    projectUnknowns?: Record<string, unknown>;
     /** null: a project not saved anywhere yet (the sample project). */
     filePath: string | null;
     /** Changed as it was read: it opens edited, so saving keeps it as it is now. */
@@ -573,7 +592,9 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     tables: state.rootOrder
       .filter((id) => state.nodes[id]?.type === "table")
       .map((id) => ({ ...outlineNode(state.nodes[id]), children: childrenOf(state, id).map(outlineNode) })),
-    figures: state.rootOrder.filter((id) => state.nodes[id]?.type === "figure").map((id) => outlineNode(state.nodes[id])),
+    figures: state.rootOrder
+      .filter((id) => state.nodes[id]?.type === "figure")
+      .map((id) => outlineNode(state.nodes[id])),
   });
   const outline = React.useMemo<Outline>(
     () => ({ ...JSON.parse(outlineText), activeNodeId: state.activeNodeId }),

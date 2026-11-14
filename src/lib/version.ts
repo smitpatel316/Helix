@@ -14,10 +14,10 @@ export function isNewer(a: string, b: string): boolean {
   return false;
 }
 
-const RELEASE = "https://api.github.com/repos/mickaphd/Helix/releases/latest";
+const RELEASE = "https://api.github.com/repos/smitpatel316/Helix/releases/latest";
 // GitHub answers 60 checks an hour per network (a lab's Macs share one). Past that, the
-// version on the main branch, which runs ahead of a release only while it is being built.
-const MAIN = "https://raw.githubusercontent.com/mickaphd/Helix/main/package.json";
+// version on the development branch, which runs ahead of a release only while it is being built.
+const MAIN = "https://raw.githubusercontent.com/smitpatel316/Helix/feat/prism-import-survival/package.json";
 
 /** The latest version out ("v1.0.4"); null when none is released yet. */
 export async function latestVersion(): Promise<unknown> {

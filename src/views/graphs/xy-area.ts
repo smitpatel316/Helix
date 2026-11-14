@@ -3,14 +3,16 @@
 import type { GraphOptions } from "../../store/types";
 import type { GraphModule, GraphFigure } from ".";
 import { pairUp, type Column } from "../../lib/dataset";
-import { xyLayout, type Paint } from "./plot-helpers";
+import { sortPairsByX, xyLayout, type Paint } from "./plot-helpers";
 
 function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFigure {
   const [xCol, ...ySeries] = columns;
   if (!xCol || ySeries.length === 0) return { data: [], layout: xyLayout(options, xCol?.name ?? "X", 0) };
 
   const data = ySeries.map((y, i) => {
-    const { x, y: yy } = pairUp(xCol, y);
+    const pairs = pairUp(xCol, y);
+    // Filled in X order, not table row order: the fill must follow the trend.
+    const { x, y: yy } = sortPairsByX(pairs.x, pairs.y);
     const over = paint.pattern(y.name, i);
     return {
       type: "scatter",
@@ -26,7 +28,7 @@ function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFig
     };
   });
 
-  return { data, layout: xyLayout(options, xCol.name, ySeries.length, { zeroBase: true }) };
+  return { data, layout: xyLayout(options, xCol.name, ySeries.length, { zeroBase: true, seriesNames: ySeries.map((y) => y.name) }) };
 }
 
 export const xyArea: GraphModule = {

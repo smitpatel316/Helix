@@ -1,5 +1,5 @@
 // Friedman test — non-parametric alternative to repeated-measures ANOVA for
-// ≥3 matched groups. Unlike Prism (which refuses the test on any missing value), Helix
+// ≥3 matched groups. Unlike Prism (which refuses the test on any missing value), Titer
 // leaves incomplete rows out and says how many. Optionally follows up with Dunn's test
 // between every pair of groups (pairwise z-tests on within-block ranks, Bonferroni-corrected).
 import type { FriedmanParams } from "../types";

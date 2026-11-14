@@ -22,7 +22,7 @@ import type {
 } from "../types";
 import { describe, pRow, rVec } from "../column/base";
 import { num } from "../../lib/format";
-import { splitXY, xyProblem } from "../../lib/dataset";
+import { datasetColumns, splitXY, xyProblem } from "../../lib/dataset";
 import { evalNamedVector, type RVector } from "../webr";
 import { rowName } from "../grouped/base";
 import {
@@ -40,11 +40,18 @@ import {
   modelSpec,
   parseFit,
   prepareFit,
+  startExpressions,
   type DerivedRow,
   type FitOptions,
   type ModelSpec,
 } from "./nonlinear-fit";
-import { runGlobalFit, type GlobalModelDef, type GlobalParamDef } from "./global-fit";
+import {
+  runGlobalFit,
+  type GlobalFitResult,
+  type GlobalFitSeries,
+  type GlobalModelDef,
+  type GlobalParamDef,
+} from "./global-fit";
 // The overlay's closed-form evaluator, reused for a global fit's per-series
 // R² (the fit and the overlay can never disagree). This closes an import
 // cycle with fitted-curve.ts (it imports termLabel/positiveXOnly from here),
@@ -56,6 +63,7 @@ import { evaluate as evaluateCurve } from "../../views/graphs/fitted-curve";
 // live in nonlinear-fit.ts now; positiveXOnly matches upstream's helper.
 export { MODEL_LABEL };
 export const positiveXOnly = (model: NonlinearModel) => modelSpec(model).positiveX === true;
+export const nonNegativeXOnly = (model: NonlinearModel) => modelSpec(model).nonNegativeX === true;
 
 /** A parameter as results name it (its name in the equations otherwise). */
 const TERM_LABEL: Record<string, string> = { HillSlope: "Hill slope", S: "Asymmetry (S)" };
@@ -370,7 +378,7 @@ const coefOf = (coefficients: RegressionCoefficient[], term: string) =>
   coefficients.find((c) => c.term === termLabel(term))?.estimate ?? null;
 
 /** The fitted equation, from the fitted coefficients (4 significant figures,
- *  like the rest of Helix's display). Only the exponential models carry one —
+ *  like the rest of Titer's display). Only the exponential models carry one —
  *  the older models keep their pinned result shape. */
 function equation(
   model: NonlinearModel,
@@ -640,11 +648,17 @@ const R_INTERP =
  *  in `u` — `xi` the interpolated X, `li`/`hi` its 95% CI (NA when the curve
  *  or band never reaches the unknown). The grid covers the same extended
  *  range the point-estimate search covers, so extrapolated unknowns get a CI
- *  too. (Plan 02's band inversion, kept from our fork: upstream has no CIs.) */
+ *  too. (Plan 02's band inversion, kept from our fork: upstream has no CIs.)
+ *  The root search runs the standards' own range [`slo`, `shi`] first, then
+ *  the extrapolated ranges below and above it — the same order R_INTERP
+ *  searches, so the CI inverts the same crossing the point estimate found.
+ *  `inc` is read off the finite curve values on [`slo`, `shi`]: a NaN at a
+ *  grid end (a curve undefined there) used to make `inc` NA and crash R on
+ *  `if (inc)` (R3-10). */
 function interpolationCode(spec: ModelSpec, unknowns: number[], lo: number, hi: number): string {
-  const u = `u<-c(${unknowns.join(",")});`;
+  const u = `u<-c(${unknowns.join(",")});slo<-${lo};shi<-${hi};`;
   const w = hi - lo;
-  const [gLo, gHi] = spec.positiveX ? [lo / 10, hi * 10] : [lo - w, hi + w];
+  const [gLo, gHi] = spec.positiveX || spec.nonNegativeX ? [lo / 10, hi * 10] : [lo - w, hi + w];
   const grid = `xg<-seq(${gLo},${gHi},length.out=200);`;
   // Curve + band, per fitter kind.
   const band =
@@ -663,22 +677,28 @@ function interpolationCode(spec: ModelSpec, unknowns: number[], lo: number, hi: 
         `fg<-g(xg,cf);se_g<-sapply(xg,se);lo<-fg-tc*se_g;up<-fg+tc*se_g;` +
         `fu<-function(xv) f(xv)+tc*se(xv);` +
         `fl<-function(xv) f(xv)-tc*se(xv);`;
-  // First root of h on the grid, scanning from the lowest X upward and refined by
-  // uniroot — so a non-monotonic curve reports its first crossing. NA when the
-  // curve (or band edge) never reaches the value on the grid.
-  const root = `firstRoot<-function(vals,fn){for(i in 1:(length(xg)-1)){a<-vals[i];b<-vals[i+1];if(is.na(a)||is.na(b)) next;if(a==0) return(xg[i]);if(a*b<0) return(uniroot(fn,c(xg[i],xg[i+1]))$root)};NA_real_};`;
+  // First root of h on the grid indices `idx`, scanning from the lowest X
+  // upward and refined by uniroot — so a non-monotonic curve reports its
+  // first crossing. NA when the curve (or band edge) never reaches the value
+  // on those indices. `rootIn` searches the standards' range first, then
+  // below it, then above it (R_INTERP's order); each extrapolated range
+  // shares its boundary grid point with the middle range, so a crossing
+  // straddling a boundary is not missed.
+  const root =
+    `firstRoot<-function(vals,fn,idx){if(length(idx)<2) return(NA_real_);for(j in 1:(length(idx)-1)){i<-idx[j];k<-idx[j+1];a<-vals[i];b<-vals[k];if(is.na(a)||is.na(b)) next;if(a==0) return(xg[i]);if(a*b<0) return(uniroot(fn,c(xg[i],xg[k]))$root)};NA_real_};` +
+    `rootIn<-function(vals,fn){im<-which(xg>=slo&xg<=shi);r<-firstRoot(vals,fn,im);if(is.na(r))r<-firstRoot(vals,fn,c(which(xg<slo),im[1]));if(is.na(r))r<-firstRoot(vals,fn,c(im[length(im)],which(xg>shi)));r};`;
   const loop =
     `xi<-rep(NA_real_,length(u));li<-rep(NA_real_,length(u));hi<-rep(NA_real_,length(u));` +
-    `inc<-fg[length(fg)]>fg[1];` +
+    `fin<-which(is.finite(fg)&xg>=slo&xg<=shi);if(length(fin)<2)fin<-which(is.finite(fg));inc<-if(length(fin)>=2) fg[fin[length(fin)]]>fg[fin[1]] else TRUE;` +
     `for(k in seq_along(u)){y0<-u[k];` +
-    `xi[k]<-firstRoot(fg-y0,function(xv) f(xv)-y0);` +
+    `xi[k]<-rootIn(fg-y0,function(xv) f(xv)-y0);` +
     // A band edge can cross a Y the curve itself never reaches — only invert
     // the band when the point estimate exists. On a rising curve the upper
     // band reaches Y first (the CI's lower bound); on a falling curve the
     // reverse. A bound the band never reaches stays NA (unbounded in range).
     // (The trailing `;`: R needs a separator after a `}`-closed loop before
     // the next expression — `}c(...)` is a parse error.)
-    `if(!is.na(xi[k])){rUp<-firstRoot(up-y0,function(xv) fu(xv)-y0);rLo<-firstRoot(lo-y0,function(xv) fl(xv)-y0);` +
+    `if(!is.na(xi[k])){rUp<-rootIn(up-y0,function(xv) fu(xv)-y0);rLo<-rootIn(lo-y0,function(xv) fl(xv)-y0);` +
     `if(inc){li[k]<-rUp;hi[k]<-rLo}else{li[k]<-rLo;hi[k]<-rUp}}};`;
   return u + grid + band + root + loop;
 }
@@ -765,11 +785,50 @@ async function compareModels(
   xCol: Column,
   weights: number[] | undefined,
   titles: (string | null)[],
+  columns: Column[],
 ): Promise<AnalysisOutcome> {
   const otherModel = params.compareModel!;
-  const specB = modelSpec(otherModel);
+  // Validate the comparison model before R sees it: it needs its own
+  // points (positive X, enough of them) — otherwise R fails cryptically
+  // ("subscript out of bounds", "NA/NaN/Inf in 'x'"). And both models
+  // must fit the SAME points, or the F test / AICc compare different data.
+  const preparedB = prepareFit(columns, params.y, otherModel);
+  if ("error" in preparedB) return preparedB;
+  if (
+    preparedB.xs.length !== first.xs.length ||
+    preparedB.xs.some((x, i) => x !== first.xs[i])
+  )
+    return {
+      error:
+        `“${MODEL_LABEL[otherModel]}” cannot be compared with “${MODEL_LABEL[model]}” — they need different ` +
+        `points (one drops X the other keeps), so the comparison would not be on the same points.`,
+    };
+  // The comparison model gets the same spec options as a primary fit: [L]
+  // for homologous competition (its equation leaves R variable L unbound
+  // without it) and the Cheng–Prusoff divisor for a Fit-Ki comparison.
+  const ligand = params.ligandConcentration;
+  const ligandKd = params.ligandKd;
+  const validPositive = (v: number | undefined) => v != null && Number.isFinite(v) && v > 0;
+  if (otherModel === "homologous-competition-logx" && !validPositive(ligand))
+    return {
+      error:
+        "Enter the radioligand concentration [L] (greater than 0, in the same units as X) to fit the homologous competition model.",
+    };
+  const wantsKiB =
+    params.fitKi === true && (otherModel === "inhibitor-3pl-logx" || isTwoSiteCompetition(otherModel));
+  const kiDivisorB =
+    wantsKiB && validPositive(ligand) && validPositive(ligandKd) ? 1 + ligand! / ligandKd! : undefined;
+  const specB = modelSpec(otherModel, {
+    ...(kiDivisorB != null ? { kiDivisor: kiDivisorB } : {}),
+    ...(otherModel === "homologous-competition-logx" ? { ligandConcentration: ligand } : {}),
+  });
+  // Both fits take the weights (R3-12): the summary code already weighted
+  // the sums of squares, but the lm()/nls() calls themselves were
+  // unweighted — wrong estimates and invalid F-test / AICc values.
+  const effA = applyFitOptions(spec, { weights }).spec;
+  const effB = applyFitOptions(specB, { weights }).spec;
   const nested = nestedPair(model, otherModel);
-  const dfn = nested ? Math.abs(spec.terms.length - specB.terms.length) : 0;
+  const dfn = nested ? Math.abs(effA.terms.length - effB.terms.length) : 0;
   const nestedValid = nested !== null && dfn > 0;
   let v: RVector;
   try {
@@ -777,8 +836,8 @@ async function compareModels(
       compareModelsRCode(
         first.xs,
         first.ys,
-        spec,
-        specB,
+        effA,
+        effB,
         weights,
         nestedValid ? { simplerIsA: nested!.simpler === model, dfn } : null,
       ),
@@ -786,7 +845,7 @@ async function compareModels(
   } catch (err) {
     return fitError(err, model);
   }
-  const parsedA = parseFit(v, spec, first.xs.length, termLabel, "a_");
+  const parsedA = parseFit(v, effA, first.xs.length, termLabel, "a_");
   const aiccA = v.aiccA ?? null;
   const aiccB = v.aiccB ?? null;
   const delta = aiccA != null && aiccB != null ? aiccA - aiccB : null;
@@ -822,7 +881,7 @@ async function compareModels(
         ? "AICc ties the two models."
         : "AICc could not be computed (too few points for the correction).");
   const sets = [{ name: first.yCol.name, xs: first.xs, ys: first.ys }];
-  return assembleResult(model, spec, xCol, first.yCol, undefined, sets, [parsedA], [], [], titles, first, undefined, params, stats, extraNotes);
+  return assembleResult(model, spec, xCol, first.yCol, undefined, sets, [parsedA], [], [], titles, first, undefined, undefined, params, stats, extraNotes);
 }
 
 /** The default shared parameters for a global fit (plan 26): the dose
@@ -861,11 +920,13 @@ async function runGlobalNonlinear(
     series.push({ name, xs: p.xs, ys: p.ys });
     yCols.push(p.yCol);
   }
-  // A series that will not fit alone will not fit globally either.
+  // A series that will not fit alone will not fit globally either. The
+  // starts come from the same constrained fits (fixed/bounded parameters
+  // applied), so a held parameter's value shapes the other starts too.
   const singles: { coefficients: RegressionCoefficient[] }[] = [];
   for (const s of series) {
     try {
-      singles.push(await fitModelSpec(s.xs, s.ys, spec, "", termLabel));
+      singles.push(await fitModelSpec(s.xs, s.ys, spec, "", termLabel, { fixed, bounds }));
     } catch (err) {
       return {
         error: `The “${s.name}” curve could not be fitted on its own (${err instanceof Error ? err.message : String(err)}). Fit each data set separately first.`,
@@ -925,19 +986,123 @@ async function runGlobalNonlinear(
             perSeries.push({ ...c, term: termLabel(termOfVar.get(m[1]) ?? m[1]) });
         } else perSeries.push({ ...c, term: termLabel(termOfVar.get(c.term) ?? c.term) });
       }
-      return evaluateCurve(model, perSeries, x);
+      // Fixed parameters are not fitted, so they are absent from the
+      // coefficients — but the curve still needs their values: without
+      // them every point evaluates NaN and the per-series R² is NaN.
+      for (const [name, value] of Object.entries(fixed))
+        perSeries.push({
+          term: termLabel(name),
+          estimate: value,
+          stdError: null,
+          t: null,
+          p: null,
+          low: null,
+          high: null,
+        });
+      // The homologous curve needs [L] (a constant of its equation).
+      return evaluateCurve(model, perSeries, x, params?.ligandConcentration);
     },
   };
-  let result;
+  const fitSeries = series.map((s) => ({ name: s.name, x: s.xs, y: s.ys, covariate: 0 }));
+  let result: GlobalFitResult | undefined;
   try {
-    result = await runGlobalFit(
-      series.map((s) => ({ name: s.name, x: s.xs, y: s.ys, covariate: 0 })),
-      def,
-    );
+    result = await runGlobalFit(fitSeries, def);
   } catch (err) {
-    return {
-      error: `The global fit could not be fitted (${err instanceof Error ? err.message : String(err)}). A shared parameter may be unidentifiable from one data set — try sharing fewer parameters, or fit each data set separately.`,
+    const message = err instanceof Error ? err.message : String(err);
+    // R3-11x: a shared start is the mean of the single-curve fits, so when
+    // the data determine a parameter exactly — homologous data with Kd =
+    // [L] give LogKd = 0 in both series — the stacked start sits exactly
+    // on the optimum and port misfires with "false convergence (8)": it
+    // cannot take a first step from the optimum.
+    //
+    // F5-hom: the R3-11x single +0.01 nudge does not rescue the general
+    // case. Port's convergence here is a knife-edge on the stacked start:
+    // on the verifier's global homologous fixture, moving the LogKd start
+    // by +0.0002, or the Y values by 1e-9, flips the primary between
+    // converging and "false convergence (8)" — and the +0.01 retry fails
+    // there too (it lands on "singular convergence (7)" for the 6dp-rounded
+    // fixture, and on (8) again for a +0.001 start offset). A single
+    // restart in one direction at one magnitude can itself land on a
+    // failing point, so a convergence failure now tries a ladder of
+    // restarts, first success wins: nudge the starts down 1%, nudge them
+    // up 10%, then rebuild them from the model's own data-driven start
+    // expressions, stacked per series (far from the optimum by
+    // construction — LogKd starts at median(X), Bmax from the span — so
+    // port has a gradient to follow). The ladder only runs when the
+    // primary already failed this way, so passing fits never touch it
+    // (the single-curve runner's retryFits precedent).
+    if (!message.includes("Convergence failure")) {
+      return {
+        error: `The global fit could not be fitted (${message}). A shared parameter may be unidentifiable from one data set — try sharing fewer parameters, or fit each data set separately.`,
+      };
+    }
+    const clamp = (p: GlobalParamDef, x: number) =>
+      Math.min(Math.max(x, p.lower ?? -Infinity), p.upper ?? Infinity);
+    const nudged = (dir: number, mag: number): GlobalModelDef => ({
+      ...def,
+      params: def.params.map((p) => ({
+        ...p,
+        start: (s: GlobalFitSeries[]) => {
+          const v = p.start(s);
+          const off = (x: number) => clamp(p, x + dir * mag * (1 + Math.abs(x)));
+          return Array.isArray(v) ? v.map(off) : off(v);
+        },
+      })),
+    });
+    // The data-driven restart: the model's own start expressions
+    // (startExpressions — what the single-curve fit starts from),
+    // evaluated on each series' points, shared as their mean, per-series
+    // as their vector, clamped into bounds. Unavailable when the spec has
+    // no plain list( start (a 5PL's inner-fit start), or when an
+    // expression does not evaluate — the nudge restarts still stand.
+    const dataDriven = async (): Promise<GlobalModelDef | undefined> => {
+      const exprs = startExpressions(spec);
+      if (!exprs) return undefined;
+      const byName = new Map<string, number[]>();
+      for (const s of series) {
+        let v: RVector;
+        try {
+          v = await evalNamedVector(
+            `x<-${rVec(s.xs)};y<-${rVec(s.ys)};c(${exprs.map((e) => `${e.name}=${e.expr}`).join(",")})`,
+          );
+        } catch {
+          return undefined;
+        }
+        for (const e of exprs) {
+          const val = v[e.name];
+          if (val == null || !Number.isFinite(val)) return undefined;
+          const arr = byName.get(e.name) ?? [];
+          arr.push(val);
+          byName.set(e.name, arr);
+        }
+      }
+      const params: GlobalParamDef[] = [];
+      for (const p of def.params) {
+        const vals = byName.get(p.name);
+        if (!vals || vals.length !== series.length) return undefined;
+        const start = p.shared
+          ? clamp(p, vals.reduce((a, b) => a + b, 0) / vals.length)
+          : vals.map((x) => clamp(p, x));
+        params.push({ ...p, start: () => start });
+      }
+      return { ...def, params };
     };
+    const restarts: GlobalModelDef[] = [nudged(-1, 0.01), nudged(1, 0.1)];
+    const driven = await dataDriven();
+    if (driven) restarts.push(driven);
+    for (const restart of restarts) {
+      try {
+        result = await runGlobalFit(fitSeries, restart);
+        break;
+      } catch {
+        // Try the next restart; the original error is reported below.
+      }
+    }
+    if (result === undefined) {
+      return {
+        error: `The global fit could not be fitted (${message}). A shared parameter may be unidentifiable from one data set — try sharing fewer parameters, or fit each data set separately.`,
+      };
+    }
   }
   // Rename the coefficients to display terms: shared plain, per-series as
   // "Top (Treated)".
@@ -946,6 +1111,19 @@ async function runGlobalNonlinear(
     if (m) return { ...c, term: `${termLabel(termOfVar.get(m[1]) ?? m[1])} (${m[2]})` };
     return { ...c, term: termLabel(termOfVar.get(c.term) ?? c.term) };
   });
+  // Fixed parameters are not in the fit — report them as coefficient rows
+  // with no standard error (the single-curve paths' precedent), so Span,
+  // the notes and the overlay all see what was held.
+  for (const name of Object.keys(fixed))
+    coefficients.push({
+      term: termLabel(name),
+      estimate: fixed[name]!,
+      stdError: null,
+      t: null,
+      p: null,
+      low: null,
+      high: null,
+    });
   const sets = series.map((s) => s.name);
   const coefFor = (term: string, setName: string): number | null => {
     const suffixed = coefficients.find((c) => c.term === `${termLabel(term)} (${setName})`)?.estimate ?? null;
@@ -1014,6 +1192,9 @@ async function runGlobalNonlinear(
     groups,
     notes,
     coefficients,
+    // The homologous curve needs [L] to draw (the overlay reads it off
+    // the result) — without it the curve is undefined.
+    ...(params?.ligandConcentration != null ? { ligandConcentration: params.ligandConcentration } : {}),
   };
 }
 
@@ -1026,7 +1207,10 @@ export async function runNonlinearRegression(
   if (!model || !Object.hasOwn(MODEL_LABEL, model)) return { error: "Choose a standard curve to fit." };
 
   const { x: xCol, ys: yCols } = splitXY(columns);
-  const yCol = params?.y === undefined ? yCols[0] : yCols.find((c) => c.name === params.y);
+  // A Y data set's replicates pool (see datasetColumns): "Control" fits
+  // "Control_1..3" together, as Prism does — an imported Prism analysis
+  // names its data set, not a column.
+  const yCol = params?.y === undefined ? yCols[0] : datasetColumns(yCols, params.y)[0];
   if (!xCol || !yCol) return { error: xyProblem(columns, params?.y)! };
   // Binding competition (plan 28): Fit Ki needs [L] and Kd (the
   // Cheng–Prusoff divisor 1 + [L]/Kd); the homologous model needs [L] (a
@@ -1142,7 +1326,7 @@ export async function runNonlinearRegression(
 
   // Comparing two models on the same data (plan 26's `compareModel` — the
   // plan's `compareWith` name is already the other data set's column).
-  if (comparingModels) return compareModels(params, model, spec, first, xCol, weights, titles);
+  if (comparingModels) return compareModels(params, model, spec, first, xCol, weights, titles, columns);
 
   let second: { xs: number[]; ys: number[] } | undefined;
   if (other) {
@@ -1162,6 +1346,7 @@ export async function runNonlinearRegression(
 
   let v: RVector;
   let retried: boolean | undefined;
+  let retryMethod: string | undefined;
   if (other && second) {
     const rCode = comparisonRCode(spec, first, second, params.compare ?? "ec50");
     try {
@@ -1199,7 +1384,7 @@ export async function runNonlinearRegression(
     // the interpolation too, so the unknowns are read off the same fit.
     const rCode =
       `${fitStatementsForSpec(first.xs, first.ys, effSpec, undefined, extraAssignments, !!weights)}${R_INTERP}\n` +
-      `ix<-interp(m,${rVec(unknownY)},${lo},${hi},${spec.positiveX ? "TRUE" : "FALSE"})\n` +
+      `ix<-interp(m,${rVec(unknownY)},${lo},${hi},${spec.positiveX || spec.nonNegativeX ? "TRUE" : "FALSE"})\n` +
       `${interpolationCode(effSpec, unknownY, lo, hi)}c(${fitEntries(effSpec)},${interpNames})`;
     try {
       v = await evalNamedVector(rCode);
@@ -1211,6 +1396,7 @@ export async function runNonlinearRegression(
     try {
       const fitted = await fitModelSpec(first.xs, first.ys, spec, "", termLabel, fitOpts);
       retried = fitted.retried;
+      retryMethod = fitted.retryMethod;
       // Fixed parameters are not in the fit — report them as coefficient
       // rows with no standard error, so the result names what was held.
       for (const name of fixedNames)
@@ -1226,7 +1412,7 @@ export async function runNonlinearRegression(
       // One R call already ran; reuse its entries by re-reading them out of
       // the same shape — simplest is to keep the parsed fit and build the
       // result from it (no second R call).
-      return assembleResult(model, spec, xCol, yCol, other, sets, [fitted], [], [], titles, first, fitted.retried, params);
+      return assembleResult(model, spec, xCol, yCol, other, sets, [fitted], [], [], titles, first, fitted.retried, fitted.retryMethod, params);
     } catch (err) {
       if (isTwoSiteCompetition(model)) return twoSiteError;
       return fitError(err, model);
@@ -1256,19 +1442,28 @@ export async function runNonlinearRegression(
         high: null,
       });
   }
+  let invertedCI = false;
   const interpolated: InterpolatedRow[] = unknowns.map((r, i) => {
     const x = v[`ix_${i}`] ?? null;
+    const low = v[`il_${i}`] ?? null;
+    const high = v[`ih_${i}`] ?? null;
+    // R2-m10: band inversion on a non-monotonic curve can return the bounds
+    // the wrong way round (low > high) — the first band-edge crossing on a
+    // limb whose slope disagrees with the curve's overall trend. Never
+    // present that as a valid interval: drop the CI (the notes say so).
+    const inverted = low != null && high != null && low > high;
+    if (inverted) invertedCI = true;
     return {
       label: rowName(titles, r),
       y: yCol.byRow[r]!,
       x,
       ...(logX ? { concentration: v[`ic_${i}`] ?? null } : {}),
       extrapolated: x != null && (x < lo || x > hi),
-      low: v[`il_${i}`] ?? null,
-      high: v[`ih_${i}`] ?? null,
+      low: inverted ? null : low,
+      high: inverted ? null : high,
     };
   });
-  return assembleResult(model, spec, xCol, yCol, other, sets, parsed, interpolated, v, titles, first, retried, params);
+  return assembleResult(model, spec, xCol, yCol, other, sets, parsed, interpolated, v, titles, first, retried, retryMethod, params, [], "", invertedCI);
 }
 
 /** The notes' weighting / fixed-parameter / bounds sentences (plan 26): a
@@ -1317,7 +1512,9 @@ function frameworkNotes(
  *  the exponential/enzyme extras (equation, starting values, warnings) and
  *  the comparison F test / interpolation sentences when they apply.
  *  `parsed` is one parsed fit per set; `v` the raw vector (comparison F/p).
- *  `extraStats`/`comparisonNotes` carry a model comparison's rows and verdict. */
+ *  `extraStats`/`comparisonNotes` carry a model comparison's rows and verdict.
+ *  `invertedCI` says a band-inversion CI came back inverted (low > high) and
+ *  was dropped — the notes say so instead of showing a bogus interval. */
 async function assembleResult(
   model: NonlinearModel,
   spec: ModelSpec,
@@ -1331,9 +1528,11 @@ async function assembleResult(
   _titles: (string | null)[],
   first: { xs: number[]; ys: number[] },
   retried: boolean | undefined,
+  retryMethod: string | undefined,
   params: NonlinearRegressionParams | undefined,
   extraStats: StatRow[] = [],
   comparisonNotes = "",
+  invertedCI = false,
 ): Promise<AnalysisOutcome> {
   const other = sets.length > 1;
   // Plan 29: the segmental breakpoint is a derived value, not a fitted
@@ -1389,6 +1588,9 @@ async function assembleResult(
         (interpolated.some((u) => u.x == null) ? " “—”: the curve never reaches that Y." : "") +
         (interpolated.some((u) => u.low != null || u.high != null)
           ? " Interpolated X 95% CIs invert the curve's 95% confidence band."
+          : "") +
+        (invertedCI
+          ? " No 95% CI is shown for an unknown whose band inversion comes back inverted (lower bound above the upper bound): on a non-monotonic curve the band can cross its Y in the wrong order, so no valid interval exists for it."
           : "");
   const notes =
     `Least-squares fit ("${MODEL_LABEL[model]}") of ${sets.map((s) => `“${s.name}”`).join(" and ")} on “${xCol.name}”. ` +
@@ -1419,13 +1621,18 @@ async function assembleResult(
       );
     extraNotes.push(...fitWarnings(model, coefficients, first.xs));
   }
-  // The 4PL retry (Linux 4PL fix): a near-perfect sigmoid stalls the
-  // default Gauss-Newton fit at the optimum, so the runner retried once
-  // with a relaxed convergence tolerance — say so, or the converged
-  // numbers look like they came from the first attempt.
+  // The 4PL retries: a near-perfect sigmoid stalls the default
+  // Gauss-Newton fit at the optimum, so the runner retried — with the port
+  // optimizer first, then a relaxed convergence tolerance — say which one
+  // converged, or the converged numbers look like they came from the
+  // first attempt.
   if (retried && (model === "sigmoidal-4pl-logx" || model === "sigmoidal-4pl-x")) {
     extraNotes.push(
-      "The first fit did not converge; retried with a relaxed convergence tolerance (tol = 1e-3) and converged.",
+      retryMethod === "relaxed tolerance"
+        ? "The first fit did not converge; retried with a relaxed convergence tolerance (tol = 1e-3) and converged."
+        : retryMethod === "port"
+          ? "The first fit did not converge; retried with the port optimizer and converged."
+          : "The first fit did not converge; retried and converged.",
     );
   }
   // Plan 29: the segmental note states the fitted breakpoint and both

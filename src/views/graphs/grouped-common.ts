@@ -66,7 +66,7 @@ export function buildGroupedBars(
   const gap = mode === "group" && !separated ? { bargroupgap: options.barGap } : {};
   return {
     data,
-    layout: { ...groupedBarLayout(options, groups.length, { horizontal, separated }), barmode: mode, ...gap },
+    layout: { ...groupedBarLayout(options, groups.length, { horizontal, separated, seriesNames: groups.map((g) => g.name) }), barmode: mode, ...gap },
   };
 }
 
@@ -110,7 +110,7 @@ export function buildGroupedLines(
     };
   });
 
-  return { data, layout: groupedScatterLayout(options, labels, groups.length) };
+  return { data, layout: groupedScatterLayout(options, labels, groups.length, undefined, groups.map((g) => g.name)) };
 }
 
 /** Interleaved scatter (individual values): every replicate as a jittered point,
@@ -202,5 +202,5 @@ export function buildGroupedScatter(
     }
   });
 
-  return { data, layout: groupedScatterLayout(options, labels, total, separated) };
+  return { data, layout: groupedScatterLayout(options, labels, total, separated, groups.map((g) => g.name)) };
 }

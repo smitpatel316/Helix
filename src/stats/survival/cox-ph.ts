@@ -79,11 +79,6 @@ export async function runCoxPH(
   if (covariates.some((c) => c === timeCol || c === statusCol)) {
     return { error: "The time, status and covariate columns must all be different columns." };
   }
-  // A covariate with no variation cannot be fit (coxph would return NA).
-  const constant = covariates.find((c) => c.values.every((v) => v === c.values[0]));
-  if (constant) {
-    return { error: `Covariate “${constant.name}” has no variation.` };
-  }
 
   // Complete cases: the rows where every variable used has a value.
   const used = [timeCol, statusCol, ...covariates];
@@ -104,6 +99,16 @@ export async function runCoxPH(
   const times = aligned[0];
   const status = aligned[1];
   const p = covariates.length;
+  // A covariate with no variation cannot be fit (coxph would return NA).
+  // The check runs on the complete cases, not the raw columns — a covariate
+  // can vary only on rows another used column leaves blank, and be constant
+  // once those rows are dropped.
+  if (n > 0) {
+    const constantIdx = aligned.slice(2).findIndex((col) => col.every((v) => v === col[0]));
+    if (constantIdx >= 0) {
+      return { error: `Covariate “${covariates[constantIdx].name}” has no variation.` };
+    }
+  }
   const badTimeValue = times.find((t) => t <= 0);
   if (badTimeValue !== undefined) {
     return { error: `Survival times must be positive — “${timeCol.name}” holds ${num(badTimeValue)}.` };

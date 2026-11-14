@@ -161,7 +161,7 @@ export function figureExportSize(
     ? {
         ...px,
         capped: true,
-        reason: `At ${dpi} DPI, the largest figure Helix exports is ${px.width} × ${px.height} px. Choose a lower resolution, or make the figure smaller.`,
+        reason: `At ${dpi} DPI, the largest figure Titer exports is ${px.width} × ${px.height} px. Choose a lower resolution, or make the figure smaller.`,
       }
     : { ...px, capped: false };
 }
@@ -180,7 +180,7 @@ export function validateFigureSize(size: FigureSize): { size?: FigureSize; reaso
   return { size: { widthIn, heightIn } };
 }
 
-/** A resolution as saved, or the default when it is not one Helix offers. */
+/** A resolution as saved, or the default when it is not one Titer offers. */
 export function figureDpi(dpi: unknown): Resolution {
   return typeof dpi === "string" && FIGURE_RESOLUTIONS.includes(dpi as Resolution) ? (dpi as Resolution) : DEFAULT_FIGURE_DPI;
 }
@@ -207,6 +207,19 @@ export function panelRects(
     width: Math.round(panel.colSpan * cellW),
     height: Math.round(panel.rowSpan * cellH),
   }));
+}
+
+/** A panel's size as Plotly sees it: the size the exporter hands to
+ *  `Plotly.react` and `Plotly.toImage` for that panel. Plotly's `toImage`
+ *  multiplies width/height by its `scale` (dpi/96), so this must be the
+ *  rectangle in Plotly's own 96-DPI layout units — handing it the rectangle
+ *  (already in DPI pixels) scales twice, and at 600 DPI a 3000×4500 panel
+ *  becomes a 18750×28125 image, past what WebKit draws. */
+export function panelPlotSize(rect: { width: number; height: number }, dpi: number): { width: number; height: number } {
+  return {
+    width: Math.round((rect.width * PX_PER_INCH) / dpi),
+    height: Math.round((rect.height * PX_PER_INCH) / dpi),
+  };
 }
 
 /** The same rectangles in points (an SVG's units): 1 pt = 1/72 in. */
@@ -270,7 +283,7 @@ export function sharedLegendCheck(
 
 // ── Missing graphs ───────────────────────────────────────────────────────
 
-/** Panels whose graph is gone (deleted, or from an older Helix): they stay as
+/** Panels whose graph is gone (deleted, or from an older Titer): they stay as
  *  placeholders naming the graph, and export leaves their cell blank. */
 export function missingPanels(panels: FigurePanel[], nodes: Record<string, ProjectNode>): FigurePanel[] {
   return panels.filter((p) => !nodes[p.graphId] || nodes[p.graphId].type !== "graph");

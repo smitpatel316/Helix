@@ -125,7 +125,16 @@ export function writeBlock(data: TableData, r: number, c: number, block: Cell[][
   // with it, so the bands still tile the rows exactly.
   const rowGroups =
     data.rowGroups && height > data.rows.length ? growRowGroups(data.rowGroups, height - data.rows.length) : data.rowGroups;
-  return { ...data, columns, rows, rowGroups };
+  // Clearing a cell (blank paste/typing) drops its exclusion too: otherwise the
+  // empty cell keeps a phantom `*` that ⌘E cannot toggle off (valueKeys skips
+  // empty cells) and any value typed there later is auto-excluded (#21).
+  const excluded = new Set(data.excluded);
+  block.forEach((line, i) =>
+    line.forEach((value, j) => {
+      if ((value === "" || value === null) && c + j < width) excluded.delete(`${r + i},${c + j}`);
+    }),
+  );
+  return { ...data, columns, rows, rowGroups, excluded: excluded.size ? [...excluded] : undefined };
 }
 
 /** How many of `block`'s columns, written from column `c`, a grouped table has no room
@@ -135,12 +144,19 @@ export function columnsBeyond(data: TableData, c: number, block: Cell[][]): numb
   return isGrouped(data) ? Math.max(0, c + width - data.columns.length) : 0;
 }
 
-/** Sets every stored cell of `range` to `value` (null clears). */
+/** Sets every stored cell of `range` to `value` (null clears). Clearing also
+ *  drops the cells' exclusions (#21): an excluded-but-empty cell would keep a
+ *  phantom `*` that ⌘E cannot toggle off, and auto-exclude any value typed
+ *  there later. Writing a value leaves exclusions untouched. */
 export function fillRange(data: TableData, range: Range, value: Cell): TableData {
   const rows = data.rows.map((row, r) =>
     r < range.r0 || r > range.r1 ? row : row.map((cell, c) => (c >= range.c0 && c <= range.c1 ? value : cell)),
   );
-  return { ...data, rows };
+  if (value !== null) return { ...data, rows };
+  const excluded = new Set(data.excluded);
+  for (let r = range.r0; r <= range.r1; r++)
+    for (let c = range.c0; c <= range.c1; c++) excluded.delete(`${r},${c}`);
+  return { ...data, rows, excluded: excluded.size ? [...excluded] : undefined };
 }
 
 /** Data cells (column ≥ 1) of `range` that hold a value, as "row,col" keys. */
@@ -312,10 +328,17 @@ export function regroupTable(data: TableData, groups: number, replicates: number
   };
 }
 
+/** The valued columns regrouping to these counts would drop (a group or
+ *  sub-column beyond them holding a value) — the names, so a load can warn
+ *  about them instead of losing them silently. */
+export function regroupDropped(data: TableData, groups: number, replicates: number): string[] {
+  const kept = new Set(regroupTable(data, groups, replicates).columns);
+  return data.columns.filter((name, c) => !kept.has(name) && data.rows.some((row) => row[c]));
+}
+
 /** Whether regrouping to these counts deletes a value (a group or sub-column beyond them holding one). */
 export function regroupLoses(data: TableData, groups: number, replicates: number): boolean {
-  const kept = new Set(regroupTable(data, groups, replicates).columns);
-  return data.columns.some((name, c) => !kept.has(name) && data.rows.some((row) => row[c]));
+  return regroupDropped(data, groups, replicates).length > 0;
 }
 
 /** Changes how many groups, subgroups and replicates a nested table has. Every
@@ -326,11 +349,30 @@ export function renestTable(data: TableData, groups: number, subgroups: number, 
   const keys = [...new Set(data.columns.slice(1).map(seriesKeyOf))].slice(0, groups);
   // A new group takes the letter of its place (C for the third), or the next free one.
   for (let i = keys.length; keys.length < groups; i++) if (!keys.includes(columnLetter(i))) keys.push(columnLetter(i));
-  // Subgroups keep their names (per group they are the same "S1"… by default);
-  // a new subgroup takes the next free "S<n>".
-  const subs = [...new Set(data.columns.slice(1).map((n) => n.split(":")[1] ?? ""))].filter(Boolean).slice(0, subgroups);
-  for (let i = subs.length; subs.length < subgroups; i++) if (!subs.includes(`S${i + 1}`)) subs.push(`S${i + 1}`);
-  const columns = ["Title", ...nestedSubColumns(keys, subs, replicates)];
+  // Subgroups keep their names — per group, since a subgroup can be renamed in
+  // one group only ("A:Mouse 1" while B keeps "S1"); sharing one global list
+  // would look for "B:Mouse 1" and overwrite B's S1 values with null. A new
+  // subgroup takes the next free "S<n>" in its group.
+  const subsOf = (key: string): string[] => {
+    const subs = [
+      ...new Set(
+        data.columns
+          .slice(1)
+          .filter((n) => seriesKeyOf(n) === key)
+          .map((n) => n.split(":")[1] ?? ""),
+      ),
+    ]
+      .filter(Boolean)
+      .slice(0, subgroups);
+    for (let i = subs.length; subs.length < subgroups; i++) if (!subs.includes(`S${i + 1}`)) subs.push(`S${i + 1}`);
+    return subs;
+  };
+  const columns = [
+    "Title",
+    ...keys.flatMap((key) =>
+      subsOf(key).flatMap((sub) => Array.from({ length: replicates }, (_, r) => `${key}:${sub}:R${r + 1}`)),
+    ),
+  ];
   const from = columns.map((name, c) => (c === 0 ? 0 : data.columns.indexOf(name)));
   const to = (c: number) => (c === 0 ? 0 : columns.indexOf(data.columns[c]));
   return {
@@ -345,11 +387,18 @@ export function renestTable(data: TableData, groups: number, subgroups: number, 
   };
 }
 
+/** The valued columns renesting to these counts would drop (a group, subgroup
+ *  or replicate beyond them holding a value) — the names, so a load can warn
+ *  about them instead of losing them silently. */
+export function renestDropped(data: TableData, groups: number, subgroups: number, replicates: number): string[] {
+  const kept = new Set(renestTable(data, groups, subgroups, replicates).columns);
+  return data.columns.filter((name, c) => !kept.has(name) && data.rows.some((row) => row[c]));
+}
+
 /** Whether renesting to these counts deletes a value (a group, subgroup or
  *  replicate beyond them holding one). */
 export function renestLoses(data: TableData, groups: number, subgroups: number, replicates: number): boolean {
-  const kept = new Set(renestTable(data, groups, subgroups, replicates).columns);
-  return data.columns.some((name, c) => !kept.has(name) && data.rows.some((row) => row[c]));
+  return renestDropped(data, groups, subgroups, replicates).length > 0;
 }
 
 // ── Row groups (a grouped table's third factor) ─────────────────────────

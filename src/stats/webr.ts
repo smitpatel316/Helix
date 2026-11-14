@@ -21,13 +21,59 @@ let remote: ((code: string) => Promise<RVector>) | null = null;
 /** Stops the in-flight remote evaluation (the app's engine window), if one is wired. */
 let remoteCancel: (() => Promise<void>) | null = null;
 
+/** The baseUrl the last engine that booted successfully used — the re-boot
+ *  location. A fresh boot after `resetR()` (or a failed boot) used to fall
+ *  back to the app default "/webr/", which only exists in the Tauri
+ *  webview: in tests and `npm run web` the worker file is not there, so
+ *  the re-boot died with `Cannot find module '/webr/webr-worker.js'` and
+ *  killed the process (R3-MAC-PACKAGES: R3-26 threads the caller's short
+ *  timeout into the install eval, so P-12's 2 s timeout fires the eval
+ *  watchdog, the grace expires, `resetR()` abandons the engine, and the
+ *  next bare `startR()` re-booted from "/webr/"). The remembered URL is
+ *  only updated by a boot that actually succeeded — a failed boot (e.g.
+ *  the hung-boot probe's stub worker) must not overwrite the last good
+ *  location — and `resetR()` deliberately leaves it alone: the engine is
+ *  gone, the location is not. */
+let bootBaseUrl: string | null = null;
+
 /** Start (or reuse) the R runtime. A failed boot is retried on the next call.
- *  `baseUrl` locates the R files: served by the app, or a folder when run by the tests. */
-export function startR(baseUrl = "/webr/"): Promise<WebR> {
+ *  `baseUrl` locates the R files: served by the app, or a folder when run by the tests.
+ *  A bare call re-boots from where the engine last booted successfully (see
+ *  `bootBaseUrl` above); an explicit `baseUrl` always wins for that boot.
+ *  The boot races its watchdog (`BOOT_TIMEOUT_MS`): a hung WASM load used to
+ *  leave `engine` pending forever, stranding every later evaluation — and, in
+ *  `runAnalysis`, the cached run itself (M15) — because the boot is awaited
+ *  before the evaluation watchdog starts. A timed-out boot is abandoned (the
+ *  WASM load cannot be cancelled) and the memo reset, so the next call boots
+ *  fresh; the caller gets a timeout error, which `runAnalysis` surfaces and
+ *  evicts from its cache, so a retry works. */
+export function startR(baseUrl?: string, opts?: { timeoutMs?: number }): Promise<WebR> {
+  const timeoutMs = opts?.timeoutMs ?? BOOT_TIMEOUT_MS;
+  const url = baseUrl ?? bootBaseUrl ?? "/webr/";
   return (engine ??= (async () => {
     const { WebR } = await import("webr");
-    const webR = new WebR({ baseUrl });
-    await webR.init();
+    const webR = new WebR({ baseUrl: url });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        webR.init(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new BootTimeoutError(
+                  `R took longer than ${formatBudget(timeoutMs)} to start and was stopped. Try running the analysis again.`,
+                ),
+              ),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+    // The boot succeeded: this is the location a later bare re-boot reuses.
+    bootBaseUrl = url;
     liveWebR = webR;
     return webR;
   })().catch((err) => {
@@ -68,6 +114,20 @@ export class EvalTimeoutError extends Error {
   }
 }
 
+/** How long an R boot may take before it is treated as hung. Five minutes,
+ *  like `EVAL_TIMEOUT_MS`: a cold boot measured 29.6 s on this host
+ *  (2026-11-12, loaded box) — a boot past this is hung, not slow. A caller
+ *  that must wait longer passes `timeoutMs` to `startR`. */
+export const BOOT_TIMEOUT_MS = 300_000;
+
+/** The watchdog stopped an R boot that ran past its budget. */
+export class BootTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BootTimeoutError";
+  }
+}
+
 /** The user cancelled a running calculation. */
 export class EvalCancelledError extends Error {
   constructor(message = "The calculation was cancelled.") {
@@ -104,10 +164,37 @@ export function interruptR(): void {
 
 /** Drop the cached engine, so the next evaluation boots a fresh R. The
  *  wedged worker is abandoned with it; in the app the engine window reloads
- *  so it dies too (see `onEngineStuck`). */
+ *  so it dies too (see `onEngineStuck`).
+ *
+ *  A fresh engine has an empty VFS, so every package state is void with
+ *  the old one (R3-02): installed packages are cleared back to
+ *  `not-loaded`, or the next `ensurePackages` would see them `ready` and
+ *  skip the install — and the analysis would fail with `there is no
+ *  package called '…'` in the fresh engine. An install still in flight is
+ *  cancelled (its late completion must write no states for an engine that
+ *  no longer exists) and its packages are marked `failed`, so a caller
+ *  waiting on that batch gets a provisioning error it can retry from,
+ *  instead of a silent success followed by the same `no package` failure
+ *  when the analysis runs. The remembered boot location (`bootBaseUrl`)
+ *  is deliberately left alone: the engine is gone, the location is not,
+ *  and the next bare `startR()` must re-boot from it. */
 export function resetR(): void {
   engine = null;
   liveWebR = null;
+  const installing = [...inflight.keys()];
+  for (const ticket of inflight.values()) {
+    ticket.cancel.current = true;
+    ticket.releaseGate();
+  }
+  inflight.clear();
+  states.clear();
+  for (const name of installing) {
+    states.set(name, {
+      status: "failed",
+      error: `The R engine was restarted while “${name}” was installing — try running the analysis again.`,
+      kind: "install-failed",
+    });
+  }
 }
 
 /** Called when an evaluation stays stuck after the interrupt — the engine
@@ -124,9 +211,12 @@ export function onEngineStuck(handler: (() => void) | null): void {
 const liveEvals = new Set<{ controller: AbortController }>();
 
 /** Cancel every evaluation in flight in this window. The app's one R serves
- *  every window, so this stops the shared engine for everyone — the user
- *  staring at the stuck analysis is the one who asked. A cancelled run is
- *  not cached, so asking again retries it. */
+ *  every window, but a cancel only stops this window's own work (FL-F14):
+ *  the shell drops only this window's waiting requests and the engine
+ *  dequeues them; R is interrupted only if the evaluation now running is
+ *  one of this window's — a queued check's cancel no longer kills another
+ *  window's in-flight install. A cancelled run is not cached, so asking
+ *  again retries it. */
 export function cancelActiveEvals(): void {
   for (const { controller } of liveEvals) controller.abort();
 }
@@ -529,6 +619,137 @@ export async function installedPackageVersions(): Promise<Record<string, string>
  *  rather than slow.) */
 export const PACKAGE_INSTALL_TIMEOUT_MS = 360_000;
 
+// ── M16 — cross-window install dedup ────────────────────────────────────
+// `states`/`inflight`/`chain` above are module-level per project window,
+// but installs execute in the one shared engine window — so two windows
+// running a package-dependent analysis at once both saw "not-loaded" and
+// both started an install batch (measured 2026-11-12: each window's batch
+// ran, `installsStarted` counted 2; the second batch's `webr::install` was
+// a 0.3 s no-op only because webR skips already-installed packages — the
+// redundant batch, the divergent states, and the spurious timeout when one
+// window's call outlived the other's install were the real defect, not a
+// double 48 s install). The engine's R session is the one shared truth
+// every window already reaches (via `evalNamedVector`), and it is
+// single-threaded — so the claim lives there, not in JS: one R eval,
+// atomic in the worker, claims the missing packages (or reports them
+// installed / claimed by another window). No new channel, no Rust change.
+
+/** A claim older than this is treated as abandoned (its holder died or its
+ *  install was evicted) and may be stolen. Longer than the install timeout
+ *  (360 s) so a live holder is never robbed mid-install. */
+export const CLAIM_STALE_MS = 400_000;
+
+/** R code: for each wanted package, 2 = installed at the pinned version,
+ *  1 = this caller wins the claim, 0 = another window holds the claim.
+ *  One eval, atomic in the single-threaded worker. */
+function claimInstallCode(names: string[]): string {
+  const pkgs = `c(${names.map((n) => JSON.stringify(n)).join(",")})`;
+  const vers = `c(${names.map((n) => JSON.stringify(registryByName.get(n)!.version)).join(",")})`;
+  return (
+    `pkgs<-${pkgs};vers<-${vers};` +
+    `claims<-get0(".helix_install_claims",envir=.GlobalEnv,ifnotfound=list());` +
+    `now<-as.numeric(Sys.time());codes<-numeric(length(pkgs));` +
+    `for(i in seq_along(pkgs)){p<-pkgs[i];` +
+    `ok<-requireNamespace(p,quietly=TRUE)&&packageVersion(p)==package_version(vers[i]);` +
+    `if(ok){codes[i]<-2}else{held<-claims[[p]];` +
+    `if(is.null(held)||now-held>${CLAIM_STALE_MS / 1000}){claims[[p]]<-now;codes[i]<-1}else{codes[i]<-0}}};` +
+    `assign(".helix_install_claims",claims,envir=.GlobalEnv);` +
+    `setNames(codes,pkgs)`
+  );
+}
+
+/** R code: drop this caller's claims (on failure, so another window's retry
+ *  can claim at once instead of waiting out the steal window). Best effort. */
+function releaseClaimCode(names: string[]): string {
+  return (
+    `claims<-get0(".helix_install_claims",envir=.GlobalEnv,ifnotfound=list());` +
+    `claims[c(${names.map((n) => JSON.stringify(n)).join(",")})]<-NULL;` +
+    `assign(".helix_install_claims",claims,envir=.GlobalEnv);c(released=1)`
+  );
+}
+
+/** The timeout PackageError, shared by the claim wait and the install race. */
+function timeoutError(names: string[], timeoutMs: number): PackageError {
+  return new PackageError(
+    "timeout",
+    names.join(", "),
+    `Installing ${names.map((n) => `“${n}”`).join(", ")} timed out after ${Math.round(timeoutMs / 1000)} seconds — the attempt was abandoned. Try again to start a fresh install.`,
+  );
+}
+
+/** Resolve the wanted packages against the engine's R: installed ones are
+ *  marked ready locally; won ones are left for the batch step below;
+ *  ones another window is installing are re-claimed until they resolve.
+ *  Returns the packages this caller won the claim for, plus any the engine
+ *  never answered for. A claim eval that cannot even start — its Shelter
+ *  queues behind a hung install in the single-threaded engine, so the
+ *  eval's own watchdog never gets a chance to fire — must never block the
+ *  B2 timeout path: on expiry those packages fall back to the per-window
+ *  install below instead of throwing, so the batch still starts and times
+ *  out on the caller's own timer. The abandoned eval may still win a claim
+ *  once the engine frees, so a release is queued behind it (same engine
+ *  queue order) to drop whatever it won, instead of poisoning a retry.
+ *  Throws a timeout PackageError (and marks the unresolved failed) if the
+ *  caller's budget runs out while another window's install is still going
+ *  and the engine IS answering. */
+async function resolveInEngine(
+  names: string[],
+  deadline: number,
+  timeoutMs: number,
+): Promise<{ won: string[]; unresolved: string[] }> {
+  const won: string[] = [];
+  let pending = [...names];
+  while (pending.length) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      const error = timeoutError(pending, timeoutMs);
+      for (const n of pending) states.set(n, { status: "failed", error: error.message, kind: "timeout" });
+      throw error;
+    }
+    let codes: RVector | null;
+    try {
+      codes = await claimEvalWithBudget(pending, remaining);
+    } catch (err) {
+      if (err instanceof EvalTimeoutError) {
+        const error = timeoutError(pending, timeoutMs);
+        for (const n of pending) states.set(n, { status: "failed", error: error.message, kind: "timeout" });
+        throw error;
+      }
+      throw err;
+    }
+    if (codes === null) {
+      // The engine never answered within budget (its worker is busy behind
+      // a hung install): fall back to the per-window install below — the
+      // B2 batch must start and time out on the caller's own timer, not
+      // hang here. Queue a release behind the abandoned eval so a claim
+      // it wins later cannot poison a retry.
+      void evalNamedVector(releaseClaimCode(pending), { timeoutMs: PACKAGE_INSTALL_TIMEOUT_MS }).catch(() => {});
+      return { won, unresolved: pending };
+    }
+    const next: string[] = [];
+    for (const n of pending) {
+      if (codes[n] === 2) states.set(n, { status: "ready" });
+      else if (codes[n] === 1) won.push(n);
+      else next.push(n);
+    }
+    pending = next;
+    if (pending.length) await new Promise((r) => setTimeout(r, 1000));
+  }
+  return { won, unresolved: [] };
+}
+
+/** One claim eval, raced against the caller's remaining budget. The eval
+ *  itself has a watchdog, but that only starts once its Shelter is built —
+ *  and Shelter creation queues behind a hung install in the engine, so
+ *  without this race the wait would be unbounded. `null` = the engine
+ *  never answered; the eval stays queued and is abandoned. */
+function claimEvalWithBudget(names: string[], budgetMs: number): Promise<RVector | null> {
+  return Promise.race([
+    evalNamedVector(claimInstallCode(names), { timeoutMs: budgetMs }),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
+  ]);
+}
+
 /**
  * Guarantee the named packages are installed and loadable in this engine,
  * then resolve. Concurrent calls for the same package join the one in-flight
@@ -544,6 +765,16 @@ export const PACKAGE_INSTALL_TIMEOUT_MS = 360_000;
  * fall back once to the CDN (unless disabled) — a package missing from the
  * bundled repo is a build error and never falls back, so versions cannot
  * drift silently.
+ *
+ * Two project windows share the one engine, so before starting a batch the
+ * caller claims the missing packages in the engine's R (M16): a package
+ * already installed at the pinned version resolves at once, a package
+ * another window is installing waits for it, and only the claim's winner
+ * installs — the per-window `states`/`inflight` above cannot see the
+ * other window, but the engine's R can. The claim is best-effort: if the
+ * engine never answers it (its worker is busy behind a hung install),
+ * the caller installs anyway — the claim must never block B2's timeout
+ * and eviction path.
  */
 export async function ensurePackages(names: string[], opts?: { timeoutMs?: number }): Promise<void> {
   const wanted = [...new Set(names)];
@@ -559,6 +790,18 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
     }
   }
   if (!wanted.length) return;
+  const timeoutMs = opts?.timeoutMs ?? PACKAGE_INSTALL_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  // M16: resolve against the engine before deciding what's missing — the
+  // local state above cannot see another window's install. Installed ones
+  // come back marked ready; won ones are left for the batch below.
+  const toResolve = wanted.filter((n) => stateOf(n).status !== "ready" && !inflight.has(n));
+  // Unresolved packages (the engine never answered the claim eval) fall
+  // through to the batch below exactly like won ones — the claim is
+  // best-effort and never gates the install.
+  const { won }: { won: string[]; unresolved: string[] } = toResolve.length
+    ? await resolveInEngine(toResolve, deadline, timeoutMs)
+    : { won: [], unresolved: [] };
   // Join in-flight installs, then install what's still missing — all decided
   // synchronously, before the first await, so concurrent callers cannot
   // start a second install of the same package.
@@ -578,7 +821,7 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
       // Evicted while queued behind a hung batch: never start the install —
       // a zombie install would only contend with the retry that replaced it.
       if (cancel.current) return;
-      return installBatch(missing, cancel);
+      return installBatch(missing, cancel, timeoutMs);
     });
     batch.then(
       () => releaseGate(),
@@ -597,7 +840,6 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
     );
     void done;
   }
-  const timeoutMs = opts?.timeoutMs ?? PACKAGE_INSTALL_TIMEOUT_MS;
   // The timeout covers EVERYTHING this call waits on — the installs it
   // joined as well as its own batch. (Before B2, a caller that only joined
   // a hung install awaited it before the race and hung forever with no
@@ -610,13 +852,7 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           timedOut = true;
-          reject(
-            new PackageError(
-              "timeout",
-              wanted.join(", "),
-              `Installing ${wanted.map((n) => `“${n}”`).join(", ")} timed out after ${Math.round(timeoutMs / 1000)} seconds — the attempt was abandoned. Try again to start a fresh install.`,
-            ),
-          );
+          reject(timeoutError(wanted, timeoutMs));
         }, timeoutMs);
       }),
     ]);
@@ -628,6 +864,18 @@ export async function ensurePackages(names: string[], opts?: { timeoutMs?: numbe
   }
   const failed = wanted.filter((n) => stateOf(n).status === "failed");
   if (failed.length) {
+    // M16: release the claims this caller won, so another window's retry can
+    // claim at once instead of waiting out the steal window. Awaited briefly
+    // (a prompt retry must see it); if the engine is busy the steal window
+    // is the backstop. Only this caller's won claims — never another
+    // window's live claim.
+    const toRelease = failed.filter((n) => won.includes(n));
+    if (toRelease.length) {
+      await Promise.race([
+        evalNamedVector(releaseClaimCode(toRelease), { timeoutMs: PACKAGE_INSTALL_TIMEOUT_MS }).catch(() => {}),
+        new Promise((r) => setTimeout(r, 2000)),
+      ]);
+    }
     const first = failed[0];
     const state = stateOf(first);
     throw new PackageError(
@@ -668,7 +916,11 @@ function evictTimedOut(names: string[], error: PackageError): void {
  *  loads (`requireNamespace`). Never throws — failures land in `states`.
  *  A batch evicted by a timeout (`cancel.current`) writes no states at all:
  *  the retry owns the packages now. */
-async function installBatch(names: string[], cancel: { current: boolean }): Promise<void> {
+async function installBatch(
+  names: string[],
+  cancel: { current: boolean },
+  timeoutMs: number,
+): Promise<void> {
   installsStarted++;
   const attempts: { repos: string | null; source: "bundled" | "cdn" }[] =
     repoUrl === CDN_REPO_URL
@@ -684,7 +936,11 @@ async function installBatch(names: string[], cancel: { current: boolean }): Prom
       `${repos === null ? "" : `, repos=${JSON.stringify(repos)}`}, quiet=TRUE);` +
       `c(${names.map((n) => `${JSON.stringify(n)}=as.numeric(requireNamespace(${JSON.stringify(n)}, quietly=TRUE))`).join(",")})`;
     try {
-      const loaded = await evalNamedVector(code);
+      // The install eval carries the install budget (BUG-REPORT #26): the
+      // default EVAL_TIMEOUT_MS (300 s) used to abort installs before
+      // PACKAGE_INSTALL_TIMEOUT_MS (360 s), and classifyInstallError then
+      // misread the EvalTimeoutError as "install-failed".
+      const loaded = await evalNamedVector(code, { timeoutMs });
       const unloaded = names.filter((n) => loaded[n] !== 1);
       if (!unloaded.length) {
         // Evicted while this install was running (B2): the retry owns these

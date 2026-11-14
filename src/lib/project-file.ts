@@ -1,5 +1,5 @@
-// The Helix project file (.hlx): plain JSON, described in FILE-FORMAT.md, so a
-// project is never locked into Helix.
+// The Titer project file (.hlx): plain JSON, described in FILE-FORMAT.md, so a
+// project is never locked into Titer.
 //
 // A file must keep opening across versions, in both directions:
 //   1. Fields are only ever added, never renamed or removed.
@@ -60,7 +60,7 @@ import { GRAPHS, GRAPH_OPTIONS_BY_TABLE } from "../views/graphs";
 import { ANALYSES } from "../stats";
 import { isGrouped, isNested } from "./dataset";
 import { seriesKeyOf } from "./columns";
-import { regroupTable, renestTable } from "../views/tables/table-data";
+import { regroupDropped, regroupTable, renestDropped, renestTable } from "../views/tables/table-data";
 import {
   assignLabels,
   clampPanel,
@@ -78,13 +78,21 @@ export interface ProjectFilePayload {
   /** Each table's analyses and graphs, in sidebar order. */
   childOrder: Record<string, string[]>;
   activeNodeId: string | null;
+  /** Unknown keys from a newer or hand-edited file (FF-F12): the file envelope's
+   *  and the project's, kept verbatim and written back on save, so opening a
+   *  newer file in this Titer doesn't silently lose its forward-compat data.
+   *  Absent on files this version wrote (nothing unknown to carry). */
+  fileUnknowns?: Record<string, unknown>;
+  projectUnknowns?: Record<string, unknown>;
 }
 
 // ── Writing ──────────────────────────────────────────────────────────────
 
-export function serializeProjectFile({ nodes, rootOrder, childOrder, activeNodeId }: ProjectFilePayload): string {
-  const project: ProjectFilePayload = { nodes, rootOrder, childOrder, activeNodeId };
-  return format({ app: "helix", schemaVersion: 1, savedAt: new Date().toISOString(), project }, "") + "\n";
+export function serializeProjectFile({ nodes, rootOrder, childOrder, activeNodeId, fileUnknowns, projectUnknowns }: ProjectFilePayload): string {
+  // Unknown keys go back where they came from, under the known keys — a
+  // hand-edited file can't smuggle a second `nodes` or `app` past the reader.
+  const project: ProjectFilePayload = { ...projectUnknowns, nodes, rootOrder, childOrder, activeNodeId };
+  return format({ ...fileUnknowns, app: "titer", schemaVersion: 1, savedAt: new Date().toISOString(), project }, "") + "\n";
 }
 
 /** Indented JSON, with each list of plain values (a table row, the column names)
@@ -116,13 +124,20 @@ const lower = (v: unknown) => (typeof v === "string" ? v.toLowerCase() : v);
 const defined = <T extends object>(obj: T) =>
   Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T;
 
-/** `obj` with its known keys spelled as Helix writes them, whatever their case. */
+/** `obj` with its known keys spelled as Titer writes them, whatever their case. */
 function canonical(obj: Obj, keys: readonly string[]): Obj {
   const spelling = new Map(keys.map((k) => [k.toLowerCase(), k]));
   return Object.fromEntries(Object.entries(obj).map(([k, v]) => [spelling.get(k.toLowerCase()) ?? k, v]));
 }
 
-// Every field Helix knows, per level. The `satisfies` checks make TypeScript
+/** The keys of `obj` this version doesn't know (FF-F12), whatever their case —
+ *  carried through a save, not dropped. */
+const unknownsOf = (obj: Obj, known: readonly string[]): Obj => {
+  const spelling = new Set(known.map((k) => k.toLowerCase()));
+  return Object.fromEntries(Object.entries(obj).filter(([k]) => !spelling.has(k.toLowerCase())));
+};
+
+// Every field Titer knows, per level. The `satisfies` checks make TypeScript
 // flag any field added to a type but not listed here.
 const FILE_KEYS = ["app", "schemaVersion", "savedAt", "project"];
 const PROJECT_KEYS = ["nodes", "rootOrder", "childOrder", "activeNodeId"] satisfies (keyof ProjectFilePayload)[];
@@ -150,7 +165,7 @@ const OPTIONAL_OPTIONS = {
   palette: "palette", series: "styles", points: "pointStyles", outlineColor: "color", pointOutlineColor: "color", errorColor: "color",
   legend: "place", note: "place",
 } as const satisfies Record<OptionalOption, keyof typeof READ_OPTION>;
-// The retired dose-response graph's own options (before Helix 1.0.7): no
+// The retired dose-response graph's own options (before Titer 1.0.7): no
 // longer a GraphOptions field, but still read — fitsFromDoseGraphs below
 // needs them to turn an old graph into a scatter + analysis — and stripped
 // from every graph on the way out (see parseProjectFile).
@@ -248,15 +263,12 @@ const cellText = (v: unknown) =>
 
 const isHex = (v: unknown): v is string => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
 
-const isWord = (v: unknown) =>
-  typeof v === "boolean" || isFiniteNumber(v) || (typeof v === "string" && /^[a-z0-9.-]+$/.test(v));
-
 /** Whether `key` is one of `list`'s own entries (not a name every object has, as "constructor"). */
 const isIn = (list: object, key: unknown) => typeof key === "string" && Object.hasOwn(list, key);
 
 const isNamed = (v: unknown): v is PaletteColor => typeof v === "string" && Object.hasOwn(NAMED_COLORS, v);
 
-/** Named colors (Helix 1.0's), by key. */
+/** Named colors (Titer 1.0's), by key. */
 function colors(v: unknown): Record<string, PaletteColor> | undefined {
   if (!isObj(v)) return undefined;
   const out = Object.entries(v)
@@ -351,7 +363,7 @@ const READ_OPTION = {
   color: (v: unknown) => (isHex(v) ? v : undefined),
 };
 
-/** Colors a table kept for its graphs before Helix 1.0.3: its series' and its cells'. */
+/** Colors a table kept for its graphs before Titer 1.0.3: its series' and its cells'. */
 type TableColors = { series?: Record<string, PaletteColor>; cells?: Record<string, PaletteColor> };
 
 /** A table's row groups as a file holds them: every band a non-empty, distinct
@@ -390,11 +402,16 @@ function describeDroppedBand(b: unknown): string {
 /** A table's data, and the colors it kept for its graphs. */
 /** A table's data, put straight: no value beyond its last column (`beyond` counts those left
  *  out), exclusions and widths only on cells and columns it has, and a grouped table's
- *  groups and sub-columns those of its columns ("A:Y1"…). */
+ *  groups and sub-columns those of its columns ("A:Y1"…). Rebuilding a grouped or
+ *  nested table from its columns drops any column whose name has no slot in the
+ *  rebuilt set — a gapped sub-column ("A:Y3" with no "A:Y2") — so `regroupDropped`
+ *  names the valued columns that went, for a warning: without it the values
+ *  would vanish on load and the loss would be saved over the file. */
 function readData(raw: Obj): {
   data: TableData;
   colors: TableColors;
   beyond: number;
+  regroupDropped: string[];
   rowGroupsDropped: string[];
 } | null {
   const { seriesColors, pointColors, ...d } = canonical(raw, [...DATA_KEYS, "seriesColors", "pointColors"]);
@@ -430,11 +447,14 @@ function readData(raw: Obj): {
     widths: Object.keys(widths).length ? (widths as Record<string, number>) : undefined,
     freezeTitle: d.freezeTitle === true || undefined,
   } as TableData);
+  const regroupDroppedNames: string[] = [];
   if (isGrouped(data) && columns.length > 1) {
     const groups = [...new Set(columns.slice(1).map(seriesKeyOf))];
     const replicates = Math.max(...groups.map((g) => columns.filter((c) => seriesKeyOf(c) === g).length));
-    if (groups.length !== data.groups || replicates !== data.replicates)
+    if (groups.length !== data.groups || replicates !== data.replicates) {
+      regroupDroppedNames.push(...regroupDropped(data, groups.length, replicates));
       data = defined(regroupTable(data, groups.length, replicates));
+    }
   }
   if (isNested(data) && columns.length > 1) {
     // A nested table's groups, subgroups and replicates are those of its
@@ -453,10 +473,12 @@ function readData(raw: Obj): {
         ),
       ),
     );
-    if (groups.length !== data.groups || subgroups !== data.subgroups || replicates !== data.replicates)
+    if (groups.length !== data.groups || subgroups !== data.subgroups || replicates !== data.replicates) {
+      regroupDroppedNames.push(...renestDropped(data, groups.length, subgroups, replicates));
       data = defined(renestTable(data, groups.length, subgroups, replicates));
+    }
   }
-  return { data, colors: { series: colors(seriesColors), cells: colors(pointColors) }, beyond, rowGroupsDropped: rowGroups.dropped };
+  return { data, colors: { series: colors(seriesColors), cells: colors(pointColors) }, beyond, regroupDropped: regroupDroppedNames, rowGroupsDropped: rowGroups.dropped };
 }
 
 /** Every option, of the right type, one of its choices and within its limits: a missing
@@ -595,9 +617,33 @@ function readParams(
 ): AnalysisParams | undefined {
   if (!isObj(raw)) return undefined;
   const p = canonical(raw, Object.keys(PARAMS));
-  // A param this version doesn't know is kept as a plain word.
+  // A param this version doesn't know is kept verbatim — any JSON value, in its
+  // own case (FF-F12): it belongs to a newer Titer (or a hand edit), and this
+  // version's runners only ever read the params they know by name, so keeping
+  // it can't change what a test computes or reach R.
   const read = (k: string, v: unknown) => {
-    if (!isIn(PARAMS, k)) return isWord(lower(v)) ? lower(v) : undefined;
+    if (!isIn(PARAMS, k)) return v;
+    const kind = PARAMS[k as ParamKey];
+    // FF-F16: a saved number outside its limits is brought within them on
+    // load — warn, so the analysis doesn't silently re-run on different
+    // parameters than the file specifies. The clamp itself stays: the
+    // runner's range is the honest one, the file's value isn't.
+    const limits =
+      isObj(kind) && isFiniteNumber(kind.min) && isFiniteNumber(kind.max)
+        ? { min: kind.min, max: kind.max }
+        : undefined;
+    if (limits && isFiniteNumber(v)) {
+      const clamped = clamp(v, limits);
+      if (clamped !== v) {
+        issues.push({
+          severity: "warning",
+          message: `Analysis “${label}”: “${k}” was ${v}, outside ${limits.min}–${limits.max}, so it was brought to ${clamped}.`,
+        });
+      }
+    }
+    // `spar`/`df: null` is an explicit "choose automatically" (spline-lowess),
+    // not a missing value: keep it, so a save keeps the file as it was.
+    if ((k === "spar" || k === "df") && v === null) return null;
     let dropped = 0;
     const value = readParam(PARAMS[k as ParamKey], v, (n) => {
       dropped = n;
@@ -654,7 +700,7 @@ const NODE_TYPES: NodeType[] = ["table", "analysis", "graph", "figure"];
 
 /** A figure's fields as a file holds them, forgivingly: a missing or empty
  *  `panels` opens as an empty figure (not an error); a panel out of range is
- *  clamped into the grid; a `dpi` Helix doesn't offer falls back to 600; a
+ *  clamped into the grid; a `dpi` Titer doesn't offer falls back to 600; a
  *  size outside 1–20 in is brought within, and an aspect beyond 4:1 is
  *  reined in by shrinking the longer side. Unknown figure fields are kept
  *  by the node's spread in `readNode` and written back on save. */
@@ -736,6 +782,13 @@ function readNode(
         message: `Table “${node.name}” had ${values} beyond its last column; they were left out.`,
       });
     }
+    if (read.regroupDropped.length) {
+      const dropped = read.regroupDropped;
+      issues.push({
+        severity: "warning",
+        message: `Table “${node.name}” left out ${dropped.length === 1 ? "a column with values" : `${dropped.length} columns with values`} its groups couldn't hold: ${dropped.join(", ")}.`,
+      });
+    }
     if (read.rowGroupsDropped.length) {
       const dropped = read.rowGroupsDropped;
       issues.push({
@@ -784,16 +837,217 @@ const contents = (v: unknown) =>
       : x,
   );
 
+// ── Duplicate node ids (FF-F19) ────────────────────────────────────────────
+// JSON itself is last-wins on duplicate keys: `JSON.parse` keeps only the
+// last `"t1"` in `project.nodes`, so a whole node used to vanish with no
+// warning. The duplicates are invisible once parsed, so they are caught here,
+// on the file's text, before parsing: each later copy keeps its data under a
+// renamed id (`t1__2`, `t1__3`, …) and the open warns about it. The renamed
+// copy keeps its own parentId, so it still hangs under its table; a renamed
+// table joins the sidebar in creation order, like any table the saved order
+// missed. Saving keeps the rescued copy under its new id (`updated` is
+// forced), so the file on disk stops losing it. Anything unexpected in the
+// text (malformed JSON, missing objects) bails out softly — the file then
+// parses exactly as before, and the usual errors speak for it.
+
+/** A key of the `project.nodes` object in the file's text: its id and the span of its quoted spelling. */
+type NodeKeySpan = { id: string; start: number; end: number };
+
+/** The keys of the file's `project.nodes` object (its last one, as `JSON.parse` would read it), or `null` when the text isn't shaped like a project file. */
+function nodeKeySpans(text: string): NodeKeySpan[] | null {
+  let i = 0;
+  const n = text.length;
+  const ws = () => {
+    while (i < n && /\s/.test(text[i])) i++;
+  };
+  const readString = (): string | null => {
+    if (text[i] !== '"') return null;
+    const escapes: Record<string, string> = {
+      '"': '"',
+      "\\": "\\",
+      "/": "/",
+      b: "\b",
+      f: "\f",
+      n: "\n",
+      r: "\r",
+      t: "\t",
+    };
+    let out = "";
+    i++;
+    while (i < n) {
+      const c = text[i];
+      if (c === '"') {
+        i++;
+        return out;
+      }
+      if (c === "\\") {
+        const esc = text[i + 1];
+        if (esc === undefined) return null;
+        if (esc === "u") {
+          const hex = text.slice(i + 2, i + 6);
+          if (!/^[0-9a-fA-F]{4}$/.test(hex)) return null;
+          out += String.fromCharCode(parseInt(hex, 16));
+          i += 6;
+        } else {
+          out += escapes[esc] ?? esc;
+          i += 2;
+        }
+        continue;
+      }
+      out += c;
+      i++;
+    }
+    return null;
+  };
+  /** Skips one JSON value starting at `i`; false when the text isn't valid JSON here. */
+  const skipValue = (): boolean => {
+    ws();
+    const c = text[i];
+    if (c === '"') return readString() !== null;
+    if (c === "{") return scanObject(() => skipValue());
+    if (c === "[") {
+      i++;
+      ws();
+      if (text[i] === "]") {
+        i++;
+        return true;
+      }
+      for (;;) {
+        if (!skipValue()) return false;
+        ws();
+        if (text[i] === ",") {
+          i++;
+          continue;
+        }
+        if (text[i] === "]") {
+          i++;
+          return true;
+        }
+        return false;
+      }
+    }
+    const lit =
+      /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(text.slice(i))?.[0] ??
+      /^(?:true|false|null)/.exec(text.slice(i))?.[0];
+    if (!lit) return false;
+    i += lit.length;
+    return true;
+  };
+  /** Scans one JSON object, calling `onKey` after each key's colon; false when the text isn't valid JSON here. */
+  const scanObject = (onKey: (key: string, start: number, end: number) => boolean): boolean => {
+    ws();
+    if (text[i] !== "{") return false;
+    i++;
+    ws();
+    if (text[i] === "}") {
+      i++;
+      return true;
+    }
+    for (;;) {
+      ws();
+      const start = i;
+      const key = readString();
+      if (key === null) return false;
+      const end = i;
+      ws();
+      if (text[i] !== ":") return false;
+      i++;
+      if (!onKey(key, start, end)) return false;
+      ws();
+      if (text[i] === ",") {
+        i++;
+        continue;
+      }
+      if (text[i] === "}") {
+        i++;
+        return true;
+      }
+      return false;
+    }
+  };
+  let found: NodeKeySpan[] | null = null;
+  ws();
+  const ok = scanObject((key) => {
+    if (key !== "project") return skipValue();
+    let nodes: NodeKeySpan[] | null = null;
+    const pok = scanObject((pkey) => {
+      if (pkey !== "nodes") return skipValue();
+      const spans: NodeKeySpan[] = [];
+      const nok = scanObject((id, start, end) => {
+        spans.push({ id, start, end });
+        return skipValue();
+      });
+      if (!nok) return false;
+      nodes = spans;
+      return true;
+    });
+    if (!pok) return false;
+    if (nodes) found = nodes;
+    return true;
+  });
+  return ok ? found : null;
+}
+
+/** Renames later copies of a duplicated node id in the file's text so both survive `JSON.parse`, returning the (possibly unchanged) text and what was renamed. */
+function rescueDuplicateNodeIds(text: string): { text: string; renamed: { from: string; to: string }[] } {
+  const spans = nodeKeySpans(text);
+  if (!spans) return { text, renamed: [] };
+  const seen = new Set<string>();
+  const taken = new Set(spans.map((s) => s.id));
+  const edits: { start: number; end: number; to: string }[] = [];
+  const renamed: { from: string; to: string }[] = [];
+  for (const s of spans) {
+    if (!seen.has(s.id)) {
+      seen.add(s.id);
+      continue;
+    }
+    let k = 2;
+    let to = `${s.id}__${k}`;
+    while (taken.has(to)) {
+      k++;
+      to = `${s.id}__${k}`;
+    }
+    taken.add(to);
+    edits.push({ start: s.start, end: s.end, to: JSON.stringify(to) });
+    renamed.push({ from: s.id, to });
+  }
+  if (!edits.length) return { text, renamed: [] };
+  let out = text;
+  for (const e of edits.sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.to + out.slice(e.end);
+  return { text: out, renamed };
+}
+
+/** Reads a `.hlx` file from its text, as `load` does — the same result as `parseProjectFile(JSON.parse(text))`, except a duplicated node id no longer drops a node silently (FF-F19): the later copy is kept under a renamed id and the open warns about it. */
+export function parseProjectText(
+  text: string,
+): { project: ProjectFilePayload; issues: ProjectIssue[]; updated: boolean } | { error: string } {
+  const { text: rescued, renamed } = rescueDuplicateNodeIds(text);
+  const parsed = parseProjectFile(JSON.parse(rescued));
+  if ("error" in parsed || renamed.length === 0) return parsed;
+  const byFrom = new Map<string, string[]>();
+  for (const { from, to } of renamed) byFrom.set(from, [...(byFrom.get(from) ?? []), to]);
+  const warnings: ProjectIssue[] = [...byFrom].map(([from, tos]) => ({
+    severity: "warning",
+    message:
+      tos.length === 1
+        ? `Item id “${from}” appears twice in this file; the second copy was kept as “${tos[0]}”.`
+        : `Item id “${from}” appears ${tos.length + 1} times in this file; the extra copies were kept as ${tos.map((t) => `“${t}”`).join(", ")}.`,
+  }));
+  return { ...parsed, issues: [...warnings, ...parsed.issues], updated: true };
+}
+
 /** Reads a `.hlx` file forgivingly. `{ error }` only when nothing usable remains;
- *  otherwise the project, what the user should know about it, and whether Helix changed
- *  anything as it read it (`updated`: repaired, or brought up to date from an older Helix),
+ *  otherwise the project, what the user should know about it, and whether Titer changed
+ *  anything as it read it (`updated`: repaired, or brought up to date from an older Titer),
  *  so saving it keeps the project as it is now. */
 export function parseProjectFile(
   raw: unknown,
 ): { project: ProjectFilePayload; issues: ProjectIssue[]; updated: boolean } | { error: string } {
-  if (!isObj(raw)) return { error: "Not a valid Helix project file." };
+  if (!isObj(raw)) return { error: "Not a valid Titer project file." };
   const file = canonical(raw, FILE_KEYS);
-  if (lower(file.app) !== "helix") return { error: "This file was not created by Helix." };
+  // Files from before the rename carry app "helix"; both are accepted.
+  if (lower(file.app) !== "helix" && lower(file.app) !== "titer")
+    return { error: "This file was not created by Titer." };
   const project = isObj(file.project) ? canonical(file.project, PROJECT_KEYS) : null;
   if (!project || !isObj(project.nodes)) return { error: "This file's project data is missing or corrupted." };
 
@@ -874,7 +1128,13 @@ export function parseProjectFile(
       continue;
     }
     if (node.type === "graph") {
-      if (!node.graphOptions!.palette) colorsFromHelix1(node, tableColors[node.parentId!]?.series);
+      if (!node.graphOptions!.palette) {
+        // The file's own options, as saved — the rebuild only fills in what they lack.
+        const rawNodes = isObj(project.nodes) ? project.nodes : undefined;
+        const rawNodeObj = rawNodes?.[node.id];
+        const rawNode = isObj(rawNodeObj) ? canonical(rawNodeObj, NODE_KEYS) : undefined;
+        colorsFromTiter1(node, tableColors[node.parentId!]?.series, rawNode?.graphOptions);
+      }
       pointsFromCells(node, tableColors[node.parentId!]?.cells);
     }
     const tableType = nodeOf(node.parentId)?.tableType;
@@ -882,7 +1142,7 @@ export function parseProjectFile(
     if (isIn(GRAPHS, node.graphType) && !GRAPH_OPTIONS_BY_TABLE[tableType].some((o) => o.value === node.graphType)) {
       issues.push({
         severity: "warning",
-        message: `Graph “${node.name}” isn't a chart Helix offers for a ${TABLES[tableType].label} table.`,
+        message: `Graph “${node.name}” isn't a chart Titer offers for a ${TABLES[tableType].label} table.`,
       });
     }
     const o = node.graphOptions!;
@@ -902,11 +1162,26 @@ export function parseProjectFile(
     }
   }
 
-  const read = { nodes, rootOrder, childOrder, activeNodeId };
-  return { project: read, issues, updated: contents(read) !== contents(file.project) };
+  // Unknown keys from the envelopes (FF-F12): the file's own, and the project's —
+  // kept on the project so saving writes them back where they came from.
+  const fileUnknowns = unknownsOf(file, FILE_KEYS);
+  const projectUnknowns = unknownsOf(project, PROJECT_KEYS);
+  const read: ProjectFilePayload = {
+    nodes,
+    rootOrder,
+    childOrder,
+    activeNodeId,
+    ...(Object.keys(fileUnknowns).length ? { fileUnknowns } : {}),
+    ...(Object.keys(projectUnknowns).length ? { projectUnknowns } : {}),
+  };
+  // `updated` compares what Titer knows only: carrying unknowns through is not
+  // a repair, so a newer file that needed no repair still opens unedited.
+  const known = { nodes, rootOrder, childOrder, activeNodeId };
+  const filed = Object.fromEntries(PROJECT_KEYS.map((k) => [k, project[k]]));
+  return { project: read, issues, updated: contents(known) !== contents(filed) };
 }
 
-// ── Dose-response graphs (before Helix 1.0.7) ───────────────────────────
+// ── Dose-response graphs (before Titer 1.0.7) ───────────────────────────
 // A "Dose-response curve" graph fitted its own curve. A curve now always comes from an
 // analysis, as in Prism: each becomes an XY scatter drawing the curve of a new
 // "Nonlinear regression" of the same data set and model, so it looks as it did.
@@ -934,7 +1209,7 @@ function fitsFromDoseGraphs(nodes: Record<string, ProjectNode>): Record<string, 
       name,
       parentId: graph.parentId,
       analysisType: "nonlinear-regression",
-      // Helix's default then: a 4PL with X as the concentration.
+      // Titer's default then: a 4PL with X as the concentration.
       analysisParams: defined({
         y: typeof doseY === "string" ? doseY : undefined,
         model: oneOf(DOSE_MODELS, doseModel) ?? "sigmoidal-4pl-x",
@@ -959,16 +1234,16 @@ function fitsFromDoseGraphs(nodes: Record<string, ProjectNode>): Record<string, 
   return fits;
 }
 
-// ── Files from Helix 1.0 ─────────────────────────────────────────────────
+// ── Files from Titer 1.0 ─────────────────────────────────────────────────
 // A graph's colors came from its table (`seriesColors`, named colors), a heatmap
 // had one of three color scales, and a volcano two named colors. A graph saved
-// without a palette gets them back as its own, so it looks as it did: the Helix
+// without a palette gets them back as its own, so it looks as it did: the Titer
 // palette with its table's colors, or its heatmap scale as Plotly drew it.
 
-/** The heatmap scales of Helix 1.0 that the catalog doesn't have, as Plotly defines them. */
+/** The heatmap scales of Titer 1.0 that the catalog doesn't have, as Plotly defines them. */
 const HEATMAP_SCALES: Record<string, { name: string; kind: PaletteKind; stops: [number, string][] }> = {
   "red-blue": {
-    name: "Red/Blue (Helix 1.0)",
+    name: "Red/Blue (Titer 1.0)",
     kind: "diverging",
     stops: [
       [0, "#050AAC"],
@@ -980,7 +1255,7 @@ const HEATMAP_SCALES: Record<string, { name: string; kind: PaletteKind; stops: [
     ],
   },
   "yellow-red": {
-    name: "Heat (Helix 1.0)",
+    name: "Heat (Titer 1.0)",
     kind: "sequential",
     stops: [
       [0, "#800026"],
@@ -1024,11 +1299,20 @@ function resample(stops: [number, string][]): string[] {
 
 const LEGACY_OPTIONS = ["heatmapColorScale", "volcanoColorUp", "volcanoColorDown", "volcanoPointSize"];
 
-function colorsFromHelix1(node: ProjectNode, tableColors: Record<string, PaletteColor> | undefined) {
+/** A graph without a palette gets Titer 1.0's colors back as its own — but only
+ *  for what the file never saved (`saved`: its options as the file held them).
+ *  A graph that saved its fill, point size, outline, bar gap or series keeps
+ *  them; the rebuild fills in the rest, so a missing palette alone never
+ *  rewrites a graph's own options. */
+function colorsFromTiter1(
+  node: ProjectNode,
+  tableColors: Record<string, PaletteColor> | undefined,
+  saved: unknown,
+) {
   const all = node.graphOptions as unknown as Obj;
   const old = canonical(all, LEGACY_OPTIONS);
   const named = (v: unknown, fallback: PaletteColor) => (isNamed(lower(v)) ? (lower(v) as PaletteColor) : fallback);
-  let palette = savedPalette(paletteNamed("helix")!);
+  let palette = savedPalette(paletteNamed("titer")!);
   let colors = tableColors;
   if (node.graphType === "heatmap") {
     const name = lower(old.heatmapColorScale);
@@ -1043,24 +1327,33 @@ function colorsFromHelix1(node: ProjectNode, tableColors: Record<string, Palette
     colors && Object.fromEntries(Object.entries(colors).map(([key, c]) => [key, { color: NAMED_COLORS[c] }]));
   const legacy = (k: string) => LEGACY_OPTIONS.some((o) => o.toLowerCase() === k.toLowerCase());
   const options = Object.fromEntries(Object.entries(all).filter(([k]) => !legacy(k)));
-  // Helix 1.0 filled shapes and points half-opaque (a pie's and a volcano's, their type's
+  // Titer 1.0 filled shapes and points half-opaque (a pie's and a volcano's, their type's
   // fill), and set a row's bars side by side; its points had their type's size and
-  // outline (a volcano, the size set on it, within what Helix offers).
+  // outline (a volcano, the size set on it, within what Titer offers).
   const { defaults } = isIn(GRAPHS, node.graphType) ? GRAPHS[node.graphType!] : {};
   const pointSize = within(old.volcanoPointSize, GRAPH_LIMITS.pointSize);
   const fills = { fill: defaults?.fill ?? 0.5, pointFill: defaults?.pointFill ?? 0.5 };
-  const helix1 = {
-    ...options,
-    ...defaults,
-    ...(pointSize === undefined ? {} : { pointSize }),
-    palette,
-    series,
-    ...fills,
-  };
-  node.graphOptions = defined({ ...helix1, barGap: 0 }) as unknown as GraphOptions;
+  // What the file saved, spelled as Titer writes it: the options above already
+  // hold the global defaults for what it didn't, so only this tells the two apart.
+  const savedKeys = new Set(
+    isObj(saved)
+      ? Object.keys(
+          canonical(saved, [...Object.keys(DEFAULT_GRAPH_OPTIONS), ...Object.keys(OPTIONAL_OPTIONS)]),
+        )
+      : [],
+  );
+  const titer1: Obj = { ...options };
+  for (const [key, value] of Object.entries({ ...defaults, ...fills })) {
+    if (!savedKeys.has(key)) titer1[key] = value;
+  }
+  if (pointSize !== undefined && !savedKeys.has("pointSize")) titer1.pointSize = pointSize;
+  if (!savedKeys.has("barGap")) titer1.barGap = 0;
+  if (series && !savedKeys.has("series")) titer1.series = series;
+  titer1.palette = palette;
+  node.graphOptions = defined(titer1) as unknown as GraphOptions;
 }
 
-/** Points colored in their table's cells (before Helix 1.0.3) keep their color on
+/** Points colored in their table's cells (before Titer 1.0.3) keep their color on
  *  each of its graphs, under any style the graph gives them itself. */
 function pointsFromCells(node: ProjectNode, cells: Record<string, PaletteColor> | undefined) {
   if (!cells) return;

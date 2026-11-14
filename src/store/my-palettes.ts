@@ -1,12 +1,12 @@
 // My Palettes: the palettes made on this Mac, for every project and window: a file in
-// Helix's data folder (local storage in a browser). Read each time they're shown, so a
+// Titer's data folder (local storage in a browser). Read each time they're shown, so a
 // palette made in one window is in the others' menus at once.
 import { alert, isNative, readMyPalettes, writeMyPalettes } from "../native";
 import { readPalette } from "../lib/project-file";
 import { savedPalette } from "../lib/palettes";
 import type { GraphPalette } from "./types";
 
-const KEY = "helix.palettes";
+const KEY = "titer.palettes";
 
 /** The palettes kept, those broken left out. */
 export async function loadMyPalettes(): Promise<GraphPalette[]> {

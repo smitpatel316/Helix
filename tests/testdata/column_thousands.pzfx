@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?><GraphPadPrismFile PrismXMLVersion="5.00">
+<Created>
+<OriginalVersion CreatedByProgram="GraphPad Prism" CreatedByVersion="6.0f.254" Login="synthetic" DateTime="2026-11-12T00:00:00-07:00"></OriginalVersion>
+</Created>
+<InfoSequence>
+<Ref ID="Info0" Selected="1"></Ref>
+</InfoSequence>
+<Info ID="Info0">
+<Title>Project info 1</Title>
+<Notes>
+</Notes>
+</Info>
+<TableSequence Selected="1">
+<Ref ID="Table0" Selected="1"></Ref>
+</TableSequence>
+<Table ID="Table0" XFormat="none" TableType="OneWay" EVFormat="AsteriskAfterNumber">
+<Title>Data 1</Title>
+<YColumn Width="89" Decimals="0" Subcolumns="1">
+<Title>Aa</Title>
+<Subcolumn>
+<d>1.5</d>
+<d>1,000</d>
+<d>2.5</d>
+</Subcolumn>
+</YColumn>
+</Table>
+</GraphPadPrismFile>

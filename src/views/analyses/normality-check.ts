@@ -4,12 +4,42 @@
 // the test couldn't run.
 import { alert } from "../../native";
 import { runAnalysis } from "../../stats";
+import type { AnalysisOutcome } from "../../stats/types";
+import { cancelActiveEvals } from "../../stats/webr";
 import { pText } from "../../lib/format";
 import type { TableData } from "../../store/types";
 
-/** `sets`: the data sets the test will run on (all by default). */
-export async function checkNormality(data: TableData, sets?: string[]): Promise<boolean | null> {
-  const outcome = await runAnalysis("shapiro-wilk", data, sets && { sets });
+/**
+ * `sets`: the data sets the test will run on (all by default).
+ * `signal`: aborting it cancels the check — the in-flight R evaluation is
+ * stopped (F14: the wizard's Cancel/Escape while the check runs) and the
+ * check resolves null with NO alert, so a cancelled check is never reported
+ * as a failed one and never shows a verdict the user did not wait for. The
+ * abort listener lives only around the run itself: once the run has settled,
+ * aborting no longer stops anything.
+ */
+export async function checkNormality(
+  data: TableData,
+  sets?: string[],
+  opts?: { signal?: AbortSignal },
+): Promise<boolean | null> {
+  const signal = opts?.signal;
+  // Already cancelled before the run started: never start R for it.
+  if (signal?.aborted) return null;
+  // The same stop the analysis view's Cancel button uses: without it the
+  // await below would wait out the 5-minute eval watchdog even though the
+  // user already left.
+  const stop = () => cancelActiveEvals();
+  signal?.addEventListener("abort", stop, { once: true });
+  let outcome: AnalysisOutcome;
+  try {
+    outcome = await runAnalysis("shapiro-wilk", data, sets && { sets });
+  } finally {
+    signal?.removeEventListener("abort", stop);
+  }
+  // Cancelled mid-run: the run settled with a cancel error (or finished just
+  // as the user left) — either way, say nothing and return to the question.
+  if (signal?.aborted) return null;
   if ("error" in outcome) {
     await alert("Couldn't Run the Shapiro-Wilk Test", outcome.error, "error");
     return null;

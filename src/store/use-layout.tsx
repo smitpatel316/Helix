@@ -17,7 +17,7 @@ interface Layout {
   inspectorWidth: number;
 }
 
-const KEY = "helix.layout";
+const KEY = "titer.layout";
 const INITIAL: Layout = {
   sidebar: true,
   sidebarWidth: SIDEBAR_WIDTH.initial,

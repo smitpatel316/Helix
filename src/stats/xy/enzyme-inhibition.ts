@@ -10,7 +10,7 @@
 // profile-likelihood confint() would be a cross-cutting change to every
 // nonlinear fit, not a plan-17 one.
 // No Lineweaver–Burk fitting anywhere: Prism offers Lineweaver–Burk only
-// as a display Transform, never to estimate Km/Vmax, and Helix has no
+// as a display Transform, never to estimate Km/Vmax, and Titer has no
 // transform infrastructure — a display-only LB graph, if ever added, must
 // be computed from this nls fit and must never run a linear regression.
 import type {
@@ -222,7 +222,7 @@ function globalStarts(
 }
 
 /** The fitted equation, from the fitted coefficients (4 significant figures,
- *  like the rest of Helix's display). */
+ *  like the rest of Titer's display). */
 function equation(
   model: EnzymeInhibitionModel,
   coefficients: RegressionCoefficient[],

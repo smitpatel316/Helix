@@ -28,6 +28,10 @@ function lineTrace(x: [number, number], y: number, name: string, dashed: boolean
 }
 
 function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFigure {
+  // The first two columns are the two methods being compared. On an XY table
+  // `plotColumns` hands this the Y columns only — the X column is the
+  // independent variable, never a method — so what plots here can never be
+  // X against a method (the graph-path half of the F8 wizard guard).
   const [first, second] = columns;
   const layout = (xName: string) =>
     xyLayout(
@@ -64,8 +68,8 @@ function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFig
   };
   const data: unknown[] = [points];
   // The lines are labelled where they sit (at their right end, inside the
-  // plot), not in a legend: a legend at x = 1.02 overflows this figure's
-  // narrow right margin and is clipped.
+  // plot), not in a legend — the in-plot labels stay by design, even though
+  // a legend now reserves its own right margin (M13).
   const annotations: unknown[] = [];
   if (diffs.length >= 2) {
     const s = computeBlandAltman(diffs);

@@ -122,7 +122,9 @@ function variablePair(numeric: Column[], options: GraphOptions): [Column?, Colum
  *  too), one per data set holding numbers for the heatmap (a grouped table's
  *  replicates as their `center` on each row), X then the Y series for the XY family
  *  (none while X is empty; a Multiple Variables table's two variables), else the
- *  columns holding numbers. */
+ *  columns holding numbers. A Bland-Altman plot on an XY table is the exception
+ *  to the XY family's X-first shape: its two methods are Y columns only (see
+ *  the special case below), so X is never handed to its builder as a method. */
 export function plotColumns(
   { columns, numeric, sets }: Dataset,
   type: GraphType,
@@ -134,6 +136,13 @@ export function plotColumns(
   // the first two data columns, whatever they hold (the graph errors empty
   // when the truth has other than two classes or the score has no numbers).
   if (type === "roc-curve") return columns.slice(0, 2);
+  // A Bland-Altman plot compares two measurement methods, so on an XY table
+  // its columns are the Y columns only: the X column is the independent
+  // variable (time, dose…) — not a method — and handing it to the builder
+  // as the first method plotted X against a method, the exact invalid
+  // comparison the wizard guard (F8) already blocks. A column table has no
+  // X, so the generic XY-family branch below hands it every column.
+  if (type === "bland-altman" && tableType === "xy") return splitXY(columns).ys;
   if (family === "volcano") return columns;
   if (family === "heatmap")
     return sets.filter((s) => s.columns.some((c) => c.values.length)).map((s) => centerColumn(s, options.center));

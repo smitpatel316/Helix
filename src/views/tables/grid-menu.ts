@@ -36,11 +36,13 @@ interface MenuContext {
   /** Applies an edit, named for Undo. */
   update: (next: TableData, label: string, move?: TableMove) => void;
   rename: (column: number) => void;
+  /** Renames the top-level group of the column's group (Nested tables only). */
+  renameGroup: (column: number) => void;
   /** Shows a grouped table's Groups panel. */
   showGroups: () => void;
 }
 
-export function gridMenu({ data, type, zone, range, update, rename, showGroups }: MenuContext): MenuItems {
+export function gridMenu({ data, type, zone, range, update, rename, renameGroup, showGroups }: MenuContext): MenuItems {
   const nested = isNested(data);
   const grouped = isGrouped(data) || nested;
   const rows = range.r1 - range.r0 + 1;
@@ -97,6 +99,14 @@ export function gridMenu({ data, type, zone, range, update, rename, showGroups }
       text: nested && range.c0 > 0 ? "Rename Subgroup" : grouped && range.c0 > 0 ? "Rename Group" : "Rename Column",
       action: () => rename(range.c0),
     });
+    // A Nested table has two renameable levels: the subgroup above, and the
+    // top-level group it belongs to.
+    if (nested && range.c0 > 0) {
+      items.push({
+        text: "Rename Group",
+        action: () => renameGroup(range.c0),
+      });
+    }
   }
 
   if (zone === "column" && range.c0 === 0) {

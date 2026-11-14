@@ -1,5 +1,5 @@
 // What a table type offers, as New Table shows it beside the list: its analyses and graphs,
-// read from their own lists so it always says what Helix does.
+// read from their own lists so it always says what Titer does.
 import type * as React from "react";
 import { ChartLineIcon, SigmaIcon } from "@phosphor-icons/react";
 import type { TableType } from "../../store/types";

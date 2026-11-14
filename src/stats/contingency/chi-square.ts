@@ -24,7 +24,7 @@ export async function runChiSquare(columns: Column[], params?: ChiSquareParams):
   const trendAcrossRows = !is2x2 && cols === 2 && rows >= 3;
   const trendAcrossCols = !is2x2 && rows === 2 && cols >= 3;
   const trendShape = trendAcrossRows || trendAcrossCols;
-  // Prism always computes the trend on a qualifying table; Helix only does
+  // Prism always computes the trend on a qualifying table; Titer only does
   // when the user confirms the ordering, so a meaningless trend is never
   // silently reported.
   const trend = trendShape && params?.trendOrdered === true;
@@ -32,6 +32,25 @@ export async function runChiSquare(columns: Column[], params?: ChiSquareParams):
   const trendN = trendAcrossRows
     ? matrix.map((r) => r.reduce((s, v) => s + v, 0))
     : matrix[0].map((_, c) => matrix.reduce((s, r) => s + r[c], 0));
+
+  // The trend test is undefined when the first row/column holds 0% or 100%
+  // of the counts: prop.trend.test then crashes R's lm.wfit with
+  // "NA/NaN/Inf in 'x'". A wholly empty row/column also makes the chi-square
+  // statistic itself undefined (expected counts of 0 give 0/0), so there is
+  // no meaningful result to return — name the cause instead of calling
+  // prop.trend.test.
+  const trendFirst = trendX.reduce((s, v) => s + v, 0);
+  const trendTotal = trendN.reduce((s, v) => s + v, 0);
+  const trendUndefined = trend && (trendFirst === 0 || trendFirst === trendTotal);
+  if (trendUndefined) {
+    return {
+      error:
+        `The chi-square test for trend is undefined here: the first ${trendAcrossRows ? "column" : "row"} holds ` +
+        `${trendFirst === 0 ? "0%" : "100%"} of the counts, so there is no variation in the proportion to trend across. ` +
+        `With an empty ${trendAcrossRows ? "column" : "row"}, the chi-square statistic is undefined too — ` +
+        `add counts to the empty ${trendAcrossRows ? "column" : "row"}, or drop it, and try again.`,
+    };
+  }
 
   // as.numeric() drops R's own names ("X-squared", "df"…): the keys are only ours.
   const rCode = is2x2

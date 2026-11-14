@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Helix",
+  "productName": "Titer",
   "version": "../package.json",
-  "identifier": "com.helix-desktop.helix",
+  "identifier": "net.smitpatel.helix",
   "build": {
     "beforeDevCommand": "npm run web",
     "devUrl": "http://localhost:1420",
@@ -15,7 +15,7 @@
       {
         "label": "project",
         "create": false,
-        "title": "Helix",
+        "title": "Titer",
         "width": 1000,
         "height": 700,
         "minWidth": 820,
@@ -40,7 +40,7 @@
         "style-src": "'self' 'unsafe-inline'",
         "img-src": "'self' data: blob:",
         "font-src": "'self' data:",
-        "connect-src": "'self' ipc: http://ipc.localhost data: blob: https://api.github.com https://raw.githubusercontent.com",
+        "connect-src": "'self' ipc: http://ipc.localhost data: blob: https://api.github.com https://raw.githubusercontent.com https://repo.r-wasm.org",
         "worker-src": "'self' blob:",
         "object-src": "'none'",
         "base-uri": "'self'"
@@ -54,8 +54,12 @@
     "category": "Education",
     "copyright": "© 2026 mickaphd",
     "icon": ["icons/icon.png", "icons/icon.icns"],
-    "resources": { "../samples/Helix Sample.hlx": "Helix Sample.hlx" },
-    "fileAssociations": [{ "ext": ["hlx"], "name": "Helix Project", "role": "Editor" }],
+    "resources": {
+      "../samples/Titer Sample.hlx": "Titer Sample.hlx",
+      "../LICENSE": "LICENSE",
+      "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md"
+    },
+    "fileAssociations": [{ "ext": ["hlx"], "name": "Titer Project", "role": "Editor" }],
     "macOS": {
       "minimumSystemVersion": "13.3",
       "signingIdentity": "-",

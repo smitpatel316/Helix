@@ -138,7 +138,7 @@ export function GraphView({ node }: { node: ProjectNode }) {
       : undefined;
   const hasData = !xyLack && columns.some((c) => c.values.length > 0);
 
-  // A volcano on a grouped table: Helix computes the DEGs between two of its groups
+  // A volcano on a grouped table: Titer computes the DEGs between two of its groups
   // (per-row Welch t test + BH FDR) and plots them, read like any other table.
   const volcanoGroups =
     family === "volcano" && parent?.tableType === "grouped" && dataset
@@ -537,9 +537,9 @@ export function GraphView({ node }: { node: ProjectNode }) {
           if (note) addNote(fig, note, options);
         }
       }
-      if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint);
+      if (type === "forest-plot" && coxResult) addForestPlot(fig, coxResult, paint, options);
       if (type === "observed-fitted" && poissonResult)
-        addObservedFitted(fig, columns, poissonResult, poissonParams, paint);
+        addObservedFitted(fig, columns, poissonResult, poissonParams, paint, options);
       if (type === "scree-plot") {
         if (pcaResult) addScreePlot(fig, pcaResult, paint);
         else addNote(fig, "Run a Principal component analysis on this table to draw the scree plot.", options);

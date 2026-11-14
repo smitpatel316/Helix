@@ -4,11 +4,21 @@
 // setting and following renamed columns, selected points, exports, analyses on the
 // data asked, Undo, and the app's menus, recents and update check. `npm test` runs them.
 import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert/strict";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { evalNamedVector, setPackageRepo, startR } from "../src/stats/webr";
-import { parseProjectFile, readPalette, serializeProjectFile, type ProjectFilePayload } from "../src/lib/project-file";
+import { cancelActiveEvals, EvalCancelledError, ensurePackages, evalNamedVector, packageDiagnostics, packageStatus, resetR, setPackageRepo, startR } from "../src/stats/webr";
+import {
+  createEvalQueue,
+  getRQueueSnapshot,
+  onRQueueSnapshot,
+  rQueueStatusText,
+  setRQueueSnapshot,
+  type RQueueSnapshot,
+} from "../src/stats/r-queue";
+import { parseProjectFile, parseProjectText, readPalette, serializeProjectFile, type ProjectFilePayload } from "../src/lib/project-file";
 import {
   DEFAULT_GRAPH_OPTIONS,
   GRAPH_LIMITS,
@@ -24,10 +34,12 @@ import {
   defaultRowGroups,
   deleteColumns,
   deleteRows,
+  fillRange,
   freshColumnNames,
   insertRows,
   newGroupedTable,
   newNestedTable,
+  newTable,
   regroupLoses,
   regroupTable,
   removeRowGroup,
@@ -39,16 +51,18 @@ import {
   rowsInserted,
   setRowGroupCount,
   setRowGroupName,
+  toggleExcluded,
   writeBlock,
 } from "../src/views/tables/table-data";
 import { flattenThreeWay, rowGroupBands } from "../src/stats/grouped/base";
-import { analysisOptionsForTable } from "../src/views/analyses";
+import { gridMenu } from "../src/views/tables/grid-menu";
+import { analysisOptionsForTable, analysisOptionsKey } from "../src/views/analyses";
 import { followTable } from "../src/store/references";
 import { pairKey } from "../src/lib/columns";
 import {
   NAMED_COLORS,
   PALETTES,
-  isHelixPalette,
+  isTiterPalette,
   paletteColor,
   paletteNamed,
   paletteOf,
@@ -58,15 +72,19 @@ import {
 } from "../src/lib/palettes";
 import { deletePalette, keepPalette, loadMyPalettes } from "../src/store/my-palettes";
 import { GRAPHS, GRAPH_OPTIONS_BY_TABLE, newGraphOptions, plotColumns, type GraphFigure } from "../src/views/graphs";
-import { isGrouped, isNested, readTable, setColumns, type Dataset } from "../src/lib/dataset";
+import { datasetColumns, isGrouped, isNested, readTable, setColumns, type Dataset } from "../src/lib/dataset";
+import { prepareFit } from "../src/stats/xy/nonlinear-fit";
 import { adjustComparisonRows, adjustPValues, incompleteRows, missingColumn } from "../src/stats/column/base";
+import { droppedPredictorsNote, selectPredictors } from "../src/stats/multiple/predictors";
 import { compareTwoGroupsSpec } from "../src/stats/column/compare-two-groups";
 import { kruskalWallisSpec } from "../src/stats/column/kruskal-wallis";
 import { anovaSpec } from "../src/stats/column/anova";
 import { dagostinoPearson } from "../src/stats/column/shapiro-wilk";
+import { runRout } from "../src/stats/column/rout";
 import { parseGroupLevels, toggled, WIZARDS, type Question } from "../src/views/analyses/wizards";
 import { initialAnswer } from "../src/views/analyses/analysis-wizard";
-import { addNote, movedText, paintOf, vectorTraces, visibleOutline, withCaps } from "../src/views/graphs/plot-helpers";
+import { checkNormality } from "../src/views/analyses/normality-check";
+import { addNote, groupedBarLayout, groupedScatterLayout, heatmapLayout, legendRightMargin, legendWidthPx, movedText, paintOf, vectorTraces, visibleOutline, withCaps, xyLayout } from "../src/views/graphs/plot-helpers";
 import {
   drawnKeys,
   drawnStyle,
@@ -79,16 +97,25 @@ import {
   withoutSelection,
 } from "../src/views/graphs/selection";
 import { genesNamed, VOLCANO_MAX_LOG10 } from "../src/views/graphs/volcano";
+import { XY_SCATTER_MAX_POINTS } from "../src/views/graphs/xy-scatter";
+import { addForestPlot } from "../src/views/graphs/forest-plot";
+import { addSchildPlot, schildPlotPoints } from "../src/views/graphs/schild-plot";
+import { addRegression, fitLinear } from "../src/views/graphs/regression-overlay";
+import { addObservedFitted } from "../src/views/graphs/observed-fitted";
 import { examplesFor, matched, type Matched } from "../src/views/graphs/match-graph";
 import type { OutlineNode } from "../src/store/use-project-store";
 import { deriveComparisons } from "../src/views/graphs/significance-overlay";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AnalysisResultsView, headline } from "../src/views/analyses/analysis-results-view";
+import { loadPrismSaveChoice, nextSaveAction } from "../src/lib/prism-nudge";
+import { convertPrism } from "../src/lib/prism";
+import { yieldToPaint } from "../src/lib/yield-to-paint";
 import { fitWidths, fitZoom } from "../src/store/use-layout";
+import { prismDropSkippedMessage } from "../src/store/use-document";
 import { computeGroupedDEG } from "../src/lib/deg";
 import { logisticCurveNote } from "../src/views/graphs/logistic-curve";
-import { runAnalysis } from "../src/stats";
+import { ANALYSES, runAnalysis } from "../src/stats";
 import {
   computeFrequencyBins,
   niceWidthUp,
@@ -99,7 +126,7 @@ import { makeInitialState, reducer } from "../src/store/use-project-store";
 import { isNewer, latestVersion } from "../src/lib/version";
 import { titleCase } from "../src/lib/format";
 import { loadRecents } from "../src/store/recents";
-import { largestAt, withDpi } from "../src/lib/image-dpi";
+import { largestAt, PX_PER_INCH, withDpi } from "../src/lib/image-dpi";
 import {
   assignLabels,
   clampPanel,
@@ -110,15 +137,18 @@ import {
   figurePixelSize,
   missingPanels,
   newFigurePanels,
+  panelPlotSize,
   panelRects,
   sharedLegendCheck,
   validateFigureSize,
 } from "../src/lib/figure";
+import { buildPanelFigure } from "../src/views/figures/panel-figure";
 import { sampleProject } from "./sample-project";
 import { crc32 } from "node:zlib";
-import type { AnalysisOutcome, AnalysisParams, AnalysisResult, MonteCarloParams, RegressionCoefficient, SimulationSpec } from "../src/stats/types";
+import type { AnalysisOutcome, AnalysisParams, AnalysisResult, DoseResponseSpecialParams, MonteCarloParams, RegressionCoefficient, SimulationSpec } from "../src/stats/types";
 import { simulationRCode, validateSimulationSpec } from "../src/stats/simulation/simulate";
 import { aicc, coefficientsForSet, invertMethod, invertModel, nestedPair } from "../src/stats/xy/nonlinear-regression";
+import { evaluate as evaluateCurve } from "../src/views/graphs/fitted-curve";
 import { parseInhibitorConcentration } from "../src/stats/xy/enzyme-inhibition";
 import { monteCarloRCode, percentile } from "../src/stats/simulation/monte-carlo";
 import { addMonteCarloHistogram } from "../src/views/graphs/monte-carlo-histogram";
@@ -213,7 +243,7 @@ const treatments = (columns: string[]): TableData => ({
 
 check("a file Helix had to repair or bring up to date opens to be saved; a sound one doesn't", () => {
   strictEqual(read(serializeProjectFile(payload)).updated, false);
-  strictEqual(read(readFileSync("samples/Helix Sample.hlx", "utf8")).updated, false);
+  strictEqual(read(readFileSync("samples/Titer Sample.hlx", "utf8")).updated, false);
   const file = () => JSON.parse(serializeProjectFile(payload));
   const repaired = file();
   repaired.project.nodes.g1.graphOptions.lineDash = "zigzag";
@@ -221,6 +251,87 @@ check("a file Helix had to repair or bring up to date opens to be saved; a sound
   const older = file(); // from a Helix before the bars' gap
   delete older.project.nodes.g1.graphOptions.barGap;
   strictEqual(read(JSON.stringify(older)).updated, true);
+});
+
+// R3 #22 (rootOrder leg): a table created after a figure goes before the
+// figure in rootOrder, so the save/load round-trip doesn't report the file as
+// updated. Before the fix `create` appended the table after the figure and
+// parseProjectFile's tables-then-figures reorder made every load dirty.
+// (The spar leg was already fixed: a spline-lowess `spar: null` round-trips
+// — project-file.ts keeps it on read instead of stripping it.)
+check("a table created after a figure still opens unedited (R3 #22)", () => {
+  let s = makeInitialState();
+  const t1 = s.rootOrder[0];
+  const figure: ProjectNode = {
+    id: "f1",
+    type: "figure",
+    name: "Figure",
+    parentId: null,
+    panels: [],
+    grid: { rows: 1, cols: 1 },
+    figureSize: { widthIn: 10, heightIn: 7.5 },
+    labelStyle: { position: "top-left", fontSizePt: 12, bold: true },
+    figureTitle: "",
+    sharedLegend: "none",
+    dpi: "600",
+  } as ProjectNode;
+  const second: ProjectNode = {
+    id: "t2",
+    type: "table",
+    name: "Table",
+    parentId: null,
+    tableType: "xy",
+    data: { columns: ["Title", "X", "Y1"], rows: [["a", "1", "2.5"]] },
+  };
+  s = reducer(s, { type: "create", node: figure });
+  s = reducer(s, { type: "create", node: second });
+  deepStrictEqual(s.rootOrder, [t1, "t2", "f1"]);
+  const { updated } = read(
+    serializeProjectFile({
+      nodes: s.nodes,
+      rootOrder: s.rootOrder,
+      childOrder: s.childOrder,
+      activeNodeId: s.activeNodeId,
+    }),
+  );
+  strictEqual(updated, false);
+});
+
+// R2 FF-F12: a newer (or hand-edited) file's unknown keys and params survive a
+// save instead of being dropped or lowercased — the file header's forward-compat
+// promise. Before the fix the top-level and project keys were dropped outright,
+// and an unknown param survived only as a lowercase word: "My Column" and an
+// object value were dropped, "MyColumn" came back "mycolumn". Carrying them
+// through is not a repair, so the file still opens unedited.
+check("unknown file and project keys and unknown params survive a save, verbatim", () => {
+  const file = JSON.parse(serializeProjectFile(payload)) as { project: ProjectFilePayload } & Record<string, unknown>;
+  file.futureFileKey = { note: "from a newer Helix" };
+  (file.project as unknown as Record<string, unknown>).futureProjectKey = "keep me";
+  const a1 = file.project.nodes.a1 as ProjectNode;
+  a1.analysisParams = {
+    ...a1.analysisParams,
+    futureParam: "My Column",
+    futureFlag: { nested: [1, 2] },
+    futureList: ["A", "B"],
+    futureUpper: "MyColumn",
+    futureWord: "spline",
+  } as unknown as AnalysisParams;
+  const { project, updated } = read(JSON.stringify(file));
+  const kept = {
+    y: "Y1",
+    forceOrigin: true,
+    futureParam: "My Column",
+    futureFlag: { nested: [1, 2] },
+    futureList: ["A", "B"],
+    futureUpper: "MyColumn",
+    futureWord: "spline",
+  };
+  deepStrictEqual(project.nodes.a1.analysisParams, kept);
+  const again = JSON.parse(serializeProjectFile(project));
+  strictEqual(again.futureFileKey.note, "from a newer Helix");
+  strictEqual(again.project.futureProjectKey, "keep me");
+  deepStrictEqual(again.project.nodes.a1.analysisParams, kept);
+  strictEqual(updated, false);
 });
 
 // R2 M5: a dropped/invalid param value falls back to its runner default, and
@@ -328,6 +439,58 @@ check("a dropped param value falls back to its default, and says so", () => {
   // still leaves it out, and the method stays.
   const outliers = withAnalysis("m5f", "outliers", { q: "bad", method: "rout" });
   deepStrictEqual(paramsOf(outliers, "m5f"), { method: "rout" });
+});
+
+// R2 FF-F16: a saved param outside its limits was silently rewritten on load
+// (500 bins became 100) and the analysis re-ran on different parameters than
+// the file specifies — with no warning. The clamp stays, but it says so; and
+// `spar`/`df: null` (an explicit "choose automatically") round-trips instead
+// of being dropped.
+check("an out-of-range saved param warns when it is brought within its limits", () => {
+  const withAnalysis = (id: string, type: string, params: unknown) => {
+    const file = JSON.parse(serializeProjectFile(payload)) as { project: ProjectFilePayload };
+    file.project.nodes[id] = {
+      id,
+      type: "analysis",
+      name: id,
+      parentId: "t1",
+      analysisType: type,
+      analysisParams: params,
+    } as ProjectNode;
+    file.project.childOrder.t1 = [...file.project.childOrder.t1, id];
+    return read(JSON.stringify(file));
+  };
+  const paramsOf = (result: ReturnType<typeof read>, id: string) =>
+    (result.project.nodes[id] as ProjectNode).analysisParams as Record<string, unknown>;
+
+  const freq = withAnalysis("ff16a", "frequency-distribution", { binMode: "count", binCount: 500, startAt: 0 });
+  strictEqual(paramsOf(freq, "ff16a").binCount, 100);
+  ok(
+    freq.issues.some((i) => i.message.includes("“binCount”") && i.message.includes("500") && i.message.includes("100")),
+    "warns about the binCount clamp",
+  );
+
+  const outliers = withAnalysis("ff16b", "outliers", { method: "rout", q: 99 });
+  strictEqual(paramsOf(outliers, "ff16b").q, 50);
+  ok(
+    outliers.issues.some((i) => i.message.includes("“q”") && i.message.includes("99") && i.message.includes("50")),
+    "warns about the q clamp",
+  );
+
+  // In-range values stay silent.
+  const inRange = withAnalysis("ff16c", "frequency-distribution", { binMode: "count", binCount: 10, startAt: 0 });
+  strictEqual(paramsOf(inRange, "ff16c").binCount, 10);
+  strictEqual(inRange.issues.length, 0);
+
+  // `spar`/`df: null` is an explicit auto-choice, not a missing value: it
+  // survives the round-trip instead of being dropped on load.
+  const spline = withAnalysis("ff16d", "spline-lowess", { method: "spline", f: 0.5, spar: null, df: null });
+  strictEqual(paramsOf(spline, "ff16d").spar, null);
+  strictEqual(paramsOf(spline, "ff16d").df, null);
+  const resaved = parseProjectFile(JSON.parse(serializeProjectFile(spline.project)));
+  if ("error" in resaved) throw new Error(resaved.error);
+  strictEqual(paramsOf(resaved, "ff16d").spar, null);
+  strictEqual(paramsOf(resaved, "ff16d").df, null);
 });
 
 // R2 M6: one bad entry in an array/map param leaves the rest out on its own —
@@ -553,6 +716,51 @@ check("a table that doesn't hold together is put straight", () => {
   });
 });
 
+check("a gapped sub-column's values are warned about, not silently dropped on load", () => {
+  // R2 FF-F10: a grouped table whose stored counts disagree with its columns
+  // is rebuilt from the columns on load, and a gapped sub-column ("A:Y3"
+  // with no "A:Y2") has no slot in the rebuilt set — its values used to
+  // vanish with no warning, and saving then persisted the loss.
+  const gapped = JSON.parse(serializeProjectFile(payload));
+  gapped.project.nodes.t1.data = {
+    columns: ["Title", "A:Y1", "A:Y3"],
+    rows: [["r1", "1", "3"]],
+    groups: 1,
+    replicates: 3,
+  };
+  const grouped = read(JSON.stringify(gapped));
+  deepStrictEqual(grouped.project.nodes.t1.data!.columns, ["Title", "A:Y1", "A:Y2"]);
+  ok(
+    grouped.issues.some((i) => i.message.includes("left out a column with values") && i.message.includes("A:Y3")),
+    `expected a warning naming A:Y3, got ${JSON.stringify(grouped.issues)}`,
+  );
+  // The same gap one level deeper, in a nested table.
+  const nested = JSON.parse(serializeProjectFile(payload));
+  nested.project.nodes.t1.data = {
+    columns: ["Title", "A:S1:R1", "A:S1:R3"],
+    rows: [["r1", "1", "3"]],
+    groups: 1,
+    subgroups: 1,
+    replicates: 3,
+  };
+  const renested = read(JSON.stringify(nested));
+  deepStrictEqual(renested.project.nodes.t1.data!.columns, ["Title", "A:S1:R1", "A:S1:R2"]);
+  ok(
+    renested.issues.some((i) => i.message.includes("left out a column with values") && i.message.includes("A:S1:R3")),
+    `expected a warning naming A:S1:R3, got ${JSON.stringify(renested.issues)}`,
+  );
+  // A gapped column holding nothing is still dropped, but silently — there
+  // is no value to lose.
+  const empty = JSON.parse(serializeProjectFile(payload));
+  empty.project.nodes.t1.data = {
+    columns: ["Title", "A:Y1", "A:Y3"],
+    rows: [["r1", "1", null]],
+    groups: 1,
+    replicates: 3,
+  };
+  strictEqual(read(JSON.stringify(empty)).issues.length, 0);
+});
+
 check("a saved project reads back identical", () => {
   const { project, issues } = read(serializeProjectFile(payload));
   deepStrictEqual(project, payload);
@@ -708,9 +916,9 @@ check("a file from Helix 1.0 keeps its colors, now each graph's own", () => {
   strictEqual(paint.color("Y1", 0), NAMED_COLORS.blue);
   strictEqual(paint.fill("Y2", 1), "rgba(248,113,113,0.5)");
   strictEqual(paint.dot("Y2", 1), "rgba(248,113,113,0.5)");
-  strictEqual(g1.graphOptions!.palette!.name, "helix");
+  strictEqual(g1.graphOptions!.palette!.name, "titer");
   // A heatmap keeps its scale as Plotly drew it, or Viridis.
-  strictEqual(g2.graphOptions!.palette!.name, "Heat (Helix 1.0)");
+  strictEqual(g2.graphOptions!.palette!.name, "Heat (Titer 1.0)");
   strictEqual(g2.graphOptions!.palette!.colors.length, 256);
   deepStrictEqual([g2.graphOptions!.palette!.colors[0], g2.graphOptions!.palette!.colors[255]], ["#800026", "#FFFFCC"]);
   strictEqual(g3.graphOptions!.palette!.name, "viridis");
@@ -733,6 +941,63 @@ check("a file from Helix 1.0 keeps its colors, now each graph's own", () => {
   ok(!("heatmapColorScale" in again.project.nodes.g2.graphOptions));
   ok(!("volcanoColorUp" in again.project.nodes.g4.graphOptions));
   ok(!("volcanoPointSize" in again.project.nodes.g4.graphOptions));
+});
+
+// M11: a missing palette alone must not rewrite a graph's own options —
+// the Helix 1.0 rebuild only fills in what the file never saved. A graph
+// that saved its fill, point size, outline and bar gap keeps them (and its
+// series), while one that saved only its fill still takes its type's
+// point size, outline and bar gap.
+check("a graph without a palette keeps the options it saved", () => {
+  const file = {
+    app: "helix",
+    project: {
+      nodes: {
+        t1: {
+          id: "t1",
+          type: "table",
+          name: "T",
+          parentId: null,
+          tableType: "xy",
+          data: { columns: ["Title", "X", "Y1", "Y2"], rows: [] },
+        },
+        g1: {
+          id: "g1",
+          type: "graph",
+          name: "Box",
+          parentId: "t1",
+          graphType: "box-violin",
+          graphOptions: {
+            showPoints: true,
+            fill: 0.9,
+            pointFill: 0.8,
+            pointSize: 9,
+            outline: 1,
+            barGap: 0.3,
+            series: { Y1: { color: "#D55E00" } },
+          },
+        },
+        g2: {
+          id: "g2",
+          type: "graph",
+          name: "Box 2",
+          parentId: "t1",
+          graphType: "box-violin",
+          graphOptions: { fill: 0.9 },
+        },
+      },
+    },
+  };
+  const { project } = read(JSON.stringify(file));
+  const o1 = project.nodes.g1.graphOptions!;
+  deepStrictEqual(
+    [o1.fill, o1.pointFill, o1.pointSize, o1.outline, o1.barGap],
+    [0.9, 0.8, 9, 1, 0.3],
+  );
+  deepStrictEqual(o1.series, { Y1: { color: "#D55E00" } });
+  strictEqual(o1.palette!.name, "titer"); // the missing palette is still rebuilt
+  const o2 = project.nodes.g2.graphOptions!;
+  deepStrictEqual([o2.fill, o2.pointSize, o2.outline, o2.barGap], [0.9, 5, 2, 0]);
 });
 
 check("cell colors from older files become their graphs' point colors", () => {
@@ -825,6 +1090,33 @@ check("a broken item is left out alone, and said so", () => {
   deepStrictEqual(project.rootOrder, ["t1", "t2"]);
   ok(issues.some((i) => i.message.includes("2 unreadable items")));
   ok(issues.some((i) => i.message.includes("Future")));
+});
+
+// R2 FF-F19: a duplicated node id is last-wins in `JSON.parse`, so the first
+// copy used to vanish with no warning — a whole node gone on open. The
+// text-level read keeps both: the first copy under its id, the second under
+// a renamed id, and the open says so.
+check("a duplicated node id keeps both copies, and says so", () => {
+  const file = JSON.parse(serializeProjectFile(payload));
+  const second = {
+    ...table,
+    name: "Second Copy",
+    data: { columns: ["Title", "X", "Y1"], rows: [["b", "1", "9"]] },
+  };
+  const text = JSON.stringify(file).replace('"a1":', `"t1":${JSON.stringify(second)},"a1":`);
+  // The old path drops the first copy silently: `JSON.parse` keeps the last.
+  const old = read(text);
+  deepStrictEqual(Object.keys(old.project.nodes).sort(), ["a1", "g1", "t1"]);
+  strictEqual(old.project.nodes.t1.name, "Second Copy");
+  ok(!old.issues.some((i) => i.message.includes("appears twice")));
+  const result = parseProjectText(text);
+  if ("error" in result) throw new Error(result.error);
+  deepStrictEqual(Object.keys(result.project.nodes).sort(), ["a1", "g1", "t1", "t1__2"]);
+  strictEqual(result.project.nodes.t1.name, "Doses");
+  strictEqual(result.project.nodes["t1__2"].name, "Second Copy");
+  deepStrictEqual(result.project.rootOrder, ["t1", "t1__2"]);
+  strictEqual(result.updated, true);
+  ok(result.issues.some((i) => i.message.includes("Item id “t1” appears twice") && i.message.includes("t1__2")));
 });
 
 check("a file is never trusted: unknown types, R code in params, a huge graph", async () => {
@@ -924,6 +1216,31 @@ check("fewer sub-columns keep each value in its group", () => {
   deepStrictEqual(t.excluded, ["0,3"]);
 });
 
+check("clearing an excluded cell drops its exclusion, so no phantom * and no auto-exclude (#21)", () => {
+  const t = toggleExcluded(writeBlock(newTable("xy", 2), 0, 0, [["r1", "5", "6"]], "xy"), {
+    r0: 0,
+    c0: 1,
+    r1: 0,
+    c1: 1,
+  });
+  deepStrictEqual(t.excluded, ["0,1"]);
+  // Delete/Backspace clears the exclusion with the value.
+  const cleared = fillRange(t, { r0: 0, c0: 1, r1: 0, c1: 1 }, null);
+  strictEqual(cleared.rows[0][1], null);
+  strictEqual(cleared.excluded, undefined);
+  // Typing blank over it does the same.
+  const blanked = writeBlock(t, 0, 1, [[""]], "xy");
+  strictEqual(blanked.rows[0][1], null);
+  strictEqual(blanked.excluded, undefined);
+  // A fresh value in the cleared cell is live, not auto-excluded…
+  const revalued = writeBlock(cleared, 0, 1, [["9"]], "xy");
+  strictEqual(revalued.rows[0][1], "9");
+  strictEqual(revalued.excluded, undefined);
+  // …while overwriting an excluded cell with a value keeps it excluded.
+  const kept = writeBlock(t, 0, 1, [["7"]], "xy");
+  deepStrictEqual(kept.excluded, ["0,1"]);
+});
+
 check("more groups and sub-columns add empty ones after the data", () => {
   const t = regroupTable(grouped(), 3, 4);
   deepStrictEqual(t.columns.slice(1, 5), ["A:Y1", "A:Y2", "A:Y3", "A:Y4"]);
@@ -1012,6 +1329,60 @@ check("renaming a subgroup renames it within its group only", () => {
   deepStrictEqual(t.columns.slice(1, 5), ["A:Mouse 1:R1", "A:Mouse 1:R2", "A:S2:R1", "A:S2:R2"]);
   deepStrictEqual(t.columns.slice(5, 7), ["B:S1:R1", "B:S1:R2"]);
   strictEqual(renameSubgroup(t, "A", "S2", "Mouse 1"), t); // taken, within the group
+});
+
+check("renaming a nested table's top-level group renames all its sub-columns, and the menu offers Rename Group", () => {
+  const t = renameGroup(nested(), "A", "Control");
+  deepStrictEqual(t.columns.slice(1, 5), ["Control:S1:R1", "Control:S1:R2", "Control:S2:R1", "Control:S2:R2"]);
+  deepStrictEqual(t.columns.slice(5, 7), ["B:S1:R1", "B:S1:R2"]);
+  strictEqual(renameGroup(t, "B", "Control"), t); // taken, by another group
+  // The menu for a Nested table offers both levels: Rename Subgroup for the
+  // subgroup the column belongs to, and Rename Group for its top-level group.
+  // Before the fix only Rename Subgroup was offered, and the Group header's
+  // double-click opened the subgroup editor too, so kind "group" was
+  // unreachable in Nested tables.
+  let groupColumn = -1;
+  let subgroupColumn = -1;
+  const menu = (data: TableData, type: "nested" | "grouped") =>
+    gridMenu({
+      data,
+      type,
+      zone: "column",
+      range: { r0: 0, r1: 0, c0: 1, c1: 1 },
+      update: () => {},
+      rename: (c) => {
+        subgroupColumn = c;
+      },
+      renameGroup: (c) => {
+        groupColumn = c;
+      },
+      showGroups: () => {},
+    });
+  const items = menu(nested(), "nested");
+  const texts = items.map((i) => ("text" in i ? i.text : ""));
+  ok(texts.includes("Rename Group"));
+  ok(texts.includes("Rename Subgroup"));
+  const groupItem = items.find((i) => "text" in i && i.text === "Rename Group");
+  const action = groupItem && "action" in groupItem ? groupItem.action : undefined;
+  action?.("Rename Group");
+  strictEqual(groupColumn, 1);
+  strictEqual(subgroupColumn, -1); // the group entry must not open the subgroup editor
+  // A plain Grouped table still offers Rename Group exactly once.
+  const groupedTexts = menu(grouped(), "grouped").map((i) => ("text" in i ? i.text : ""));
+  strictEqual(groupedTexts.filter((text) => text === "Rename Group").length, 1);
+  ok(!groupedTexts.includes("Rename Subgroup"));
+});
+
+check("renesting after a subgroup rename keeps each group's own subgroup names and values", () => {
+  // A renamed its S1 to "Mouse 1"; B still has S1 — renesting must not look for
+  // "B:Mouse 1" and overwrite B's S1 values with null.
+  const renamed = renameSubgroup(nested(), "A", "S1", "Mouse 1");
+  ok(!renestLoses(renamed, 2, 3, 3)); // a pure replicate increase loses nothing
+  const t = renestTable(renamed, 2, 3, 3);
+  deepStrictEqual(t.columns.slice(1, 4), ["A:Mouse 1:R1", "A:Mouse 1:R2", "A:Mouse 1:R3"]);
+  deepStrictEqual(t.columns.slice(10, 13), ["B:S1:R1", "B:S1:R2", "B:S1:R3"]);
+  strictEqual(t.rows[0][t.columns.indexOf("B:S1:R1")], "b11");
+  strictEqual(t.rows[0][t.columns.indexOf("A:Mouse 1:R1")], "a11");
 });
 
 check("a nested table survives a save and reload", () => {
@@ -1191,6 +1562,162 @@ check("the ROC wizard's score question carries a message when the truth is the o
   deepStrictEqual(score.options, []);
   ok(score.emptyMessage?.includes("only numeric column"));
   strictEqual(initialAnswer(score, undefined), null);
+});
+
+check("the Bland-Altman wizard never offers the X column as a method on XY tables (F8)", () => {
+  const xy = readTable({
+    columns: ["Title", "Time", "Method A", "Method B"],
+    rows: [
+      ["", "0", "1.1", "1.0"],
+      ["", "1", "2.9", "3.1"],
+      ["", "2", "5.2", "4.8"],
+    ],
+  });
+  const choiceValues = (q: Question) => {
+    if (q.kind !== "choice") throw new Error(`${q.id} is not a choice question`);
+    return q.options.map((o) => o.value);
+  };
+  const first = WIZARDS["bland-altman"]!
+    .questions({}, xy, "xy")
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "first") as Question;
+  deepStrictEqual(choiceValues(first), ["Method A", "Method B"]);
+  // With the first method picked, the second question still cannot offer X.
+  const second = WIZARDS["bland-altman"]!
+    .questions({ first: "Method A" }, xy, "xy")
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "second") as Question;
+  deepStrictEqual(choiceValues(second), ["Method B"]);
+  // A column table has no X column, so every numeric column stays a method.
+  const column = readTable({
+    columns: ["Title", "Method A", "Method B"],
+    rows: [
+      ["", "1.1", "1.0"],
+      ["", "2.9", "3.1"],
+      ["", "5.2", "4.8"],
+    ],
+  });
+  const firstCol = WIZARDS["bland-altman"]!
+    .questions({}, column, "column")
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "first") as Question;
+  deepStrictEqual(choiceValues(firstCol), ["Method A", "Method B"]);
+  // X + 1 Y: no second method exists, and the wizard says so instead of
+  // offering X as the second method.
+  const oneY = readTable({
+    columns: ["Title", "Time", "Method A"],
+    rows: [
+      ["", "0", "1.1"],
+      ["", "1", "2.9"],
+      ["", "2", "5.2"],
+    ],
+  });
+  const secondOneY = WIZARDS["bland-altman"]!
+    .questions({ first: "Method A" }, oneY, "xy")
+    .filter(Boolean)
+    .find((q) => (q as Question).id === "second") as Question;
+  if (secondOneY.kind !== "choice") throw new Error("second is not a choice question");
+  deepStrictEqual(secondOneY.options, []);
+  ok(secondOneY.emptyMessage?.includes("only one Y data set"));
+});
+
+check("the Bland-Altman graph never plots X as a method on XY tables (FL-f8-graph)", () => {
+  const xy = readTable({
+    columns: ["Title", "Time", "Method A", "Method B"],
+    rows: [
+      ["", "0", "1.1", "1.0"],
+      ["", "1", "2.9", "3.1"],
+      ["", "2", "5.2", "4.8"],
+    ],
+  });
+  // The graph path the GUI uses: plotColumns picks the columns, the
+  // builder draws the first two — so X must never be among the picked
+  // columns, and the plotted trace must compare the two methods.
+  const options = newGraphOptions("bland-altman");
+  const picked = plotColumns(xy, "bland-altman", options, "xy").map((c) => c.name);
+  deepStrictEqual(picked, ["Method A", "Method B"]);
+  const fig = GRAPHS["bland-altman"].build(plotColumns(xy, "bland-altman", options, "xy"), options, paintOf(options, 2));
+  const [trace] = fig.data as { name: string; x: number[]; y: number[] }[];
+  strictEqual(trace.name, "Method A − Method B");
+  // The plotted points are Method A − Method B against their mean — never
+  // X (Time) against a method: the first point is (1.05, 0.1), not (0, 1.1).
+  const rounded = (vs: number[]) => vs.map((v) => Number(v.toFixed(2)));
+  deepStrictEqual(rounded(trace.x), [1.05, 3, 5]);
+  deepStrictEqual(rounded(trace.y), [0.1, -0.2, 0.4]);
+  // X + 1 Y: there is no second method, so the graph draws nothing rather
+  // than falling back to X as a method.
+  const oneY = readTable({
+    columns: ["Title", "Time", "Method A"],
+    rows: [
+      ["", "0", "1.1"],
+      ["", "1", "2.9"],
+      ["", "2", "5.2"],
+    ],
+  });
+  deepStrictEqual(
+    plotColumns(oneY, "bland-altman", options, "xy").map((c) => c.name),
+    ["Method A"],
+  );
+  deepStrictEqual(
+    GRAPHS["bland-altman"].build(plotColumns(oneY, "bland-altman", options, "xy"), options, paintOf(options, 1)).data,
+    [],
+  );
+  // A column table has no X column, so every numeric column stays a method.
+  const column = readTable({
+    columns: ["Title", "Method A", "Method B"],
+    rows: [
+      ["", "1.1", "1.0"],
+      ["", "2.9", "3.1"],
+      ["", "5.2", "4.8"],
+    ],
+  });
+  deepStrictEqual(
+    plotColumns(column, "bland-altman", options, "column").map((c) => c.name),
+    ["Method A", "Method B"],
+  );
+});
+
+// The Bland-Altman graph still draws its lines on a two-method table
+// (FL-ba-lines): the FL-f8-graph fix made plotColumns drop the first column
+// for BA on "xy" tables, which is right for a real XY table — but the
+// reference fixture is a method-comparison table with no X column, so it is
+// modelled as a column table, and its figure must carry the scatter plus the
+// three lines at the analysis's bias and limits. (Passing "xy" for this
+// fixture dropped Method A as if it were X and the graph rendered empty.)
+check("the Bland-Altman graph still draws its lines on a two-method table (FL-ba-lines)", () => {
+  const twoMethods = readTable({
+    columns: ["Title", "Method A", "Method B"],
+    rows: [
+      ["", "12.1", "12.4"],
+      ["", "11.4", "11.9"],
+      ["", "13.2", "13.0"],
+      ["", "12.8", "13.5"],
+      ["", "10.9", "11.2"],
+      ["", "12.5", "12.9"],
+      ["", "11.8", "12.0"],
+      ["", "13.0", "13.6"],
+      ["", "12.2", "12.5"],
+      ["", "11.6", "12.1"],
+    ],
+  });
+  const options = newGraphOptions("bland-altman");
+  deepStrictEqual(
+    plotColumns(twoMethods, "bland-altman", options, "column").map((c) => c.name),
+    ["Method A", "Method B"],
+  );
+  const fig = GRAPHS["bland-altman"].build(
+    plotColumns(twoMethods, "bland-altman", options, "column"),
+    options,
+    paintOf(options, 2),
+  );
+  const traces = fig.data as { mode?: string; y?: number[]; x?: number[] }[];
+  strictEqual(traces.length, 4);
+  strictEqual(traces[0].x?.length, 10);
+  const lines = traces
+    .filter((t) => t.mode === "lines" && t.y?.length === 2 && t.y[0] === t.y[1])
+    .map((t) => t.y![0])
+    .sort((a, b) => a - b);
+  deepStrictEqual(lines, [-0.8506528983575519, -0.36, 0.1306528983575519]);
 });
 
 // ── Row groups (a grouped table's third factor, plan 03) ─────────────────
@@ -1451,6 +1978,54 @@ check("the three-way ANOVA is offered only with at least 2 row bands", () => {
   deepStrictEqual(values(), ["two-way-anova", "mixed-effects", "multiple-t-tests"]);
 });
 
+// The native Analysis menu's effect depends on this key, not on the table data
+// itself: it must change exactly when the data-dependent items change, or the
+// menu goes stale once isDirty is true and consecutive edits share an undoName
+// (BUG-REPORT #16 — three-way ANOVA, nested t-test, nested ANOVA).
+check("the native Analysis menu key follows the data-dependent tests (R3-16)", () => {
+  const grouped: TableData = {
+    columns: ["Title", "A:Y1"],
+    rows: [["r1", "1"], ["r2", "2"]],
+    groups: 1,
+    replicates: 1,
+    rowGroups: [{ name: "All rows", count: 2 }],
+  };
+  const twoBands: TableData = {
+    ...grouped,
+    rowGroups: [
+      { name: "WT", count: 1 },
+      { name: "KO", count: 1 },
+    ],
+  };
+  // A second row band offers the three-way ANOVA, so the key must change.
+  ok(analysisOptionsKey("grouped", grouped) !== analysisOptionsKey("grouped", twoBands));
+  ok(analysisOptionsKey("grouped", twoBands).includes("three-way-anova"));
+  // A value-only edit leaves the offered set alone, so the key stays put.
+  strictEqual(
+    analysisOptionsKey("grouped", twoBands),
+    analysisOptionsKey("grouped", { ...twoBands, rows: [["r1", "9"], ["r2", "8"]] }),
+  );
+  const nestedTwo: TableData = {
+    columns: ["Title", "A:S1:R1", "B:S1:R1"],
+    rows: [[null, "1", "2"]],
+    groups: 2,
+    subgroups: 1,
+    replicates: 1,
+  };
+  const nestedThree: TableData = {
+    columns: ["Title", "A:S1:R1", "B:S1:R1", "C:S1:R1"],
+    rows: [[null, "1", "2", "3"]],
+    groups: 3,
+    subgroups: 1,
+    replicates: 1,
+  };
+  // A third data group swaps the nested t-test for the nested ANOVA.
+  ok(analysisOptionsKey("nested", nestedTwo) !== analysisOptionsKey("nested", nestedThree));
+  strictEqual(analysisOptionsKey("nested", nestedTwo), "nested-t-test");
+  strictEqual(analysisOptionsKey("nested", nestedThree), "nested-anova");
+  strictEqual(analysisOptionsKey(undefined, nestedTwo), "");
+});
+
 check("the three-way ANOVA wizard asks for a post-hoc term only when comparing", () => {
   const table = readTable({
     columns: ["Title", "A:Y1", "A:Y2", "B:Y1", "B:Y2"],
@@ -1654,6 +2229,130 @@ check("a two-way ANOVA of one value per cell asks nothing and runs the ordinary 
     posthocTarget: "groups",
     sphericity: false,
   });
+});
+
+// BUG-REPORT #14 (FL-R3-14): a repeated-measures two-way ANOVA used to crash
+// inside R with "missing value where TRUE/FALSE needed" when one group had a
+// single complete subject — cov() of one row is all NA, and 0 * NA is NA,
+// poisoning the pooled covariance S and the Geisser-Greenhouse epsilon (the
+// GG code is spliced in even when sphericity is assumed). The single-subject
+// group now contributes a zero matrix to S, and one subject per group in
+// every group is refused up front instead of crashing in R.
+check("a repeated-measures two-way ANOVA survives a group with one complete subject (FL-R3-14)", async () => {
+  // Group A has 3 complete subjects; Group B has 1 (Y2 misses row 3, Y3 misses row 1).
+  const table: TableData = {
+    columns: ["Title", "A:Y1", "A:Y2", "A:Y3", "B:Y1", "B:Y2", "B:Y3"],
+    rows: [
+      ["", "10", "12", "11", "20", "22", null],
+      ["", "13", "14", "15", "24", "25", "26"],
+      ["", "16", "17", "18", "27", null, "29"],
+    ],
+    groups: 2,
+    replicates: 3,
+  };
+  const params = { design: "repeated-measures", sphericity: false, posthoc: "none", posthocTarget: "groups" } as AnalysisParams;
+  const out = await runAnalysis("two-way-anova", table, params);
+  if ("error" in out) throw new Error(`expected a result, got ${out.error}`);
+  const stats = Object.fromEntries(out.stats.map((s) => [s.label, s.value]));
+  // Epsilon 0.5 and the corrected P values, verified against an independent
+  // (pure-JS) computation of the pooled covariance and the F distribution.
+  ok(Math.abs((stats["Geisser-Greenhouse epsilon"] ?? NaN) - 0.5) < 1e-12);
+  ok(Math.abs((stats["Row P value"] ?? NaN) - 0.008421202561088295) < 1e-9);
+  ok(Math.abs((stats["Interaction P value"] ?? NaN) - 0.47776703213290367) < 1e-9);
+  // Sphericity assumed: same data, no GG correction, no epsilon reported.
+  const assumed = await runAnalysis("two-way-anova", table, { ...params, sphericity: true });
+  if ("error" in assumed) throw new Error(`expected a result with sphericity assumed, got ${assumed.error}`);
+  const assumedStats = Object.fromEntries(assumed.stats.map((s) => [s.label, s.value]));
+  ok(!assumed.stats.some((s) => s.label === "Geisser-Greenhouse epsilon"));
+  ok(Math.abs((assumedStats["Row P value"] ?? NaN) - 0.0002812828254859835) < 1e-9);
+  // One complete subject per group in every group: no residual variation, so a
+  // clean error, not an R crash.
+  const allSingle: TableData = {
+    columns: ["Title", "A:Y1", "A:Y2", "B:Y1", "B:Y2"],
+    rows: [
+      ["", "10", "12", "20", null],
+      ["", "13", null, "24", "25"],
+      ["", "16", "17", "27", "29"],
+    ],
+    groups: 2,
+    replicates: 2,
+  };
+  const refused = await runAnalysis("two-way-anova", allSingle, params);
+  if (!("error" in refused) || !refused.error.includes("more complete subjects than column groups"))
+    throw new Error(`expected the too-few-subjects error, got ${JSON.stringify(refused)}`);
+});
+
+// BUG-REPORT #26 (FL-R3-26): partial AnalysisParams used to crash (or refuse)
+// four runners — `params ?? DEFAULTS` only covers a wholly missing params
+// object, so a partial one left fields `undefined` and R saw
+// `alternative="undefined"` / `p.adjust(pr,"undefined")`, or the runner
+// refused with a "“undefined” multiple comparisons" error. Each runner now
+// merges over its defaults, so a partial object runs with the missing fields
+// defaulted.
+check("partial compare-two-groups params fall back to the defaults (FL-R3-26)", async () => {
+  const out = await runAnalysis("compare-two-groups", treatments(["Control", "Drug A"]), {
+    paired: false,
+  } as AnalysisParams);
+  if ("error" in out) throw new Error(`expected a result, got ${out.error}`);
+  strictEqual(out.subtitle, "Unpaired t test");
+});
+
+check("partial nested-anova params fall back to no post-hoc (FL-R3-26)", async () => {
+  const table: TableData = {
+    columns: ["Title", "A:S1:R1", "A:S2:R1", "B:S1:R1", "B:S2:R1", "C:S1:R1", "C:S2:R1"],
+    rows: [[null, "1", "2", "3", "4", "5", "6"]],
+    groups: 3,
+    subgroups: 2,
+    replicates: 1,
+  };
+  const out = await runAnalysis("nested-anova", table, {} as AnalysisParams);
+  if ("error" in out) throw new Error(`expected a result, got ${out.error}`);
+  strictEqual(out.stats.find((s) => s.label === "Groups")?.value, 3);
+});
+
+check("partial two-way-anova params fall back to the ordinary design (FL-R3-26)", async () => {
+  const table: TableData = {
+    columns: ["Title", "A:Y1", "A:Y2", "B:Y1", "B:Y2"],
+    rows: [
+      ["a", "1", "3", "2", "4"],
+      ["b", "5", "6", "7", "8"],
+      ["c", "9", "10", "11", "12"],
+    ],
+    groups: 2,
+    replicates: 2,
+  };
+  const out = await runAnalysis("two-way-anova", table, { design: "ordinary" } as AnalysisParams);
+  if ("error" in out) throw new Error(`expected a result, got ${out.error}`);
+  strictEqual(out.subtitle, "Ordinary two-way ANOVA");
+});
+
+check("partial multiple-t-tests params fall back to the unpaired Gaussian Holm defaults (FL-R3-26)", async () => {
+  const data: TableData = {
+    columns: ["Title", "A:1", "A:2", "A:3", "B:1", "B:2", "B:3"],
+    rows: [
+      ["r1", "1", "2", "3", "4", "5", "6"],
+      ["r2", "2", "3", "4", "5", "6", "7"],
+    ],
+  };
+  const out = await runAnalysis("multiple-t-tests", data, {} as AnalysisParams);
+  if ("error" in out) throw new Error(`expected a result, got ${out.error}`);
+  strictEqual(out.stats.find((s) => s.label === "Rows compared")?.value, 2);
+  ok(out.comparisons!.every((c) => c.p !== null), "every row completes with a P value");
+});
+
+// BUG-REPORT #26, leg 2 (FL-R3-26): installBatch used to call evalNamedVector
+// with no timeout, so the 300 s EVAL_TIMEOUT_MS aborted a package install
+// before the 360 s PACKAGE_INSTALL_TIMEOUT_MS — and classifyInstallError
+// then misread the EvalTimeoutError as "install-failed". The install eval
+// now carries the install budget. A runtime repro would need a >300 s
+// install, so this pins the call itself.
+check("installBatch gives the install eval the package-install timeout (FL-R3-26)", () => {
+  const webr = readFileSync("src/stats/webr.ts", "utf8");
+  const batch = webr.slice(webr.indexOf("async function installBatch"));
+  ok(
+    /const loaded = await evalNamedVector\(code, \{ timeoutMs \}\)/.test(batch),
+    "installBatch must pass { timeoutMs } to evalNamedVector",
+  );
 });
 
 // R2-B3: with X + 1 Y the enzyme-inhibition wizard used to dead-end — the
@@ -1939,6 +2638,71 @@ check("the curve wizard asks about weighting, comparing models and global fits",
   );
 });
 
+// R3-11x: a global homologous fit with Kd = [L] exactly (LogKd = 0) used to
+// crash — the shared LogKd start is the mean of the single-curve fits, so
+// it sat exactly on the optimum and port misfired with "false convergence
+// (8)". The global fit now retries once from nudged starts. Same fixture
+// shape as the #11 homologous check, with LogKd = 0 in the generator.
+check("a global homologous fit with Kd = [L] fits instead of failing on false convergence", async () => {
+  const xs = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
+  const noise = [0, 0.4, -0.3, 0.5, -0.4, 0.3, -0.5, 0.4, -0.3, 0.2, -0.2];
+  const homo = (bmax: number) => (x: number) => (bmax * 1) / (1 + 10 ** x + 10 ** 0) + 10;
+  const table: TableData = {
+    columns: ["Title", "X", "Y1", "Y2"],
+    rows: xs.map((x, i) => ["", String(x), String(homo(100)(x) + noise[i]), String(homo(95)(x) - noise[i])]),
+  };
+  const h = await runAnalysis("nonlinear-regression", table, {
+    y: "Y1",
+    model: "homologous-competition-logx",
+    globalY: ["Y2"],
+    ligandConcentration: 1,
+  });
+  ok(!("error" in h), `global homologous fit with Kd = [L] failed: ${"error" in h ? h.error : ""}`);
+  const r2 = h.fit?.rows.find((r) => r.label === "R squared")?.values;
+  ok(r2?.length === 2 && r2.every((v) => v != null && Number.isFinite(v) && v > 0.9), `per-series R² should be finite and > 0.9, got ${r2}`);
+  const logKd = h.coefficients?.find((c) => c.term === "LogKd")?.estimate;
+  ok(logKd != null && Math.abs(logKd) < 0.1, `fitted LogKd should be ~0 (Kd = [L]), got ${logKd}`);
+});
+
+// F5-hom: the R3-11x pin's fixture passes at unit level, but the verifier's
+// exact GUI table rounded to 6 decimals (values as a user would type them)
+// fails the global homologous fit with "false convergence (8)" in BOTH
+// sharing configs — port is a knife-edge on the stacked start (moving the
+// LogKd start by +0.0002, or the Y values by 1e-9, flips the primary), and
+// the R3-11x single +0.01 nudge fails there too (singular convergence (7)
+// on the rounded data). The restart ladder rescues it. The exact-data
+// fixture is pinned alongside it: the GUI config itself must keep fitting.
+check("a global homologous fit on the verifier's table (exact and 6dp-rounded) fits in both sharing configs", async () => {
+  const xs = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
+  const y1 = [59.7512437811, 59.621736019, 57.319047619, 53.6736470252, 42.9333333333, 29.6712943361, 17.8333333333, 13.3741743576, 10.6803921569, 10.5142403356, 9.8998003992];
+  const y2 = [57.263681592, 56.360649218, 55.5380952381, 50.5149646739, 42.0666666667, 28.1027296193, 18.4166666667, 12.4254656397, 11.231372549, 10.0985283188, 10.2948103792];
+  const r6 = (v: number[]) => v.map((x) => Number(x.toFixed(6)));
+  const cases: { label: string; a: number[]; b: number[]; shared?: string[] }[] = [
+    { label: "exact data, usual shared params", a: y1, b: y2 },
+    { label: "exact data, LogKd only", a: y1, b: y2, shared: ["LogKd"] },
+    { label: "6dp-rounded data, usual shared params", a: r6(y1), b: r6(y2) },
+    { label: "6dp-rounded data, LogKd only", a: r6(y1), b: r6(y2), shared: ["LogKd"] },
+  ];
+  for (const c of cases) {
+    const table: TableData = {
+      columns: ["Title", "X", "Y1", "Y2"],
+      rows: xs.map((x, i) => ["", String(x), String(c.a[i]), String(c.b[i])]),
+    };
+    const h = await runAnalysis("nonlinear-regression", table, {
+      y: "Y1",
+      model: "homologous-competition-logx",
+      globalY: ["Y2"],
+      ligandConcentration: 1,
+      ...(c.shared ? { sharedParams: c.shared } : {}),
+    });
+    ok(!("error" in h), `global homologous fit (${c.label}) failed: ${"error" in h ? h.error : ""}`);
+    const r2 = h.fit?.rows.find((r) => r.label === "R squared")?.values;
+    ok(r2?.length === 2 && r2.every((v) => v != null && Number.isFinite(v) && v > 0.9), `per-series R² should be finite and > 0.9 (${c.label}), got ${r2}`);
+    const logKd = h.coefficients?.find((cc) => cc.term === "LogKd")?.estimate;
+    ok(logKd != null && Math.abs(logKd) < 0.1, `fitted LogKd should be ~0 (Kd = [L]) (${c.label}), got ${logKd}`);
+  }
+});
+
 // Plan 26: only nested model pairs get the F test, and AICc matches R
 // (line AICc −19.5734 for RSS 0.3112, n = 8, k = 2 — verified in R).
 check("only nested model pairs get the F test", () => {
@@ -1959,10 +2723,90 @@ check("only nested model pairs get the F test", () => {
   strictEqual(aicc(1, 4, 3), null);
 });
 
-// Plan 26: a global fit's coefficients split per series for the overlay —
-// shared parameters as fitted, per-series ones with their suffix stripped,
-// other series' dropped (a display term ending in a parenthesis, like
-// "Asymmetry (S)", is not a series suffix).
+// R3-12: a weighted model comparison must fit both models weighted, a
+// homologous comparison model must get [L], and the comparison model must
+// be validated before R sees it. Before the fix both models were fitted
+// unweighted (only their sums of squares were weighted afterward, so the
+// F test and AICc were invalid), "homologous-competition-logx" as
+// compareModel crashed on the unbound R variable L, and a comparison model
+// needing more points — or different X — than the primary reached R.
+check("a weighted model comparison fits both models weighted", async () => {
+  const xs = [0, 1, 2, 3, 4, 5, 6, 7];
+  const ys = [2, 5.1, 7.8, 11.4, 13.2, 18.5, 17.5, 27];
+  const table: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: xs.map((x, i) => ["", String(x), String(ys[i])]),
+  };
+  const out = await runAnalysis("nonlinear-regression", table, {
+    y: "Y1",
+    model: "line",
+    compareModel: "quadratic",
+    weights: "1/y2",
+  });
+  ok(!("error" in out), `weighted comparison failed: ${"error" in out ? out.error : ""}`);
+  // Independent R: the weighted and unweighted line fits, and the weighted
+  // quadratic's weighted sum of squares.
+  const ref = await evalNamedVector(
+    `x<-c(${xs.join(",")});y<-c(${ys.join(",")});w<-1/y^2;` +
+      `mw<-lm(y~x,weights=w);mu<-lm(y~x);mq<-lm(y~x+I(x^2),weights=w);` +
+      `c(bw=as.numeric(coef(mw)[2]),bu=as.numeric(coef(mu)[2]),ssq=sum(w*residuals(mq)^2))`,
+  );
+  const slope = out.coefficients?.find((c) => c.term === "Slope")?.estimate;
+  ok(
+    slope != null && ref.bw != null && Math.abs(slope - ref.bw) < 0.05,
+    `Slope should be the weighted fit (${ref.bw}), got ${slope} (unweighted: ${ref.bu})`,
+  );
+  ok(
+    ref.bw != null && ref.bu != null && Math.abs(ref.bw - ref.bu) > 0.1,
+    `weighted and unweighted slopes should differ (weighted: ${ref.bw}, unweighted: ${ref.bu})`,
+  );
+  const ssB = out.stats?.find((s) => s.label === "Sum of squares (comparison model)")?.value;
+  ok(
+    ssB != null && ref.ssq != null && Math.abs(ssB - ref.ssq) < 0.05,
+    `comparison SS should be the weighted quadratic's (${ref.ssq}), got ${ssB}`,
+  );
+  // Homologous competition as the comparison model: [L] must reach its spec.
+  const hXs = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
+  const hNoise = [0, 0.4, -0.3, 0.5, -0.4, 0.3, -0.5, 0.4, -0.3, 0.2, -0.2];
+  const homo = (bmax: number) => (x: number) => (bmax * 1) / (1 + 10 ** x + 10 ** 0.3) + 10;
+  const hTable: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: hXs.map((x, i) => ["", String(x), String(homo(100)(x) + hNoise[i])]),
+  };
+  const h = await runAnalysis("nonlinear-regression", hTable, {
+    y: "Y1",
+    model: "inhibitor-3pl-logx",
+    compareModel: "homologous-competition-logx",
+    ligandConcentration: 1,
+  });
+  ok(!("error" in h), `homologous comparison failed: ${"error" in h ? h.error : ""}`);
+  // A comparison model needing more points than the data holds is refused
+  // up front, not left for R to choke on.
+  const few: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "0", "2"],
+      ["", "1", "5"],
+      ["", "2", "8"],
+      ["", "3", "11"],
+      ["", "4", "14"],
+    ],
+  };
+  const q = await runAnalysis("nonlinear-regression", few, {
+    y: "Y1",
+    model: "line",
+    compareModel: "quintic",
+  });
+  ok("error" in q && q.error.includes("Not enough complete points"), `quintic comparison on 5 points should be refused up front, got ${"error" in q ? q.error : "no error"}`);
+  // A comparison model needing different X than the primary (a log-X model
+  // drops X = 0) is refused up front too.
+  const s = await runAnalysis("nonlinear-regression", table, {
+    y: "Y1",
+    model: "line",
+    compareModel: "semilog-line",
+  });
+  ok("error" in s && s.error.includes("same points"), `semilog comparison on data with X = 0 should be refused up front, got ${"error" in s ? s.error : "no error"}`);
+});
 check("a global fit's coefficients split per series for the overlay", () => {
   const row = (term: string, estimate: number): RegressionCoefficient => ({
     term,
@@ -1987,6 +2831,71 @@ check("a global fit's coefficients split per series for the overlay", () => {
     coefficientsForSet(coefs, "Treated", ["Control", "Treated"]).map((c) => c.term),
     ["LogEC50", "Bottom", "Asymmetry (S)"],
   );
+});
+
+// R3-11: a global fit with a fixed parameter, and a global homologous fit.
+// Fixed parameters were filtered out of the global fit's coefficients, so
+// the per-series evaluator got NaN for them: every per-series R² was NaN,
+// Span vanished, and the overlay drew nothing. The homologous curve also
+// lost [L] on the way through (evaluateCurve, the returned result, and
+// the multi-series overlay branch), so its R² was NaN too.
+check("a global fit with a fixed parameter keeps finite R², Span and curves", async () => {
+  const xs = [-9, -8.5, -8, -7.5, -7, -6.5, -6, -5.5, -5, -4.5, -4];
+  const noise = [0, 0.4, -0.3, 0.5, -0.4, 0.3, -0.5, 0.4, -0.3, 0.2, -0.2];
+  const fourPl = (top: number) => (x: number) => 0 + (top - 0) / (1 + 10 ** (-6.5 - x));
+  const table: TableData = {
+    columns: ["Title", "X", "Y1", "Y2"],
+    rows: xs.map((x, i) => ["", String(x), String(fourPl(100)(x) + noise[i]), String(fourPl(90)(x) - noise[i])]),
+  };
+  const out = await runAnalysis("nonlinear-regression", table, {
+    y: "Y1",
+    model: "sigmoidal-4pl-logx",
+    globalY: ["Y2"],
+    fixed: { Bottom: 0 },
+  });
+  ok(!("error" in out), `global fit with fixed Bottom failed: ${"error" in out ? out.error : ""}`);
+  const r2 = out.fit?.rows.find((r) => r.label === "R squared")?.values;
+  ok(r2?.length === 2 && r2.every((v) => v != null && Number.isFinite(v) && v > 0.9), `per-series R² should be finite and > 0.9, got ${r2}`);
+  const span = out.fit?.rows.find((r) => r.label === "Span")?.values;
+  ok(span?.length === 2 && span.every((v) => v != null && v > 50), `Span should be present per series, got ${span}`);
+  const bottom = out.coefficients?.find((c) => c.term === "Bottom");
+  ok(bottom?.estimate === 0, `fixed Bottom should be reported as a coefficient, got ${bottom?.estimate}`);
+  // The overlay's evaluator, per series, from the returned coefficients.
+  const sets = out.fit?.sets ?? ["Y1", "Y2"];
+  for (const [name, top] of [["Y1", 100], ["Y2", 90]] as const) {
+    const atMid = evaluateCurve("sigmoidal-4pl-logx", coefficientsForSet(out.coefficients ?? [], name, sets), -6.5);
+    ok(Number.isFinite(atMid) && Math.abs(atMid - top / 2) < 5, `${name} curve at X = -6.5 should be ~${top / 2}, got ${atMid}`);
+  }
+  // Homologous competition, globally: [L] must survive into the result
+  // and the evaluator, or its R² is NaN and no curve draws. LogKd = 0.3
+  // (Kd ≈ 2·[L]) puts the transition inside the X range; Kd = [L]
+  // exactly starts the shared fit at its optimum and port misfires with
+  // "false convergence (8)" — a pre-existing optimizer quirk, not this fix.
+  const hXs = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
+  const homo = (bmax: number) => (x: number) => (bmax * 1) / (1 + 10 ** x + 10 ** 0.3) + 10;
+  const hTable: TableData = {
+    columns: ["Title", "X", "Y1", "Y2"],
+    rows: hXs.map((x, i) => ["", String(x), String(homo(100)(x) + noise[i]), String(homo(95)(x) - noise[i])]),
+  };
+  const h = await runAnalysis("nonlinear-regression", hTable, {
+    y: "Y1",
+    model: "homologous-competition-logx",
+    globalY: ["Y2"],
+    ligandConcentration: 1,
+  });
+  ok(!("error" in h), `global homologous fit failed: ${"error" in h ? h.error : ""}`);
+  const hr2 = h.fit?.rows.find((r) => r.label === "R squared")?.values;
+  ok(hr2?.length === 2 && hr2.every((v) => v != null && Number.isFinite(v) && v > 0.9), `homologous per-series R² should be finite and > 0.9, got ${hr2}`);
+  ok(h.ligandConcentration === 1, `homologous result should carry [L], got ${h.ligandConcentration}`);
+  const hSets = h.fit?.sets ?? ["Y1", "Y2"];
+  const hAt = evaluateCurve(
+    "homologous-competition-logx",
+    coefficientsForSet(h.coefficients ?? [], "Y1", hSets),
+    0,
+    h.ligandConcentration,
+  );
+  // At X = 0 the curve is Bmax/(2 + 10^0.3) + Bottom ≈ 35.0.
+  ok(Number.isFinite(hAt) && Math.abs(hAt - 35) < 5, `homologous curve at X = 0 should be ~35, got ${hAt}`);
 });
 
 // Plan 26: the closed-form inverses agree with R — the plan's pinned
@@ -2048,6 +2957,115 @@ check("closed-form inverses read unknowns off the fitted curve", async () => {
   strictEqual(invertModel("quadratic", dose.coefficients, 50), null);
 });
 
+// R2-m10: band inversion on a non-monotonic standard curve can return an
+// inverted 95% CI (low > high), which reads as a valid interval. An
+// inverted-U quadratic (Y = −x² + 6x over X 0..7, noisy so the band has
+// width) with an unknown Y = 5 on the rising limb inverts on unfixed code
+// (low 1.096 > high 0.847): the fix drops the CI and says so in the notes,
+// keeping the point estimate.
+check("an inverted band-inversion CI is dropped, never shown as an interval", async () => {
+  const xs = [0, 1, 2, 3, 4, 5, 6, 7];
+  const noise = [0.3, -0.2, 0.4, -0.3, 0.2, -0.4, 0.3, -0.2];
+  const quad: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ...xs.map((x, i) => ["", String(x), String(-x * x + 6 * x + noise[i])]),
+      ["", "", "5"],
+    ],
+  };
+  const out = await runAnalysis("nonlinear-regression", quad, { y: "Y1", model: "quadratic", interpolate: true });
+  ok(!("error" in out) && out.interpolated?.length === 1);
+  const u = out.interpolated[0];
+  ok(u.x != null && Math.abs(u.x - 0.973) < 0.01);
+  strictEqual(u.low, null);
+  strictEqual(u.high, null);
+  ok(!("error" in out) && out.notes.includes("comes back inverted"));
+});
+
+// BUG-REPORT #9 (FL-R3-09): a smoothing spline on an XY table with tied X
+// values failed outright — smooth.spline's fit$y lives on the UNIQUE sorted
+// knots (length(unique(x))), so the old code returned 4 + 100 values for 5
+// observations and R recycled fit$y across mismatched rows in the RSS.
+// fitted(fit) is per-observation, so the fit now returns one fitted value
+// per row and the RSS is sum((y - fitted(fit))^2). Reference values below
+// are smooth.spline(x, y) on X = [1,1,2,3,4], Y = [2,2.5,4,6,8], computed
+// straight from R (spar 1.4805142007968894, df 2.00000000833144).
+check("a smoothing spline fits tied X values, one fitted value per observation (FL-R3-09)", async () => {
+  const table: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "1", "2"],
+      ["", "1", "2.5"],
+      ["", "2", "4"],
+      ["", "3", "6"],
+      ["", "4", "8"],
+    ],
+  };
+  const out = await runAnalysis("spline-lowess", table, { method: "spline" } as never);
+  if ("error" in out) throw new Error(out.error);
+  const expected = [2.2058824056037776, 2.2058824056037776, 4.117646984179642, 6.029411567068956, 7.941176153346085];
+  strictEqual(out.fitted?.length, 5);
+  strictEqual(out.curve?.length, 100);
+  out.fitted!.forEach((p, i) => ok(Math.abs(p.y - expected[i]) < 1e-9, `fitted[${i}]`));
+  // The tied X = 1 rows share one knot but are two observations: both get
+  // the knot's fitted value, and the residuals use each row's own Y.
+  strictEqual(out.fitted![0].y, out.fitted![1].y);
+  const rss = out.stats.find((s) => s.label === "Residual sum of squares")?.value;
+  ok(rss != null && Math.abs(rss - 0.14705882236979922) < 1e-9, `rss ${rss}`);
+  // The reported RSS agrees with the fitted values it ships: recomputed
+  // in TS from the residuals, so a recycled fit$y cannot hide in it.
+  const recomputed = out.fitted!.reduce((sum, p) => sum + (p.observed! - p.y) ** 2, 0);
+  ok(rss != null && Math.abs(recomputed - rss) < 1e-9, `recomputed rss ${recomputed}`);
+  const spar = out.stats.find((s) => s.label === "Smoothing parameter (spar)")?.value;
+  ok(spar != null && Math.abs(spar - 1.4805142007968894) < 1e-9, `spar ${spar}`);
+  // Fewer than 4 DISTINCT X values is rejected cleanly before R runs,
+  // instead of surfacing R's "need at least four unique 'x' values".
+  const few: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "1", "2"],
+      ["", "1", "2.5"],
+      ["", "2", "4"],
+      ["", "3", "6"],
+      ["", "3", "7"],
+    ],
+  };
+  deepStrictEqual(await runAnalysis("spline-lowess", few, { method: "spline" } as never), {
+    error: "A smoothing spline needs at least 4 distinct X values.",
+  });
+});
+
+// R3-10: standard-curve interpolation on enzyme models. Their formulas
+// are defined at X = 0, so they set neither positiveX nor nonNegativeX —
+// and the interpolation grid extended a full width BELOW zero, into
+// negative concentrations. On allosteric-sigmoidal that made x^h NaN for
+// non-integer h, so `inc` was NA and R crashed on `if (inc)` for every
+// unknown; on Michaelis-Menten the pole at X = −Km sat inside the grid and
+// the band inversion converged onto −Km instead of a positive X.
+check("enzyme standard curves interpolate unknowns to positive X with positive CIs", async () => {
+  const noise = [0, 0.4, -0.3, 0.5, -0.4, 0.3, -0.5, 0.4, -0.3];
+  const xs = [0, 1, 2, 3, 5, 7, 10, 15, 20];
+  const mm = (x: number) => (100 * x) / (5 + x);
+  const allo = (x: number) => (100 * x ** 1.5) / (5 ** 1.5 + x ** 1.5);
+  const table = (f: (x: number) => number): TableData => ({
+    columns: ["Title", "X", "Y1"],
+    rows: [...xs.map((x, i) => ["", String(x), String(f(x) + noise[i])]), ["", "", "50"]],
+  });
+  // Allosteric-sigmoidal: Y = 50 sits at X = Khalf = 5.
+  const a = await runAnalysis("nonlinear-regression", table(allo), { y: "Y1", model: "allosteric-sigmoidal", interpolate: true });
+  ok(!("error" in a) && a.interpolated?.length === 1, `allosteric interpolation failed: ${"error" in a ? a.error : "no interpolated row"}`);
+  const ua = a.interpolated[0];
+  ok(ua.x != null && Math.abs(ua.x - 5) < 0.75, `allosteric X should be ~5, got ${ua.x}`);
+  ok(ua.low != null && ua.high != null && ua.low > 0 && ua.low < ua.x && ua.x < ua.high, `allosteric CI should be positive and bracket X, got [${ua.low}, ${ua.high}]`);
+  // Michaelis-Menten: Y = 50 sits at X = Km = 5; the pole at −Km must not
+  // capture the CI.
+  const m = await runAnalysis("nonlinear-regression", table(mm), { y: "Y1", model: "michaelis-menten", interpolate: true });
+  ok(!("error" in m) && m.interpolated?.length === 1, `Michaelis-Menten interpolation failed: ${"error" in m ? m.error : "no interpolated row"}`);
+  const um = m.interpolated[0];
+  ok(um.x != null && Math.abs(um.x - 5) < 0.75, `Michaelis-Menten X should be ~5, got ${um.x}`);
+  ok(um.low != null && um.high != null && um.low > 0 && um.low < um.x && um.x < um.high, `Michaelis-Menten CI should be positive and bracket X, got [${um.low}, ${um.high}]`);
+});
+
 check("data sets ticked again keep the table's order", () => {
   const options = ["A", "B", "C"];
   deepStrictEqual(toggled(options, ["A", "C"], "B", true), ["A", "B", "C"]);
@@ -2080,6 +3098,60 @@ check("analyses follow renamed columns", () => {
     [],
   );
   deepStrictEqual(chosen.analysisParams, { posthoc: "tukey", sets: ["Control", "Treated", "B"] });
+});
+
+check("renaming a Y column follows y2, ys, globalY, truth, score and record keys, and subgroup point styles follow a subgroup rename", () => {
+  const binding = followTable(
+    { ...analysis, analysisType: "binding-saturation", analysisParams: { y: "Total", y2: "Nonspecific" } },
+    { renamed: { Nonspecific: "NS" } },
+    [],
+  );
+  deepStrictEqual(binding.analysisParams, { y: "Total", y2: "NS" });
+  const special = followTable(
+    {
+      ...analysis,
+      analysisType: "dose-response-special",
+      analysisParams: { model: "schild", ys: ["Y1", "Y2"], antagonistConcentrations: { Y1: 10, Y2: 20 } },
+    },
+    { renamed: { Y2: "High" } },
+    [],
+  );
+  deepStrictEqual(special.analysisParams, {
+    model: "schild",
+    ys: ["Y1", "High"],
+    antagonistConcentrations: { Y1: 10, High: 20 },
+  });
+  const global = followTable(
+    { ...analysis, analysisType: "nonlinear-regression", analysisParams: { model: "sigmoidal-4pl-logx", globalY: ["Y1", "Y2"] } },
+    { renamed: { Y1: "Response" } },
+    [],
+  );
+  deepStrictEqual(global.analysisParams, { model: "sigmoidal-4pl-logx", globalY: ["Response", "Y2"] });
+  const roc = followTable(
+    { ...analysis, analysisType: "roc-curve", analysisParams: { truth: "Disease", score: "Marker" } },
+    { renamed: { Marker: "Score" } },
+    [],
+  );
+  deepStrictEqual(roc.analysisParams, { truth: "Disease", score: "Score" });
+  const enzyme = followTable(
+    { ...analysis, analysisType: "enzyme-inhibition", analysisParams: { model: "competitive", inhibitorConcentrations: { Drug: 5 } } },
+    { renamed: { Drug: "Inhibitor" } },
+    [],
+  );
+  deepStrictEqual(enzyme.analysisParams, { model: "competitive", inhibitorConcentrations: { Inhibitor: 5 } });
+  // A subgroup rename hands its renamed columns to followTable, so per-point
+  // styles in that subgroup move with the column instead of being dropped.
+  const before = nested();
+  const after = renameSubgroup(before, "A", "S1", "Mouse 1");
+  const renamed = Object.fromEntries(
+    before.columns.map((n, i) => [n, after.columns[i]] as const).filter(([from, to]) => from !== to),
+  );
+  const styled = followTable(
+    { ...graph, graphOptions: { ...graph.graphOptions!, points: { "A:S1:R1#0": { size: 3 } } } },
+    { renamed },
+    after.columns,
+  ).graphOptions!.points;
+  deepStrictEqual(styled, { "A:Mouse 1:R1#0": { size: 3 } });
 });
 
 check("graphs follow renamed columns, groups, compared pairs and colors", () => {
@@ -2151,7 +3223,7 @@ check("palettes keep their authors' colors, in their order and number", () => {
   const counts = Object.fromEntries(PALETTES.map((p) => [p.name, p.colors.length]));
   // prettier-ignore
   deepStrictEqual(counts, {
-    "okabe-ito": 8, "tol-bright": 7, "tol-muted": 9, "tableau-10": 10, grayscale: 5, helix: 6,
+    "okabe-ito": 8, "tol-bright": 7, "tol-muted": 9, "tableau-10": 10, grayscale: 5, titer: 6,
     viridis: 256, cividis: 256, magma: 256, batlow: 256,
     coolwarm: 256, fast: 256, vik: 256, vlag: 256, rdbu: 11,
   });
@@ -2255,6 +3327,39 @@ check("outlines take the color of what they outline, or the one chosen", () => {
     drawnStyle(GRAPHS.individual.build(readTable(data).numeric, half, paintOf(half, 2)).data, "A#0")!.color,
     color("A", 0),
   );
+});
+
+// R2-G-F18: a very large XY scatter thins to the cap instead of freezing the
+// render — timed renders on current code took 1.3s for 10k SVG points and
+// 5.3s for 50k (14.2s / 50.4s on a loaded machine; the graph view redraws
+// with no cancel), so the figure keeps at most XY_SCATTER_MAX_POINTS and
+// says how it thinned.
+check("a very large XY scatter thins to the cap and says so", () => {
+  const options = newGraphOptions("xy-scatter");
+  const rows = Array.from({ length: 10_000 }, (_, i) => [null, String(i), String(Math.sin(i / 100))]);
+  const fig = GRAPHS["xy-scatter"].build(
+    readTable({ columns: ["Title", "X", "Y"], rows }).columns,
+    options,
+    paintOf(options, 1),
+  );
+  const trace = fig.data[0] as { type: string; x: number[] };
+  strictEqual(trace.type, "scatter");
+  strictEqual(trace.x.length, XY_SCATTER_MAX_POINTS); // stride 2 over 10,000
+  const notes = (fig.layout.annotations as { name?: string; text?: string }[] | undefined) ?? [];
+  ok(
+    notes.some(
+      (a) => a.name === "note" && (a.text ?? "").includes("1 in 2 points") && (a.text ?? "").includes("5000 of 10000"),
+    ),
+  );
+  // A small series is untouched: every point drawn, no thinning note.
+  const small = GRAPHS["xy-scatter"].build(
+    readTable({ columns: ["Title", "X", "Y"], rows: [[null, "1", "2"], [null, "2", "3"]] }).columns,
+    options,
+    paintOf(options, 1),
+  );
+  strictEqual((small.data[0] as { x: number[] }).x.length, 2);
+  const smallNotes = (small.layout.annotations as { name?: string; text?: string }[] | undefined) ?? [];
+  ok(!smallNotes.some((a) => a.name === "note"));
 });
 
 check("error bars, the center line drawn with them, and lines take their own style", () => {
@@ -2367,6 +3472,199 @@ check("series take their own dashes and patterns, and a palette can be reversed"
   const file = JSON.parse(serializeProjectFile(payload));
   file.project.nodes.g1.graphOptions.palette = reversed;
   deepStrictEqual(read(JSON.stringify(file)).project.nodes.g1.graphOptions!.palette, reversed);
+});
+
+check("a line or area graph draws its points in X order, not table row order", () => {
+  type Trace = { x: number[]; y: number[] };
+  // X out of order in the table: 3, 1, 2 — the drawn line must still run 1, 2, 3,
+  // matching the shape of a fitted overlay plotted on a sorted grid.
+  const xy = {
+    columns: ["Title", "X", "Y"],
+    rows: [
+      [null, "3", "30"],
+      [null, "1", "10"],
+      [null, "2", "20"],
+    ],
+  };
+  const columns = readTable(xy).columns;
+  const scatterOptions: GraphOptions = { ...newGraphOptions("xy-scatter"), xyStyle: "points+line" };
+  const [line] = GRAPHS["xy-scatter"].build(columns, scatterOptions, paintOf(scatterOptions, 1)).data as Trace[];
+  deepStrictEqual(line.x, [1, 2, 3]);
+  deepStrictEqual(line.y, [10, 20, 30]);
+  const areaOptions = newGraphOptions("xy-area");
+  const [area] = GRAPHS["xy-area"].build(columns, areaOptions, paintOf(areaOptions, 1)).data as Trace[];
+  deepStrictEqual(area.x, [1, 2, 3]);
+  deepStrictEqual(area.y, [10, 20, 30]);
+});
+
+check("a markers-only xy-scatter keeps table row order, not X order (R2-G-F9)", () => {
+  type Trace = { x: number[]; y: number[]; customdata?: string[] };
+  // Same unsorted table as the line check above: 3, 1, 2. With no connecting
+  // line there is nothing to straighten, so the points stay in table row
+  // order — the Height vs Weight reference golden is recorded that way — and
+  // each point keeps its own row's key.
+  const xy = {
+    columns: ["Title", "X", "Y"],
+    rows: [
+      [null, "3", "30"],
+      [null, "1", "10"],
+      [null, "2", "20"],
+    ],
+  };
+  const columns = readTable(xy).columns;
+  const options: GraphOptions = { ...newGraphOptions("xy-scatter"), xyStyle: "points" };
+  const [markers] = GRAPHS["xy-scatter"].build(columns, options, paintOf(options, 1)).data as Trace[];
+  deepStrictEqual(markers.x, [3, 1, 2]);
+  deepStrictEqual(markers.y, [30, 10, 20]);
+  deepStrictEqual(markers.customdata, ["Y#0", "Y#1", "Y#2"]);
+  // And the line mode still sorts, so the two modes genuinely differ.
+  const lineOptions: GraphOptions = { ...newGraphOptions("xy-scatter"), xyStyle: "points+line" };
+  const [line] = GRAPHS["xy-scatter"].build(columns, lineOptions, paintOf(lineOptions, 1)).data as Trace[];
+  deepStrictEqual(line.x, [1, 2, 3]);
+  deepStrictEqual(line.y, [10, 20, 30]);
+});
+
+check("a linked weighted linear regression draws its weighted fit, band and equation (R3-08)", async () => {
+  // BUG-REPORT #8: the overlay ignored params.weights and always drew the
+  // unweighted OLS line. Heteroscedastic data where the two fits disagree
+  // sharply: the (10, 25)/(10, 15) points dominate OLS but carry almost no
+  // weight under 1/Y² (OLS slope 2.167, weighted slope 1.536).
+  const table: TableData = {
+    columns: ["Title", "X", "Y"],
+    rows: [
+      [null, "1", "1.1"],
+      [null, "2", "1.9"],
+      [null, "10", "25"],
+      [null, "10", "15"],
+    ],
+  };
+  const x = [1, 2, 10, 10];
+  const y = [1.1, 1.9, 25, 15];
+  const stat = (r: Awaited<ReturnType<typeof runAnalysis>>, label: string) => {
+    if ("error" in r) throw new Error(`weighted regression: ${r.error}`);
+    return r.stats.find((s) => s.label === label)?.value;
+  };
+  // Every weighting scheme the analysis offers, plus a forced-origin
+  // weighted fit, must match R's lm() on slope, intercept, R² and P.
+  for (const weights of ["1/y", "1/y2", "1/x", "1/x2"] as const) {
+    const r = await runAnalysis("linear-regression", table, { y: "Y", forceOrigin: false, weights });
+    const js = fitLinear(x, y, false, weights);
+    ok(js != null, `fitLinear with ${weights} must fit`);
+    for (const [label, value] of [
+      ["Slope", js.slope],
+      ["Y-intercept", js.intercept],
+      ["R squared", js.r2],
+      ["P value (slope ≠ 0)", js.p],
+    ] as const) {
+      const rValue = stat(r, label);
+      ok(rValue != null && Math.abs(rValue - value) < 1e-9, `${weights} ${label}: graph ${value}, R ${rValue}`);
+    }
+  }
+  const rOrigin = await runAnalysis("linear-regression", table, { y: "Y", forceOrigin: true, weights: "1/y2" });
+  const jsOrigin = fitLinear(x, y, true, "1/y2");
+  ok(jsOrigin != null, "weighted through-origin fit must fit");
+  const rOriginSlope = stat(rOrigin, "Slope");
+  ok(
+    rOriginSlope != null && Math.abs(rOriginSlope - jsOrigin.slope) < 1e-9,
+    `1/y2 through origin slope: graph ${jsOrigin.slope}, R ${rOriginSlope}`,
+  );
+  // Weights that cannot apply draw nothing instead of a wrong line.
+  strictEqual(fitLinear([1, 2, 3], [1, 0, 2], false, "1/y"), null);
+  strictEqual(fitLinear([1, 2, 3], [0, 2, 3], false, "1/y2"), null);
+  strictEqual(fitLinear([0, 1, 2], [1, 2, 3], false, "1/x"), null);
+  // The full overlay path: the drawn line, band and equation are the
+  // weighted fit's, not the OLS one's.
+  const options: GraphOptions = {
+    ...newGraphOptions("xy-scatter"),
+    regShowLine: true,
+    regShowBand: true,
+    regShowEquation: true,
+  };
+  const cols = plotColumns(readTable(table), "xy-scatter", options, "xy");
+  const fig = GRAPHS["xy-scatter"].build(cols, options, paintOf(options, 1));
+  addRegression(fig, cols, options, { y: "Y", forceOrigin: false, weights: "1/y2" }, paintOf(options, 1));
+  type Trace = { x: number[]; y: number[]; mode?: string; line?: { dash?: string } };
+  const traces = fig.data as Trace[];
+  const lineTrace = traces.find((t) => t.mode === "lines" && t.line?.dash === "dash");
+  ok(lineTrace, "the overlay must draw a dashed line");
+  const lineSlope =
+    (lineTrace!.y[lineTrace!.y.length - 1] - lineTrace!.y[0]) /
+    (lineTrace!.x[lineTrace!.x.length - 1] - lineTrace!.x[0]);
+  const rW = await runAnalysis("linear-regression", table, { y: "Y", forceOrigin: false, weights: "1/y2" });
+  const wSlope = stat(rW, "Slope");
+  ok(wSlope != null && Math.abs(lineSlope - wSlope) < 1e-9, `overlay line slope ${lineSlope}, R weighted ${wSlope}`);
+  const notes = ((fig.layout.annotations as { text?: string }[] | undefined) ?? []).map((n) => n.text ?? "");
+  ok(
+    notes.some((t) => t === "Y = 1.536*X − 0.6054<br>R² = 0.8487, P = 0.07873"),
+    `equation note must be the weighted fit's, got ${JSON.stringify(notes)}`,
+  );
+  // The band is R's predict(interval="confidence") for the weighted fit.
+  const pred = await evalNamedVector(
+    `x<-c(1,2,10,10);y<-c(1.1,1.9,25,15);w<-1/y^2;m<-lm(y~x,weights=w);` +
+      `p<-predict(m,newdata=data.frame(x=c(1,10)),interval="confidence");` +
+      `c(lo1=p[1,2],hi1=p[1,3],lo10=p[2,2],hi10=p[2,3])`,
+  );
+  const [lo, hi] = traces;
+  ok(lo && hi, "the overlay must draw a band");
+  for (const [got, want, where] of [
+    [lo.y[0], pred.lo1, "band low at x=1"],
+    [hi.y[0], pred.hi1, "band high at x=1"],
+    [lo.y[lo.y.length - 1], pred.lo10, "band low at x=10"],
+    [hi.y[hi.y.length - 1], pred.hi10, "band high at x=10"],
+  ] as const) {
+    ok(want != null && Math.abs(got - want) < 1e-9, `${where}: graph ${got}, R ${want}`);
+  }
+});
+
+check("the pie drops a negative slice and names it, instead of showing inflated percentages (R2-G-F12)", () => {
+  const options = newGraphOptions("pie");
+  const notesOf = (fig: GraphFigure) =>
+    ((fig.layout.annotations as { text?: string }[] | undefined) ?? []).map((n) => n.text ?? "");
+  // Plotly 4.1.2 silently drops the -10 slice and recomputes the rest
+  // over the remaining total: A 75% + C 50% = 125%, no error (runtime
+  // check). The guard drops it first and says so on the figure.
+  const mixed = { columns: ["Title", "A", "B", "C"], rows: [[null, "30", "-10", "20"]] };
+  const fig = GRAPHS.pie.build(readTable(mixed).numeric, options, paintOf(options, 3));
+  const [trace] = fig.data as { labels?: string[]; values?: number[] }[];
+  deepStrictEqual(trace.labels, ["A", "C"]);
+  deepStrictEqual(trace.values, [30, 20]);
+  ok(
+    notesOf(fig).some((t) => t.includes("“B”") && t.includes("-10") && t.includes("cannot be negative")),
+    `the dropped slice must be named with its value, got ${JSON.stringify(notesOf(fig))}`,
+  );
+  // A zero slice is fine as-is: 0%, and the rest still sum to 100%.
+  const withZero = { columns: ["Title", "A", "B", "C"], rows: [[null, "10", "0", "5"]] };
+  const zeroFig = GRAPHS.pie.build(readTable(withZero).numeric, options, paintOf(options, 3));
+  const [zeroTrace] = zeroFig.data as { labels?: string[]; values?: number[] }[];
+  deepStrictEqual(zeroTrace.labels, ["A", "B", "C"]);
+  deepStrictEqual(zeroTrace.values, [10, 0, 5]);
+  strictEqual(notesOf(zeroFig).length, 0);
+  // Nothing drawable (all zero, or all negative): no trace, but the
+  // figure still explains why instead of drawing a silent empty pie.
+  const allZero = GRAPHS.pie.build(
+    readTable({ columns: ["Title", "A", "B"], rows: [[null, "0", "0"]] }).numeric,
+    options,
+    paintOf(options, 2),
+  );
+  strictEqual(allZero.data.length, 0);
+  ok(
+    notesOf(allZero).some((t) => t.includes("No positive slices")),
+    `the all-zero pie must explain itself, got ${JSON.stringify(notesOf(allZero))}`,
+  );
+  const allNeg = GRAPHS.pie.build(
+    readTable({ columns: ["Title", "A", "B"], rows: [[null, "-5", "-10"]] }).numeric,
+    options,
+    paintOf(options, 2),
+  );
+  strictEqual(allNeg.data.length, 0);
+  ok(
+    notesOf(allNeg).some((t) => t.includes("“A”") && t.includes("“B”") && t.includes("cannot be negative")),
+    `the all-negative pie must name both slices, got ${JSON.stringify(notesOf(allNeg))}`,
+  );
+  // The donut shares the guard (same builder).
+  const donutFig = GRAPHS.donut.build(readTable(mixed).numeric, options, paintOf(options, 3));
+  const [donutTrace] = donutFig.data as { labels?: string[]; values?: number[] }[];
+  deepStrictEqual(donutTrace.labels, ["A", "C"]);
 });
 
 check("Match Another Graph… takes only what is ticked, series in order", () => {
@@ -2567,6 +3865,58 @@ check("a survival curve runs on to the last subject followed", () => {
   deepStrictEqual([curve.x.slice(-2), curve.y.at(-1)], [[2, 5], curve.y.at(-2)]);
 });
 
+check("a survival counts curve never plots above 100% from a zero initial count", () => {
+  // R2-G-F11: the old `|| 1` fallback divided by 1 when the initial count
+  // was 0, so counts [0, 5] plotted as [0%, 500%] presented as fact.
+  const options: GraphOptions = { ...newGraphOptions("survival"), survivalMode: "counts" };
+  const data = {
+    columns: ["Title", "X", "A", "B", "C"],
+    rows: [
+      [null, "0", "0", "10", "10"],
+      [null, "1", "5", "12", "8"],
+    ],
+  };
+  const fig = GRAPHS.survival.build(readTable(data).columns, options, paintOf(options, 3));
+  const traces = fig.data as { name?: string; y: number[] }[];
+  // A has no starting population: no curve, named on the figure instead.
+  deepStrictEqual(
+    traces.map((t) => t.name),
+    ["B", "C"],
+  );
+  // B's later count exceeds its initial count: clamped to 100%, not 120%.
+  deepStrictEqual(
+    traces.map((t) => t.y),
+    [
+      [100, 100],
+      [100, 80],
+    ],
+  );
+  ok(traces.every((t) => t.y.every((v) => v >= 0 && v <= 100)), "every plotted percent is within 0–100%");
+  const notes = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+  ok(notes.some((n) => n.text?.includes("“A” omitted")), "names the omitted zero-initial group");
+  ok(notes.some((n) => n.text?.includes("“B” clamped to 0–100%")), "names the clamped group");
+});
+
+check("a survival group with zero complete pairs draws no point", () => {
+  const options = newGraphOptions("survival");
+  // Group B has times but no event codes at all — zero complete pairs.
+  const data = {
+    columns: ["Title", "X", "A", "B"],
+    rows: [
+      [null, "1", "1", null],
+      [null, "2", "1", null],
+      [null, "5", "0", null],
+    ],
+  };
+  const fig = GRAPHS.survival.build(readTable(data).columns, options, paintOf(options, 2));
+  const traces = fig.data as { legendgroup?: string; name?: string }[];
+  // Group A still draws its curve; group B draws nothing — before the fix
+  // kaplanMeier([], []) returned its (0, 100%) anchor, a phantom point.
+  ok(traces.length > 0, "the group with data still draws");
+  ok(traces.some((t) => t.name === "A"), "the group with data keeps its curve");
+  ok(traces.every((t) => t.legendgroup !== "B"), "no trace for the group with no data");
+});
+
 check("texts moved by hand stay where they were dropped", () => {
   // What Plotly reports of a move: the legend, a color legend, a named text; a
   // significance label has no name, so it isn't one.
@@ -2635,6 +3985,31 @@ check("texts moved by hand stay where they were dropped", () => {
     [o.legend, o.note, o.points],
     [{ x: 0.9, y: 0.4 }, undefined, { "Y1#0": { labelOffset: { x: 12, y: -8 } } }],
   );
+});
+
+check("a legend shown outside the plot reserves its own right margin (M13)", () => {
+  const options = { ...newGraphOptions("xy-scatter") };
+  const names = ["Control", "Treated with a very long drug name"];
+  // A two-series XY graph reserves room for the legend past the right edge.
+  const two = xyLayout(options, "X", 2, { seriesNames: names });
+  const right = (two.margin as { r: number }).r;
+  ok(right > 16);
+  strictEqual(right, legendRightMargin(options, names));
+  // The room covers the legend itself: its offset past the plot plus its width.
+  ok(right >= 12 + legendWidthPx(names, options.fontSize));
+  // One series shows no legend and keeps the tight margin.
+  strictEqual((xyLayout(options, "X", 1).margin as { r: number }).r, 16);
+  // A legend the user dragged inside the plot needs no room.
+  const inside = xyLayout({ ...options, legend: { x: 0.5, y: 0.2 } }, "X", 2, { seriesNames: ["A", "B"] });
+  strictEqual((inside.margin as { r: number }).r, 16);
+  // Grouped bar + scatter with two groups reserve room for the group names.
+  ok((groupedBarLayout(options, 2, { seriesNames: ["Drug", "Placebo"] }).margin as { r: number }).r > 16);
+  ok((groupedScatterLayout(options, ["R1", "R2"], 2, undefined, ["Drug", "Placebo"]).margin as { r: number }).r > 16);
+  // A heatmap with its scale shown reserves the colorbar's room (30 px bar +
+  // numeric ticks + offset); without the scale it keeps the tight margin.
+  const heat = heatmapLayout({ ...options, heatmapShowScale: true }, ["A", "B"], ["R1"]);
+  ok((heat.margin as { r: number }).r >= 78);
+  strictEqual((heatmapLayout({ ...options, heatmapShowScale: false }, ["A", "B"], ["R1"]).margin as { r: number }).r, 16);
 });
 
 // ── Selected points ──────────────────────────────────────────────────────
@@ -2961,6 +4336,33 @@ check("a figure's export size and panel alignment are arithmetic (F-02, F-04)", 
   deepStrictEqual([rects[1].x, rects[1].width], [1500, 1500]);
 });
 
+// F-#7: a 600 DPI panel must render at its rectangle, not scaled twice.
+// r3-15.hlx is 10×7.5 in on a 1×2 grid, so each panel's rectangle at 600 DPI
+// is 3000×4500. Plotly's toImage multiplies the size it is handed by
+// dpi/96, so the size handed to Plotly must be the rectangle in 96-DPI
+// layout units — handing it the rectangle scales twice (18750×28125 at 600
+// DPI, past what WebKit draws), and createImageBitmap then fails to decode
+// the panel image. The 300 DPI control works because its double-scaled
+// image (4687×7031) still fits.
+check("a 600 DPI figure panel renders at its rectangle, not scaled twice (F-#7)", () => {
+  for (const dpi of [150, 300, 600]) {
+    const { panels, grid, figureSize } = figurePayload().nodes.f1;
+    const rects = panelRects(panels!, grid!, figureSize!, dpi);
+    for (const rect of rects) {
+      const plot = panelPlotSize({ width: rect.width, height: rect.height }, dpi);
+      // The image Plotly's toImage returns: the handed size times dpi/96.
+      const image = {
+        width: Math.round((plot.width * dpi) / PX_PER_INCH),
+        height: Math.round((plot.height * dpi) / PX_PER_INCH),
+      };
+      deepStrictEqual(image, { width: rect.width, height: rect.height }, `panel image at ${dpi} DPI`);
+    }
+  }
+  // The r3-15 geometry, spelled out: 3000×4500 at 600 DPI draws from a
+  // 480×720 layout, never a 18750×28125 canvas.
+  deepStrictEqual(panelPlotSize({ width: 3000, height: 4500 }, 600), { width: 480, height: 720 });
+});
+
 check("a figure's SVG export is one vector parent with labelled panels (F-03, F-05)", () => {
   const { panels, grid, figureSize, labelStyle, figureTitle, sharedLegend } = figurePayload().nodes.f1;
   const panel = () =>
@@ -3025,6 +4427,67 @@ check("a shared legend needs identical series in identical colours (F-10, F-11)"
   };
   const refused = sharedLegendCheck(recoloured.nodes.f1.panels!, recoloured.nodes);
   ok(!refused.ok && refused.reason?.includes("different colours"), JSON.stringify(refused));
+});
+
+// BUG-REPORT #15: a figure with a shared legend promised "per-panel legends
+// are hidden", but every panel kept drawing its own alongside the shared one
+// below the grid — `buildPanelFigure` never touched `showlegend`, and neither
+// the preview nor the exporter overrode it. Before the fix both panels below
+// came back `showlegend: true` with a valid shared legend. The fixture's own
+// graphs (mean-error, individual) never draw a legend, so the check uses XY
+// scatters with two Y series, which do (`showlegend: seriesCount > 1`).
+check("a shared legend hides each panel's own legend (BUG-REPORT #15)", () => {
+  const ft: ProjectNode = {
+    id: "ft",
+    type: "table",
+    name: "Figure data",
+    parentId: null,
+    tableType: "xy",
+    data: {
+      columns: ["Title", "X", "Y1", "Y2"],
+      rows: [
+        [null, "1", "10", "14"],
+        [null, "2", "12", "16"],
+        [null, "3", "11", "15"],
+      ],
+    },
+  };
+  const scatter = (id: string, name: string): ProjectNode => ({
+    id,
+    type: "graph",
+    name,
+    parentId: "ft",
+    graphType: "xy-scatter",
+    graphOptions: {
+      ...newGraphOptions("xy-scatter"),
+      series: { Y1: { color: "#0072B2" }, Y2: { color: "#D55E00" } },
+    },
+  });
+  const nodes: Record<string, ProjectNode> = { ft, g1: scatter("g1", "Scatter 1"), g2: scatter("g2", "Scatter 2") };
+  const panels = [
+    { graphId: "g1", graphName: "Scatter 1", label: "A", title: "", row: 0, col: 0, rowSpan: 1, colSpan: 1 },
+    { graphId: "g2", graphName: "Scatter 2", label: "B", title: "", row: 0, col: 1, rowSpan: 1, colSpan: 1 },
+  ];
+  ok(sharedLegendCheck(panels, nodes).ok, "the shared legend must be valid for this check to mean anything");
+  for (const panel of panels) {
+    const graph = nodes[panel.graphId];
+    // The legend exists to hide: without the flag the panel still draws it.
+    strictEqual(buildPanelFigure(graph, nodes)?.layout.showlegend, true, `${panel.graphId} draws a legend on its own`);
+    strictEqual(buildPanelFigure(graph, nodes, { hideLegend: false })?.layout.showlegend, true);
+    // With the flag — the shared-legend case — the panel draws none, and
+    // nothing else about the figure changes.
+    const hidden = buildPanelFigure(graph, nodes, { hideLegend: true });
+    strictEqual(hidden?.layout.showlegend, false, `${panel.graphId} must hide its legend under a shared legend`);
+    strictEqual(hidden?.data.length, buildPanelFigure(graph, nodes)?.data.length);
+  }
+  // The wiring: the preview hides a panel's legend exactly when the figure
+  // has a shared legend and it is valid; the exporter does the same on both
+  // its raster and SVG paths (each already computes `legend.ok` that way).
+  const view = readFileSync("src/views/figures/figure-view.tsx", "utf8");
+  ok(view.includes('hideLegend={sharedLegend === "shared" && legend.ok}'), "the preview must pass hideLegend");
+  const exporter = readFileSync("src/views/figures/figure-export.ts", "utf8");
+  ok(exporter.includes("}, format, dpi, legend.ok)"), "the raster export must pass legend.ok");
+  ok(exporter.includes('}, "svg", dpi, legend.ok)'), "the SVG export must pass legend.ok");
 });
 
 check("an oversize figure offers the largest fitting size, never silently (F-12)", () => {
@@ -3111,7 +4574,7 @@ check("the sample project ships a 2-panel figure", () => {
     ["g-viab", "g-volume-bars"],
   );
   // The sample file on disk round-trips with its figure intact.
-  const { project } = read(readFileSync("samples/Helix Sample.hlx", "utf8"));
+  const { project } = read(readFileSync("samples/Titer Sample.hlx", "utf8"));
   deepStrictEqual(project.nodes["f-main"].panels, figure.panels);
 });
 
@@ -3346,6 +4809,225 @@ check("an analysis whose chosen column is gone says so, whatever the test", asyn
   }
 });
 
+// R2-m5 (bug-fix queue item 39 — not the review sweep's M5, the params
+// fallback): a chosen predictor holding no numbers was silently dropped and
+// the fit ran on the subset. The fit now names it in its notes. The
+// selection is pure, so this checks the shared selector + note directly;
+// a full fit would need R, and the three runners append this note verbatim
+// to their outcome.
+check("a chosen predictor holding no numbers is named, not silently dropped", () => {
+  const data: TableData = {
+    columns: ["Title", "Y", "X", "Empty"],
+    rows: [
+      [null, "0", "1", null],
+      [null, "1", "2", null],
+      [null, "0", "3", null],
+      [null, "1", "4", null],
+      [null, "0", "5", null],
+    ],
+  };
+  const columns = readTable(data).columns;
+  const { dep, predictors, dropped } = selectPredictors(columns, {
+    dependent: "Y",
+    predictors: ["X", "Empty"],
+  });
+  strictEqual(dep?.name, "Y");
+  deepStrictEqual(predictors.map((c) => c.name), ["X"]);
+  deepStrictEqual(dropped, ["Empty"]);
+  const note = droppedPredictorsNote(dropped);
+  ok(note.includes("“Empty”"), `note should name the dropped predictor, got: ${note}`);
+  ok(note.includes("left out of the fit"), `note should say it was left out, got: ${note}`);
+  // Nothing chosen dataless: no note, and the no-predictors-chosen default
+  // (every other data-bearing column) is unchanged.
+  deepStrictEqual(selectPredictors(columns, { dependent: "Y" }).dropped, []);
+  strictEqual(droppedPredictorsNote([]), "");
+});
+
+// R3-23: the constant-variable check ran on the raw columns, before
+// complete-case filtering — a variable that varies only on rows another
+// variable leaves blank is constant on the complete rows, and prcomp /
+// scale then failed with a raw R error. The check now runs on the aligned
+// (complete-case) columns, so the variable is named instead.
+check("a variable constant only after complete-case filtering names itself in PCA and K-means (R3-23)", async () => {
+  // A varies (1, 2, 5, 5, 5) but is 5, 5, 5 on the complete rows — B is
+  // blank on the two rows where A varies.
+  const data: TableData = {
+    columns: ["Title", "A", "B", "C"],
+    rows: [
+      ["", "1", null, "10"],
+      ["", "2", null, "20"],
+      ["", "5", "1", "30"],
+      ["", "5", "2", "40"],
+      ["", "5", "3", "50"],
+    ],
+  };
+  deepStrictEqual(await runAnalysis("principal-component-analysis", data, { scale: "correlation" }), {
+    error:
+      "“A” is constant — PCA on the correlation matrix cannot standardise a variable with no " +
+      "variation. Remove it from the table, or run PCA on the covariance matrix instead.",
+  });
+  deepStrictEqual(await runAnalysis("k-means", data, { clusters: 2 }), {
+    error:
+      "“A” is constant — K-means clustering cannot standardise a variable with no " +
+      "variation. Remove it from the table, or run without standardisation instead.",
+  });
+  // The same table runs on the settings that do not standardise: a constant
+  // variable contributes no variance / nothing to the distances there.
+  const cov = await runAnalysis("principal-component-analysis", data, { scale: "covariance" });
+  ok(!("error" in cov), `covariance PCA should run, got ${"error" in cov ? cov.error : "ok"}`);
+  const raw = await runAnalysis("k-means", data, { clusters: 2, standardise: false });
+  ok(!("error" in raw), `raw K-means should run, got ${"error" in raw ? raw.error : "ok"}`);
+});
+
+// R3-23: same complete-case leak in Cox PH — a covariate varying only on
+// rows another used column leaves blank was checked on its raw values, then
+// coxph could not estimate it. The check now runs on the aligned columns.
+check("a Cox covariate constant only after complete-case filtering names itself (R3-23)", async () => {
+  // Age varies (20, 30) only on the rows where Trt is blank; it is 40 on
+  // every complete row.
+  const data: TableData = {
+    columns: ["Title", "Time", "Status", "Trt", "Age"],
+    rows: [
+      ["", "1", "1", null, "20"],
+      ["", "2", "1", null, "30"],
+      ["", "3", "0", "1", "40"],
+      ["", "4", "1", "0", "40"],
+      ["", "5", "0", "1", "40"],
+      ["", "6", "1", "0", "40"],
+      ["", "7", "1", "1", "40"],
+      ["", "8", "0", "0", "40"],
+    ],
+  };
+  deepStrictEqual(
+    await runAnalysis("cox-proportional-hazards", data, { time: "Time", status: "Status", covariates: ["Trt", "Age"] }),
+    { error: "Covariate “Age” has no variation." },
+  );
+});
+
+// R3-23: a constant or collinear predictor was aliased by R —
+// summary(m)$coefficients drops the aliased row, so co[t + 1, ] crashed
+// with "subscript out of bounds". The runners now check is.na(coef(m))
+// before indexing and name the aliased predictor instead.
+check("a constant or collinear predictor is named, not a crash, in multiple regression (R3-23)", async () => {
+  const table = (x2: string[]): TableData => ({
+    columns: ["Title", "Y", "X1", "X2"],
+    rows: [
+      ["", "3", "1", x2[0]],
+      ["", "5", "2", x2[1]],
+      ["", "4", "3", x2[2]],
+      ["", "6", "4", x2[3]],
+      ["", "7", "5", x2[4]],
+      ["", "5", "6", x2[5]],
+      ["", "8", "7", x2[6]],
+      ["", "6", "8", x2[7]],
+    ],
+  });
+  const params = { dependent: "Y", predictors: ["X1", "X2"] };
+  deepStrictEqual(await runAnalysis("multiple-regression", table(["5", "5", "5", "5", "5", "5", "5", "5"]), params), {
+    error:
+      "“X2” is constant — Multiple linear regression cannot estimate a slope for a predictor with no " +
+      "variation. Drop or recode the predictor and try again.",
+  });
+  deepStrictEqual(
+    await runAnalysis("multiple-regression", table(["2", "4", "6", "8", "10", "12", "14", "16"]), params),
+    {
+      error:
+        "“X2” is collinear with another predictor — Multiple linear regression cannot estimate a separate " +
+        "coefficient for it. Drop or recode the predictor and try again.",
+    },
+  );
+  // Both predictors constant: every slope is aliased (an intercept-only
+  // fit, whose F statistic is NULL) — still a named error, not a crash.
+  const bothConstant: TableData = {
+    columns: ["Title", "Y", "X1", "X2"],
+    rows: [
+      ["", "3", "5", "5"],
+      ["", "5", "5", "5"],
+      ["", "4", "5", "5"],
+      ["", "6", "5", "5"],
+      ["", "7", "5", "5"],
+      ["", "5", "5", "5"],
+      ["", "8", "5", "5"],
+      ["", "6", "5", "5"],
+    ],
+  };
+  deepStrictEqual(await runAnalysis("multiple-regression", bothConstant, params), {
+    error:
+      "“X1”, “X2” are constant — Multiple linear regression cannot estimate a slope for a predictor with no " +
+      "variation. Drop or recode the predictors and try again.",
+  });
+  // A clean fit still fits: the aliasing guard must not fire on good data.
+  const good = await runAnalysis("multiple-regression", table(["1", "0", "2", "1", "0", "2", "1", "0"]), params);
+  ok(!("error" in good), `clean fit should run, got ${"error" in good ? good.error : "ok"}`);
+});
+
+check("a constant or collinear predictor is named, not a crash, in multiple logistic regression (R3-23)", async () => {
+  const table = (x2: string[]): TableData => ({
+    columns: ["Title", "Y", "X1", "X2"],
+    rows: [
+      ["", "0", "22", x2[0]],
+      ["", "1", "25", x2[1]],
+      ["", "0", "28", x2[2]],
+      ["", "1", "31", x2[3]],
+      ["", "1", "34", x2[4]],
+      ["", "0", "37", x2[5]],
+      ["", "1", "40", x2[6]],
+      ["", "0", "43", x2[7]],
+    ],
+  });
+  const params = { dependent: "Y", predictors: ["X1", "X2"] };
+  deepStrictEqual(
+    await runAnalysis("multiple-logistic-regression", table(["5", "5", "5", "5", "5", "5", "5", "5"]), params),
+    {
+      error:
+        "“X2” is constant — Multiple logistic regression cannot estimate a slope for a predictor with no " +
+        "variation. Drop or recode the predictor and try again.",
+    },
+  );
+  deepStrictEqual(
+    await runAnalysis("multiple-logistic-regression", table(["44", "50", "56", "62", "68", "74", "80", "86"]), params),
+    {
+      error:
+        "“X2” is collinear with another predictor — Multiple logistic regression cannot estimate a separate " +
+        "coefficient for it. Drop or recode the predictor and try again.",
+    },
+  );
+  const good = await runAnalysis("multiple-logistic-regression", table(["1", "0", "2", "1", "0", "2", "1", "0"]), params);
+  ok(!("error" in good), `clean fit should run, got ${"error" in good ? good.error : "ok"}`);
+});
+
+check("a constant or collinear predictor is named, not a crash, in Poisson regression (R3-23)", async () => {
+  const table = (x2: string[]): TableData => ({
+    columns: ["Title", "Y", "X1", "X2"],
+    rows: [
+      ["", "2", "0", x2[0]],
+      ["", "3", "1", x2[1]],
+      ["", "2", "0", x2[2]],
+      ["", "5", "1", x2[3]],
+      ["", "4", "2", x2[4]],
+      ["", "6", "1", x2[5]],
+      ["", "5", "2", x2[6]],
+      ["", "7", "3", x2[7]],
+    ],
+  });
+  const params = { dependent: "Y", predictors: ["X1", "X2"], quasi: false };
+  deepStrictEqual(await runAnalysis("poisson-regression", table(["1", "1", "1", "1", "1", "1", "1", "1"]), params), {
+    error:
+      "“X2” is constant — Poisson regression cannot estimate a slope for a predictor with no " +
+      "variation. Drop or recode the predictor and try again.",
+  });
+  deepStrictEqual(
+    await runAnalysis("poisson-regression", table(["0", "2", "0", "2", "4", "2", "4", "6"]), params),
+    {
+      error:
+        "“X2” is collinear with another predictor — Poisson regression cannot estimate a separate " +
+        "coefficient for it. Drop or recode the predictor and try again.",
+    },
+  );
+  const good = await runAnalysis("poisson-regression", table(["1", "0", "2", "1", "0", "2", "1", "0"]), params);
+  ok(!("error" in good), `clean fit should run, got ${"error" in good ? good.error : "ok"}`);
+});
+
 // M8: a hand-edited or older file may carry y as one bare string — the file
 // reader's `name-or-names` kind permits it — while the runner works with a
 // list. One name must mean one series, never one character per series.
@@ -3447,6 +5129,31 @@ check("a wizard asks which data sets only when there is a choice", () => {
   );
 });
 
+check("multiple t tests leave a constant row open instead of aborting the analysis", async () => {
+  // Row r0 is constant in both groups ([5,5,5] vs [5,5,5]): t.test errors
+  // "data are essentially constant" on it and used to abort the whole
+  // multi-row analysis. (A [0,0,0] row only yields NaN, since R's
+  // epsilon-scaled check is 0 < 0 there.)
+  const data: TableData = {
+    columns: ["Title", "A:1", "A:2", "A:3", "B:1", "B:2", "B:3"],
+    rows: [
+      ["r0", "5", "5", "5", "5", "5", "5"],
+      ["r1", "1", "2", "3", "4", "5", "6"],
+      ["r2", "2", "3", "4", "5", "6", "7"],
+    ],
+  };
+  const out = await runAnalysis("multiple-t-tests", data, {
+    gaussian: true,
+    pooledSd: false,
+    paired: false,
+    correction: "holm",
+  });
+  if ("error" in out) throw new Error(out.error);
+  strictEqual(out.stats.find((s) => s.label === "Rows compared")?.value, 3);
+  strictEqual(out.comparisons![0].p, null, "the constant row is open");
+  ok(out.comparisons![1].p !== null && out.comparisons![2].p !== null, "non-constant rows still complete");
+});
+
 check("the dose-response — Special wizard completes with X + 1 Y and the fit names the shortfall (R2-B4)", async () => {
   // One Y could never satisfy the two-series minimum, so the wizard used to
   // strand on a permanently disabled Next with no message; the runner's
@@ -3475,6 +5182,40 @@ check("the dose-response — Special wizard completes with X + 1 Y and the fit n
   const ys2 = WIZARDS["dose-response-special"]!.questions({}, readTable(two)).find((q) => q && q.id === "ys");
   ok(ys2 && ys2.kind === "names" && ys2.min === 2, "two Y: the minimum stays 2");
   ok(ys2 && ys2.kind === "names" && /Which Y data sets should be fitted/.test(ys2.ask), "two Y: the usual question");
+});
+
+check("a Schild plot with duplicate antagonist concentrations shows no slope, not Infinity", () => {
+  // G-F10: two antagonist series at the same B share one log[B], so the
+  // two-point slope divides by zero (±Inf, or NaN when the points
+  // coincide) — mathematically undefined, never a number to display.
+  const group = (name: string) => ({ name, mean: null, sd: null, sem: null, median: null, n: 3 });
+  const duplicateFit: AnalysisResult = {
+    testType: "dose-response-special",
+    stats: [],
+    groups: [group("0 M"), group("1e-8 M"), group("10 nM")],
+    notes: "",
+    coefficients: [
+      { term: "pA2", estimate: 8, stdError: null, t: null, p: null },
+      { term: "SchildSlope", estimate: 1, stdError: null, t: null, p: null },
+    ],
+  };
+  const params: DoseResponseSpecialParams = {
+    model: "schild-slope-1",
+    antagonistConcentrations: { "1e-8 M": 1e-8, "10 nM": 1e-8 },
+  };
+  const plot = schildPlotPoints(duplicateFit, params);
+  strictEqual(plot.points.length, 2, "both duplicate-B points are still plotted");
+  strictEqual(plot.slope, null, "duplicate log[B] gives no slope, not ±Inf/NaN");
+  strictEqual(plot.intercept, null, "duplicate log[B] gives no intercept");
+  const opts = newGraphOptions("schild-plot");
+  const fig = { data: [], layout: { annotations: [] } } as unknown as GraphFigure;
+  addSchildPlot(fig, duplicateFit, params, paintOf(opts, 3), opts);
+  const traces = fig.data as { mode?: string }[];
+  ok(traces.some((t) => t.mode === "markers"), "the points are drawn");
+  ok(!traces.some((t) => t.mode === "lines"), "no fitted line is drawn without a slope");
+  const notes = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+  ok(notes.some((a) => a.text?.includes("Slope undefined")), "the note says the slope is undefined");
+  ok(!notes.some((a) => a.text?.includes("Infinity")), "no note prints 'Slope = Infinity'");
 });
 
 check("the ROC wizard asks truth, score and positive class, defaulting to the largest value", () => {
@@ -3693,6 +5434,36 @@ check("parseGroupLevels validates the mixed-effects per-row group list", () => {
   }
 });
 
+check("mixed-effects skips entirely empty rows in a Grouped table and reports a dropped rank-deficient term as NA", async () => {
+  // Group B holds data only at the first row, so the Group × Row interaction
+  // column is all zeros: lmer drops it from summary(m)$coefficients, and
+  // indexing it by position used to crash "subscript out of bounds" (and
+  // mislabel the terms after it). The last row is entirely empty: it must
+  // not count toward "Observations dropped as missing".
+  const data: TableData = {
+    columns: ["Title", "A:1", "A:2", "A:3", "B:1", "B:2", "B:3"],
+    rows: [
+      ["", "10", "12", "11", "20", "22", "21"],
+      ["", "11", "13", "12", null, null, null],
+      ["", "12", "14", "13", null, null, null],
+      ["", "13", "15", "14", null, null, null],
+      ["", null, null, null, null, null, null],
+    ],
+  };
+  const out = await runAnalysis("mixed-effects", data, {});
+  if ("error" in out) throw new Error(out.error);
+  const stat = (label: string) => out.stats.find((s) => s.label === label)?.value;
+  // 4 non-empty rows × 6 columns = 24 in the table; 15 used; 9 dropped.
+  strictEqual(stat("Observations in table"), 24);
+  strictEqual(stat("Observations dropped as missing"), 9);
+  const byTerm = (term: string) => out.coefficients?.find((c) => c.term === term)?.estimate;
+  ok(byTerm("Intercept") !== null && byTerm("Intercept") !== undefined, "intercept estimated");
+  ok(byTerm("Group (B vs A)") !== null && byTerm("Group (B vs A)") !== undefined, "group effect estimated");
+  ok(byTerm("Row") !== null && byTerm("Row") !== undefined, "row effect estimated");
+  strictEqual(byTerm("Group × Row (B vs A)"), null, "the dropped interaction is open, not mislabelled");
+  ok(out.notes?.includes("could not be estimated"), "the note names the dropped term");
+});
+
 check("the chi-square wizard asks about ordering only on a 2×k / k×2 table, defaulting to no trend", () => {
   const asked = (data: TableData) =>
     WIZARDS["chi-square"]!.questions({}, readTable(data)).flatMap((q) => (q ? [q.id] : []));
@@ -3783,6 +5554,74 @@ check("the 2x2 chi-square for reference is uncorrected, Fisher's exact unchanged
   if ("error" in out2) throw new Error(out2.error);
   const stat2 = (label: string) => out2.stats.find((s) => s.label === label)?.value;
   close(stat2("Chi-square (for reference)"), 0.7937, 1e-3, "uncorrected chi-square, second table");
+});
+
+// BUG-REPORT #28 leg 3: prop.trend.test on a first row/column holding 0%
+// or 100% of the counts crashed R's lm.wfit ("NA/NaN/Inf in 'x'"). The
+// guard names the constant row/column instead of calling it — and a table
+// with a real trend still runs the trend test.
+check("the chi-square trend test names a constant first row or column instead of crashing R", async () => {
+  const trendError = async (data: TableData) => {
+    const out = await runAnalysis("chi-square", data, { trendOrdered: true });
+    if (!("error" in out)) throw new Error(`expected a trend error, got ${JSON.stringify(out.stats)}`);
+    return out.error;
+  };
+  const firstCol0: TableData = {
+    columns: ["Title", "Success", "Failure"],
+    rows: [
+      ["Dose 1", "0", "20"],
+      ["Dose 2", "0", "15"],
+      ["Dose 3", "0", "11"],
+      ["Dose 4", "0", "6"],
+    ],
+  };
+  const firstCol100: TableData = {
+    columns: ["Title", "Success", "Failure"],
+    rows: [
+      ["Dose 1", "20", "0"],
+      ["Dose 2", "15", "0"],
+      ["Dose 3", "11", "0"],
+      ["Dose 4", "6", "0"],
+    ],
+  };
+  const firstRow0: TableData = {
+    columns: ["Title", "Dose 1", "Dose 2", "Dose 3", "Dose 4"],
+    rows: [
+      ["Success", "0", "0", "0", "0"],
+      ["Failure", "18", "15", "11", "6"],
+    ],
+  };
+  const firstRow100: TableData = {
+    columns: ["Title", "Dose 1", "Dose 2", "Dose 3", "Dose 4"],
+    rows: [
+      ["Success", "2", "5", "9", "14"],
+      ["Failure", "0", "0", "0", "0"],
+    ],
+  };
+  const e0 = await trendError(firstCol0);
+  ok(e0.includes("test for trend is undefined") && e0.includes("first column") && e0.includes("0%"), e0);
+  const e100 = await trendError(firstCol100);
+  ok(e100.includes("test for trend is undefined") && e100.includes("first column") && e100.includes("100%"), e100);
+  const r0 = await trendError(firstRow0);
+  ok(r0.includes("test for trend is undefined") && r0.includes("first row") && r0.includes("0%"), r0);
+  const r100 = await trendError(firstRow100);
+  ok(r100.includes("test for trend is undefined") && r100.includes("first row") && r100.includes("100%"), r100);
+  // A table with a real trend still runs the trend test (same data as the
+  // wizard check above).
+  const trend2x4: TableData = {
+    columns: ["Title", "Success", "Failure"],
+    rows: [
+      ["Dose 1", "2", "18"],
+      ["Dose 2", "5", "15"],
+      ["Dose 3", "9", "11"],
+      ["Dose 4", "14", "6"],
+    ],
+  };
+  const out = await runAnalysis("chi-square", trend2x4, { trendOrdered: true });
+  if ("error" in out) throw new Error(out.error);
+  const stat = (label: string) => out.stats.find((s) => s.label === label)?.value;
+  close(stat("Chi-square for trend"), 17.0667, 1e-3, "chi-square for trend");
+  close(stat("P value (test for trend)"), 0.0000361, 1e-6, "trend p value");
 });
 
 check("the McNemar wizard confirms paired data and defaults the correction on", () => {
@@ -3906,6 +5745,180 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
   });
 });
 
+check("the forest plot drops non-finite or non-positive hazard ratios instead of blanking on a log axis (R2-M14)", () => {
+  const options = newGraphOptions("forest-plot");
+  const fig = GRAPHS["forest-plot"].build([], options, paintOf(options, 1));
+  // Under separation a Cox CI underflows to 0 or overflows to Inf (and the
+  // hazard ratio itself can underflow to 0): log10 of those is -Infinity /
+  // Infinity, an invalid Plotly range that blanked the whole plot.
+  const outcome: AnalysisResult = {
+    testType: "cox-proportional-hazards",
+    stats: [],
+    groups: [],
+    notes: "",
+    coefficients: [
+      { term: "Trt", estimate: null, stdError: null, t: null, p: null, hazardRatio: 0.3672, low: 0.1009, high: 1.3369 },
+      { term: "Age", estimate: null, stdError: null, t: null, p: null, hazardRatio: 2.1, low: 0, high: 4.5 },
+      { term: "Sex", estimate: null, stdError: null, t: null, p: null, hazardRatio: 1.4, low: 0.8, high: Number.POSITIVE_INFINITY },
+      { term: "Stage", estimate: null, stdError: null, t: null, p: null, hazardRatio: 0, low: 0.5, high: 2 },
+    ],
+  };
+  addForestPlot(fig, outcome, paintOf(options, 1), options);
+  const traces = fig.data as { mode?: string; x?: number[]; y?: string[]; text?: string[] }[];
+  const row = traces.find((t) => t.mode === "markers");
+  deepStrictEqual(row?.y, ["Trt"]);
+  deepStrictEqual(row?.x, [0.3672]);
+  const xaxis = fig.layout.xaxis as { type?: string; range?: number[] };
+  ok(
+    xaxis.range?.every((v) => Number.isFinite(v)),
+    `forest-plot range must be finite, got ${JSON.stringify(xaxis.range)}`,
+  );
+  const notes = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+  ok(
+    notes.some((n) => n.text?.includes("“Age”") && n.text?.includes("“Sex”") && n.text?.includes("“Stage”")),
+    `omitted covariates must be named on the figure, got ${JSON.stringify(notes.map((n) => n.text))}`,
+  );
+  // All rows degenerate: nothing to draw, but the note still lands and
+  // nothing throws — the figure keeps its (log, empty) axes.
+  const empty = GRAPHS["forest-plot"].build([], options, paintOf(options, 1));
+  addForestPlot(
+    empty,
+    {
+      testType: "cox-proportional-hazards",
+      stats: [],
+      groups: [],
+      notes: "",
+      coefficients: [{ term: "Age", estimate: null, stdError: null, t: null, p: null, hazardRatio: 2.1, low: 0, high: 4.5 }],
+    },
+    paintOf(options, 1),
+    options,
+  );
+  strictEqual(empty.data.length, 0);
+  ok(
+    ((empty.layout.annotations as { text?: string }[] | undefined) ?? []).some((n) => n.text?.includes("“Age”")),
+    "the all-dropped note must still name the omitted covariate",
+  );
+});
+
+check("the forest plot names a covariate whose CI bound came back null (R2-M14)", () => {
+  const options = newGraphOptions("forest-plot");
+  const fig = GRAPHS["forest-plot"].build([], options, paintOf(options, 1));
+  // The real separation signature: R's exp(confint(m)) upper bound
+  // overflows to +Inf and evalNamedVector maps it to null (headless repro
+  // on the GUI fixture: Safe HR 1.226e-9, low 0, high null). A null bound
+  // must be omitted WITH a note, not silently filtered out first.
+  const outcome: AnalysisResult = {
+    testType: "cox-proportional-hazards",
+    stats: [],
+    groups: [],
+    notes: "",
+    coefficients: [
+      { term: "Trt", estimate: null, stdError: null, t: null, p: null, hazardRatio: 0.4164, low: 0.1149, high: 1.5091 },
+      { term: "Age", estimate: null, stdError: null, t: null, p: null, hazardRatio: 1.012, low: 0.909, high: 1.1267 },
+      { term: "Safe", estimate: null, stdError: null, t: null, p: null, hazardRatio: 1.226e-9, low: 0, high: null },
+    ],
+  };
+  addForestPlot(fig, outcome, paintOf(options, 1), options);
+  const traces = fig.data as { mode?: string; x?: number[]; y?: string[] }[];
+  const row = traces.find((t) => t.mode === "markers");
+  deepStrictEqual(row?.y, ["Trt", "Age"]);
+  const xaxis = fig.layout.xaxis as { range?: number[] };
+  ok(
+    xaxis.range?.every((v) => Number.isFinite(v)),
+    `forest-plot range must be finite, got ${JSON.stringify(xaxis.range)}`,
+  );
+  const notes = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+  ok(
+    notes.some((n) => n.text?.includes("“Safe”")),
+    `the null-bound covariate must be named on the figure, got ${JSON.stringify(notes.map((n) => n.text))}`,
+  );
+});
+
+check("the observed-vs-fitted plot drops overflowed fitted counts with a note instead of hiding the worst misfit (R2-G-F15)", () => {
+  const options = newGraphOptions("observed-fitted");
+  const fig = GRAPHS["observed-fitted"].build([], options, paintOf(options, 1));
+  // A linear predictor past ~709 overflows exp(): the fitted count comes
+  // back Infinity, which Plotly silently drops from the trace — and the
+  // y = x line's range stretches to Infinity with it, so the line vanishes
+  // too. The overflowed rows are the worst misfits; they must be named on
+  // the figure, not silently hidden, and the line must span the drawable
+  // points only.
+  // NOTE — synthetic coefficients only, by design: no live GLM can ever
+  // produce this note. A converging Poisson glm can never yield an infinite
+  // fitted count, because R's glm.fit IRLS overflows mu/weights to Inf/NaN
+  // and errors ("NA/NaN/Inf in 'x'") before converging whenever a linear
+  // predictor would pass ~709. The live stretch fixture built on the
+  // opposite assumption (poisson-overflow.hlx: Dose 0–0.003, Count 1 /
+  // 1e150 / 1e300 / 1) failed deterministically in the 2026-11-13 final GUI
+  // session (reproduced via Retry): the analysis errored, so the graph had
+  // no coefficients and showed empty axes with no note. That fixture is
+  // retired — do not re-add a live-GLM expectation for this note. The
+  // overflow path is reachable only when coefficients arrive without a live
+  // fit (as below), and that is what this check verifies.
+  const { columns } = readTable({
+    columns: ["Title", "Count", "Dose"],
+    rows: [
+      [null, "3", "0"],
+      [null, "5", "1"],
+      [null, "7", "2"],
+    ],
+  });
+  const outcome: AnalysisResult = {
+    testType: "poisson-regression",
+    stats: [],
+    groups: [],
+    notes: "",
+    coefficients: [
+      { term: "Intercept", estimate: 1, stdError: null, t: null, p: null },
+      { term: "Dose", estimate: 800, stdError: null, t: null, p: null },
+    ],
+  };
+  addObservedFitted(fig, columns, outcome, { dependent: "Count", predictors: ["Dose"], quasi: false }, paintOf(options, 1), options);
+  const traces = fig.data as { mode?: string; name?: string; x?: number[]; y?: number[] }[];
+  const points = traces.find((t) => t.mode === "markers");
+  deepStrictEqual(points?.x, [3]);
+  deepStrictEqual(points?.y, [Math.exp(1)]);
+  ok(
+    traces.every((t) => [...(t.x ?? []), ...(t.y ?? [])].every((v) => Number.isFinite(v))),
+    `no trace may carry a non-finite value, got ${JSON.stringify(fig.data)}`,
+  );
+  const line = traces.find((t) => t.name === "y = x");
+  ok(
+    line?.x?.every((v) => Number.isFinite(v)) && line?.y?.every((v) => Number.isFinite(v)),
+    `the y = x line must span the drawable points only, got ${JSON.stringify(line?.x)} / ${JSON.stringify(line?.y)}`,
+  );
+  const notes = (fig.layout.annotations as { text?: string }[] | undefined) ?? [];
+  ok(
+    notes.some((n) => n.text?.includes("2 rows omitted")),
+    `the omitted rows must be named on the figure, got ${JSON.stringify(notes.map((n) => n.text))}`,
+  );
+  // All rows overflow: nothing to draw, but the note still lands and
+  // nothing throws — the figure keeps its (empty) axes.
+  const empty = GRAPHS["observed-fitted"].build([], options, paintOf(options, 1));
+  addObservedFitted(
+    empty,
+    columns,
+    {
+      testType: "poisson-regression",
+      stats: [],
+      groups: [],
+      notes: "",
+      coefficients: [
+        { term: "Intercept", estimate: 800, stdError: null, t: null, p: null },
+        { term: "Dose", estimate: 0.5, stdError: null, t: null, p: null },
+      ],
+    },
+    { dependent: "Count", predictors: ["Dose"], quasi: false },
+    paintOf(options, 1),
+    options,
+  );
+  strictEqual(empty.data.length, 0);
+  ok(
+    ((empty.layout.annotations as { text?: string }[] | undefined) ?? []).some((n) => n.text?.includes("3 rows omitted")),
+    "the all-overflowed note must still name the omitted rows",
+  );
+});
+
 check("the PCA wizard asks scale then components, defaulting to the correlation matrix and all components", () => {
   const data: TableData = {
     columns: ["Title", "Var1", "Var2", "Var3"],
@@ -3987,6 +6000,40 @@ check("the K-means wizard asks clusters then standardisation, defaulting to 2 cl
     type: "k-means",
     params: { clusters: 2, standardise: true },
   });
+});
+
+check("the outliers wizard rejects an out-of-range ROUT Q, and the runner refuses it too", async () => {
+  const data: TableData = {
+    columns: ["Title", "A", "B"],
+    rows: [
+      [null, "1.2", "2.1"],
+      [null, "1.5", "2.4"],
+      [null, "1.1", "2.0"],
+      [null, "1.4", "2.2"],
+      [null, "9.8", "2.3"],
+    ],
+  };
+  const qs = WIZARDS["outliers"]!.questions({}, readTable(data)).filter(
+    (q): q is Question => q !== false,
+  );
+  const q = qs.find((x) => x.id === "q");
+  ok(q && q.kind === "number");
+  if (q?.kind === "number") {
+    // Q = 0 (or below) can never flag anything; above 50 flags nearly
+    // everything — both are degenerate, not just unusual.
+    strictEqual(q.validate?.(0), "Q must be between 0.01 and 50.");
+    strictEqual(q.validate?.(100), "Q must be between 0.01 and 50.");
+    strictEqual(q.validate?.(0.01), undefined);
+    strictEqual(q.validate?.(1), undefined);
+    strictEqual(q.validate?.(50), undefined);
+  }
+  // The runner refuses the same values: saved projects and direct
+  // runAnalysis calls bypass the wizard, so the guard lives there too.
+  const columns = readTable(data).columns;
+  deepStrictEqual(await runRout(columns, { q: 0 }), { error: "Q must be between 0.01 and 50." });
+  deepStrictEqual(await runRout(columns, { q: 100 }), { error: "Q must be between 0.01 and 50." });
+  ok(!("error" in (await runRout(columns, { q: 1 }))));
+  ok(!("error" in (await runRout(columns, { q: 50 }))));
 });
 
 check("the multiple logistic regression wizard offers only 0/1 columns as the outcome", () => {
@@ -4349,6 +6396,19 @@ check("changes that change nothing, and opening a file, leave no Undo step", () 
 
 // ── The app ──────────────────────────────────────────────────────────────
 
+// F5: the Linux native About dialog drops AboutMetadata.credits (muda:
+// "Windows / Linux: Unsupported") — the tagline and coffee address only
+// reached macOS. The same text rides in `comments` and the address in
+// `website`, the fields the GTK dialog renders; credits stays for macOS.
+check("the About dialog carries the Buy Me a Coffee address where Linux renders it (F5)", () => {
+  const menus = readFileSync(fileURLToPath(new URL("../src/menus.ts", import.meta.url)), "utf8");
+  ok(menus.includes('const COFFEE_URL = "https://www.buymeacoffee.com/smitpatel316"'));
+  ok(menus.includes("comments: ABOUT_CREDITS"), "the tagline + coffee address must ride in comments for Linux");
+  ok(menus.includes("website: COFFEE_URL"), "the coffee address must ride in website for Linux");
+  ok(menus.includes('websiteLabel: "Buy Me a Coffee"'));
+  ok(menus.includes("credits: ABOUT_CREDITS"), "credits stays: it is what macOS renders");
+});
+
 check("menus and pickers name things in title case, as macOS does", () => {
   deepStrictEqual(
     [
@@ -4398,10 +6458,10 @@ check("Open Recent reads only a list of paths", () => {
   Object.assign(globalThis, { localStorage: storage });
   try {
     for (const bad of ['{"a":1}', "[1, null]", "not json"]) {
-      stored["helix.recent"] = bad;
+      stored["titer.recent"] = bad;
       deepStrictEqual(loadRecents(), []);
     }
-    stored["helix.recent"] = '["/a.hlx", 3, "/b.hlx"]';
+    stored["titer.recent"] = '["/a.hlx", 3, "/b.hlx"]';
     deepStrictEqual(loadRecents(), ["/a.hlx", "/b.hlx"]);
   } finally {
     delete (globalThis as { localStorage?: unknown }).localStorage;
@@ -4428,7 +6488,7 @@ check("My Palettes keep, replace and delete palettes; a gradient of few colors b
     ok(await deletePalette("Lab 2"));
     deepStrictEqual(await loadMyPalettes(), [heat]);
     // A broken entry is left out, the others kept.
-    stored["helix.palettes"] = JSON.stringify([heat, { name: "No colors", colors: [] }, 7]);
+    stored["titer.palettes"] = JSON.stringify([heat, { name: "No colors", colors: [] }, 7]);
     deepStrictEqual(await loadMyPalettes(), [heat]);
   } finally {
     delete (globalThis as { localStorage?: unknown }).localStorage;
@@ -4437,7 +6497,7 @@ check("My Palettes keep, replace and delete palettes; a gradient of few colors b
     [0, 1, 2, 3, 4].map((i) => paletteColor(heat, i, 5)),
     ["#FFFFFF", "#FFBFBF", "#FF8080", "#FF4040", "#FF0000"],
   );
-  ok(isHelixPalette("viridis") && isHelixPalette("Okabe-Ito") && !isHelixPalette("Lab"));
+  ok(isTiterPalette("viridis") && isTiterPalette("Okabe-Ito") && !isTiterPalette("Lab"));
   // A gradient of one color, from a broken file, runs from it to itself.
   deepStrictEqual(readPalette({ name: "Red", kind: "sequential", colors: ["#FF0000"] })!.colors, [
     "#FF0000",
@@ -4614,12 +6674,194 @@ check(".pzfx import keeps struck-through values as excluded cells", () => {
   deepStrictEqual(table.data!.excluded, ["1,2", "1,3", "1,4"]);
 });
 
+check(".pzfx import keeps Excluded markers on the X column and its X error column", () => {
+  // Before the fix the XY/Survival branch pushed the X and X error columns
+  // with `excluded: new Set()`, so a struck-through X value (row 1 here, in
+  // both X and X error) silently became an active data point.
+  const text = `<?xml version="1.0" encoding="UTF-8"?><GraphPadPrismFile PrismXMLVersion="5.00">
+<Table ID="Table0" XFormat="error" TableType="XY" YFormat="replicates">
+<Title>XY strike</Title>
+<RowTitlesColumn Width="89"><Subcolumn><d>A</d><d>B</d><d>C</d></Subcolumn></RowTitlesColumn>
+<XColumn Width="89" Decimals="0" Subcolumns="2"><Title>X</Title><Subcolumn><d>1.</d><d Excluded="1">2.</d><d>3.</d></Subcolumn><Subcolumn><d>0.1</d><d Excluded="1">0.2</d><d>0.3</d></Subcolumn></XColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>A</Title><Subcolumn><d>10.</d><d>20.</d><d>30.</d></Subcolumn></YColumn>
+</Table>
+</GraphPadPrismFile>`;
+  const imported = parsePzfx(text);
+  strictEqual(imported.tables.length, 1);
+  const node = imported.project.nodes[imported.project.rootOrder[0]];
+  if (!node || node.type !== "table") throw new Error("no table node");
+  strictEqual(node.tableType, "xy");
+  deepStrictEqual(node.data!.columns, ["Title", "X", "X error", "A"]);
+  deepStrictEqual(node.data!.rows, [
+    ["A", "1.", "0.1", "10."],
+    ["B", "2.", "0.2", "20."],
+    ["C", "3.", "0.3", "30."],
+  ]);
+  // Row 1 is excluded in the X column (index 1) and the X error column
+  // (index 2); the values stay visible, only their excluded state survives.
+  deepStrictEqual(node.data!.excluded, ["1,1", "1,2"]);
+});
+
+check(".pzfx import keeps a struck-through date X value excluded in its date column (#20 follow-up)", () => {
+  // Same drop as #20, one column over: the X-date path pushed the dates
+  // with a fresh empty excluded set, so a struck-through date imported as
+  // live text. The dates sit in their own column here (row titles exist),
+  // so the marker must land on that column — row 1, col 2.
+  const text = `<?xml version="1.0" encoding="UTF-8"?><GraphPadPrismFile PrismXMLVersion="5.00">
+<Table ID="Table0" XFormat="date" YFormat="replicates" Replicates="1" TableType="XY" EVFormat="AsteriskAfterNumber">
+<Title>Sample Data</Title>
+<RowTitlesColumn Width="41"><Subcolumn><d>Sample A</d><d>Sample B</d><d>Sample C</d></Subcolumn></RowTitlesColumn>
+<XColumn Width="114" Subcolumns="1" Decimals="14"><Title>Date X</Title>
+<Subcolumn><d>0</d><d>5.22929500342231</d><d>8.12320328542094</d></Subcolumn>
+</XColumn>
+<XAdvancedColumn Version="1" Width="114" Decimals="0" Subcolumns="1"><Title>Date X</Title>
+<Subcolumn><d>16-Jan-2004</d><d Excluded="1">9-Apr-2009</d><d>1-Mar-2012</d></Subcolumn>
+</XAdvancedColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Observation</Title><Subcolumn><d>120</d><d>64</d><d>46</d></Subcolumn></YColumn>
+</Table>
+</GraphPadPrismFile>`;
+  const imported = parsePzfx(text);
+  strictEqual(imported.tables.length, 1);
+  const node = imported.project.nodes[imported.project.rootOrder[0]];
+  if (!node || node.type !== "table") throw new Error("no table node");
+  deepStrictEqual(node.data!.columns, ["Title", "Date X", "Date X (date)", "Observation"]);
+  deepStrictEqual(node.data!.rows[1], ["Sample B", "5.22929500342231", "9-Apr-2009", "64"]);
+  deepStrictEqual(node.data!.excluded, ["1,2"]);
+});
+
 check(".pzfx import names summary subcolumns and warns they aren't replicates", () => {
   const { imported, table } = importedTable("column_sdn");
   strictEqual(table.tableType, "column");
   deepStrictEqual(table.data!.columns, ["Title", "A_MEAN", "A_SD", "A_N", "B_MEAN", "B_SD", "B_N"]);
   deepStrictEqual(table.data!.rows[0], [null, "100", "10", "2", "10", "1", "10"]);
   ok(imported.issues.some((i) => i.message.includes("not raw replicates")), "warns about summaries");
+});
+
+check(".pzfx import never assumes an empty YFormat means replicates (FF-F7)", () => {
+  // twoway_empty_yformat.pzfx is the column_sdn.pzfx table (TwoWay, 3
+  // mean/SD/N-shaped subcolumns per group) with YFormat blanked. Before the
+  // fix it imported as a grouped table (groups 2, replicates 3) with no
+  // warning, so a group comparison would treat the means as raw replicates.
+  const { imported, table } = importedTable("twoway_empty_yformat");
+  strictEqual(table.tableType, "column");
+  strictEqual(table.data!.groups, undefined);
+  strictEqual(table.data!.replicates, undefined);
+  deepStrictEqual(table.data!.columns, ["Title", "A_1", "A_2", "A_3", "B_1", "B_2", "B_3"]);
+  deepStrictEqual(table.data!.rows[0], ["Low", "100", "10", "2", "10", "1", "10"]);
+  ok(
+    imported.issues.some((i) => i.message.includes("empty YFormat") && i.message.includes("not replicates")),
+    "warns the Y format wasn't recorded and the subcolumns aren't replicates",
+  );
+});
+
+check(".pzfx import reads '1,000' as 1000 in a dot-decimal file — and keeps a comma decimal a decimal (FF-F8)", () => {
+  // The fixture is a dot-decimal file ("1.5", "2.5" prove the decimal
+  // separator is "."), so "1,000" can only be a thousands separator: reading
+  // it as 1.000 would be a 1000x error. The guard leg is a comma-decimal
+  // file ("7,5" proves the separator is ","): there "1,875" is 1.875, as in
+  // the real SaturationBinding.pzfx — the two readings are told apart by the
+  // file, never by the string alone.
+  const { table } = importedTable("column_thousands");
+  deepStrictEqual(table.data!.columns, ["Title", "Aa"]);
+  deepStrictEqual(table.data!.rows, [
+    [null, "1.5"],
+    [null, "1000"],
+    [null, "2.5"],
+  ]);
+  const commaDecimal = parsePzfx(
+    `<?xml version="1.0" encoding="UTF-8"?><GraphPadPrismFile PrismXMLVersion="5.00">` +
+      `<Table ID="Table0" XFormat="none" TableType="OneWay" EVFormat="AsteriskAfterNumber">` +
+      `<Title>Data 1</Title>` +
+      `<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Aa</Title><Subcolumn>` +
+      `<d>1,875</d><d>7,5</d>` +
+      `</Subcolumn></YColumn></Table></GraphPadPrismFile>`,
+  );
+  strictEqual(commaDecimal.tables.length, 1, "comma-decimal table imports");
+  const commaNode = commaDecimal.project.nodes[commaDecimal.project.rootOrder[0]];
+  if (!commaNode || commaNode.type !== "table") throw new Error("comma-decimal: no table node");
+  deepStrictEqual(commaNode.data!.rows, [
+    [null, "1.875"],
+    [null, "7.5"],
+  ]);
+});
+
+check(".pzfx import dedupes duplicate column names so the second keeps its own data", () => {
+  // Two Y columns both titled "Control", plus a third already titled
+  // "Control 2" and a third "Control" — the rename must skip names that
+  // are already taken, and each column must keep its own values.
+  const text = `<?xml version="1.0" encoding="UTF-8"?><GraphPadPrismFile PrismXMLVersion="5.00">
+<Table ID="Table0" XFormat="none" TableType="OneWay">
+<Title>Data 1</Title>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Control</Title><Subcolumn><d>1.</d><d>2.</d></Subcolumn></YColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Control</Title><Subcolumn><d>10.</d><d>20.</d></Subcolumn></YColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Control 2</Title><Subcolumn><d>100.</d><d>200.</d></Subcolumn></YColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Control</Title><Subcolumn><d>1000.</d><d>2000.</d></Subcolumn></YColumn>
+</Table>
+</GraphPadPrismFile>`;
+  const imported = parsePzfx(text);
+  strictEqual(imported.tables.length, 1);
+  const node = imported.project.nodes[imported.project.rootOrder[0]];
+  if (!node || node.type !== "table") throw new Error("no table node");
+  deepStrictEqual(node.data!.columns, ["Title", "Control", "Control 2", "Control 3", "Control 4"]);
+  // The renamed columns still carry their own data: a lookup by name
+  // (data.columns.indexOf) now lands on the intended column, not the first.
+  deepStrictEqual(node.data!.rows, [
+    [null, "1.", "10.", "100.", "1000."],
+    [null, "2.", "20.", "200.", "2000."],
+  ]);
+  const renamed = node.data!.columns.indexOf("Control 2");
+  strictEqual(node.data!.rows[0][renamed], "10.");
+  ok(imported.issues.some((i) => i.message.includes("duplicate column names were renamed")), "warns about the rename");
+});
+
+check(".pzfx import keeps untitled, colon-titled and ragged TwoWay replicate groups through a save/reload round-trip", () => {
+  // Two untitled Y columns, one titled "1:10", one ragged (1 of 2
+  // subcolumns). Before the fix all three legs lost data on reload: the
+  // untitled groups merged into "Group" (FF-F9 renamed the duplicate to
+  // "Group:Y1 2", which the reload's regroupTable then dropped), "1:10:Y1"
+  // split at the first ":" into group "1", and the ragged group was short
+  // a subcolumn.
+  const text = `<?xml version="1.0" encoding="UTF-8"?><GraphPadPrismFile PrismXMLVersion="5.00">
+<Table ID="Table0" XFormat="none" TableType="TwoWay" YFormat="replicates">
+<Title>TwoWay reps</Title>
+<RowTitlesColumn Width="89"><Subcolumn><d>Low</d><d>High</d></Subcolumn></RowTitlesColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="2"><Subcolumn><d>1.</d><d>2.</d></Subcolumn><Subcolumn><d>3.</d><d>4.</d></Subcolumn></YColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="2"><Subcolumn><d>10.</d><d>20.</d></Subcolumn><Subcolumn><d>30.</d><d>40.</d></Subcolumn></YColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="2"><Title>1:10</Title><Subcolumn><d>100.</d><d>200.</d></Subcolumn><Subcolumn><d>300.</d><d>400.</d></Subcolumn></YColumn>
+<YColumn Width="89" Decimals="0" Subcolumns="1"><Title>Ragged</Title><Subcolumn><d>1000.</d><d>2000.</d></Subcolumn></YColumn>
+</Table>
+</GraphPadPrismFile>`;
+  const imported = parsePzfx(text);
+  strictEqual(imported.tables.length, 1);
+  const node = imported.project.nodes[imported.project.rootOrder[0]];
+  if (!node || node.type !== "table") throw new Error("no table node");
+  strictEqual(node.tableType, "grouped");
+  strictEqual(node.data!.groups, 4);
+  strictEqual(node.data!.replicates, 2);
+  deepStrictEqual(node.data!.columns, [
+    "Title",
+    "Group:Y1",
+    "Group:Y2",
+    "Group 2:Y1",
+    "Group 2:Y2",
+    "1-10:Y1",
+    "1-10:Y2",
+    "Ragged:Y1",
+    "Ragged:Y2",
+  ]);
+  deepStrictEqual(node.data!.rows, [
+    ["Low", "1.", "3.", "10.", "30.", "100.", "300.", "1000.", null],
+    ["High", "2.", "4.", "20.", "40.", "200.", "400.", "2000.", null],
+  ]);
+  ok(imported.issues.some((i) => i.message.includes("group names must be unique")), "warns about the renames");
+  // The round-trip is the point: save as .hlx, reload, every value still there.
+  const { project } = read(serializeProjectFile(imported.project));
+  const reloaded = project.nodes[imported.project.rootOrder[0]];
+  if (!reloaded || reloaded.type !== "table") throw new Error("no reloaded table node");
+  deepStrictEqual(reloaded.data!.columns, node.data!.columns);
+  deepStrictEqual(reloaded.data!.rows, node.data!.rows);
+  strictEqual(reloaded.data!.groups, 4);
+  strictEqual(reloaded.data!.replicates, 2);
 });
 
 check(".pzfx import refuses files that aren't .pzfx", () => {
@@ -4736,6 +6978,79 @@ check("the survival analysis refuses bad survival data", async () => {
   }
 });
 
+check("the survival analysis and Cox refuse a table with no events at all", async () => {
+  // All subjects censored: the log-rank path used to return a meaningless
+  // chi-square of 0 (P = 1), the Gehan path crashed in solve() on a singular
+  // matrix, and Cox crashed subscripting cox.zph's empty table.
+  const data = logRankTable(
+    ["Title", "Days", "A", "B"],
+    [
+      ["", "3", "0", ""],
+      ["", "5", "0", ""],
+      ["", "7", "", "0"],
+      ["", "8", "", "0"],
+      ["", "10", "0", ""],
+      ["", "12", "", "0"],
+    ],
+  );
+  for (const curveTest of ["logrank", "gehan"] as const) {
+    const out = await runAnalysis("survival", data, { curveTest, correction: "holm" });
+    if (!("error" in out) || !out.error.includes("No events")) {
+      throw new Error(`survival/${curveTest}: expected a "No events" error, got ${JSON.stringify(out).slice(0, 300)}`);
+    }
+  }
+  const cox = await runAnalysis("cox", data, {});
+  if (!("error" in cox) || !cox.error.includes("No events")) {
+    throw new Error(`cox: expected a "No events" error, got ${JSON.stringify(cox).slice(0, 300)}`);
+  }
+});
+
+check("a pairwise Gehan comparison with no events returns NA, not a crash", async () => {
+  // Only group C holds events, so the A–B pair has none: its Gehan test used
+  // to crash in solve() on a singular matrix and abort the whole analysis.
+  const data = logRankTable(
+    ["Title", "Days", "A", "B", "C"],
+    [
+      ["", "3", "0", "", ""],
+      ["", "5", "0", "", ""],
+      ["", "7", "", "0", ""],
+      ["", "8", "", "0", ""],
+      ["", "4", "", "", "1"],
+      ["", "6", "", "", "1"],
+      ["", "9", "", "", "0"],
+    ],
+  );
+  const out = await runAnalysis("survival", data, { curveTest: "gehan", correction: "holm" });
+  if ("error" in out) throw new Error(out.error);
+  strictEqual(out.comparisons![0].p, null, "the event-less A–B pair is open");
+  ok(out.comparisons![1].p !== null && out.comparisons![2].p !== null, "pairs with events still complete");
+  ok(out.stats.find((s) => s.label === "Chi-square")?.value !== null, "the overall Gehan test still runs");
+});
+
+check("Cox regression leaves the proportional-hazards P open when a group is never at risk at an event time", async () => {
+  // Group B's subjects are all censored before A's first event: cox.zph
+  // used to crash subscripting its table and abort the whole regression.
+  const data = logRankTable(
+    ["Title", "Days", "A", "B"],
+    [
+      ["", "10", "1", ""],
+      ["", "12", "1", ""],
+      ["", "15", "0", ""],
+      ["", "1", "", "0"],
+      ["", "2", "", "0"],
+      ["", "2", "", "0"],
+    ],
+  );
+  const out = await runAnalysis("cox", data, {});
+  if ("error" in out) throw new Error(out.error);
+  strictEqual(
+    out.stats.find((s) => s.label === "Proportional hazards test P")?.value,
+    null,
+    "cox.zph could not run on this fit",
+  );
+  strictEqual(out.hazardRatios?.length, 1, "one hazard ratio still reported");
+});
+
 check("frequency bins are left-closed with the last bin closed, and empty bins stay", () => {
   // On-edge values go into the bin above them; the maximum stays in the last bin.
   deepStrictEqual(
@@ -4761,6 +7076,55 @@ check("frequency bins are left-closed with the last bin closed, and empty bins s
       [2, 0.2, 8, 0.8],
       [2, 0.2, 10, 1],
     ],
+  );
+});
+
+check("frequency bins put a value exactly on an edge into the bin above it, not below", () => {
+  // (0.3 - 0.1) / 0.1 is 1.9999999999999998 in doubles, so Math.floor alone
+  // bins 0.3 into "0.2 to <0.3"; the index is nudged against the actual
+  // edges until the value lies inside its bin.
+  const { bins } = computeFrequencyBins([0.1, 0.3, 0.5], { binMode: "auto" });
+  deepStrictEqual(
+    bins.map((b) => [b.bin, b.count]),
+    [
+      ["0.1 to <0.2", 1],
+      ["0.2 to <0.3", 0],
+      ["0.3 to <0.4", 1],
+      ["0.4 to 0.5", 1],
+    ],
+  );
+});
+
+check("pretty breaks stay distinct at large magnitudes instead of collapsing to NaN counts", () => {
+  // toPrecision(12) rounded both ends of [1e9, 1e9+0.0005] to the same
+  // value, collapsing start === end and producing NaN counts.
+  deepStrictEqual(prettyBreaks(1e9, 1e9 + 0.0005, 5), [
+    1000000000, 1000000000.0001, 1000000000.0002, 1000000000.0003, 1000000000.0004, 1000000000.0005,
+  ]);
+  const { bins } = computeFrequencyBins([1e9, 1e9 + 0.0005], { binMode: "auto" });
+  deepStrictEqual(
+    bins.map((b) => b.count),
+    [1, 0, 1],
+  );
+  ok(bins.every((b) => Number.isFinite(b.count) && Number.isFinite(b.relativeFrequency)));
+});
+
+check("width-mode binning terminates when the width is below the rounding resolution at 1e9", () => {
+  // clean(1e9 + 0.0002) rounded back to 1e9, so the old repeated-addition
+  // loop pushed 1e9 forever (OOM/hang). Edges are built by index now, so
+  // this returns 5,000 bins in milliseconds.
+  const { bins, edges } = computeFrequencyBins([1e9, 1e9 + 1], { binMode: "width", binWidth: 0.0002 });
+  strictEqual(bins.length, 5000);
+  strictEqual(edges.length, 5001);
+  strictEqual(edges[0], 1e9);
+  strictEqual(edges.at(-1), 1e9 + 1);
+  deepStrictEqual(
+    bins.map((b) => b.count).filter((c) => c > 0),
+    [1, 1],
+  );
+  strictEqual(
+    bins.reduce((s, b) => s + b.count, 0),
+    2,
   );
 });
 
@@ -5027,6 +7391,58 @@ check("Monte Carlo is offered on column and XY tables only, with its histogram g
   ok(!GRAPH_OPTIONS_BY_TABLE.grouped.some((o) => o.value === "monte-carlo-histogram"));
 });
 
+// BUG-REPORT #28 leg 4: a Monte Carlo repeat of a regression/correlation
+// with all X values identical failed only with the generic "did not return
+// the expected values" error (lm()/cor() return NA on a constant X). The
+// guard names the constant X — and a varying X still runs.
+check("Monte Carlo names a constant X instead of the generic failure", async () => {
+  const constX: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "5", "2"],
+      ["", "5", "4"],
+      ["", "5", "6"],
+      ["", "5", "8"],
+    ],
+  };
+  for (const [target, statistic] of [
+    ["linear-regression", "Slope"],
+    ["correlation", "r"],
+  ] as const) {
+    const out = await runAnalysis("monte-carlo", constX, {
+      targetAnalysis: target,
+      summaryStatistic: statistic,
+      repeats: 100,
+      seed: 42,
+    } as AnalysisParams);
+    if (!("error" in out)) throw new Error(`expected a constant-X error for ${target}`);
+    ok(
+      out.error.includes("at least 2 different X values") && out.error.includes("all X values are the same"),
+      out.error,
+    );
+  }
+  // A varying X still runs (same table with X 1–4).
+  const varyingX: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "1", "2"],
+      ["", "2", "4"],
+      ["", "3", "6"],
+      ["", "4", "8"],
+    ],
+  };
+  const mc = await runAnalysis("monte-carlo", varyingX, {
+    targetAnalysis: "linear-regression",
+    summaryStatistic: "Slope",
+    repeats: 100,
+    seed: 42,
+  });
+  if ("error" in mc) throw new Error(mc.error);
+  strictEqual(mc.monteCarlo?.repeats, 100);
+  close(mc.monteCarlo?.mean, 0.0728, 1e-3, "mean slope over repeats");
+  strictEqual(mc.monteCarlo?.observed, 2);
+});
+
 check("a Monte Carlo analysis, its histogram and a simulated table survive a file round-trip", () => {
   const mcPayload: ProjectFilePayload = {
     nodes: {
@@ -5180,6 +7596,678 @@ check("hung R eval times out, is interrupted, and retry works", async () => {
   deepStrictEqual(v, { a: 1 });
 });
 
+// R2-F14: the "Not sure" Shapiro-Wilk check must be cancellable while it
+// runs — aborting its signal stops the in-flight R evaluation (the same
+// `cancelActiveEvals` the analysis view's Cancel button uses) and the check
+// resolves null with no verdict/error alert, so the wizard returns to the
+// question instead of stranding the user until the 5-minute eval watchdog.
+// `alert` is a native dialog in the app; under tsx there is no `window`, so
+// the check records it through a stubbed `window.alert` instead.
+check("cancelling the Shapiro-Wilk check stops R and reports nothing", async () => {
+  const alerts: string[] = [];
+  const prevWindow = (globalThis as { window?: unknown }).window;
+  (globalThis as { window?: unknown }).window = { alert: (msg: string) => alerts.push(msg) };
+  try {
+    // A pre-aborted signal never starts the run — and shows no alert.
+    // (The first column is the row-title column: data starts at "A".)
+    const table: TableData = {
+      columns: ["Title", "A"],
+      rows: [["", "1"], ["", "2"], ["", "3"], ["", "4"], ["", "5"], ["", "6"], ["", "7"], ["", "8"]],
+    };
+    strictEqual(await checkNormality(table, undefined, { signal: AbortSignal.abort() }), null);
+    strictEqual(alerts.length, 0, `expected no alert, got ${JSON.stringify(alerts)}`);
+    // The live flow: R is busy in an infinite loop (the R2-B1 occupier), the
+    // check queues behind it, and aborting the signal mid-flight stops the
+    // run and returns null promptly — no alert, and the engine is usable
+    // afterwards (that is the retry).
+    const busy: TableData = {
+      columns: ["Title", "A"],
+      rows: [["", "1.1"], ["", "2.3"], ["", "1.9"], ["", "3.2"], ["", "2.8"], ["", "1.5"], ["", "2.1"], ["", "3.0"]],
+    };
+    const hung = evalNamedVector("while(TRUE){}", { timeoutMs: 120_000, graceMs: 1_000 }).catch(() => {});
+    const controller = new AbortController();
+    const started = Date.now();
+    const pending = checkNormality(busy, undefined, { signal: controller.signal });
+    await new Promise((r) => setTimeout(r, 500));
+    controller.abort();
+    strictEqual(await pending, null);
+    const elapsed = Date.now() - started;
+    ok(elapsed < 10_000, `cancelled check took ${elapsed} ms to return`);
+    strictEqual(alerts.length, 0, `expected no alert, got ${JSON.stringify(alerts)}`);
+    await hung;
+    // The cancel may have escalated to restarting the engine (the
+    // watchdog's grace expiry abandons a stuck engine): re-boot explicitly,
+    // as the R2-M15 check does, so the retry below proves R itself is
+    // healthy either way.
+    await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
+    deepStrictEqual(await evalNamedVector("c(a=1)"), { a: 1 });
+  } finally {
+    if (prevWindow === undefined) delete (globalThis as { window?: unknown }).window;
+    else (globalThis as { window?: unknown }).window = prevWindow;
+  }
+});
+
+// R2-B1: a failed run is not cached — Retry runs it for real. A runner
+// that returns an error outcome (a bad fit, a timeout, a cancel) used to
+// stay cached under the table version, so Retry replayed the stale error
+// instead of re-running.
+check("a failed analysis is not cached: fixing the data and re-running works", async () => {
+  // The Y series follows a one-phase association curve (Kobs ≈ 1, plateau 5)
+  // at times 0–6 — but the X column was mistyped: every time reads 5.
+  const ys = ["0.03", "3.12", "4.35", "4.71", "4.95", "4.93", "4.98"];
+  const table: TableData = {
+    columns: ["Title", "X", "Y"],
+    rows: ys.map((y) => ["", "5", y]),
+  };
+  const params = { y: "Y", model: "association-one-phase" } as AnalysisParams;
+  const first = await runAnalysis("binding-kinetics", table, params);
+  ok(
+    "error" in first && /two different times/.test(first.error),
+    `expected the equal-times error, got ${JSON.stringify(first)}`,
+  );
+  // Retry on the same table re-runs the runner for real instead of replaying
+  // the cached error outcome: count invocations through the registry. (The
+  // data is unchanged, so the retry fails the same way — what matters is
+  // that it ran again.)
+  let runs = 0;
+  const entry = ANALYSES["binding-kinetics"];
+  const orig = entry.run;
+  entry.run = (...args: Parameters<typeof orig>) => {
+    runs++;
+    return orig(...args);
+  };
+  try {
+    const retried = await runAnalysis("binding-kinetics", table, params);
+    strictEqual(runs, 1, `retry should re-run the runner once, ran ${runs} times`);
+    ok(
+      "error" in retried && /two different times/.test(retried.error),
+      `retry on unchanged data should fail the same way, got ${JSON.stringify(retried)}`,
+    );
+  } finally {
+    entry.run = orig;
+  }
+  // Fixing the data — an edit makes a NEW TableData — and re-running fits.
+  // (Mutating the same object in place would NOT do: readTable caches the
+  // parsed table per TableData, by design — an edit makes a new one.)
+  const fixed: TableData = {
+    columns: table.columns,
+    rows: ys.map((y, i) => ["", String(i), y]),
+  };
+  const second = await runAnalysis("binding-kinetics", fixed, params);
+  ok(!("error" in second), `fixed data should fit, got ${JSON.stringify(second)}`);
+});
+
+// R2-M15: a hung R boot must not strand the run — or the runAnalysis cache —
+// forever. The boot watchdog stops it with a clear error, the boot memo is
+// reset, and the next startR boots fresh — that is the retry. The hung boot
+// is a worker that starts but never becomes ready: a scratch dir symlinks
+// the real runtime and replaces only the worker with a never-responding
+// stub, so init() waits on it forever; without the watchdog this check
+// would hang with it. resetR() first: the suite already booted R at the
+// top, and startR returns the live engine while one exists — the hung boot
+// only happens on a fresh boot. The timed-out boot is what `runAnalysis`
+// then surfaces and evicts from its cache, so a retry starts a fresh run
+// instead of returning the same hung promise.
+check("hung R boot times out and retry boots fresh", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "helix-hung-webr-"));
+  try {
+    const real = fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url));
+    for (const name of readdirSync(real)) {
+      if (name === "webr-worker.js") continue;
+      symlinkSync(join(real, name), join(dir, name));
+    }
+    writeFileSync(
+      join(dir, "webr-worker.js"),
+      "// Never responds: the worker starts but never becomes ready.\nsetInterval(() => {}, 3_600_000);\n",
+    );
+    resetR();
+    const started = Date.now();
+    await rejects(
+      startR(`${dir}/`, { timeoutMs: 1_000 }),
+      (err: unknown) =>
+        err instanceof Error && /took longer than 1 second to start/.test(err.message),
+    );
+    const elapsed = Date.now() - started;
+    ok(elapsed < 10_000, `hung boot took ${elapsed} ms to fail`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  // The memo was reset: a good boot works on the same engine slot, and the
+  // evaluation that follows it proves R itself is healthy.
+  await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
+  deepStrictEqual(await evalNamedVector("c(a=1)"), { a: 1 });
+});
+
+// ── M17: the R queue is an explicit FIFO, and the UI shows it ───────────
+
+check("R evaluations run one at a time, in the order they were asked (M17)", async () => {
+  const seen: RQueueSnapshot[] = [];
+  const queue = createEvalQueue((snap) => seen.push({ ...snap }));
+  const done: number[] = [];
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  const p1 = queue.enqueue(async () => {
+    await sleep(30);
+    done.push(1);
+    return 1;
+  });
+  const p2 = queue.enqueue(async () => {
+    await sleep(10);
+    done.push(2);
+    return 2;
+  });
+  const p3 = queue.enqueue(async () => {
+    done.push(3);
+    return 3;
+  });
+  deepStrictEqual(await Promise.all([p1, p2, p3]), [1, 2, 3]);
+  deepStrictEqual(done, [1, 2, 3]);
+  deepStrictEqual(queue.snapshot(), { running: false, queued: 0 });
+  ok(
+    seen.some((s) => s.running && s.queued === 2),
+    "the queue must publish a snapshot with two waiting",
+  );
+});
+
+check("one R evaluation failing never stalls the queue behind it (M17)", async () => {
+  const queue = createEvalQueue();
+  const done: number[] = [];
+  const p1 = queue.enqueue(async () => {
+    done.push(1);
+    return 1;
+  });
+  const p2 = queue.enqueue(async () => {
+    throw new Error("boom");
+  });
+  const p3 = queue.enqueue(async () => {
+    done.push(3);
+    return 3;
+  });
+  strictEqual(await p1, 1);
+  await rejects(p2, /boom/);
+  strictEqual(await p3, 3);
+  deepStrictEqual(done, [1, 3]);
+  deepStrictEqual(queue.snapshot(), { running: false, queued: 0 });
+});
+
+check("cancelling a queued R evaluation drops it without touching the running one (FL-F14)", async () => {
+  const queue = createEvalQueue();
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  const ran: number[] = [];
+  // Id 1 is the other window's install (running); id 2 is this window's
+  // check, queued behind it; id 3 waits behind the check.
+  const p1 = queue.enqueue(async () => {
+    await sleep(30);
+    ran.push(1);
+    return 1;
+  }, 1);
+  const p2 = queue.enqueue(async () => {
+    ran.push(2);
+    return 2;
+  }, 2);
+  const p3 = queue.enqueue(async () => {
+    ran.push(3);
+    return 3;
+  }, 3);
+  // Let the install's turn start, so it is genuinely running while the check waits.
+  await sleep(0);
+  // Cancel the queued check while the install still runs: it never runs,
+  // and the running install is not reported as cancelled.
+  deepStrictEqual(queue.cancel([2]), { cancelledQueued: 1, runningCancelled: false });
+  strictEqual(await p1, 1);
+  await rejects(p2, (err: unknown) => err instanceof EvalCancelledError);
+  strictEqual(await p3, 3);
+  deepStrictEqual(ran, [1, 3]);
+  deepStrictEqual(queue.snapshot(), { running: false, queued: 0 });
+});
+
+check("cancelling the running R evaluation says so, and an unknown id cancels nothing (FL-F14)", async () => {
+  const queue = createEvalQueue();
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  const p1 = queue.enqueue(async () => {
+    await sleep(20);
+    return 1;
+  }, 1);
+  const p2 = queue.enqueue(async () => 2, 2);
+  // Let the first task's turn start, so it is genuinely running.
+  await sleep(0);
+  deepStrictEqual(queue.cancel([99]), { cancelledQueued: 0, runningCancelled: false });
+  // The running evaluation is reported, not stopped here — stopping it is
+  // the caller's interrupt — so it still completes, and so does the queued one.
+  deepStrictEqual(queue.cancel([1]), { cancelledQueued: 0, runningCancelled: true });
+  strictEqual(await p1, 1);
+  strictEqual(await p2, 2);
+  deepStrictEqual(queue.snapshot(), { running: false, queued: 0 });
+});
+
+check("a waiting view names the R queue instead of bare Running… (M17)", () => {
+  strictEqual(rQueueStatusText(null), "");
+  strictEqual(rQueueStatusText({ running: false, queued: 0 }), "");
+  strictEqual(rQueueStatusText({ running: true, queued: 1 }), " · R queue: 1 waiting");
+  strictEqual(rQueueStatusText({ running: true, queued: 2 }), " · R queue: 2 waiting");
+  const heard: RQueueSnapshot[] = [];
+  const off = onRQueueSnapshot((s) => heard.push(s));
+  setRQueueSnapshot({ running: true, queued: 2 });
+  deepStrictEqual(getRQueueSnapshot(), { running: true, queued: 2 });
+  deepStrictEqual(heard, [{ running: true, queued: 2 }]);
+  off();
+  setRQueueSnapshot({ running: false, queued: 0 });
+  deepStrictEqual(heard, [{ running: true, queued: 2 }]);
+});
+
+check("the engine window answers R requests through the FIFO, and publishes its queue (M17)", () => {
+  const native = readFileSync("src/native.ts", "utf8");
+  ok(/createEvalQueue/.test(native), "serveR must dispatch through createEvalQueue");
+  ok(/emit\("r-queue"/.test(native), "serveR must publish the queue on \"r-queue\"");
+  const view = readFileSync("src/views/analyses/analysis-view.tsx", "utf8");
+  ok(/rQueueStatusText\(queue\)/.test(view), "the analysis view must show the queue depth while running");
+});
+
+check("a cancel drops only its own window's requests, and the engine dequeues them (FL-F14)", () => {
+  const main = readFileSync("src-tauri/src/main.rs", "utf8");
+  ok(/emit_to\("engine", "r-cancel"/.test(main), "cancel_r must tell the engine which requests were dropped");
+  ok(/waiting\.retain/.test(main), "cancel_r must drop only the calling window's waiting requests");
+  ok(
+    /caller == "engine"/.test(main),
+    "cancel_r from the engine window must still drop every waiting request (stuck-engine recovery)",
+  );
+  const native = readFileSync("src/native.ts", "utf8");
+  ok(/listen<number\[\]>\("r-cancel"/.test(native), "serveR must listen for the dropped request ids");
+  ok(/queue\.cancel\(ids\)\.runningCancelled/.test(native), "serveR must interrupt only when the running evaluation was cancelled");
+  const queue = readFileSync("src/stats/r-queue.ts", "utf8");
+  ok(/cancel\(ids: Iterable<unknown>\)/.test(queue), "the FIFO must drop queued entries by id");
+});
+
+// R3-02: resetR() used to leave installed packages marked "ready" while the
+// fresh engine's VFS was empty, so ensurePackages() became a permanent
+// no-op and the next package-backed analysis failed with `there is no
+// package called 'survival'`. resetR() now clears the states (and cancels
+// any install in flight), and the shell broadcasts the engine restart so
+// project windows — which keep their own states — clear theirs too.
+check("an engine restart clears package states, so the next analysis reinstalls (R3-02)", async () => {
+  // The broadcast wiring: the shell tells every window the engine
+  // (re)started, project windows listen for it, and the listener clears
+  // the states through resetR.
+  const main = readFileSync("src-tauri/src/main.rs", "utf8");
+  ok(/app\.emit\("r-reset", \(\)\)/.test(main), "r_ready must broadcast the engine restart");
+  const native = readFileSync("src/native.ts", "utf8");
+  ok(/listen\("r-reset"/.test(native), "project windows must listen for the engine restart");
+  ok(/onEngineReset/.test(native), "native.ts must expose the engine-restart listener");
+  const entry = readFileSync("src/main.tsx", "utf8");
+  ok(/onEngineReset\(\)/.test(entry), "project windows must wire the engine-restart listener");
+  // The runtime proof: survival installed, engine restarted, survival
+  // analysis re-run — it must reinstall instead of failing with
+  // `there is no package called 'survival'`.
+  await ensurePackages(["survival"]);
+  strictEqual(packageStatus("survival").status, "ready", "survival must install before the restart");
+  const started = packageDiagnostics().installsStarted;
+  resetR();
+  strictEqual(
+    packageStatus("survival").status,
+    "not-loaded",
+    "resetR must clear installed-package states",
+  );
+  // The restart drops the booted engine, so the re-run boots a fresh one —
+  // and a fresh boot needs the tests' baseUrl: the eval path's `startR()`
+  // defaults to the app's "/webr/", which does not exist here (same
+  // re-boot the suite does after a failed boot below).
+  await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
+  const { table } = importedTable("survival");
+  const out = await runAnalysis("survival", table.data!, { curveTest: "logrank", correction: "holm" });
+  ok(!("error" in out), `survival after an engine restart should reinstall and run, got ${JSON.stringify(out)}`);
+  strictEqual(packageStatus("survival").status, "ready", "survival must be ready again after the re-run");
+  ok(
+    packageDiagnostics().installsStarted > started,
+    "the re-run must have started a fresh install",
+  );
+});
+
+// R3-03: a cancel in the engine never escalated — both listeners called a
+// bare interruptR(), a no-op on Tauri's PostMessage channel, so a wedged
+// engine sat out the full 5-minute watchdog budget instead of the
+// 5-second grace → reload. They now also abort the live evaluations, and
+// the shell clears its `ready` flag on reload / (re)start, so a request
+// arriving mid-reload is sent once instead of twice. (FL-F14 already
+// fixed the other leg — cancel_r dropping every window's requests — so
+// this check does not re-litigate it.)
+check("a cancel in the engine escalates through the watchdog, and a mid-reload request is sent once (R3-03)", async () => {
+  // The wiring, leg (a): both engine-window listeners abort the live
+  // evaluations (not just a bare interrupt), so the watchdog's 5-second
+  // grace starts and a stuck engine is abandoned + reloaded.
+  const native = readFileSync("src/native.ts", "utf8");
+  const serveR = native.slice(
+    native.indexOf("export async function serveR"),
+    native.indexOf("export async function onRQueue"),
+  );
+  ok(
+    (serveR.match(/cancelActiveEvals\(\)/g) ?? []).length >= 2,
+    "both engine-window cancel listeners must abort the live evaluations",
+  );
+  ok(
+    /runningCancelled/.test(serveR) && /cancelActiveEvals\(\)/.test(serveR),
+    "a cancelled running evaluation must reach cancelActiveEvals",
+  );
+  // The wiring, leg (b): the shell clears `ready` when the engine reloads
+  // and when it (re)starts, and serveR announces the (re)start before its
+  // listeners attach.
+  const main = readFileSync("src-tauri/src/main.rs", "utf8");
+  ok(/fn r_starting/.test(main), "the shell must expose r_starting");
+  ok(/r_starting,/.test(main), "r_starting must be registered as a command");
+  const cancelR = main.slice(main.indexOf("fn cancel_r"), main.indexOf("fn r_starting"));
+  ok(/ready = false/.test(cancelR), "the engine's own cancel must clear ready before the reload");
+  const rStarting = main.slice(main.indexOf("fn r_starting"), main.indexOf("fn r_ready"));
+  ok(/ready = false/.test(rStarting), "r_starting must clear ready until the engine says it is ready");
+  ok(/invoke\("r_starting"\)/.test(serveR), "serveR must announce the (re)start");
+  ok(
+    serveR.indexOf('invoke("r_starting")') < serveR.indexOf('listen<[number, string]>("r-eval"'),
+    "r_starting must come before the listeners attach",
+  );
+  ok(
+    serveR.indexOf('invoke("r_starting")') < serveR.indexOf('invoke("r_ready")'),
+    "r_starting must come before r_ready",
+  );
+  // The runtime proof, leg (a): a long evaluation aborted through
+  // cancelActiveEvals rejects promptly with EvalCancelledError — it must
+  // not sit out the 5-minute watchdog budget the way the bare-interrupt
+  // path did. (The Tauri listener wiring above is code-level: there is no
+  // engine window in this process.)
+  await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
+  const started = Date.now();
+  const pending = evalNamedVector("Sys.sleep(30); c(a=1)");
+  await new Promise((r) => setTimeout(r, 500));
+  cancelActiveEvals();
+  await rejects(pending, (err: unknown) => err instanceof EvalCancelledError);
+  const elapsed = Date.now() - started;
+  ok(elapsed < 30_000, `cancel took ${elapsed} ms — the engine must not sit out the 5-minute budget`);
+  // The cancel may have escalated to restarting the engine (the
+  // watchdog's grace expiry abandons a stuck engine): re-boot explicitly,
+  // as the M15 check does, so the retry below proves R itself is healthy
+  // either way.
+  await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
+  deepStrictEqual(await evalNamedVector("c(a=1)"), { a: 1 });
+});
+
+// ── Open-format nudge (prism-format-work (f)) ─────────────────────────────
+
+check("the save prompt asks once per Prism project, and a remembered choice applies silently", () => {
+  // No Prism origin, or already prompted: straight to the .hlx save.
+  strictEqual(nextSaveAction({ prismOrigin: false, prompted: false, remembered: null }), "save-hlx");
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: true, remembered: null }), "save-hlx");
+  // Prism origin, never prompted, nothing remembered: prompt.
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: false, remembered: null }), "prompt");
+  // Remembered choices apply silently — "don't ask again" (f.4).
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: false, remembered: "hlx" }), "save-hlx");
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: false, remembered: "prism" }), "save-prism");
+  // A remembered choice doesn't matter once prompted: still no prompt.
+  strictEqual(nextSaveAction({ prismOrigin: true, prompted: true, remembered: "prism" }), "save-prism");
+  // No localStorage under Node: reads as "no remembered choice", never throws.
+  strictEqual(loadPrismSaveChoice(), null);
+});
+
+// ── FF-F15: a multi-file Prism drop imports the first and names the rest ──
+check("a multi-file Prism drop names the skipped files", () => {
+  strictEqual(
+    prismDropSkippedMessage("a.prism", ["b.prism"]),
+    "Imported a.prism; b.prism was not imported — drop one file at a time, or use File ▸ Convert….",
+  );
+  strictEqual(
+    prismDropSkippedMessage("a.prism", ["b.prism", "c.pzfx"]),
+    "Imported a.prism; b.prism, c.pzfx were not imported — drop one file at a time, or use File ▸ Convert….",
+  );
+});
+
+// ── FL-rebrand: the prism-format surface says Titer, never Helix ────────
+// The rebrand branch was cut before the prism-format code landed, so
+// user-visible "Helix" strings survived in the converter dialog, the save
+// prompt, the import alert and the import/write reports. This pins the
+// rebranded strings and fails if "Helix" ever creeps back into the surface.
+// src/lib/version.ts is deliberately NOT covered: its GitHub URLs point at
+// the repo, which is still named smitpatel316/Helix.
+check("prism-format surface strings say Titer, not Helix (FL-rebrand)", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const surface = [
+    "src/components/converter-dialog.tsx",
+    "src/components/save-prompt-dialog.tsx",
+    "src/store/use-document.ts",
+    "src/lib/prism.ts",
+    "src/lib/prism-write.ts",
+    "src/lib/dataset.ts",
+  ];
+  for (const rel of surface) {
+    const text = readFileSync(join(root, rel), "utf8");
+    ok(!text.includes("Helix"), `${rel} still mentions Helix`);
+  }
+  const converter = readFileSync(join(root, "src/components/converter-dialog.tsx"), "utf8");
+  for (const s of [
+    "the open Titer format",
+    "Prism (.prism) → Titer (.hlx)",
+    "Titer (this project) → Prism (.prism)",
+    "the analyses Titer offers",
+    "Open in Titer",
+    "Titer Project",
+  ]) {
+    ok(converter.includes(s), `converter dialog is missing ${JSON.stringify(s)}`);
+  }
+  const savePrompt = readFileSync(join(root, "src/components/save-prompt-dialog.tsx"), "utf8");
+  ok(savePrompt.includes("Save it as the open Titer format"), "save prompt is missing the Titer format string");
+  const useDocument = readFileSync(join(root, "src/store/use-document.ts"), "utf8");
+  ok(
+    useDocument.includes("Save the project to keep it as a Titer project."),
+    "import alert is missing the Titer project string",
+  );
+  const writer = readFileSync(join(root, "src/lib/prism-write.ts"), "utf8");
+  ok(writer.includes('createdBy: { name: "Titer"'), "written .prism files must claim createdBy Titer");
+});
+
+// ── FL-r3-convert-stall: the Convert dialog must not wait on a frame ─────
+// Mac proof Take 21 (3cd7dc4): File ▸ Convert stalls BOTH directions in the
+// built app — "Reading tables from 'roundtrip'…" / "Writing 14 tables as
+// .prism…" stuck 60–90 s at 0.0% CPU, Cancel still works, the same file
+// imports via File ▸ Import in seconds. Both directions await the dialog's
+// yield before any work, and the yield was requestAnimationFrame — the only
+// awaited rAF in the app. In the built Tauri webview rAF only fires while
+// the window is the active/key window; driven without focus, the callback
+// never runs and the dialog waits forever. This pins the dialog's own await
+// chain — yield, then the real convertPrism on a real fixture — with rAF
+// stubbed to never fire, the backgrounded-webview condition. A yield that
+// depends on a frame hangs here and the check fails; a yield that doesn't
+// lets the conversion complete.
+check("the Convert dialog finishes when requestAnimationFrame never fires (FL-r3-convert-stall)", async () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const g = globalThis as Record<string, unknown>;
+  const savedRaf = g.requestAnimationFrame;
+  // Backgrounded webview: rAF callbacks never run.
+  g.requestAnimationFrame = () => 0;
+  try {
+    const tables = await Promise.race([
+      (async () => {
+        await yieldToPaint();
+        const data = readFileSync(join(root, "tests/testdata/prism/prism2R-demo_dataset.prism"));
+        const converted = await convertPrism(new Uint8Array(data), "prism2R-demo_dataset.prism");
+        return converted.report.tables.length;
+      })(),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Convert stalled: the dialog's yield never resolved with requestAnimationFrame silenced")),
+          5000,
+        ),
+      ),
+    ]);
+    ok(tables > 0, "expected the fixture to convert at least one table");
+  } finally {
+    if (savedRaf === undefined) delete g.requestAnimationFrame;
+    else g.requestAnimationFrame = savedRaf;
+  }
+});
+
+// ── R3-01: the release pipeline ships the vendored webR repo ─────────────
+// webr-repo/ is gitignored, so a fresh checkout (CI, or a clean clone) has
+// no bundled repo: vite build warns and omits it from dist/, and the CDN
+// fallback was blocked by the CSP (connect-src had no repo.r-wasm.org) —
+// every package-backed analysis broke in release builds. The pipeline now
+// builds the repo before the tests and before the Tauri build, the build
+// scripts build it too, and the CSP allows the CDN fallback. This pins all
+// three, plus the Mac DMG flow that already built it.
+check("the release pipeline builds webr-repo/, and the CSP allows the CDN fallback (R3-01)", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const release = readFileSync(join(root, ".github/workflows/release.yml"), "utf8");
+  // Both CI jobs (check and build) run the script, each before the step
+  // that needs the repo: npm test in check, tauri-action in build.
+  const occurrences = release.split("build-webr-repo.sh").length - 1;
+  ok(occurrences >= 2, `release.yml runs build-webr-repo.sh ${occurrences} time(s), want >= 2 (check + build jobs)`);
+  ok(
+    release.indexOf("build-webr-repo.sh") < release.indexOf("npm test"),
+    "release.yml must build webr-repo/ before npm test (or packages.ts skips)",
+  );
+  ok(
+    release.lastIndexOf("build-webr-repo.sh") < release.indexOf("tauri-apps/tauri-action"),
+    "release.yml must build webr-repo/ before tauri-action (or vite build omits it from dist/)",
+  );
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+    scripts: Record<string, string>;
+  };
+  for (const script of ["build", "build:linux"]) {
+    ok(
+      pkg.scripts[script]?.includes("./scripts/build-webr-repo.sh"),
+      `package.json ${script} must run build-webr-repo.sh first`,
+    );
+  }
+  // The Mac DMG flow already built the repo — keep it that way.
+  ok(
+    readFileSync(join(root, "scripts/build-mac-dmg.sh"), "utf8").includes("./scripts/build-webr-repo.sh"),
+    "scripts/build-mac-dmg.sh must keep running build-webr-repo.sh",
+  );
+  // The CSP must allow the same CDN origin the code falls back to.
+  const webr = readFileSync(join(root, "src/stats/webr.ts"), "utf8");
+  const cdn = /export const CDN_REPO_URL = "(https:\/\/[^"]+)"/.exec(webr)?.[1];
+  ok(cdn, "src/stats/webr.ts must define CDN_REPO_URL");
+  const conf = JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8")) as {
+    app: { security: { csp: Record<string, string> } };
+  };
+  ok(
+    conf.app.security.csp["connect-src"]?.includes(cdn!),
+    `tauri.conf.json connect-src must allow the CDN fallback ${cdn}`,
+  );
+});
+
+// ── R3-17: the engine window can show dialogs ─────────────────────────────
+// With no project window open, the hidden engine window sets the menu bar
+// (engine.ts), so "Check for Updates…" and the missing-file alert
+// (menus.ts: sayGone) run there — and both go through the dialog plugin
+// (native.ts: alert/askToDownload → message()). The engine capability
+// granted only "core:default", so those calls failed with a permission
+// error whenever no project window was open. The project windows already
+// had "dialog:default" (capabilities/default.json); this pins the engine
+// window to the same. Static assertion: there is no dialog call in the
+// test harness, and the permission is what the runtime enforces.
+check("the engine window grants dialog:default, so Check for Updates and missing-file alerts work with no project open (R3-17)", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const engine = JSON.parse(readFileSync(join(root, "src-tauri/capabilities/engine.json"), "utf8")) as {
+    windows: string[];
+    permissions: string[];
+  };
+  ok(engine.windows.includes("engine"), "capabilities/engine.json must target the engine window");
+  ok(
+    engine.permissions.includes("dialog:default"),
+    `capabilities/engine.json permissions must include "dialog:default" (has: ${engine.permissions.join(", ")})`,
+  );
+  // The dialog calls the windowless menu bar depends on must actually be
+  // the plugin's message dialog, not a window.alert fallback.
+  const native = readFileSync(join(root, "src/native.ts"), "utf8");
+  ok(
+    native.includes('from "@tauri-apps/plugin-dialog"'),
+    "src/native.ts must use @tauri-apps/plugin-dialog for alerts",
+  );
+  const menus = readFileSync(join(root, "src/menus.ts"), "utf8");
+  ok(menus.includes("checkForUpdates()"), "the windowless menu bar must offer Check for Updates…");
+  ok(menus.includes("sayGone"), "the windowless menu bar must report a missing recent file");
+});
+
+// ── R3-27: linux-smoke boots webR; the Mac DMG script reads its version ───
+// BUG-REPORT #27, two legs. (a) build-mac-dmg.sh hardcoded 1.0.6 while the
+// project was 1.0.7 — already fixed by the rebrand (Batch D), which reads
+// VERSION from package.json; this pins the derivation so a hardcoded
+// version can never creep back. (b) linux-smoke.ts called runAnalysis
+// without startR, so the survival leg crashed in Node with
+// `Cannot find module '/webr/webr-worker.js'`; it now boots from the
+// filesystem webr/dist path and serves webr-repo/ on localhost, as this
+// file does. This pins the init statically — the smoke script itself is
+// the runtime proof (it is not part of `npm test`).
+check("linux-smoke boots webR from the filesystem path, and build-mac-dmg.sh reads its version from package.json (R3-27)", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const smoke = readFileSync(join(root, "tests/linux-smoke.ts"), "utf8");
+  ok(smoke.includes('from "../src/stats/webr"'), "linux-smoke.ts must import the engine from src/stats/webr");
+  ok(smoke.includes("setPackageRepo("), "linux-smoke.ts must point the package repo at the bundled webr-repo/");
+  ok(
+    smoke.includes('await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)))'),
+    "linux-smoke.ts must boot webR from the filesystem webr/dist path before running analyses",
+  );
+  ok(
+    smoke.indexOf("await startR(") < smoke.indexOf('runAnalysis("survival"'),
+    "linux-smoke.ts must boot the engine before the survival analysis runs",
+  );
+  const dmg = readFileSync(join(root, "scripts/build-mac-dmg.sh"), "utf8");
+  ok(
+    dmg.includes("require('./package.json').version"),
+    "build-mac-dmg.sh must derive its version from package.json",
+  );
+  ok(!/Titer_\d+\.\d+\.\d+/.test(dmg), "build-mac-dmg.sh must not hardcode a version in the DMG name");
+  ok(
+    dmg.includes('DMG_NAME="Titer_${VERSION}_aarch64.dmg"'),
+    "the DMG name must use the derived version",
+  );
+});
+
+// ── Replicate pooling (prism-format-work (b)/(g)) ─────────────────────────
+// An imported Prism analysis names its Y data set ("Control"), not a column
+// — the fit pools the data set's replicate columns, as Prism does.
+check("a nonlinear fit pools a Y data set's replicates, and a column name still fits one column", () => {
+  // (g) fix, 2026-11-11: the fixture as written omitted the Title column,
+  // so readTable ate "X" as row titles and splitXY took "Control_1" as X —
+  // the fit pooled 7 points, not 14. The Title column is the repo
+  // convention (see the fixtures above); with it, X is X again.
+  const columns = readTable({
+    columns: ["Title", "X", "Control_1", "Control_2", "Treated_1"],
+    rows: [
+      ["", "0", "5", "6", "10"],
+      ["", "1", "10", "11", "20"],
+      ["", "2", "20", "21", "40"],
+      ["", "4", "40", "41", "80"],
+      ["", "8", "80", "81", "90"],
+      ["", "16", "90", "91", "95"],
+      ["", "32", "95", "96", "98"],
+    ],
+  }).columns;
+  deepStrictEqual(
+    datasetColumns(columns, "Control").map((c) => c.name),
+    ["Control_1", "Control_2"],
+  );
+  deepStrictEqual(datasetColumns(columns, "Control_1").map((c) => c.name), ["Control_1"]);
+  deepStrictEqual(datasetColumns(columns, "Nope"), []);
+  const pooled = prepareFit(columns, "Control", "sigmoidal-4pl-x");
+  if ("error" in pooled) throw new Error(pooled.error);
+  // 7 rows × 2 replicates = 14 points, named for the data set — and the
+  // X = 0 vehicle point stays in a raw-concentration fit (it is Bottom).
+  strictEqual(pooled.xs.length, 14);
+  strictEqual(pooled.ys.length, 14);
+  strictEqual(pooled.yCol.name, "Control");
+  ok(pooled.xs.includes(0));
+  const single = prepareFit(columns, "Control_1", "sigmoidal-4pl-x");
+  if ("error" in single) throw new Error(single.error);
+  strictEqual(single.xs.length, 7);
+  strictEqual(single.yCol.name, "Control_1");
+  // A log-X curve keeps X = 0: X is already log10(concentration), so 0
+  // is a valid log value (concentration 1), not log(0) — the model never
+  // takes log(X). (The first version of this check expected 12 here, on
+  // the mistaken idea that log-X drops X = 0; it does not, and never did
+  // — the log-X spec sets no positiveX flag, which is why the b-domain
+  // corpus files fit at all with their all-negative log-X values.)
+  const logged = prepareFit(columns, "Control", "sigmoidal-4pl-logx");
+  if ("error" in logged) throw new Error(logged.error);
+  strictEqual(logged.xs.length, 14);
+  ok(logged.xs.includes(0));
+  ok("error" in prepareFit(columns, "Nope", "sigmoidal-4pl-x"));
+});
+
 // ── Run ──────────────────────────────────────────────────────────────────
 
 // Descriptives are computed by R since the v1.0.7 rebase, so checks that run
@@ -5216,7 +8304,11 @@ if (existsSync(`${REPO_DIR}MANIFEST.json`)) {
 await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
 
 let failed = 0;
-for (const [name, fn] of checks) {
+// CHECK=<substring> runs only the matching checks (e.g. CHECK=FL-rebrand
+// for the rebrand regression check alone, without the full suite).
+const only = process.env.CHECK;
+const selected = only ? checks.filter(([name]) => name.includes(only)) : checks;
+for (const [name, fn] of selected) {
   try {
     await fn();
   } catch (err) {
@@ -5224,7 +8316,7 @@ for (const [name, fn] of checks) {
     console.log(`✗ ${name}\n  ${err instanceof Error ? err.message.split("\n").join("\n  ") : err}`);
   }
 }
-console.log(failed ? `${failed} of ${checks.length} checks failed.` : `All ${checks.length} checks pass.`);
+console.log(failed ? `${failed} of ${selected.length} checks failed.` : `All ${selected.length} checks pass.`);
 process.exitCode = failed ? 1 : 0;
 // Shut down the repo server and exit explicitly (same as reference.ts /
 // packages.ts): otherwise the listening server + webR workers keep the

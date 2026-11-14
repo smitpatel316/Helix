@@ -1,5 +1,5 @@
 {
-  "name": "helix",
+  "name": "titer",
   "version": "1.0.7",
   "description": "Scientific data analysis, simplified — an open-source alternative to GraphPad Prism.",
   "private": true,
@@ -7,19 +7,20 @@
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
-    "build": "tauri build --target aarch64-apple-darwin && tauri build --target x86_64-apple-darwin",
-    "build:linux": "tauri build --no-bundle",
-    "install-app": "tauri build --bundles app && rm -rf /Applications/Helix.app && ditto src-tauri/target/release/bundle/macos/Helix.app /Applications/Helix.app",
+    "build": "./scripts/build-webr-repo.sh && tauri build --target aarch64-apple-darwin && tauri build --target x86_64-apple-darwin",
+    "build:linux": "./scripts/build-webr-repo.sh && tauri build --no-bundle",
+    "install-app": "tauri build --bundles app && rm -rf /Applications/Titer.app && ditto src-tauri/target/release/bundle/macos/Titer.app /Applications/Titer.app",
     "web": "vite",
     "check": "tsc --noEmit",
     "sample": "node --import tsx tests/sample-project.ts",
-    "test": "node --import tsx tests/checks.ts && node --import tsx tests/reference.ts && node --import tsx tests/packages.ts",
+    "test": "node --import tsx tests/checks.ts && node --import tsx tests/prism.ts && node --import tsx tests/prism-write.ts && node --import tsx tests/reference.ts && node --import tsx tests/parity.ts && node --import tsx tests/packages.ts",
     "format": "prettier --write ."
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.3",
+    "jszip": "^3.10.1",
     "plotly.js-dist-min": "^4.1.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

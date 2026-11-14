@@ -12,7 +12,7 @@
 // defaults fail or drop points there.
 import type { AnalysisOutcome, Column, NonlinearModel, RegressionCoefficient, StatRow } from "../types";
 import { rVec } from "../column/base";
-import { pairUp, splitXY, xyProblem } from "../../lib/dataset";
+import { datasetColumns, pairUp, splitXY, xyProblem } from "../../lib/dataset";
 import { evalNamedVector, type RVector } from "../webr";
 
 export const MODEL_LABEL: Record<NonlinearModel, string> = {
@@ -62,8 +62,12 @@ export const EXPONENTIAL_MODELS: NonlinearModel[] = [
 
 /** The enzyme-kinetics models (plan 09): fitted with nls() algorithm
  *  "port" (see modelSpec). Unlike the log/ratio forms, their formulas are
- *  defined at X = 0, so the vehicle point stays in the fit — they set no
- *  `positiveX`; the positive-X values are used only for start values. */
+ *  defined at X = 0, so the vehicle point stays in the fit — they set
+ *  `nonNegativeX`, not `positiveX`; the positive-X values are used only for
+ *  start values. `nonNegativeX` keeps the interpolation grid (and the
+ *  point-estimate search) at X ≥ 0: below zero the allosteric form is NaN
+ *  for a non-integer Hill slope and the Michaelis-Menten pole at −Km sits
+ *  inside the grid (R3-10). */
 export const ENZYME_MODELS: NonlinearModel[] = [
   "michaelis-menten",
   "allosteric-sigmoidal",
@@ -138,8 +142,16 @@ export interface ModelSpec {
   terms: string[];
   /** Derived quantities computed from the fit's named coefficients (`cf[["Name"]]`). */
   derived?: Derived[];
-  /** Curves of log or ratio forms fit the points with X > 0 only. */
+  /** Log-X curves fit the points with X > 0 only (log(0) is undefined). */
   positiveX?: boolean;
+  /** Raw-concentration ratio curves (4PL/5PL X, hyperbola, two-site X, enzyme
+   *  kinetics): defined at X = 0 — the vehicle point is the Bottom anchor, so
+   *  it stays in the fit — but not at X < 0 (a fractional power of a negative
+   *  is NaN in R). The enzyme models share the "defined at 0" half and set
+   *  this flag (R3-10: without it the interpolation grid extended below zero,
+   *  where allosteric-sigmoidal is NaN and Michaelis-Menten has its pole);
+   *  their negative-X error still lives in prepareFit. */
+  nonNegativeX?: boolean;
   /** nls models only: R defining `g<-function(xv,p)` — the curve evaluated at
    *  X `xv` with parameter vector `p` (named, as `coef(m)` reports them).
    *  Used for the confidence band (delta method) and inverse prediction. */
@@ -147,11 +159,15 @@ export interface ModelSpec {
   /** Coefficient names of the curve's lower/upper asymptotes (4PL only) —
    *  an unknown within the fit's residual scale of one is outside range. */
   asymptotes?: [string, string];
-  /** nls models only: an alternate `m<-nls(...)` assignment to retry once
-   *  with if the primary fit fails (substrate inhibition's Ki start is the
-   *  least robust — plan 09; the 4PLs retry with a relaxed tolerance —
-   *  Linux 4PL fix). `fitNonlinearModel` reports the retry. */
-  retryFit?: string;
+  /** nls models only: alternate `m<-nls(...)` assignments to retry, IN
+   *  ORDER, when the primary fit fails. `fitModelSpec` tries each in turn
+   *  and reports which one converged (`retryMethod`). The 4PLs chain the
+   *  port optimizer first (prism-format parity: it fixes the Gauss-Newton
+   *  stalls) and the relaxed tolerance second (Linux 4PL fix: the
+   *  textbook dose data converges only that way — port fails it with
+   *  "singular convergence (7)"). Order matters: the first success wins.
+   *  Substrate inhibition retries once with its Ki start (plan 09). */
+  retryFits?: { fit: string; method: string }[];
   /** A dose-response curve's formula (its right side) and midpoint, which
    *  comparing two curves shares (upstream 1.0.7). */
   dose?: { expr: string; midpoint: string };
@@ -166,7 +182,17 @@ export interface ModelSpec {
 // The 4PL's starting slope takes the curve's own sign, so a falling curve keeps Bottom under Top.
 const SIGN = "if(isTRUE(cor(x,y)<0))-1 else 1";
 const FOUR_LOG = "Bottom+(Top-Bottom)/(1+10^((LogEC50-x)*HillSlope))";
-const FOUR_X = "Bottom+(Top-Bottom)/(1+(EC50/x)^HillSlope)";
+// Raw-concentration 4PL, guarded at X = 0 (prism-format-work (g)): the
+// vehicle point is the Bottom anchor and stays in the fit, but (EC50/x)
+// is Inf/NaN at x = 0 whenever a trial step takes EC50 ≤ 0 with a
+// fractional HillSlope — R's nls then dies with "Missing value or an
+// infinity produced when evaluating the model" on datasets Prism fits
+// (39 such failures in the corpus sweep). ifelse returns Bottom at x = 0
+// without evaluating the ratio there; for x > 0 the formula is unchanged,
+// so fitted values on data without an X = 0 point do not move. (ifelse
+// evaluates both branches, but a NaN in the unselected branch is
+// discarded — the plateau-decay model already relies on this.)
+const FOUR_X = "ifelse(x==0,Bottom,Bottom+(Top-Bottom)/(1+(EC50/x)^HillSlope))";
 const nls200 = (expr: string, start: string) => `nls(y~${expr},start=${start},control=nls.control(maxiter=200))`;
 /** The 4PL retry (Linux 4PL fix): the same nls call with a relaxed
  *  convergence tolerance. On near-perfect sigmoids the default tol=1e-5
@@ -263,13 +289,32 @@ export function modelSpec(
       };
     case "sigmoidal-4pl-logx":
       // X is already log10(dose). EC50 = 10^LogEC50.
-      // The retry is the same fit with a relaxed tolerance (see nls200Tol):
-      // the primary tol stays 1e-5, so every pinned 4PL number is untouched
-      // — only a dataset the primary cannot converge on takes the retry.
+      // The retries are the port optimizer first, then a relaxed tolerance
+      // (see retryFits): the primary stays Gauss-Newton, so every pinned
+      // 4PL number is untouched — only a dataset the primary cannot
+      // converge on takes a retry. Order matters: the first success wins.
       return {
         kind: "nls",
         fit: `m<-${nls200(FOUR_LOG, `list(Bottom=min(y),Top=max(y),LogEC50=median(x),HillSlope=${SIGN})`)}`,
-        retryFit: `m<-${nls200Tol(FOUR_LOG, `list(Bottom=min(y),Top=max(y),LogEC50=median(x),HillSlope=${SIGN})`)}`,
+        // (g) parity + C4 chain: Gauss-Newton stalls ("singular gradient"
+        // / "step factor reduced below 'minFactor'") on flat,
+        // ill-determined curves Prism fits (41 such failures in the corpus
+        // sweep, all log-X) — retry with the port optimizer first, same
+        // starts, then with a relaxed tolerance (the Linux 4PL fix: the
+        // textbook dose data converges only that way — port fails it with
+        // "singular convergence (7)"). The retries only run when the
+        // primary fit fails, so passing fits never touch them and their
+        // pinned values do not move. Order matters: the first success wins.
+        retryFits: [
+          {
+            fit: `m<-nls(y~${FOUR_LOG},start=list(Bottom=min(y),Top=max(y),LogEC50=median(x),HillSlope=${SIGN}),algorithm="port",control=nls.control(maxiter=200))`,
+            method: "port",
+          },
+          {
+            fit: `m<-${nls200Tol(FOUR_LOG, `list(Bottom=min(y),Top=max(y),LogEC50=median(x),HillSlope=${SIGN})`)}`,
+            method: "relaxed tolerance",
+          },
+        ],
         terms: ["Bottom", "Top", "LogEC50", "HillSlope"],
         derived: [tenTo("EC50", "LogEC50"), span],
         curveFn:
@@ -279,18 +324,31 @@ export function modelSpec(
       };
     case "sigmoidal-4pl-x":
       // X is the raw concentration; EC50 is fitted directly.
-      // Same relaxed-tolerance retry as the logx twin, for symmetry: the
+      // Same port-then-relaxed retries as the logx twin, for symmetry: the
       // raw-concentration parameterisation converges at the default
       // tolerance on the textbook data, but a flat-asymptote dataset can
       // stall it the same way.
       return {
         kind: "nls",
         fit: `m<-${nls200(FOUR_X, `list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN})`)}`,
-        retryFit: `m<-${nls200Tol(FOUR_X, `list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN})`)}`,
+        // (g) parity + C4 chain: same port-then-relaxed retries as the
+        // log-X form, for the Gauss-Newton failures that are not X = 0
+        // artefacts.
+        retryFits: [
+          {
+            fit: `m<-nls(y~${FOUR_X},start=list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN}),algorithm="port",control=nls.control(maxiter=200))`,
+            method: "port",
+          },
+          {
+            fit: `m<-${nls200Tol(FOUR_X, `list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN})`)}`,
+            method: "relaxed tolerance",
+          },
+        ],
         terms: ["Bottom", "Top", "EC50", "HillSlope"],
         derived: [span],
-        positiveX: true,
-        curveFn: 'g<-function(xv,p) p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])/(1+(p[["EC50"]]/xv)^p[["HillSlope"]])',
+        nonNegativeX: true,
+        curveFn:
+          'g<-function(xv,p) ifelse(xv==0,p[["Bottom"]],p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])/(1+(p[["EC50"]]/xv)^p[["HillSlope"]]))',
         asymptotes: ["Bottom", "Top"],
         dose: { expr: FOUR_X, midpoint: "EC50" },
       };
@@ -342,15 +400,19 @@ export function modelSpec(
       };
     }
     case "asymmetric-5pl-x": {
-      const expr = "Bottom+(Top-Bottom)/(1+(EC50*(2^(1/S)-1)^(1/HillSlope)/x)^HillSlope)^S";
+      // Same X = 0 guard as FOUR_X (see above): at x = 0 the curve is its
+      // Bottom; the unguarded ratio is Inf/NaN there whenever a trial
+      // step takes EC50 ≤ 0.
+      const expr =
+        "ifelse(x==0,Bottom,Bottom+(Top-Bottom)/(1+(EC50*(2^(1/S)-1)^(1/HillSlope)/x)^HillSlope)^S)";
       return {
         kind: "nls",
         fit: `m<-${nls200(expr, `c(as.list(coef(${nls200(FOUR_X, `list(Bottom=min(y),Top=max(y),EC50=median(x[x>0]),HillSlope=${SIGN})`)})),S=1)`)}`,
         terms: ["Bottom", "Top", "EC50", "HillSlope", "S"],
         derived: [span],
-        positiveX: true,
+        nonNegativeX: true,
         curveFn:
-          'g<-function(xv,p) p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])/(1+((p[["EC50"]]*(2^(1/p[["S"]])-1)^(1/p[["HillSlope"]]))/xv)^p[["HillSlope"]])^p[["S"]]',
+          'g<-function(xv,p) ifelse(xv==0,p[["Bottom"]],p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])/(1+((p[["EC50"]]*(2^(1/p[["S"]])-1)^(1/p[["HillSlope"]]))/xv)^p[["HillSlope"]])^p[["S"]])',
         asymptotes: ["Bottom", "Top"],
         dose: { expr, midpoint: "EC50" },
       };
@@ -361,7 +423,7 @@ export function modelSpec(
         kind: "nls",
         fit: `m<-${nls200("Bmax*x/(Kd+x)", "list(Bmax=max(y)*1.1,Kd=median(x[x>0]))")}`,
         terms: ["Bmax", "Kd"],
-        positiveX: true,
+        nonNegativeX: true,
         curveFn: 'g<-function(xv,p) p[["Bmax"]]*xv/(p[["Kd"]]+xv)',
       };
     // ── Exponential family (plan 08) ──────────────────────────────────
@@ -450,7 +512,10 @@ export function modelSpec(
     // names — a separate model entry, same formula, no duplicated fitter.
     // None sets positiveX: the formulas are defined at X = 0, so the
     // vehicle point stays in the fit; median(x[x > 0]) is used only for
-    // the Km/Khalf start values.
+    // the Km/Khalf start values. All three set nonNegativeX (R3-10): the
+    // interpolation grid and point-estimate search must stay at X ≥ 0 —
+    // below zero allosteric-sigmoidal is NaN for a non-integer Hill slope
+    // and Michaelis-Menten's pole at −Km captures the band inversion.
     case "michaelis-menten": {
       // Y = Vmax·X / (Km + X). Vmax/Km's CI is the delta method (upstream
       // reports no CI for it; Prism does).
@@ -461,6 +526,7 @@ export function modelSpec(
         kind: "nls",
         fit: "m<-nls(y~Vmax*x/(Km+x),start=list(Vmax=max(y)*1.1,Km=median(x[x>0])),algorithm=\"port\")",
         terms: ["Vmax", "Km"],
+        nonNegativeX: true,
         derived: [
           {
             label: "Vmax/Km",
@@ -478,6 +544,7 @@ export function modelSpec(
         kind: "nls",
         fit: "m<-nls(y~Vmax*x^h/(Khalf^h+x^h),start=list(Vmax=max(y)*1.1,Khalf=median(x[x>0]),h=1),algorithm=\"port\")",
         terms: ["Vmax", "Khalf", "HillSlope"],
+        nonNegativeX: true,
         curveFn: 'g<-function(xv,p) p[["Vmax"]]*xv^p[["h"]]/(p[["Khalf"]]^p[["h"]]+xv^p[["h"]])',
       };
     case "substrate-inhibition":
@@ -487,9 +554,14 @@ export function modelSpec(
         kind: "nls",
         fit: "m<-nls(y~Vmax*x/(Km+x+x^2/Ki),start=list(Vmax=max(y)*1.5,Km=median(x[x>0]),Ki=max(x)),algorithm=\"port\")",
         terms: ["Vmax", "Km", "Ki"],
+        nonNegativeX: true,
         curveFn: 'g<-function(xv,p) p[["Vmax"]]*xv/(p[["Km"]]+xv+xv^2/p[["Ki"]])',
-        retryFit:
-          "m<-nls(y~Vmax*x/(Km+x+x^2/Ki),start=list(Vmax=max(y)*1.5,Km=median(x[x>0]),Ki=median(x[x>0])*5),algorithm=\"port\")",
+        retryFits: [
+          {
+            fit: "m<-nls(y~Vmax*x/(Km+x+x^2/Ki),start=list(Vmax=max(y)*1.5,Km=median(x[x>0]),Ki=median(x[x>0])*5),algorithm=\"port\")",
+            method: "port",
+          },
+        ],
       };
     // ── Binding — Competition (plan 28) ─────────────────────────────────
     // Prism's built-in "Two sites — Fit logIC50" fixes BOTH Hill slopes at
@@ -544,7 +616,7 @@ export function modelSpec(
       // practice) and retries once from the half-medians without bounds if
       // port still fails — both start strategies were verified in WebR on
       // the noiseless fixture before implementing (the retry is modelSpec's
-      // retryFit, the substrate-inhibition pattern).
+      // retryFits, the substrate-inhibition pattern).
       const expr = "Bottom+(Top-Bottom)*(FractionHi/(1+x/IC50Hi)+(1-FractionHi)/(1+x/IC50Lo))";
       const geoStart =
         "list(Bottom=min(y),Top=max(y),IC50Hi=10^mean(log10(x[x<=median(x)])),IC50Lo=10^mean(log10(x[x>median(x)])),FractionHi=0.5)";
@@ -561,12 +633,17 @@ export function modelSpec(
           ...(opts?.kiDivisor != null ? [kiFromLinear("Ki (low affinity)", "IC50Lo", opts.kiDivisor)] : []),
           span,
         ],
-        positiveX: true,
+        nonNegativeX: true,
         curveFn:
           'g<-function(xv,p) p[["Bottom"]]+(p[["Top"]]-p[["Bottom"]])*(p[["FractionHi"]]/(1+xv/p[["IC50Hi"]])+(1-p[["FractionHi"]])/(1+xv/p[["IC50Lo"]]))',
         asymptotes: ["Bottom", "Top"],
         dose: { expr, midpoint: "IC50Hi" },
-        retryFit: `m<-nls(y~${expr},start=${medianStart},algorithm="port",control=nls.control(maxiter=200))`,
+        retryFits: [
+          {
+            fit: `m<-nls(y~${expr},start=${medianStart},algorithm="port",control=nls.control(maxiter=200))`,
+            method: "port",
+          },
+        ],
       };
     }
     case "homologous-competition-logx": {
@@ -668,6 +745,27 @@ export function formulaVariables(spec: ModelSpec): string[] | undefined {
   const startAt = spec.fit.indexOf(",start=");
   if (startAt < 0) return undefined;
   return startVariables(spec.fit.slice(startAt + 7));
+}
+
+/** The model's data-driven start expressions (`Name=expr` over `x`/`y`,
+ *  in start-list order) — what the single-curve fit starts from. Only a
+ *  plain `list(...)` start qualifies: a 5PL's `c(as.list(coef(...)), S=1)`
+ *  start needs its inner fit first, so it returns undefined. The global
+ *  fit's restart ladder (F5-hom) evaluates these per series to rebuild
+ *  stacked starts far from the singles' fitted values. */
+export function startExpressions(spec: ModelSpec): { name: string; expr: string }[] | undefined {
+  const startAt = spec.fit.indexOf(",start=list(");
+  if (startAt < 0) return undefined;
+  const s = spec.fit.slice(startAt + 7);
+  const close = matchParen(s, 4);
+  if (close < 0) return undefined;
+  const out: { name: string; expr: string }[] = [];
+  for (const e of splitTopLevel(s.slice(5, close))) {
+    const m = e.trim().match(/^([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.+)$/s);
+    if (!m) return undefined;
+    out.push({ name: m[1], expr: m[2].trim() });
+  }
+  return out.length ? out : undefined;
 }
 
 /** Variable names of one start expression (`list(...)` / `c(...)`). */
@@ -912,15 +1010,22 @@ export function applyFitOptions(spec: ModelSpec, opts: FitOptions): AppliedFitOp
     })),
     ...(spec.curveFn ? { curveFn: substituteCurveFn(spec.curveFn, fixedByVar) } : {}),
     ...(spec.dose ? { dose: { ...spec.dose, expr: substituteFormula(spec.dose.expr, fixedByVar) } } : {}),
-    ...(spec.retryFit
-      ? { retryFit: transformNlsCall(spec.retryFit, fixedByVar, boundsByVar, remainingVars) }
+    ...(spec.retryFits
+      ? {
+          retryFits: spec.retryFits.map((r) => ({
+            fit: transformNlsCall(r.fit, fixedByVar, boundsByVar, remainingVars),
+            method: r.method,
+          })),
+        }
       : {}),
   };
-  if (opts.weights && out.retryFit) out.retryFit = `${out.retryFit.slice(0, -1)},weights=w)`;
+  if (opts.weights && out.retryFits)
+    out.retryFits = out.retryFits.map((r) => ({ ...r, fit: `${r.fit.slice(0, -1)},weights=w)` }));
   return { spec: out, extraAssignments };
 }
 
-/** The X/Y columns and the points to fit: the `positiveX` X > 0 drop rule and
+/** The X/Y columns and the points to fit: the `positiveX` X > 0 drop rule
+ *  (log forms), the `nonNegativeX` X ≥ 0 drop rule (raw ratio forms), and
  *  the `nParams + 1` minimum-points rule, shared by both runners. */
 export function prepareFit(
   columns: Column[],
@@ -931,30 +1036,47 @@ export function prepareFit(
   fixedCount = 0,
 ): { xCol: Column; yCol: Column; xs: number[]; ys: number[]; rows: number[] } | { error: string } {
   const { x: xCol, ys: yCols } = splitXY(columns);
-  const yCol = yName === undefined ? yCols[0] : yCols.find((c) => c.name === yName);
+  // A Y data set's replicates pool into one fit (see datasetColumns): a name
+  // that is no column but is a data set ("Control" → "Control_1..3") fits
+  // every replicate point, as Prism does. A plain column name fits that
+  // column alone. The pooled yCol keeps the first replicate's cells (so
+  // interpolation still reads a Y per row) under the data set's name.
+  const cols = yName === undefined ? (yCols[0] ? [yCols[0]] : []) : datasetColumns(yCols, yName);
+  const yCol = cols.length === 1 ? cols[0] : cols.length > 1 ? { ...cols[0], name: yName! } : undefined;
   if (!xCol || !yCol) return { error: xyProblem(columns, yName)! };
 
-  const complete = pairUp(xCol, yCol);
+  const complete =
+    cols.length <= 1
+      ? pairUp(xCol, yCol)
+      : cols.reduce(
+          (acc, c) => {
+            const p = pairUp(xCol, c);
+            return { x: [...acc.x, ...p.x], y: [...acc.y, ...p.y], rows: [...acc.rows, ...p.rows] };
+          },
+          { x: [] as number[], y: [] as number[], rows: [] as number[] },
+        );
   const spec = modelSpec(model);
   const nParams = spec.terms.length - fixedCount;
 
-  // Curves that need X > 0 (log/ratio forms) commonly get a X=0 vehicle/control
-  // point in real dose-response data — drop it from the fit rather than
-  // rejecting the whole curve, mirroring how these curves are conventionally fit.
+  // A log-X curve drops its X = 0 vehicle/control point (log(0) is
+  // undefined); a raw-concentration ratio curve keeps it — at X = 0 the
+  // curve is its Bottom, so the vehicle point anchors Bottom (Prism fits
+  // it too) — and drops only X < 0, where a fractional power is NaN in R.
   let xs = complete.x;
   let ys = complete.y;
-  if (spec.positiveX) {
+  if (spec.positiveX || spec.nonNegativeX) {
+    const keep = spec.positiveX ? (x: number) => x > 0 : (x: number) => x >= 0;
     xs = [];
     ys = [];
     complete.x.forEach((x, i) => {
-      if (x > 0) {
+      if (keep(x)) {
         xs.push(x);
         ys.push(complete.y[i]);
       }
     });
   }
   if (xs.length < nParams + 1) {
-    const scope = spec.positiveX ? " with X > 0" : "";
+    const scope = spec.positiveX ? " with X > 0" : spec.nonNegativeX ? " with X ≥ 0" : "";
     return {
       error: `Not enough complete points${scope} (${xs.length}) to fit this curve; need at least ${nParams + 1}.`,
     };
@@ -964,8 +1086,10 @@ export function prepareFit(
     // is unidentifiable with no positive X or with all X equal — validate
     // before calling R, not after it fails. The X = 0 vehicle point is
     // kept (the formulas are defined at X = 0); only the start values use
-    // the positive X values.
-    if (xs.some((x) => x < 0)) return { error: "Substrate concentrations cannot be negative." };
+    // the positive X values. The negativity test reads the unfiltered
+    // points: `nonNegativeX` drops X < 0 from `xs` above, so testing `xs`
+    // would never fire (R3-10).
+    if (complete.x.some((x) => x < 0)) return { error: "Substrate concentrations cannot be negative." };
     if (!xs.some((x) => x > 0))
       return { error: "No positive substrate concentration — Km cannot be estimated." };
     if (new Set(xs).size === 1)
@@ -986,7 +1110,9 @@ export function prepareFit(
   }
   // The fitted points' rows, in fit order (plan 26: 1/SD² weights need the
   // row's replicate values, not just the fitted pair).
-  const rows = complete.rows.filter((_, i) => !spec.positiveX || complete.x[i] > 0);
+  const rows = complete.rows.filter(
+    (_, i) => (!spec.positiveX && !spec.nonNegativeX) || (spec.positiveX ? complete.x[i] > 0 : complete.x[i] >= 0),
+  );
   return { xCol, yCol, xs, ys, rows };
 }
 
@@ -1124,13 +1250,17 @@ export interface NonlinearFit {
   /** True when the primary fit failed and the alternate-start retry
    *  (substrate inhibition's Ki) converged instead — the runner notes it. */
   retried?: boolean;
+  /** Which retry converged, when `retried` is true — the `method` of the
+   *  winning `retryFits` entry ("port", "relaxed tolerance", …). The
+   *  runner names it in the result note. */
+  retryMethod?: string;
 }
 
 /** Fit a model spec (not necessarily one of the curated nonlinear models)
  *  and return its coefficients, derived quantities and goodness-of-fit rows —
- *  one R call (two when a spec carries a retry fit and the first attempt
- *  fails). The binding runners (plan 16) fit their own specs through this,
- *  so there is exactly one nls call site in the repo. */
+ *  one R call per attempt: the primary, then each `retryFits` entry in
+ *  order until one converges. The binding runners (plan 16) fit their own
+ *  specs through this, so there is exactly one nls call site in the repo. */
 export async function fitModelSpec(
   xs: number[],
   ys: number[],
@@ -1143,23 +1273,30 @@ export async function fitModelSpec(
   const eff = applied.spec;
   const extra = extraAssignments + applied.extraAssignments;
   const weighted = !!(options?.weights);
-  try {
-    const rCode = `${fitStatementsForSpec(xs, ys, eff, undefined, extra, weighted)}c(${fitEntries(eff)})`;
-    const v = await evalNamedVector(rCode);
-    const { coefficients, derived, stats } = parseFit(v, eff, xs.length, labelTerm);
-    return { coefficients, derived, stats, rCode };
-  } catch (err) {
-    if (!eff.retryFit) throw err;
-    const rCode = `${fitStatementsForSpec(xs, ys, eff, eff.retryFit, extra, weighted)}c(${fitEntries(eff)})`;
-    const v = await evalNamedVector(rCode);
-    const { coefficients, derived, stats } = parseFit(v, eff, xs.length, labelTerm);
-    return { coefficients, derived, stats, rCode, retried: true };
+  const attempts: ({ fit?: string; method?: string } | undefined)[] = [undefined, ...(eff.retryFits ?? [])];
+  let lastErr: unknown;
+  for (const attempt of attempts) {
+    const rCode = `${fitStatementsForSpec(xs, ys, eff, attempt?.fit, extra, weighted)}c(${fitEntries(eff)})`;
+    try {
+      const v = await evalNamedVector(rCode);
+      const { coefficients, derived, stats } = parseFit(v, eff, xs.length, labelTerm);
+      return {
+        coefficients,
+        derived,
+        stats,
+        rCode,
+        ...(attempt ? { retried: true, retryMethod: attempt.method } : {}),
+      };
+    } catch (err) {
+      lastErr = err;
+    }
   }
+  throw lastErr;
 }
 
 /** Fit the curve and return its coefficients, derived quantities and
- *  goodness-of-fit rows — one R call (two when a spec carries a retry fit
- *  and the first attempt fails). */
+ *  goodness-of-fit rows — one R call per attempt (the primary, then each
+ *  retry in order). */
 export async function fitNonlinearModel(
   xs: number[],
   ys: number[],

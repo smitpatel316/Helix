@@ -17,12 +17,24 @@ import { version } from "../package.json";
 
 export const separator = { item: "Separator" } as const;
 
-// The icon comes from the app bundle. The website and GitHub are in the Help menu.
+// The icon comes from the app bundle. GitHub and Buy Me a Coffee are in the Help menu.
+const COFFEE_URL = "https://www.buymeacoffee.com/smitpatel316";
+// The coffee address is in the credits because the About dialog has no
+// link field on macOS (AboutMetadata.website is Windows/Linux only).
+// Credits are macOS-only, so Linux/Windows never saw the tagline or the
+// coffee address: their native dialog renders comments and website instead
+// (muda drops credits on those platforms), hence the same text here —
+// comments as visible text, website as the clickable link.
+const ABOUT_CREDITS = `Scientific data analysis, simplified.\nBuy Me a Coffee: ${COFFEE_URL}`;
 const ABOUT = {
-  name: "Helix", // spelled out: in development the process is named "helix"
+  name: "Titer", // spelled out: in development the process is named "titer"
   version,
-  shortVersion: "", // empty: no "(1.0.0)" after the version
-  credits: "Scientific data analysis, simplified.",
+  // No shortVersion: Tauri renders one as "(<short>)" after the version, so an
+  // empty string showed "1.0.7 ()". Omitting it shows just the version.
+  credits: ABOUT_CREDITS,
+  comments: ABOUT_CREDITS,
+  website: COFFEE_URL,
+  websiteLabel: "Buy Me a Coffee",
   copyright: "© 2026 mickaphd\nFree and open source. No warranty.",
 };
 
@@ -62,30 +74,29 @@ export function projectItems(
   ];
 }
 
-/** Sets the app's menu bar: the Helix menu, `menus`, then Window and Help. */
+/** Sets the app's menu bar: the Titer menu, `menus`, then Window and Help. */
 export function setMenuBar(menus: MenuItems) {
-  const helix = {
-    text: "Helix",
+  const titer = {
+    text: "Titer",
     items: [
-      { item: { About: ABOUT }, text: "About Helix" },
+      { item: { About: ABOUT }, text: "About Titer" },
       { text: "Check for Updates…", action: () => void checkForUpdates() },
       separator,
       { item: "Services" },
       separator,
-      { item: "Hide", text: "Hide Helix" },
+      { item: "Hide", text: "Hide Titer" },
       { item: "HideOthers" },
       { item: "ShowAll" },
       separator,
       // The shell closes every project window first: each asks about its unsaved changes.
-      { item: "Quit", text: "Quit Helix" },
+      { item: "Quit", text: "Quit Titer" },
     ],
   } as const;
   return installMenuBar(
-    [helix, ...menus],
+    [titer, ...menus],
     [{ item: "Minimize" }, { item: "Maximize" }, separator, { item: "BringAllToFront" }],
     [
-      { text: "Helix Website", action: () => openLink("website") },
-      { text: "Helix on GitHub", action: () => openLink("github") },
+      { text: "Titer on GitHub", action: () => openLink("github") },
       { text: "Buy Me a Coffee", action: () => openLink("coffee") },
       separator,
       { text: "Sample Project", action: () => void openSample() },

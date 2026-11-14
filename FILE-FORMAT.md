@@ -1,22 +1,22 @@
-# The Helix project file (`.hlx`)
+# The Titer project file (`.hlx`)
 
-A Helix project is one plain-text JSON file (UTF-8). Any program can read or write
-it: your data are never locked into Helix.
+A Titer project is one plain-text JSON file (UTF-8). Any program can read or write
+it: your data are never locked into Titer.
 
 ## Promises
 
 - **Old files always open.** Fields are only ever added in new versions, never
   renamed or removed.
-- **Newer files open too.** A version of Helix keeps the fields it doesn't know and
-  writes them back when saving, so opening a newer file in an older Helix loses nothing.
+- **Newer files open too.** A version of Titer keeps the fields it doesn't know and
+  writes them back when saving, so opening a newer file in an older Titer loses nothing.
 - **Forgiving reading.** Field names and choices are read whatever their case
-  (`tableType`, `TableType`, `"XY"`). A value of the wrong type, or a choice Helix doesn't
-  offer (a dash `"zigzag"`), falls back to its default; a number beyond what Helix offers
+  (`tableType`, `TableType`, `"XY"`). A value of the wrong type, or a choice Titer doesn't
+  offer (a dash `"zigzag"`), falls back to its default; a number beyond what Titer offers
   is brought back within (a point size of 500 reads as 20). A broken item is left out on
-  its own, and Helix says so. A table is put straight: values beyond its last column are left
+  its own, and Titer says so. A table is put straight: values beyond its last column are left
   out (and said), exclusions and column widths that point nowhere are dropped, and a grouped
-  table's `groups` and `replicates` are those of its columns. A file Helix had to change as
-  it read it (repaired, or written by an older Helix) opens as edited, and saving it writes it
+  table's `groups` and `replicates` are those of its columns. A file Titer had to change as
+  it read it (repaired, or written by an older Titer) opens as edited, and saving it writes it
   up to date.
 - **Nothing about you.** The file holds the project only: no file paths, user
   names or app state.
@@ -25,7 +25,7 @@ it: your data are never locked into Helix.
 
 ```json
 {
-  "app": "helix",
+  "app": "titer",
   "schemaVersion": 1,
   "savedAt": "2026-09-24T12:00:00.000Z",
   "project": {
@@ -37,7 +37,7 @@ it: your data are never locked into Helix.
 }
 ```
 
-- `app` is always `"helix"`. `schemaVersion` and `savedAt` are informative.
+- `app` is `"titer"` for files Titer writes; files written before the rename carry `"helix"` and still open. `schemaVersion` and `savedAt` are informative.
 - `nodes` holds every item, keyed by its `id`.
 - `rootOrder` lists the data tables in sidebar order, then the figures (a figure
   lives at the project root, after the tables, in creation order); `childOrder`
@@ -70,7 +70,7 @@ analysis or a graph.
 ```
 
 - `tableType`: `"column"`, `"xy"`, `"grouped"`, `"nested"`, `"multiple"` (Multiple Variables),
-  `"contingency"` or `"survival"` (Helix 1.0.7 and later).
+  `"contingency"` or `"survival"` (Titer 1.0.7 and later).
 - `columns`: the column names. The first is always the row-title column (`Title`);
   in an XY table the second is X, in a Survival table the time (each subject's row then
   holds 1, event, or 0, censored, in its group's column).
@@ -100,9 +100,9 @@ Optional fields:
 | `widths` | Column widths set by the user, in pixels, by column name |
 | `freezeTitle` | `true` keeps the Title column visible while scrolling |
 
-Files from before Helix 1.0.3 may also have `seriesColors`, a color per column (or
+Files from before 1.0.3 may also have `seriesColors`, a color per column (or
 group), and `pointColors`, a color per cell as `"column name#row"`, each `"blue"`,
-`"red"`, `"green"`, `"purple"`, `"orange"` or `"black"`: Helix reads them as the
+`"red"`, `"green"`, `"purple"`, `"orange"` or `"black"`: Titer reads them as the
 colors of the table's graphs (see Graph).
 
 ### Analysis
@@ -115,10 +115,10 @@ colors of the table's graphs (see Graph).
 }
 ```
 
-An analysis stores what to compute, never its results: Helix computes them again
+An analysis stores what to compute, never its results: Titer computes them again
 from the table when the file opens, so results always match the data.
 `analysisParams` holds the choices made in the analysis's wizard (see
-`src/stats/types.ts`). `sets` (Helix 1.0.5 and later) names the data sets it runs on, in
+`src/stats/types.ts`). `sets` (1.0.5 and later) names the data sets it runs on, in
 order: columns, or a grouped table's groups, or a nested table's groups. Without it, an analysis runs on all of
 them (a two-group test: the first two holding data).
 
@@ -148,7 +148,7 @@ A graph's colors and style are its own:
 ```
 
 - `palette`: which palette (`src/lib/palettes.ts`, or one of the user's own, named as
-  they named it), and its colors, written out so the figure keeps them whatever Helix's
+  they named it), and its colors, written out so the figure keeps them whatever Titer's
   list of palettes becomes, and on a Mac that doesn't have the user's. `kind` is
   `"categorical"` (colors taken in turn) or `"sequential"` / `"diverging"` (a
   gradient: series take evenly spaced colors along it, a heatmap all of it; a
@@ -189,11 +189,11 @@ A graph's colors and style are its own:
 - `xTitleGap`, `yTitleGap`: the space in pixels between each axis title and its tick
   labels, 0 to 40.
 
-A `"dose-response"` graph (before Helix 1.0.7) fitted its own curve, from `doseY` (its data
+A `"dose-response"` graph (before 1.0.7) fitted its own curve, from `doseY` (its data
 set) and `doseModel`. It opens as an `"xy-scatter"` drawing the curve of a new
 `"nonlinear-regression"` analysis of the same data set and model, placed just before it.
 
-A graph without `palette` comes from Helix 1.0.2 or before: it takes the Helix
+A graph without `palette` comes from 1.0.2 or before: it takes the Titer
 palette, its table's `seriesColors`, its old `heatmapColorScale` or
 `volcanoColorUp` / `volcanoColorDown` / `volcanoPointSize`, fills at 0.5 (a pie's at 1,
 a volcano's points at 0.75), its type's point size and outline, and bars side by side
@@ -261,17 +261,17 @@ Forgiving reading (figures):
   `graphName`; the figure still opens, and export leaves that cell blank and
   says how many panels couldn't be drawn. It never fails the whole export.
 - Unknown figure fields are preserved and written back, like any other node's.
-- A figure node in a file opened by an **older** Helix (which has no figure
-  type) is left out on its own, and Helix says so — the figure is the one case
-  where opening a newer file in an older Helix loses visible content (the
+- A figure node in a file opened by an **older** Titer (which has no figure
+  type) is left out on its own, and Titer says so — the figure is the one case
+  where opening a newer file in an older Titer loses visible content (the
   figure, not the data: the graphs and tables it references still open). The
-  node is preserved in the file, not deleted, so re-opening in the newer Helix
+  node is preserved in the file, not deleted, so re-opening in the newer Titer
   recovers the figure. (Note: preserving an unknown *node* across a re-save in
-  the older Helix is not yet implemented — see the plan file's Builder notes —
-  so the figure survives only until the older Helix saves the file.)
+  the older Titer is not yet implemented — see the plan file's Builder notes —
+  so the figure survives only until the older Titer saves the file.)
 
 A figure is not a Prism layout: a `.prism` file's Layout sheet is not
 transferred on import (the converter's transfer report says so — "not
-transferred — re-create the figure in Helix"), and exporting a Helix figure to
+transferred — re-create the figure in Titer"), and exporting a Titer figure to
 Prism format is out of scope (the converter offers the figure's panels as
 individual graphs instead, and says so).

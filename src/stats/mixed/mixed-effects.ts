@@ -104,9 +104,16 @@ function flattenGroupedMixed(columns: Column[]): {
   const obs: LongObs[] = [];
   const perGroup = new Map<string, number>();
   let total = 0;
+  // Rows holding no value at all are empty, not missing observations (like
+  // flattenColumn's subjectRows): they count toward neither the total nor
+  // the dropped-as-missing count. Row indices stay the original ones — tm
+  // is a numeric predictor, so a gap in it is fine.
+  const keptRows: number[] = [];
+  for (let r = 0; r < rowCount; r++)
+    if (groups.some((g) => g.columns.some((col) => col.byRow[r] != null))) keptRows.push(r);
   for (const g of groups) {
     perGroup.set(g.name, 0);
-    for (let r = 0; r < rowCount; r++) {
+    for (const r of keptRows) {
       g.columns.forEach((col, k) => {
         total++;
         const v = col.byRow[r];
@@ -256,15 +263,28 @@ export async function runMixedEffects(
       `grp<-factor(c(${obs.map((o) => rStr(o.grp!)).join(",")}),levels=c(${grpLevels.map(rStr).join(",")}))`,
     );
   }
+  // R names its coefficients by position in summary(m)$coefficients, so a
+  // rank-deficient fit that drops one (an all-zero interaction column, say)
+  // would shift every later term's row and mislabel its estimate — as well
+  // as crashing on co[r, 1] past the last row. Match by name instead: a
+  // dropped term matches nothing and reports NA for every column.
+  const coefNames = ["(Intercept)"];
+  if (grpLevels) {
+    for (const lv of grpLevels.slice(1)) coefNames.push(`grp${lv}`);
+  }
+  coefNames.push("tm");
+  if (interaction && grpLevels) {
+    for (const lv of grpLevels.slice(1)) coefNames.push(`grp${lv}:tm`);
+  }
   const coefKeys = terms.map((_, i) => {
     const r = i + 1;
-    return `e${r}=co[${r},1],se${r}=co[${r},2],t${r}=co[${r},if(nc>=5)4 else 3],p${r}=if(nc>=5)co[${r},5] else NA_real_`;
+    return `e${r}=if(!is.na(ix[${r}]))co[ix[${r}],1] else NA_real_,se${r}=if(!is.na(ix[${r}]))co[ix[${r}],2] else NA_real_,t${r}=if(!is.na(ix[${r}]))co[ix[${r}],if(nc>=5)4 else 3] else NA_real_,p${r}=if(!is.na(ix[${r}]))if(nc>=5)co[ix[${r}],5] else NA_real_ else NA_real_`;
   });
   const code =
     `${decls.join(";")};warns<-c();` +
     `m<-withCallingHandlers(lmerTest::lmer(${formula},REML=TRUE),` +
     `warning=function(w){warns<<-c(warns,conditionMessage(w));invokeRestart("muffleWarning")});` +
-    `s<-summary(m);co<-s$coefficients;nc<-ncol(co);` +
+    `s<-summary(m);co<-s$coefficients;nc<-ncol(co);ix<-match(c(${coefNames.map(rStr).join(",")}),rownames(co));` +
     `vc<-as.data.frame(lme4::VarCorr(m));` +
     `c(${coefKeys.join(",")},` +
     `sv=vc$vcov[vc$grp=="subj"],ssd=vc$sdcor[vc$grp=="subj"],` +
@@ -350,6 +370,13 @@ export async function runMixedEffects(
   }
   if (v.p1 == null) {
     notesParts.push("P-values are unavailable because lmerTest did not load — estimates are reported without p-values.");
+  }
+  const droppedTerms = coefficients.filter((c) => c.estimate == null).map((c) => c.term);
+  if (droppedTerms.length > 0) {
+    notesParts.push(
+      `${droppedTerms.map((t) => `“${t}”`).join(", ")} could not be estimated — the fixed effects are ` +
+        `rank-deficient, so ${droppedTerms.length === 1 ? "it was" : "they were"} dropped from the fit.`,
+    );
   }
   return {
     testType: "mixed-effects",

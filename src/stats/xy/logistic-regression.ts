@@ -39,17 +39,17 @@ export async function runSimpleLogisticRegression(
   if (ones === 0 || zeros === 0) {
     return { error: "The outcome has only one value (all 0s / all 1s). Logistic regression needs both outcomes." };
   }
-  // A Helix guardrail, not Prism's: a handful of points (or of the rarer outcome)
+  // A Titer guardrail, not Prism's: a handful of points (or of the rarer outcome)
   // cannot support a two-parameter fit.
   if (y.length < 5) {
     return {
-      error: `Only ${y.length} complete pair${y.length === 1 ? "" : "s"} — logistic regression needs at least 5 (a Helix guardrail, not Prism's).`,
+      error: `Only ${y.length} complete pair${y.length === 1 ? "" : "s"} — logistic regression needs at least 5 (a Titer guardrail, not Prism's).`,
     };
   }
   const minority = Math.min(ones, zeros);
   if (minority < 2) {
     return {
-      error: `Only ${minority} observation of the less common outcome — logistic regression needs at least 2 of each outcome (a Helix guardrail, not Prism's).`,
+      error: `Only ${minority} observation of the less common outcome — logistic regression needs at least 2 of each outcome (a Titer guardrail, not Prism's).`,
     };
   }
   if (new Set(x).size < 2) {

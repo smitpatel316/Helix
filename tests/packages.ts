@@ -25,6 +25,7 @@ import {
   packageStatus,
   setPackageRepo,
   startR,
+  resetR,
   PACKAGE_INSTALL_TIMEOUT_MS,
   PACKAGE_REGISTRY,
   R_VERSION,
@@ -105,6 +106,10 @@ check("repo includes codetools", repoVersions.has("codetools"), "multcomp Import
 // ── Serve the bundled repo on localhost ────────────────────────────────
 
 const MIME: Record<string, string> = { ".tgz": "application/gzip", ".gz": "application/gzip" };
+// P-13 (M16): .tgz downloads served, by package — the double-install
+// observable. A second window's redundant batch would download the .tgz
+// again; the claim protocol must hold it to exactly one per package.
+const tgzDownloads = new Map<string, number>();
 // P-12 (B2) black-hole switch: while `hangRepo` is set, the server accepts
 // requests and never answers them, so an install's download hangs forever
 // in the engine — the hung-install scenario, without touching R. Held
@@ -122,6 +127,10 @@ const server = createServer((req, res) => {
     res.writeHead(404);
     res.end();
     return;
+  }
+  if (path.endsWith(".tgz")) {
+    const name = path.split("/").pop()!.replace(/_.*\.tgz$/, "");
+    tgzDownloads.set(name, (tgzDownloads.get(name) ?? 0) + 1);
   }
   const ext = path.slice(path.lastIndexOf("."));
   res.writeHead(200, { "Content-Type": MIME[ext] ?? "text/plain" });
@@ -201,6 +210,30 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
   relClose(r.p, 1.826019849993088e-06, 1e-6, "P-04 Grubbs p");
 }
 
+// P-13 (M16) — two project windows sharing one engine install a package
+// once. A second copy of the module is a second project window: its own
+// `states`/`inflight`/`chain`, sharing this engine via `remote`. The query
+// string forces a second module record (the 2026-11-12 probe measured the
+// pre-fix behaviour: two batches, `installsStarted` 2, one .tgz — the
+// second batch's install was a 0.3 s no-op only because webR skips
+// installed packages). The specifier is typed `string` so tsc does not try
+// to resolve it (it would fail the check); the runtime import is the same
+// file. nortest is still fresh here (P-06 runs later): the race is real.
+{
+  const secondWindowUrl: string = "../src/stats/webr.ts?m16-second-window";
+  const W2 = (await import(secondWindowUrl)) as typeof import("../src/stats/webr");
+  W2.setPackageRepo(repoUrl, { allowCdnFallback: false });
+  W2.connectR((code: string) => evalNamedVector(code));
+  const a0 = packageDiagnostics().installsStarted;
+  const b0 = W2.packageDiagnostics().installsStarted;
+  const tgz0 = tgzDownloads.get("nortest") ?? 0;
+  await Promise.all([ensurePackages(["nortest"]), W2.ensurePackages(["nortest"])]);
+  check("P-13 both windows ready", packageStatus("nortest").status === "ready" && W2.packageStatus("nortest").status === "ready");
+  const started = packageDiagnostics().installsStarted - a0 + (W2.packageDiagnostics().installsStarted - b0);
+  check("P-13 two windows install once", started === 1, `installs started: ${started}`);
+  check("P-13 nortest downloaded once", (tgzDownloads.get("nortest") ?? 0) - tgz0 === 1, `downloads: ${(tgzDownloads.get("nortest") ?? 0) - tgz0}`);
+}
+
 // P-06 — Anderson–Darling on a seeded normal sample. Pinned from this webR
 // (R 4.6.0, nortest 1.0-4): A 0.3090447325819383, p 0.5461174681840957.
 // Note (plan 23): `nortest::pearson.test` is NOT the D'Agostino–Pearson
@@ -254,6 +287,22 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
   const after = packageDiagnostics().installsStarted;
   check("P-08 concurrent calls all resolve", packageStatus("multcomp").status === "ready");
   check("P-08 package installed once", after - before === 1, `installs started: ${after - before}`);
+}
+
+// P-13b (M16) — a fresh window resolves a package already installed in the
+// engine without starting a batch: the claim reports it installed at the
+// pinned version. multcomp was just installed by P-08; this window has
+// never seen it (empty local state), so without the claim it would install.
+{
+  const secondWindowUrl: string = "../src/stats/webr.ts?m16-second-window";
+  const W2 = (await import(secondWindowUrl)) as typeof import("../src/stats/webr");
+  const b0 = W2.packageDiagnostics().installsStarted;
+  const t0 = Date.now();
+  await W2.ensurePackages(["multcomp"]);
+  const ms = Date.now() - t0;
+  check("P-13b fresh window resolves engine-installed package", W2.packageStatus("multcomp").status === "ready");
+  check("P-13b fresh window starts zero batches", W2.packageDiagnostics().installsStarted - b0 === 0, `started=${W2.packageDiagnostics().installsStarted - b0}`);
+  check("P-13b fresh window resolves fast", ms < 5000, `${ms}ms`);
 }
 
 // P-10 — offline simulation: the repo URL is unreachable (connection
@@ -372,7 +421,13 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
 
 // Registry smoke — every remaining pinned package proves it computes, so a
 // dependent plan starts from a verified install, not an index listing.
+// P-12's hung install abandons the engine by design (the eval watchdog
+// escalates a wedged engine to resetR, and the re-boot has an empty VFS),
+// so the packages P-07/P-08/P-09 installed are gone by now: re-ensure
+// them here — this block uses them directly, and ensurePackages is the
+// one way a package gets into the engine.
 {
+  await ensurePackages(["survival", "lme4", "lmerTest", "multcomp", "mvtnorm", "nlme"]);
   // Dunnett via multcomp::glht (plan 25), on the reference column table's
   // Control/Low/High values. Pinned from this webR (multcomp 1.4-32).
   const dunnett = await evalNamedVector(
@@ -430,6 +485,24 @@ await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url
   const versions = await installedPackageVersions();
   check("installed versions report lme4", versions.lme4 === "2.0.6", versions.lme4);
   check("installed versions report multcomp", versions.multcomp === "1.4.32", versions.multcomp);
+}
+
+// P-14 (R3-MAC-PACKAGES) — a bare startR() after resetR() must re-boot from
+// the baseUrl the engine first booted from, not the app default "/webr/".
+// Regression: on 42c3f24 the P-12 watchdog escalation called resetR(), the
+// next bare startR() booted from "/webr/", and the process died with
+// `Cannot find module '/webr/webr-worker.js'` before any check printed.
+// resetR() drives the trigger directly (no timing dependence on the
+// watchdog grace): the re-boot must reuse the remembered path, and the
+// engine must stay usable — including reinstalling a package into the
+// fresh engine's empty VFS. Runs last: resetR() drops the engine, so no
+// later block may assume an earlier install is still in the VFS.
+{
+  resetR();
+  const r = await evalNamedVector("c(a=1)");
+  check("P-14 bare startR after resetR re-boots and evaluates", r.a === 1, `a=${r.a}`);
+  await ensurePackages(["survival"]);
+  check("P-14 package reinstalls into the fresh engine", packageStatus("survival").status === "ready");
 }
 
 server.close();

@@ -4,15 +4,19 @@
 // `pzfx` (R, MIT) and `pypzfx` (Python, MIT) readers and their `.pzfx` test
 // files — never from Prism's own code. Only the data tables are in the file's
 // readable XML: analyses, graphs and layouts live in a compressed `<Template>`
-// blob Helix doesn't read, so an import brings in the tables only; analyses
-// and graphs are rebuilt in Helix.
+// blob Titer doesn't read, so an import brings in the tables only; analyses
+// and graphs are rebuilt in Titer.
 //
-// What maps where (Prism `TableType` → Helix table):
+// What maps where (Prism `TableType` → Titer table):
 //   OneWay      → Column    (each Y column is a group)
 //   TwoWay      → Grouped   when the Y values are replicates (groups = Y columns,
 //                 replicates = subcolumns); otherwise Column, with the summary
 //                 subcolumns named (MEAN, SD, N…) and a warning — summary values
-//                 are not raw replicates, so they must not be analysed as if they were
+//                 are not raw replicates, so they must not be analysed as if they were.
+//                 An empty or missing YFormat is never assumed to be replicates:
+//                 it imports as Column with a warning (FF-F7 — a mean/SD/N table
+//                 with no YFormat would otherwise be analysed as raw replicates,
+//                 giving wrong F/p/N).
 //   XY          → XY        (X, then one Y series per subcolumn)
 //   Survival    → Survival  (X = time, Y = event codes 1/0 per group; the survival
 //                 graph and the survival analysis apply to it)
@@ -30,7 +34,7 @@
 //                 OneWay/replicates to nested on a heuristic, a plain
 //                 replicates Column table is far more common than a nested one.
 //                 If a distinct marker is ever verified, map it here directly.
-// A struck-through value (`<d Excluded="1">`) becomes a Helix excluded cell.
+// A struck-through value (`<d Excluded="1">`) becomes a Titer excluded cell.
 // A `.prism` file (Prism 10's newer format) is not `.pzfx` and is not imported.
 
 import type { ProjectFilePayload } from "./project-file";
@@ -224,9 +228,59 @@ const SUBCOLUMN_SUFFIXES: Record<string, string[]> = {
   "upper-lower-limits": ["_MEAN", "_UPPERLIMIT", "_LOWERLIMIT"],
 };
 
-/** `1,5` (comma decimal) → `1.5`; anything else stays as typed. */
-function normalizeNumber(value: string | null): string | null {
-  if (value !== null && /^-?\d+,\d+$/.test(value)) return value.replace(",", ".");
+/** A `<d>` value that proves the file's decimal separator is a comma: a comma
+ *  decimal whose fraction is not exactly three digits (`0,5`, `3,75`,
+ *  `0,9375`), or a comma decimal with an exponent (`4,096e+007`). A `N,NNN`
+ *  value alone proves nothing — it is a decimal (`1,875` = 1.875 in the real
+ *  SaturationBinding.pzfx) as readily as a thousands separator. */
+const COMMA_DECIMAL_EVIDENCE = /^-?\d+,\d{1,2}$|^-?\d+,\d{4,}$|^-?\d+,\d+[eE][+-]?\d+$/;
+/** A `<d>` value that proves the file's decimal separator is a dot: a dot
+ *  decimal (`1.5`, `8887.`, `5.22929500342231`), exponent included. */
+const DOT_DECIMAL_EVIDENCE = /^-?\d+\.\d*([eE][+-]?\d+)?$|^-?\.\d+([eE][+-]?\d+)?$/;
+/** A thousands-grouped value: `1,000`, `1,000,000`, `1,000.5` — groups of
+ *  exactly three digits after the first comma. */
+const GROUPED_NUMBER = /^-?\d{1,3}(,\d{3})+(\.\d+)?([eE][+-]?\d+)?$/;
+
+/** Every `<d>` text in the parsed file (data values and row titles alike). */
+function allDValues(node: XmlNode, out: string[] = []): string[] {
+  if (node.tag === "d") out.push(childText(node));
+  for (const child of node.children) allDValues(child, out);
+  return out;
+}
+
+/**
+ * Whether this file writes thousands separators (`1,000` = 1000). Decided
+ * from the file, never from one string alone: dot-decimal evidence anywhere
+ * in the file (`1.5`, `8887.`) with no comma-decimal evidence (`0,5`,
+ * `4,096e+007`) means the file's decimals use dots, so a comma can only be
+ * a grouping separator. With no evidence either way — or any comma-decimal
+ * evidence at all — commas stay decimals: that is the only reading any real
+ * .pzfx file has yet shown (Prism writes large values ungrouped in both
+ * locales: `8887.`, `5120000`), and a `N,NNN` string in a real file is a
+ * decimal (`1,875`, `4,096` in the binding corpora).
+ */
+function usesGroupingSeparators(root: XmlNode): boolean {
+  let commaDecimal = false;
+  let dotDecimal = false;
+  for (const value of allDValues(root)) {
+    if (COMMA_DECIMAL_EVIDENCE.test(value)) commaDecimal = true;
+    else if (DOT_DECIMAL_EVIDENCE.test(value)) dotDecimal = true;
+  }
+  return dotDecimal && !commaDecimal;
+}
+
+/**
+ * `1,5` (comma decimal) → `1.5`; anything else stays as typed — except in a
+ * file whose own numbers prove dot decimals, where a grouped `1,000` is a
+ * thousands separator, not a decimal comma, and the commas are stripped
+ * (`1,000` → `1000`) instead of turning it into `1.000` (a 1000× error).
+ * A bare `1,5` in such a file still becomes `1.5`: only the grouped shape
+ * is reinterpreted, so nothing else changes.
+ */
+function normalizeNumber(value: string | null, groupingSeparators: boolean): string | null {
+  if (value === null) return null;
+  if (groupingSeparators && GROUPED_NUMBER.test(value)) return value.replace(/,/g, "");
+  if (/^-?\d+,\d+$/.test(value)) return value.replace(",", ".");
   return value;
 }
 
@@ -247,7 +301,7 @@ interface ImportedTable {
 
 const genId = (type: string) => `${type}_${Math.random().toString(36).slice(2, 10)}`;
 
-function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null {
+function importTable(table: XmlNode, issues: PzfxIssue[], groupingSeparators: boolean): ImportedTable | null {
   const warnings: string[] = [];
   const titleNode = firstChild(table, "Title");
   const name = titleNode ? childText(titleNode) : "";
@@ -259,7 +313,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
   if (table.tag === "HugeTable") {
     issues.push({
       severity: "warning",
-      message: `${displayName} is a HugeTable, which Helix can't import yet. It was left out.`,
+      message: `${displayName} is a HugeTable, which Titer can't import yet. It was left out.`,
     });
     return null;
   }
@@ -280,15 +334,19 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
   // error, kept as its own series so no data is silently dropped.
   let xValues: (string | null)[] = [];
   let xErrorValues: (string | null)[] | null = null;
+  let xExcluded: Set<number> = new Set();
+  let xErrorExcluded: Set<number> = new Set();
   let xName = "X";
   if (xColumns.length > 0) {
     const x = xColumns[0];
     xName = x.title === "" ? "X" : x.title;
     xValues = x.subcolumns[0]?.values ?? [];
+    xExcluded = x.subcolumns[0]?.excluded ?? new Set();
     if (x.subcolumns.length > 1) {
       xErrorValues = x.subcolumns[1].values;
+      xErrorExcluded = x.subcolumns[1].excluded ?? new Set();
       warnings.push(
-        `${displayName}: the X error values were imported as a “${xName} error” series — Helix XY tables hold one X column.`,
+        `${displayName}: the X error values were imported as a “${xName} error” series — Titer XY tables hold one X column.`,
       );
     }
   }
@@ -297,7 +355,9 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
   let dateColumn: { name: string; values: (string | null)[]; excluded: Set<number> } | null = null;
   if (xFormat === "date") {
     if (xAdvanced) {
-      const dates = readColumn(xAdvanced).subcolumns[0]?.values ?? [];
+      const dateSub = readColumn(xAdvanced).subcolumns[0];
+      const dates = dateSub?.values ?? [];
+      const dateExcluded = dateSub?.excluded ?? new Set<number>();
       const hasAnyDate = dates.some((v) => v !== null && v !== "");
       let datesKeptAsRowTitles = false;
       if (!hasRowTitles) {
@@ -312,8 +372,10 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
         // The row titles are the rows' names, so the dates get their own
         // column instead of being dropped: the numeric X stays the X axis
         // (years since the first date, as Prism stores it) and the dates
-        // sit beside it as text, which analyses and graphs skip.
-        dateColumn = { name: `${xName} (date)`, values: dates, excluded: new Set() };
+        // sit beside it as text, which analyses and graphs skip. A
+        // struck-through date stays struck through: its Excluded marker
+        // rides along, the same as the X / X error columns (#20).
+        dateColumn = { name: `${xName} (date)`, values: dates, excluded: dateExcluded };
       }
       if (datesKeptAsRowTitles) {
         warnings.push(`${displayName}: the X values are dates; the dates were kept as row titles.`);
@@ -331,7 +393,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
     }
   }
 
-  // Helix columns: [Title, ...data]. Each entry: its name, values per row, and
+  // Titer columns: [Title, ...data]. Each entry: its name, values per row, and
   // which rows are excluded in it.
   interface ImportColumn {
     name: string;
@@ -340,16 +402,20 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
   }
   const columns: ImportColumn[] = [];
   const pushColumn = (name: string, sub: Subcolumn) => {
-    columns.push({ name, values: sub.values.map(normalizeNumber), excluded: sub.excluded });
+    columns.push({ name, values: sub.values.map((v) => normalizeNumber(v, groupingSeparators)), excluded: sub.excluded });
   };
 
-  let helixType: TableType;
+  let titerType: TableType;
   let groups: number | undefined;
   let replicates: number | undefined;
+  // Only an explicit "replicates" YFormat is replicates. An empty or missing
+  // YFormat must not default to replicates: a summary table (mean/SD/N) whose
+  // YFormat wasn't recorded would otherwise import as grouped replicates,
+  // and a group comparison would treat the means as raw values (FF-F7).
   const isGroupedReplicates =
-    tableType === "TwoWay" && (yFormat === "replicates" || yFormat === "");
+    tableType === "TwoWay" && yFormat === "replicates";
   if (tableType === "OneWay" || tableType === "PartsOfWhole" || tableType === "Contingency") {
-    helixType = tableType === "Contingency" ? "contingency" : "column";
+    titerType = tableType === "Contingency" ? "contingency" : "column";
     for (const y of yColumns) {
       const names = subcolumnNames(y.title, yFormat, y.subcolumns.length);
       y.subcolumns.forEach((sub, i) => pushColumn(names[i], sub));
@@ -360,32 +426,69 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
       }
     }
   } else if (tableType === "TwoWay" && isGroupedReplicates) {
-    helixType = "grouped";
+    titerType = "grouped";
     const counts = yColumns.map((y) => y.subcolumns.length);
     groups = yColumns.length;
     replicates = Math.max(...counts);
+    // A grouped table's columns are "Group:Y1"…, so a group name must be
+    // unique and colon-free — seriesKeyOf splits at the first ":" and
+    // regroupTable rebuilds exactly "Group:Y1"…"Group:Y<replicates>" on
+    // reload. Before this fix untitled Y columns all became "Group"
+    // (duplicate "Group:Y1" columns, renamed "Group:Y1 2" by FF-F9 but
+    // still dropped on reload), a title like "1:10" became "1:10:Y1"
+    // (group "1", its data wiped on reload), and a ragged Y column left
+    // its group short of subcolumns. So: sanitize ":", dedupe the group
+    // names, and pad every group to `replicates` subcolumns.
+    const usedGroups = new Set<string>();
+    const renamedGroups: string[] = [];
+    const rowLen = Math.max(
+      0,
+      ...yColumns.flatMap((y) => y.subcolumns.map((s) => s.values.length)),
+      rowTitleValues.length,
+    );
+    const emptySubcolumn = (): Subcolumn => ({ values: Array<string | null>(rowLen).fill(null), excluded: new Set() });
+    const reps = replicates;
     yColumns.forEach((y) => {
-      const group = y.title === "" ? "Group" : y.title;
-      y.subcolumns.forEach((sub, i) => pushColumn(`${group}:Y${i + 1}`, sub));
+      const raw = y.title === "" ? "Group" : y.title;
+      const base = raw.replace(/:/g, "-");
+      let group = base;
+      for (let n = 2; usedGroups.has(group); n++) group = `${base} ${n}`;
+      usedGroups.add(group);
+      if (group !== raw) renamedGroups.push(`“${raw}” → “${group}”`);
+      const subs = [...y.subcolumns];
+      while (subs.length < reps) subs.push(emptySubcolumn());
+      subs.forEach((sub, i) => pushColumn(`${group}:Y${i + 1}`, sub));
     });
+    if (renamedGroups.length > 0) {
+      warnings.push(
+        `${displayName}: group names must be unique and can't contain “:”, so they were renamed (${renamedGroups.join(", ")}) — the data itself is unchanged.`,
+      );
+    }
   } else if (tableType === "TwoWay") {
     // Summary values (mean, SD, N…) — not raw replicates. Keep them, named, and
     // say so: running a group comparison on them as if they were replicates
     // would be wrong.
-    helixType = "column";
+    titerType = "column";
     for (const y of yColumns) {
       const names = subcolumnNames(y.title, yFormat, y.subcolumns.length);
       y.subcolumns.forEach((sub, i) => pushColumn(names[i], sub));
     }
+    // An empty YFormat records no format at all, so the subcolumns can't be
+    // named as summaries — say so plainly instead of guessing "mean and error".
     warnings.push(
-      `${displayName}: the values are summaries (${yFormat === "" ? "mean and error" : yFormat}), not raw replicates — don't run group comparisons on them as if they were.`,
+      yFormat === ""
+        ? `${displayName}: the Y format wasn't recorded (empty YFormat), so the subcolumns were imported as named columns, not replicates — don't run group comparisons on them as if they were.`
+        : `${displayName}: the values are summaries (${yFormat}), not raw replicates — don't run group comparisons on them as if they were.`,
     );
   } else if (tableType === "XY" || tableType === "Survival") {
-    helixType = tableType === "Survival" ? "survival" : "xy";
+    titerType = tableType === "Survival" ? "survival" : "xy";
     if (xValues.length > 0 || xColumns.length > 0) {
-      columns.push({ name: xName, values: xValues.map(normalizeNumber), excluded: new Set() });
+      // A struck-through X value (`Excluded="1"`) stays excluded: readSubcolumn
+      // already parsed it into the X subcolumn's excluded set, and dropping it
+      // here would turn an excluded point into active data.
+      columns.push({ name: xName, values: xValues.map((v) => normalizeNumber(v, groupingSeparators)), excluded: xExcluded });
       if (xErrorValues) {
-        columns.push({ name: `${xName} error`, values: xErrorValues.map(normalizeNumber), excluded: new Set() });
+        columns.push({ name: `${xName} error`, values: xErrorValues.map((v) => normalizeNumber(v, groupingSeparators)), excluded: xErrorExcluded });
       }
     }
     for (const y of yColumns) {
@@ -398,24 +501,56 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
       );
     }
   } else {
-    helixType = "column";
+    titerType = "column";
     for (const y of yColumns) {
       const names = subcolumnNames(y.title, yFormat, y.subcolumns.length);
       y.subcolumns.forEach((sub, i) => pushColumn(names[i], sub));
     }
-    warnings.push(`${displayName}: table type “${tableType}” isn't one Helix knows; it was imported as a Column table.`);
+    warnings.push(`${displayName}: table type “${tableType}” isn't one Titer knows; it was imported as a Column table.`);
   }
 
   if (dateColumn) {
     // Next to X for XY/Survival (after X and its error, if any); first among
     // the data columns otherwise, since those types drop X entirely.
     let at = 0;
-    if (helixType === "xy" || helixType === "survival") {
+    if (titerType === "xy" || titerType === "survival") {
       at = Math.min((xColumns.length > 0 ? 1 : 0) + (xErrorValues ? 1 : 0), columns.length);
     }
     let name = dateColumn.name;
     for (let n = 2; columns.some((c) => c.name === name); n++) name = `${dateColumn.name} ${n}`;
     columns.splice(at, 0, { ...dateColumn, name });
+  }
+
+  // FF-F9: Prism lets two Y columns share a title (and an X title can match
+  // a Y title), but Titer resolves a column by name with
+  // `data.columns.indexOf(name)` — the first match wins, so an analysis
+  // naming the second duplicate silently ran on the first column's data.
+  // Rename later duplicates ("A" → "A 2", "A 3", …) so every imported
+  // column has a distinct name and each keeps its own data. A duplicate
+  // that already ends in " N" renumbers from its stem ("Control 2" →
+  // "Control 3"), so renames never stack into "Control 2 2".
+  const seenNames = new Set<string>(["Title"]);
+  const renamed: string[] = [];
+  for (const column of columns) {
+    if (!seenNames.has(column.name)) {
+      seenNames.add(column.name);
+      continue;
+    }
+    const stem = column.name.replace(/ \d+$/, "");
+    let n = 2;
+    let renamedName = `${stem} ${n}`;
+    while (seenNames.has(renamedName)) {
+      n++;
+      renamedName = `${stem} ${n}`;
+    }
+    renamed.push(`“${column.name}” → “${renamedName}”`);
+    column.name = renamedName;
+    seenNames.add(renamedName);
+  }
+  if (renamed.length > 0) {
+    warnings.push(
+      `${displayName}: duplicate column names were renamed so each column keeps its own data (${renamed.join(', ')}).`,
+    );
   }
 
   const rowCount = Math.max(0, ...columns.map((c) => c.values.length), rowTitleValues.length);
@@ -443,7 +578,7 @@ function importTable(table: XmlNode, issues: PzfxIssue[]): ImportedTable | null 
     type: "table",
     name: name === "" ? "Imported table" : name,
     parentId: null,
-    tableType: helixType,
+    tableType: titerType,
     data,
   };
   return { node, warnings };
@@ -475,9 +610,10 @@ export function parsePzfx(text: string): PzfxImport {
   const rootOrder: string[] = [];
   const childOrder: Record<string, string[]> = {};
   // Tables live under the root (TableSequence only lists them); HugeTables too.
+  const groupingSeparators = usesGroupingSeparators(root);
   const tableNodes = root.children.filter((c) => c.tag === "Table" || c.tag === "HugeTable");
   for (const tableNode of tableNodes) {
-    const imported = importTable(tableNode, issues);
+    const imported = importTable(tableNode, issues, groupingSeparators);
     if (!imported) continue;
     nodes[imported.node.id] = imported.node;
     rootOrder.push(imported.node.id);

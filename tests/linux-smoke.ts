@@ -7,9 +7,12 @@
 // verified separately under Xvfb (see DEV-SETUP.md).
 //
 // Run: node --import tsx tests/linux-smoke.ts
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { createServer } from "node:http";
+import { fileURLToPath } from "node:url";
 import { parsePzfx } from "../src/lib/pzfx";
 import { runAnalysis } from "../src/stats";
+import { setPackageRepo, startR } from "../src/stats/webr";
 
 const fixtures = [
   "column",
@@ -19,6 +22,35 @@ const fixtures = [
   "x_y_rep",
   "x_y_with_strike",
 ];
+
+// BUG-REPORT #27: runAnalysis needs a booted engine. In Node the eval
+// path's startR() defaults to the app's "/webr/", which does not exist
+// here, so the survival leg crashed with
+// `Cannot find module '/webr/webr-worker.js'`. Boot from the installed
+// webR and serve the bundled repo on localhost, exactly as
+// tests/checks.ts does. (The listening server needs no close: the
+// process.exit() at the end terminates the process.)
+const REPO_DIR = fileURLToPath(new URL("../webr-repo/", import.meta.url));
+if (existsSync(`${REPO_DIR}MANIFEST.json`)) {
+  const server = createServer((req, res) => {
+    const path = decodeURIComponent(req.url!.split("?")[0]).replace(/^\/+/, "");
+    const file = `${REPO_DIR}${path}`;
+    if (!path || !existsSync(file) || !statSync(file).isFile()) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end(readFileSync(file));
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  setPackageRepo(`http://127.0.0.1:${(server.address() as { port: number }).port}`, {
+    allowCdnFallback: false,
+  });
+} else {
+  console.log("⚠ webr-repo/ is not built — the survival analysis will use the CDN. Run scripts/build-webr-repo.sh first.");
+}
+await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
 
 let failures = 0;
 for (const name of fixtures) {

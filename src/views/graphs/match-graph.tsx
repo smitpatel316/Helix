@@ -95,7 +95,7 @@ function changes(p: Property, target: Matched, example: Matched) {
 }
 
 // The properties last switched on, this Mac's (local storage); at first, all but the `off` ones.
-const TICKED_KEY = "helix.graph.match";
+const TICKED_KEY = "titer.graph.match";
 const USUAL = PROPERTIES.filter((p) => !p.off).map((p) => p.id);
 function readTicked(): string[] {
   try {
@@ -106,8 +106,8 @@ function readTicked(): string[] {
   }
 }
 
-/** The project's other graphs Helix can draw, under their table, in sidebar order: the
- *  examples a graph can take after (one from a newer Helix can't be read, so can't be one). */
+/** The project's other graphs Titer can draw, under their table, in sidebar order: the
+ *  examples a graph can take after (one from a newer Titer can't be read, so can't be one). */
 export const examplesFor = (
   graphId: string,
   tables: (OutlineNode & { children: OutlineNode[] })[],

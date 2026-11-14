@@ -1,12 +1,12 @@
 # Methods
 
-How Helix computes each analysis, so a result can be reported, checked and reproduced.
-Where a choice had to be made, Helix follows GraphPad Prism's, and this page says where
+How Titer computes each analysis, so a result can be reported, checked and reproduced.
+Where a choice had to be made, Titer follows GraphPad Prism's, and this page says where
 it doesn't.
 
 ## How results are computed and checked
 
-- **R computes every result.** Helix runs R 4.6 inside the app (webR), and every number an
+- **R computes every result.** Titer runs R 4.6 inside the app (webR), and every number an
   analysis shows comes from R: its tests (`t.test`, `aov`, `survfit`…), and its means, SDs,
   medians, differences, corrections and counts too. Only graphs compute in TypeScript what
   they redraw at once (a regression line, a Kaplan-Meier curve, error bars, a volcano's
@@ -43,12 +43,12 @@ it doesn't.
 | — Dunnett's T3 | written in R | After Welch's ANOVA, every pair: each pair's Welch t against the largest of as many independent t statistics as there are pairs (the studentized maximum modulus), integrated numerically. Advised for fewer than 50 values per group. |
 | Kruskal-Wallis test | `kruskal.test` | |
 | — Dunn | written in R | Mean ranks, corrected for ties, Bonferroni over every pair. |
-| Repeated-measures one-way ANOVA | `aov(value ~ group + subject)` | Complete rows only. Sphericity not assumed (the default): the Geisser-Greenhouse epsilon, from the groups' covariance, corrects both degrees of freedom (checked against R's `anova.mlm`); Tukey or Bonferroni then compare each pair on its own differences, a paired t test with n − 1 df (Maxwell and Delaney). Sphericity assumed (analyses made before Helix 1.0.7): no correction, and the comparisons use the ANOVA's residual mean square. |
+| Repeated-measures one-way ANOVA | `aov(value ~ group + subject)` | Complete rows only. Sphericity not assumed (the default): the Geisser-Greenhouse epsilon, from the groups' covariance, corrects both degrees of freedom (checked against R's `anova.mlm`); Tukey or Bonferroni then compare each pair on its own differences, a paired t test with n − 1 df (Maxwell and Delaney). Sphericity assumed (analyses made before 1.0.7): no correction, and the comparisons use the ANOVA's residual mean square. |
 | Friedman test | `friedman.test` | Complete rows only (rows lacking a value are left out and counted). Dunn on within-row ranks, Bonferroni. |
 | Shapiro-Wilk normality | `shapiro.test` | Offered inside each "Gaussian?" question. Needs 3 to 5000 values that aren't all identical; a column outside that is not tested, and said. |
 | Identify outliers (ROUT) | written in R (`mad`, `pt`, `p.adjust`) | See below. |
 
-**ROUT.** Helix follows the logic of Motulsky and Brown (2006): each column is fitted
+**ROUT.** Titer follows the logic of Motulsky and Brown (2006): each column is fitted
 robustly, each residual becomes a t statistic, and a point is an outlier when its
 false-discovery-rate-adjusted P is below Q. The robust fit is a Huber mean with the scale
 taken from the median absolute deviation. It is not GraphPad's implementation, and on
@@ -72,7 +72,7 @@ X is the first data column. X and a Y pair on the rows where both hold a number.
 | Analysis | Computed with | Choices |
 | --- | --- | --- |
 | Two-way ANOVA | `aov`, `drop1` | Type III sums of squares. With one value per cell (no replicates), the interaction can't be told from scatter: the model leaves it out and tests the group and row effects only, without comparisons, and only the ordinary ANOVA runs. |
-| — repeated measures | `aov(value ~ group * row + Error(subject / row))` | Each sub-column is a subject measured at every row; a subject lacking a row is left out and counted. Sphericity not assumed (the default): the Geisser-Greenhouse epsilon, from the rows' covariance pooled over the groups, corrects the degrees of freedom of the row and interaction effects (checked against R's `anova.mlm`), and each comparison has its own error: rows within a group, a paired t test (n − 1 df); groups within a row, that row's pooled SD. Sphericity assumed (analyses made before Helix 1.0.7): no correction. |
+| — repeated measures | `aov(value ~ group * row + Error(subject / row))` | Each sub-column is a subject measured at every row; a subject lacking a row is left out and counted. Sphericity not assumed (the default): the Geisser-Greenhouse epsilon, from the rows' covariance pooled over the groups, corrects the degrees of freedom of the row and interaction effects (checked against R's `anova.mlm`), and each comparison has its own error: rows within a group, a paired t test (n − 1 df); groups within a row, that row's pooled SD. Sphericity assumed (analyses made before 1.0.7): no correction. |
 | — Scheirer-Ray-Hare | `aov` on ranks | Each effect's sum of squares over the total mean square, against chi-square. |
 | — Tukey, Bonferroni | written in R (`ptukey`, `pt`) | On the ANOVA's residual mean square (repeated measures without sphericity: see above). Each row is a family when groups are compared within a row, each group when rows are compared within a group: the correction is over one family. With repeated measures, each effect's own error term. |
 | Multiple t tests | `t.test`, `wilcox.test`, `p.adjust` | One test per row, Welch's unless one SD is pooled across rows. Holm, Benjamini-Hochberg or none across the rows. |

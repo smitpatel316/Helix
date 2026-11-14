@@ -5,6 +5,27 @@ import * as React from "react";
 import { runAnalysis } from "../../stats";
 import type { AnalysisOutcome, AnalysisParams, AnalysisType } from "../../stats/types";
 import type { TableData } from "../../store/types";
+import { getRQueueSnapshot, onRQueueSnapshot, type RQueueSnapshot } from "../../stats/r-queue";
+import { onRQueue } from "../../native";
+
+/** The R queue's latest state, for a view waiting on a calculation: null
+ *  until the engine has published one (tests and `npm run web` never do,
+ *  so the queue line stays hidden there). */
+export function useRQueue(): RQueueSnapshot | null {
+  const [snapshot, setSnapshot] = React.useState<RQueueSnapshot | null>(() => getRQueueSnapshot());
+  React.useEffect(() => {
+    let offTauri: (() => void) | undefined;
+    void onRQueue().then((off) => {
+      offTauri = off;
+    });
+    const offStore = onRQueueSnapshot(setSnapshot);
+    return () => {
+      offStore();
+      offTauri?.();
+    };
+  }, []);
+  return snapshot;
+}
 
 /** null while running, or when there is nothing to run. `retryKey` re-runs
  *  the test on demand (the Retry button after an error, a timeout or a

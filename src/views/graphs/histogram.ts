@@ -11,7 +11,7 @@ import type { GraphFigure, GraphModule } from ".";
 
 function build(columns: Column[], options: GraphOptions, paint: Paint): GraphFigure {
   const xName = columns.length === 1 ? columns[0].name : "Value";
-  const layout = () => xyLayout({ ...options, xLabel: options.xLabel || xName }, xName, columns.length, { zeroBase: true, yName: "Count" });
+  const layout = () => xyLayout({ ...options, xLabel: options.xLabel || xName }, xName, columns.length, { zeroBase: true, yName: "Count", seriesNames: columns.map((c) => c.name) });
   const data = columns
     .filter((c) => c.values.length > 0)
     .map((column, i) => {

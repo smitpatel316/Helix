@@ -265,6 +265,14 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
     const parts = data.columns[c].split(":");
     setEditing({ kind: "subgroup", group: parts[0], key: parts[1], value: parts[1] });
   };
+  /** Renames the top-level group of the column `c` belongs to (the Group header
+   *  row). `startRename` can't do this in a Nested table: its `nested` branch
+   *  opens the subgroup editor instead. */
+  const startRenameGroup = (c: number) => {
+    if (c >= data.columns.length) return;
+    const key = seriesKeyOf(data.columns[c]);
+    setEditing({ kind: "group", key, value: key });
+  };
 
   /** Ends editing, saving unless `cancel`, then moves the selection by (dr, dc). */
   const finishEdit = (cancel: boolean, dr = 0, dc = 0) => {
@@ -281,7 +289,17 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
     }
     if (!cancel && ed.kind === "group")
       update(renameGroup(data, ed.key, value), "Rename Group", { renamed: { [ed.key]: value } });
-    if (!cancel && ed.kind === "subgroup") update(renameSubgroup(data, ed.group, ed.key, value), "Rename Subgroup");
+    if (!cancel && ed.kind === "subgroup") {
+      // Pass the renamed columns through, so per-point styles in the subgroup
+      // follow the rename instead of being dropped with their old column names.
+      const next = renameSubgroup(data, ed.group, ed.key, value);
+      const renamed = Object.fromEntries(
+        data.columns
+          .map((n, i) => [n, next.columns[i]] as const)
+          .filter(([from, to]) => from !== to),
+      );
+      update(next, "Rename Subgroup", { renamed });
+    }
     setEditing(null);
     focusGrid();
   };
@@ -389,8 +407,8 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
       else if (cmd === "delete") clear(range);
       else if (cmd === "exclude") update(toggleExcluded(data, range), "Exclude / Include");
     };
-    window.addEventListener("helix:edit", onEdit);
-    return () => window.removeEventListener("helix:edit", onEdit);
+    window.addEventListener("titer:edit", onEdit);
+    return () => window.removeEventListener("titer:edit", onEdit);
   });
 
   // ── Find ─────────────────────────────────────────────────────────────
@@ -486,7 +504,7 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
       setSel({ anchor, focus });
       g = toRange({ anchor, focus });
     }
-    void popupMenu(gridMenu({ data, type, zone, range: g, update, rename: startRename, showGroups }));
+    void popupMenu(gridMenu({ data, type, zone, range: g, update, rename: startRename, renameGroup: startRenameGroup, showGroups }));
   };
 
   /** Drag a header's right edge to resize its column; double-click it to fit the content. */
@@ -687,7 +705,7 @@ export function Grid({ data, type, update, showGroups }: GridProps) {
                       )}
                       style={span}
                       onPointerDown={(e) => onColumnDown(e, lo, hi)}
-                      onDoubleClick={() => startRename(lo)}
+                      onDoubleClick={() => startRenameGroup(lo)}
                       onContextMenu={(e) => showMenu(e, "column")}
                     >
                       {key}
