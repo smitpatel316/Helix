@@ -101,7 +101,7 @@ export function binCounts(values: number[], edges: number[]): number[] {
   const counts = diffs.map(() => 0);
   for (const v of values) {
     const i = fuzzy.findIndex((e, j) => j > 0 && v <= e);
-    if (i > 0 && v > fuzzy[0]) counts[i - 1]++;
+    if (i > 0 && v >= fuzzy[0]) counts[i - 1]++;
   }
   return counts;
 }

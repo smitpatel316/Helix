@@ -1225,9 +1225,9 @@ export interface NormalityRow {
   logP: number | null;
 }
 
-/** One bin of a frequency distribution: left-closed `[lower, upper)`, except
- *  the last bin, which is closed on both sides so the maximum is always counted.
- *  The label matches the edge rule, e.g. "2 to <4", last bin "8 to 10". */
+/** One bin of a frequency distribution: right-closed `(lower, upper]`, except
+ *  the first bin, which is closed on both sides so the minimum is always counted.
+ *  The label matches the edge rule, e.g. "(2, 4]", first bin "[2, 4]". */
 export interface FrequencyBinRow {
   bin: string;
   lower: number;

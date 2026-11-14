@@ -28,7 +28,7 @@ import { addFittedCurves, evaluate as doseCurveAt, logisticAt } from "../src/vie
 import { NONLINEAR_MODELS, type NonlinearModel } from "../src/stats/types";
 import { positiveXOnly } from "../src/stats/xy/nonlinear-regression";
 import { ensurePackages, evalNamedVector, setPackageRepo, startR } from "../src/stats/webr";
-import { prettyBreaks } from "../src/stats/column/frequency-distribution";
+import { computeFrequencyBins, prettyBreaks } from "../src/stats/column/frequency-distribution";
 import { simulateTableData } from "../src/stats/simulation/simulate";
 import { addMonteCarloHistogram } from "../src/views/graphs/monte-carlo-histogram";
 import { sampleProject } from "./sample-project";
@@ -3202,6 +3202,7 @@ async function disagreements(): Promise<string[]> {
     [[120, 3400, 56000, 780000, 1e6]],
     [[1, 2, 2, 3, 3, 3, 4, 4, 5, 10], 2],
     [[-3.2, -1, 0, 0.5, 2, 2, 7.25], 0.5],
+    [[1e9, 1e9 + 0.0002, 1e9 + 0.0005, 1e9 + 0.001]],
   ];
   for (const [values, width] of spreads) {
     const edges = binEdges(values, width);
@@ -3222,6 +3223,21 @@ async function disagreements(): Promise<string[]> {
       rCounts.join() !== counts.join()
     )
       out.push(`Histogram of ${values.join(",")}: ${edges} / ${counts}, R ${rBreaks} / ${rCounts}`);
+    // The frequency-distribution analysis counts the same way as R's hist():
+    // its bins (auto, or the typed width from the same first edge) must match
+    // the same live-R counts. A constant column is the known exception: R's
+    // pretty() breaks expand it ([42] -> [40, 50]) while computeFrequencyBins
+    // keeps the zero-width [42, 42] bin (separate minor, not fixed here).
+    const isConstant = Math.min(...values) === Math.max(...values);
+    if (!isConstant) {
+      const freq = computeFrequencyBins(
+        values,
+        width ? { binMode: "width", binWidth: width, startAt: edges[0] } : { binMode: "auto" },
+      );
+      const freqCounts = freq.bins.map((b) => b.count);
+      if (freqCounts.join() !== rCounts.join())
+        out.push(`Frequency distribution of ${values.join(",")}: ${freqCounts}, R hist(): ${rCounts}`);
+    }
   }
   const tests = await runAnalysis("multiple-t-tests", twoGroups, {
     paired: false,
@@ -5360,21 +5376,22 @@ async function disagreements(): Promise<string[]> {
       out.push(`KS identical D: ${ksIdenticalR.stat("KS distance D")}, expected 0`);
     if (ksIdenticalR.stat("P value") !== 1) out.push(`KS identical p: ${ksIdenticalR.stat("P value")}, expected 1`);
   }
-  // Frequency distribution: the TypeScript binning equals R's hist() with the
-  // matching (left-closed) edge rule, the auto breaks are R's pretty() breaks,
+  // Frequency distribution: the TypeScript binning equals R's hist()
+  // (right-closed, first bin closed), the auto breaks are R's pretty() breaks,
   // and the histogram's bars equal the analysis's counts. The plan's counts are
-  // exact arithmetic on the stated data; R's hist(right=FALSE) confirms them.
+  // exact arithmetic on the stated data; R's hist() confirms them.
   const freqCounts = async (params: AnalysisParams) => {
     const r = await runAnalysis("frequency-distribution", freqCol, params);
     return "error" in r ? null : (r.frequencyBins?.[0].bins.map((b) => b.count) ?? null);
   };
   const freqX = "c(2.1,3.5,3.9,4.2,5,5.8,6.1,7.4,8,9.3)";
   const hist = await evalNamedVector(
-    `x<-${freqX};h<-hist(x,plot=FALSE);ha<-hist(x,breaks=c(2,4,6,8,10),plot=FALSE,right=FALSE);` +
-      `hb<-hist(x,breaks=c(2,3.6,5.2,6.8,8.4,10),plot=FALSE,right=FALSE);` +
-      `hd<-hist(c(2,4,6,8),breaks=c(2,4,6,8),plot=FALSE,right=FALSE);` +
+    `x<-${freqX};h<-hist(x,plot=FALSE);ha<-hist(x,breaks=c(2,4,6,8,10),plot=FALSE);` +
+      `hb<-hist(x,breaks=c(2,3.6,5.2,6.8,8.4,10),plot=FALSE);` +
+      `hd<-hist(c(2,4,6,8),breaks=c(2,4,6,8),plot=FALSE);` +
       `c(sturges=nclass.Sturges(x),` +
       `b1=h$breaks[1],b2=h$breaks[2],b3=h$breaks[3],b4=h$breaks[4],b5=h$breaks[5],` +
+      `h1=h$counts[1],h2=h$counts[2],h3=h$counts[3],h4=h$counts[4],` +
       `a1=ha$counts[1],a2=ha$counts[2],a3=ha$counts[3],a4=ha$counts[4],` +
       `c1=hb$counts[1],c2=hb$counts[2],c3=hb$counts[3],c4=hb$counts[4],c5=hb$counts[5],` +
       `d1=hd$counts[1],d2=hd$counts[2],d3=hd$counts[3])`,
@@ -5385,18 +5402,19 @@ async function disagreements(): Promise<string[]> {
   if (!eq([hist.b1, hist.b2, hist.b3, hist.b4, hist.b5], [2, 4, 6, 8, 10]))
     out.push(`R hist() breaks: ${[hist.b1, hist.b2, hist.b3, hist.b4, hist.b5]}, expected 2,4,6,8,10`);
   const planCounts: [AnalysisParams, (number | null)[], string][] = [
+    [{ binMode: "auto" }, [hist.h1, hist.h2, hist.h3, hist.h4], "case A0 (auto)"],
     [{ binMode: "width", binWidth: 2, startAt: 2 }, [hist.a1, hist.a2, hist.a3, hist.a4], "case A (width 2)"],
     [{ binMode: "count", binCount: 5, startAt: 2 }, [hist.c1, hist.c2, hist.c3, hist.c4, hist.c5], "case B (count 5)"],
   ];
   for (const [params, expected, label] of planCounts) {
     const got = await freqCounts(params);
-    if (!eq(got, expected)) out.push(`Frequency distribution ${label}: ${got}, R hist() (right=FALSE): ${expected}`);
+    if (!eq(got, expected)) out.push(`Frequency distribution ${label}: ${got}, R hist(): ${expected}`);
   }
   const edge = await runAnalysis("frequency-distribution", freqEdge, { binMode: "width", binWidth: 2, startAt: 2 });
   const edgeCounts = "error" in edge ? null : (edge.frequencyBins?.[0].bins.map((b) => b.count) ?? null);
   if (!eq(edgeCounts, [hist.d1, hist.d2, hist.d3]))
     out.push(
-      `Frequency distribution case D (on-edge): ${edgeCounts}, R hist() (right=FALSE): ${[hist.d1, hist.d2, hist.d3]}`,
+      `Frequency distribution case D (on-edge): ${edgeCounts}, R hist(): ${[hist.d1, hist.d2, hist.d3]}`,
     );
   // The auto breaks are R's pretty() breaks: step, count and ends pin the
   // (equally spaced) sequence. Includes the float-boundary cases where a naive
@@ -5468,8 +5486,8 @@ async function disagreements(): Promise<string[]> {
   const bars = (fig.data as { y?: number[] }[])[0]?.y ?? null;
   const autoCounts = "error" in auto ? null : auto.frequencyBins?.[0].bins.map((b) => b.count);
   if (!eq(bars, autoCounts ?? [])) out.push(`Histogram bars: ${bars}, analysis counts: ${autoCounts}`);
-  if (JSON.stringify(bars) !== JSON.stringify([3, 3, 2, 2]))
-    out.push(`Histogram bars for freqCol: ${bars}, plan says [3, 3, 2, 2]`);
+  if (JSON.stringify(bars) !== JSON.stringify([hist.h1, hist.h2, hist.h3, hist.h4]))
+    out.push(`Histogram bars for freqCol: ${bars}, R hist(): ${[hist.h1, hist.h2, hist.h3, hist.h4]}`);
   // Three-way ANOVA (plan 03): the plan's values, computed independently in
   // Python (numpy/scipy, effect-coded least squares) and re-verified in WebR
   // base R (aov + drop1, match() on row names) before locking. Tolerances from

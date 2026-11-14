@@ -2,14 +2,14 @@
 // each data column binned independently, reporting per bin the count, relative
 // frequency and cumulative frequency, with a histogram graph. Pure TypeScript,
 // no R: the counting is trivial arithmetic, and the auto breaks are R's pretty()
-// breaks, reimplemented here and checked against R (see tests/reference.ts) —
-// so the graph, which draws from the same function, can never disagree with
-// the analysis.
+// breaks and the counts are R's hist() counts, reimplemented here and checked
+// against R (see tests/reference.ts) — so the graph, which draws from the same
+// function, can never disagree with the analysis.
 //
-// Bin-edge rule (pinned, tested, stated in `notes`): bins are left-closed
-// [lower, upper), except the last bin, which is closed on both sides so the
-// maximum is always counted. A value sitting exactly on an edge goes into the
-// bin above it (except the maximum, which stays in the last bin). Empty bins
+// Bin-edge rule (pinned, tested, stated in `notes`): bins are right-closed
+// (lower, upper], except the first bin, which is closed on both sides so the
+// minimum is always counted. A value sitting exactly on an edge goes into the
+// bin below it (except the minimum, which stays in the first bin). Empty bins
 // are shown with count 0, never dropped.
 //
 // Binning modes: "auto" uses Sturges' count with R's pretty() breaks;
@@ -136,8 +136,9 @@ function binEdges(values: number[], p: FrequencyDistributionParams): {
   return { edges: prettyBreaks(min, max, k), binWidth: 0, requestedBins: k };
 }
 
-/** One column's bins, counted left-closed with the last bin closed. Shared by
- *  the runner and the histogram graph, so the two can never disagree. */
+/** One column's bins, counted right-closed with the first bin closed, as
+ *  R's hist() counts them. Shared by the runner and the histogram graph, so
+ *  the two can never disagree. */
 export function computeFrequencyBins(
   values: number[],
   params: FrequencyDistributionParams | undefined,
@@ -148,15 +149,17 @@ export function computeFrequencyBins(
   const width = edges.length > 1 ? edges[1] - edges[0] : 0;
   const counts = new Array<number>(edges.length - 1).fill(0);
   for (const v of values) {
-    // Equal-width edges: the index is arithmetic, with the maximum clamped
-    // into the last (closed) bin. A value exactly on an edge goes above it.
-    // Math.floor alone mis-bins at exact boundaries: (0.3 - 0.1) / 0.1 is
-    // 1.9999999999999998, so it would put 0.3 in the "0.2 to <0.3" bin.
-    // Nudge the index until the value lies inside [edges[i], edges[i+1]]
-    // (last bin closed), so the binning agrees with the actual edges.
+    // Equal-width edges: the index is arithmetic. Bins are right-closed
+    // (lower, upper], the first bin closed on both sides so the minimum is
+    // counted: a value exactly on an edge goes into the bin below it
+    // (except the minimum, which stays in the first bin). Math.floor alone
+    // puts an on-edge value in the bin above it — (0.2 - 0.1) / 0.1 is 1,
+    // so 0.2 lands in the "(0.2, 0.3]" bin. Nudge the index until the value
+    // lies inside (edges[i], edges[i+1]] (first bin closed), so the binning
+    // agrees with the actual edges.
     let i = width > 0 ? Math.min(Math.floor((v - edges[0]) / width), counts.length - 1) : 0;
-    while (i > 0 && v < edges[i]) i--;
-    while (i < counts.length - 1 && v >= edges[i + 1]) i++;
+    while (i > 0 && v <= edges[i]) i--;
+    while (i < counts.length - 1 && v > edges[i + 1]) i++;
     counts[Math.max(i, 0)]++;
   }
   let cumulative = 0;
@@ -164,9 +167,8 @@ export function computeFrequencyBins(
     cumulative += count;
     const lower = edges[i];
     const upper = edges[i + 1];
-    const last = i === counts.length - 1;
     return {
-      bin: last ? `${fmt(lower)} to ${fmt(upper)}` : `${fmt(lower)} to <${fmt(upper)}`,
+      bin: i === 0 ? `[${fmt(lower)}, ${fmt(upper)}]` : `(${fmt(lower)}, ${fmt(upper)}]`,
       lower,
       upper,
       count,
@@ -227,7 +229,7 @@ export async function runFrequencyDistribution(
   });
 
   const notes = [
-    "Bins are [lower, upper); the last bin includes the maximum, so no value is dropped.",
+    "Bins are (lower, upper]; the first bin includes the minimum, so no value is dropped.",
     ...perColumn.map(({ column, bins, binWidth, requestedBins, edges, skipped }) => {
       const min = Math.min(...column.values);
       const max = Math.max(...column.values);

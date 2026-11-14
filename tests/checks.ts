@@ -116,6 +116,7 @@ import { yieldToPaint } from "../src/lib/yield-to-paint";
 import { fitWidths, fitZoom } from "../src/store/use-layout";
 import { prismDropSkippedMessage } from "../src/store/use-document";
 import { computeGroupedDEG } from "../src/lib/deg";
+import { binCounts, binEdges } from "../src/lib/histogram";
 import { logisticCurveNote } from "../src/views/graphs/logistic-curve";
 import { ANALYSES, runAnalysis } from "../src/stats";
 import {
@@ -7836,16 +7837,16 @@ check("Cox regression leaves the proportional-hazards P open when a group is nev
   strictEqual(out.hazardRatios?.length, 1, "one hazard ratio still reported");
 });
 
-check("frequency bins are left-closed with the last bin closed, and empty bins stay", () => {
-  // On-edge values go into the bin above them; the maximum stays in the last bin.
+check("frequency bins are right-closed with the first bin closed, and empty bins stay", () => {
+  // On-edge values go into the bin below them; the minimum stays in the first bin.
   deepStrictEqual(
     computeFrequencyBins([2, 4, 6, 8], { binMode: "width", binWidth: 2, startAt: 2 }).bins.map((b) => b.count),
-    [1, 1, 2],
+    [2, 1, 1],
   );
   // A gap leaves zero-count bins in place.
   deepStrictEqual(
     computeFrequencyBins([1, 2, 9, 10], { binMode: "width", binWidth: 2, startAt: 0 }).bins.map((b) => b.count),
-    [1, 1, 0, 0, 2],
+    [2, 0, 0, 0, 2],
   );
   // Relative and cumulative frequencies sum to 1.
   const { bins } = computeFrequencyBins([2.1, 3.5, 3.9, 4.2, 5, 5.8, 6.1, 7.4, 8, 9.3], {
@@ -7858,24 +7859,24 @@ check("frequency bins are left-closed with the last bin closed, and empty bins s
     [
       [3, 0.3, 3, 0.3],
       [3, 0.3, 6, 0.6],
-      [2, 0.2, 8, 0.8],
-      [2, 0.2, 10, 1],
+      [3, 0.3, 9, 0.9],
+      [1, 0.1, 10, 1],
     ],
   );
 });
 
-check("frequency bins put a value exactly on an edge into the bin above it, not below", () => {
-  // (0.3 - 0.1) / 0.1 is 1.9999999999999998 in doubles, so Math.floor alone
-  // bins 0.3 into "0.2 to <0.3"; the index is nudged against the actual
-  // edges until the value lies inside its bin.
-  const { bins } = computeFrequencyBins([0.1, 0.3, 0.5], { binMode: "auto" });
+check("frequency bins put a value exactly on an edge into the bin below it, not above", () => {
+  // (0.2 - 0.1) / 0.1 is 1 in doubles, so Math.floor alone puts 0.2 in
+  // "(0.2, 0.3]"; the index is nudged against the actual edges until the
+  // value lies inside its bin.
+  const { bins } = computeFrequencyBins([0.1, 0.2, 0.3, 0.5], { binMode: "auto" });
   deepStrictEqual(
     bins.map((b) => [b.bin, b.count]),
     [
-      ["0.1 to <0.2", 1],
-      ["0.2 to <0.3", 0],
-      ["0.3 to <0.4", 1],
-      ["0.4 to 0.5", 1],
+      ["[0.1, 0.2]", 2],
+      ["(0.2, 0.3]", 1],
+      ["(0.3, 0.4]", 0],
+      ["(0.4, 0.5]", 1],
     ],
   );
 });
@@ -7892,6 +7893,14 @@ check("pretty breaks stay distinct at large magnitudes instead of collapsing to 
     [1, 0, 1],
   );
   ok(bins.every((b) => Number.isFinite(b.count) && Number.isFinite(b.relativeFrequency)));
+});
+
+check("binCounts keeps a value exactly on the first edge at large magnitudes", () => {
+  // fuzz = 1e-7 × median width is below half a ULP at 1e9, so the fuzzed
+  // first edge rounds back to the edge itself; a strict `>` dropped the
+  // value sitting on it. R's hist() counts it (include.lowest): [3, 1].
+  const values = [1e9, 1e9 + 0.0002, 1e9 + 0.0005, 1e9 + 0.001];
+  deepStrictEqual(binCounts(values, binEdges(values)), [3, 1]);
 });
 
 check("width-mode binning terminates when the width is below the rounding resolution at 1e9", () => {

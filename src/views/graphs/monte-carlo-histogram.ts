@@ -44,7 +44,9 @@ export function addMonteCarloHistogram(
   const { edges, counts } = mc.bins;
   const centers = counts.map((_, i) => (edges[i] + edges[i + 1]) / 2);
   const widths = counts.map((_, i) => edges[i + 1] - edges[i] || 1);
-  const labels = counts.map((_, i) => `${num(edges[i])} to <${num(edges[i + 1])}`);
+  const labels = counts.map((_, i) =>
+    i === 0 ? `[${num(edges[i])}, ${num(edges[i + 1])}]` : `(${num(edges[i])}, ${num(edges[i + 1])}]`,
+  );
   const maxCount = Math.max(...counts, 1);
   const layout = fig.layout as Record<string, unknown>;
   // The x-axis is the statistic (labelled by the analysis's subtitle); the
