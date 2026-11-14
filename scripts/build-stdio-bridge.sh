@@ -52,7 +52,7 @@ mkdir -p "$DEST"
 # build_one <triple> -> prints the built binary path
 build_one() {
   local triple="$1"
-  echo "==> cargo build --release --target $triple"
+  echo "==> cargo build --release --target $triple" >&2
   cargo build --release --manifest-path "$CRATE/Cargo.toml" --target "$triple"
   local bin="$CRATE/target/$triple/release/titer-stdio-bridge"
   [ "$triple" = "x86_64-pc-windows-msvc" ] && bin="$bin.exe"
