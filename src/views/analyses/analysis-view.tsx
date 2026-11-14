@@ -11,6 +11,7 @@ import { cancelActiveEvals } from "../../stats/webr";
 import { titleCase } from "../../lib/format";
 import { AnalysisResultsView } from "./analysis-results-view";
 import { useAnalysis, useRQueue } from "./use-analysis";
+import { publishAnalysisResult } from "../../store/mcp-publish";
 import { rQueueStatusText } from "../../stats/r-queue";
 
 /** "1:23" for the elapsed running time. */
@@ -50,6 +51,12 @@ export function AnalysisView({ node }: { node: ProjectNode }) {
   const [retryNonce, setRetryNonce] = React.useState(0);
   const outcome = useAnalysis(node.analysisType, data, node.analysisParams, { retryKey: retryNonce });
   const queue = useRQueue();
+  // v3 Phase 1: the outcome, once computed, is what `titer_read_results`
+  // serves. (An analysis never opened in this session has no result — the
+  // tool says so instead of inventing one.)
+  React.useEffect(() => {
+    if (outcome) publishAnalysisResult(node.id, outcome);
+  }, [outcome, node.id]);
   const running = Boolean(data && !outcome);
   const errored = Boolean(data && outcome && "error" in outcome);
   const [elapsedMs, setElapsedMs] = React.useState(0);
