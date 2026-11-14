@@ -16972,13 +16972,13 @@
     "n": 10
    }
   ],
-  "notes": "Bins are [lower, upper); the last bin includes the maximum, so no value is dropped. “Values”: bin width 2, first bin starts at 2.",
+  "notes": "Bins are (lower, upper]; the first bin includes the minimum, so no value is dropped. “Values”: bin width 2, first bin starts at 2.",
   "frequencyBins": [
    {
     "column": "Values",
     "bins": [
      {
-      "bin": "2 to <4",
+      "bin": "[2, 4]",
       "lower": 2,
       "upper": 4,
       "count": 3,
@@ -16987,7 +16987,7 @@
       "cumulativeFrequency": 0.3
      },
      {
-      "bin": "4 to <6",
+      "bin": "(4, 6]",
       "lower": 4,
       "upper": 6,
       "count": 3,
@@ -16996,20 +16996,20 @@
       "cumulativeFrequency": 0.6
      },
      {
-      "bin": "6 to <8",
+      "bin": "(6, 8]",
       "lower": 6,
       "upper": 8,
-      "count": 2,
-      "relativeFrequency": 0.2,
-      "cumulativeCount": 8,
-      "cumulativeFrequency": 0.8
+      "count": 3,
+      "relativeFrequency": 0.3,
+      "cumulativeCount": 9,
+      "cumulativeFrequency": 0.9
      },
      {
-      "bin": "8 to 10",
+      "bin": "(8, 10]",
       "lower": 8,
       "upper": 10,
-      "count": 2,
-      "relativeFrequency": 0.2,
+      "count": 1,
+      "relativeFrequency": 0.1,
       "cumulativeCount": 10,
       "cumulativeFrequency": 1
      }
@@ -17052,13 +17052,13 @@
     "n": 10
    }
   ],
-  "notes": "Bins are [lower, upper); the last bin includes the maximum, so no value is dropped. “Values”: 5 bins of width 1.6, first bin starts at 2.",
+  "notes": "Bins are (lower, upper]; the first bin includes the minimum, so no value is dropped. “Values”: 5 bins of width 1.6, first bin starts at 2.",
   "frequencyBins": [
    {
     "column": "Values",
     "bins": [
      {
-      "bin": "2 to <3.6",
+      "bin": "[2, 3.6]",
       "lower": 2,
       "upper": 3.6,
       "count": 2,
@@ -17067,7 +17067,7 @@
       "cumulativeFrequency": 0.2
      },
      {
-      "bin": "3.6 to <5.2",
+      "bin": "(3.6, 5.2]",
       "lower": 3.6,
       "upper": 5.2,
       "count": 3,
@@ -17076,7 +17076,7 @@
       "cumulativeFrequency": 0.5
      },
      {
-      "bin": "5.2 to <6.8",
+      "bin": "(5.2, 6.8]",
       "lower": 5.2,
       "upper": 6.8,
       "count": 2,
@@ -17085,7 +17085,7 @@
       "cumulativeFrequency": 0.7
      },
      {
-      "bin": "6.8 to <8.4",
+      "bin": "(6.8, 8.4]",
       "lower": 6.8,
       "upper": 8.4,
       "count": 2,
@@ -17094,7 +17094,7 @@
       "cumulativeFrequency": 0.9
      },
      {
-      "bin": "8.4 to 10",
+      "bin": "(8.4, 10]",
       "lower": 8.4,
       "upper": 10,
       "count": 1,
@@ -17141,31 +17141,31 @@
     "n": 4
    }
   ],
-  "notes": "Bins are [lower, upper); the last bin includes the maximum, so no value is dropped. “Values”: bin width 2, first bin starts at 0. 2 empty bins shown.",
+  "notes": "Bins are (lower, upper]; the first bin includes the minimum, so no value is dropped. “Values”: bin width 2, first bin starts at 0. 3 empty bins shown.",
   "frequencyBins": [
    {
     "column": "Values",
     "bins": [
      {
-      "bin": "0 to <2",
+      "bin": "[0, 2]",
       "lower": 0,
       "upper": 2,
-      "count": 1,
-      "relativeFrequency": 0.25,
-      "cumulativeCount": 1,
-      "cumulativeFrequency": 0.25
-     },
-     {
-      "bin": "2 to <4",
-      "lower": 2,
-      "upper": 4,
-      "count": 1,
-      "relativeFrequency": 0.25,
+      "count": 2,
+      "relativeFrequency": 0.5,
       "cumulativeCount": 2,
       "cumulativeFrequency": 0.5
      },
      {
-      "bin": "4 to <6",
+      "bin": "(2, 4]",
+      "lower": 2,
+      "upper": 4,
+      "count": 0,
+      "relativeFrequency": 0,
+      "cumulativeCount": 2,
+      "cumulativeFrequency": 0.5
+     },
+     {
+      "bin": "(4, 6]",
       "lower": 4,
       "upper": 6,
       "count": 0,
@@ -17174,7 +17174,7 @@
       "cumulativeFrequency": 0.5
      },
      {
-      "bin": "6 to <8",
+      "bin": "(6, 8]",
       "lower": 6,
       "upper": 8,
       "count": 0,
@@ -17183,7 +17183,7 @@
       "cumulativeFrequency": 0.5
      },
      {
-      "bin": "8 to 10",
+      "bin": "(8, 10]",
       "lower": 8,
       "upper": 10,
       "count": 2,
@@ -17230,13 +17230,13 @@
     "n": 10
    }
   ],
-  "notes": "Bins are [lower, upper); the last bin includes the maximum, so no value is dropped. “Values”: automatic binning (Sturges' rule asks for 5 bins; R's pretty() breaks give 4: 2, 4, 6, 8, 10).",
+  "notes": "Bins are (lower, upper]; the first bin includes the minimum, so no value is dropped. “Values”: automatic binning (Sturges' rule asks for 5 bins; R's pretty() breaks give 4: 2, 4, 6, 8, 10).",
   "frequencyBins": [
    {
     "column": "Values",
     "bins": [
      {
-      "bin": "2 to <4",
+      "bin": "[2, 4]",
       "lower": 2,
       "upper": 4,
       "count": 3,
@@ -17245,7 +17245,7 @@
       "cumulativeFrequency": 0.3
      },
      {
-      "bin": "4 to <6",
+      "bin": "(4, 6]",
       "lower": 4,
       "upper": 6,
       "count": 3,
@@ -17254,20 +17254,20 @@
       "cumulativeFrequency": 0.6
      },
      {
-      "bin": "6 to <8",
+      "bin": "(6, 8]",
       "lower": 6,
       "upper": 8,
-      "count": 2,
-      "relativeFrequency": 0.2,
-      "cumulativeCount": 8,
-      "cumulativeFrequency": 0.8
+      "count": 3,
+      "relativeFrequency": 0.3,
+      "cumulativeCount": 9,
+      "cumulativeFrequency": 0.9
      },
      {
-      "bin": "8 to 10",
+      "bin": "(8, 10]",
       "lower": 8,
       "upper": 10,
-      "count": 2,
-      "relativeFrequency": 0.2,
+      "count": 1,
+      "relativeFrequency": 0.1,
       "cumulativeCount": 10,
       "cumulativeFrequency": 1
      }
@@ -17310,13 +17310,13 @@
     "n": 10
    }
   ],
-  "notes": "Bins are [lower, upper); the last bin includes the maximum, so no value is dropped. “Values”: automatic binning (Sturges' rule asks for 5 bins; R's pretty() breaks give 4: 2, 4, 6, 8, 10).",
+  "notes": "Bins are (lower, upper]; the first bin includes the minimum, so no value is dropped. “Values”: automatic binning (Sturges' rule asks for 5 bins; R's pretty() breaks give 4: 2, 4, 6, 8, 10).",
   "frequencyBins": [
    {
     "column": "Values",
     "bins": [
      {
-      "bin": "2 to <4",
+      "bin": "[2, 4]",
       "lower": 2,
       "upper": 4,
       "count": 3,
@@ -17325,7 +17325,7 @@
       "cumulativeFrequency": 0.3
      },
      {
-      "bin": "4 to <6",
+      "bin": "(4, 6]",
       "lower": 4,
       "upper": 6,
       "count": 3,
@@ -17334,20 +17334,20 @@
       "cumulativeFrequency": 0.6
      },
      {
-      "bin": "6 to <8",
+      "bin": "(6, 8]",
       "lower": 6,
       "upper": 8,
-      "count": 2,
-      "relativeFrequency": 0.2,
-      "cumulativeCount": 8,
-      "cumulativeFrequency": 0.8
+      "count": 3,
+      "relativeFrequency": 0.3,
+      "cumulativeCount": 9,
+      "cumulativeFrequency": 0.9
      },
      {
-      "bin": "8 to 10",
+      "bin": "(8, 10]",
       "lower": 8,
       "upper": 10,
-      "count": 2,
-      "relativeFrequency": 0.2,
+      "count": 1,
+      "relativeFrequency": 0.1,
       "cumulativeCount": 10,
       "cumulativeFrequency": 1
      }
@@ -17390,13 +17390,13 @@
     "n": 10
    }
   ],
-  "notes": "Bins are [lower, upper); the last bin includes the maximum, so no value is dropped. “Values”: bin width 100, first bin starts at 2 — the width covers the whole range, so there is a single bin.",
+  "notes": "Bins are (lower, upper]; the first bin includes the minimum, so no value is dropped. “Values”: bin width 100, first bin starts at 2 — the width covers the whole range, so there is a single bin.",
   "frequencyBins": [
    {
     "column": "Values",
     "bins": [
      {
-      "bin": "2 to 102",
+      "bin": "[2, 102]",
       "lower": 2,
       "upper": 102,
       "count": 10,
@@ -17443,35 +17443,35 @@
     "n": 4
    }
   ],
-  "notes": "Bins are [lower, upper); the last bin includes the maximum, so no value is dropped. “Values”: bin width 2, first bin starts at 2.",
+  "notes": "Bins are (lower, upper]; the first bin includes the minimum, so no value is dropped. “Values”: bin width 2, first bin starts at 2.",
   "frequencyBins": [
    {
     "column": "Values",
     "bins": [
      {
-      "bin": "2 to <4",
+      "bin": "[2, 4]",
       "lower": 2,
       "upper": 4,
-      "count": 1,
-      "relativeFrequency": 0.25,
-      "cumulativeCount": 1,
-      "cumulativeFrequency": 0.25
-     },
-     {
-      "bin": "4 to <6",
-      "lower": 4,
-      "upper": 6,
-      "count": 1,
-      "relativeFrequency": 0.25,
+      "count": 2,
+      "relativeFrequency": 0.5,
       "cumulativeCount": 2,
       "cumulativeFrequency": 0.5
      },
      {
-      "bin": "6 to 8",
+      "bin": "(4, 6]",
+      "lower": 4,
+      "upper": 6,
+      "count": 1,
+      "relativeFrequency": 0.25,
+      "cumulativeCount": 3,
+      "cumulativeFrequency": 0.75
+     },
+     {
+      "bin": "(6, 8]",
       "lower": 6,
       "upper": 8,
-      "count": 2,
-      "relativeFrequency": 0.5,
+      "count": 1,
+      "relativeFrequency": 0.25,
       "cumulativeCount": 4,
       "cumulativeFrequency": 1
      }
@@ -17514,13 +17514,13 @@
     "n": 3
    }
   ],
-  "notes": "Bins are [lower, upper); the last bin includes the maximum, so no value is dropped. “Values”: all values are 5, so there is a single bin.",
+  "notes": "Bins are (lower, upper]; the first bin includes the minimum, so no value is dropped. “Values”: all values are 5, so there is a single bin.",
   "frequencyBins": [
    {
     "column": "Values",
     "bins": [
      {
-      "bin": "5 to 5",
+      "bin": "[5, 5]",
       "lower": 5,
       "upper": 5,
       "count": 3,
@@ -17660,13 +17660,13 @@
     "n": 4
    }
   ],
-  "notes": "Bins are [lower, upper); the last bin includes the maximum, so no value is dropped. “Control”: automatic binning (Sturges' rule asks for 4 bins; R's pretty() breaks give 4: 10, 15, 20, 25, 30). 2 empty bins shown. “Low”: automatic binning (Sturges' rule asks for 4 bins; R's pretty() breaks give 6: 13.5, 14, 14.5, 15, 15.5, 16, 16.5). 1 non-numeric cell ignored. “High”: automatic binning (Sturges' rule asks for 4 bins; R's pretty() breaks give 4: 18, 19, 20, 21, 22). “Sparse”: automatic binning (Sturges' rule asks for 3 bins; R's pretty() breaks give 3: 9, 10, 11, 12).",
+  "notes": "Bins are (lower, upper]; the first bin includes the minimum, so no value is dropped. “Control”: automatic binning (Sturges' rule asks for 4 bins; R's pretty() breaks give 4: 10, 15, 20, 25, 30). 2 empty bins shown. “Low”: automatic binning (Sturges' rule asks for 4 bins; R's pretty() breaks give 6: 13.5, 14, 14.5, 15, 15.5, 16, 16.5). 1 empty bin shown. 1 non-numeric cell ignored. “High”: automatic binning (Sturges' rule asks for 4 bins; R's pretty() breaks give 4: 18, 19, 20, 21, 22). “Sparse”: automatic binning (Sturges' rule asks for 3 bins; R's pretty() breaks give 3: 9, 10, 11, 12).",
   "frequencyBins": [
    {
     "column": "Control",
     "bins": [
      {
-      "bin": "10 to <15",
+      "bin": "[10, 15]",
       "lower": 10,
       "upper": 15,
       "count": 7,
@@ -17675,7 +17675,7 @@
       "cumulativeFrequency": 0.875
      },
      {
-      "bin": "15 to <20",
+      "bin": "(15, 20]",
       "lower": 15,
       "upper": 20,
       "count": 0,
@@ -17684,7 +17684,7 @@
       "cumulativeFrequency": 0.875
      },
      {
-      "bin": "20 to <25",
+      "bin": "(20, 25]",
       "lower": 20,
       "upper": 25,
       "count": 0,
@@ -17693,7 +17693,7 @@
       "cumulativeFrequency": 0.875
      },
      {
-      "bin": "25 to 30",
+      "bin": "(25, 30]",
       "lower": 25,
       "upper": 30,
       "count": 1,
@@ -17707,7 +17707,7 @@
     "column": "Low",
     "bins": [
      {
-      "bin": "13.5 to <14",
+      "bin": "[13.5, 14]",
       "lower": 13.5,
       "upper": 14,
       "count": 1,
@@ -17716,7 +17716,7 @@
       "cumulativeFrequency": 0.1428571429
      },
      {
-      "bin": "14 to <14.5",
+      "bin": "(14, 14.5]",
       "lower": 14,
       "upper": 14.5,
       "count": 2,
@@ -17725,7 +17725,7 @@
       "cumulativeFrequency": 0.4285714286
      },
      {
-      "bin": "14.5 to <15",
+      "bin": "(14.5, 15]",
       "lower": 14.5,
       "upper": 15,
       "count": 1,
@@ -17734,25 +17734,25 @@
       "cumulativeFrequency": 0.5714285714
      },
      {
-      "bin": "15 to <15.5",
+      "bin": "(15, 15.5]",
       "lower": 15,
       "upper": 15.5,
-      "count": 1,
-      "relativeFrequency": 0.1428571429,
-      "cumulativeCount": 5,
-      "cumulativeFrequency": 0.7142857143
-     },
-     {
-      "bin": "15.5 to <16",
-      "lower": 15.5,
-      "upper": 16,
-      "count": 1,
-      "relativeFrequency": 0.1428571429,
+      "count": 2,
+      "relativeFrequency": 0.2857142857,
       "cumulativeCount": 6,
       "cumulativeFrequency": 0.8571428571
      },
      {
-      "bin": "16 to 16.5",
+      "bin": "(15.5, 16]",
+      "lower": 15.5,
+      "upper": 16,
+      "count": 0,
+      "relativeFrequency": 0,
+      "cumulativeCount": 6,
+      "cumulativeFrequency": 0.8571428571
+     },
+     {
+      "bin": "(16, 16.5]",
       "lower": 16,
       "upper": 16.5,
       "count": 1,
@@ -17766,7 +17766,7 @@
     "column": "High",
     "bins": [
      {
-      "bin": "18 to <19",
+      "bin": "[18, 19]",
       "lower": 18,
       "upper": 19,
       "count": 2,
@@ -17775,7 +17775,7 @@
       "cumulativeFrequency": 0.3333333333
      },
      {
-      "bin": "19 to <20",
+      "bin": "(19, 20]",
       "lower": 19,
       "upper": 20,
       "count": 2,
@@ -17784,7 +17784,7 @@
       "cumulativeFrequency": 0.6666666667
      },
      {
-      "bin": "20 to <21",
+      "bin": "(20, 21]",
       "lower": 20,
       "upper": 21,
       "count": 1,
@@ -17793,7 +17793,7 @@
       "cumulativeFrequency": 0.8333333333
      },
      {
-      "bin": "21 to 22",
+      "bin": "(21, 22]",
       "lower": 21,
       "upper": 22,
       "count": 1,
@@ -17807,7 +17807,7 @@
     "column": "Sparse",
     "bins": [
      {
-      "bin": "9 to <10",
+      "bin": "[9, 10]",
       "lower": 9,
       "upper": 10,
       "count": 1,
@@ -17816,20 +17816,20 @@
       "cumulativeFrequency": 0.25
      },
      {
-      "bin": "10 to <11",
+      "bin": "(10, 11]",
       "lower": 10,
       "upper": 11,
-      "count": 1,
-      "relativeFrequency": 0.25,
-      "cumulativeCount": 2,
-      "cumulativeFrequency": 0.5
-     },
-     {
-      "bin": "11 to 12",
-      "lower": 11,
-      "upper": 12,
       "count": 2,
       "relativeFrequency": 0.5,
+      "cumulativeCount": 3,
+      "cumulativeFrequency": 0.75
+     },
+     {
+      "bin": "(11, 12]",
+      "lower": 11,
+      "upper": 12,
+      "count": 1,
+      "relativeFrequency": 0.25,
       "cumulativeCount": 4,
       "cumulativeFrequency": 1
      }
@@ -28465,10 +28465,10 @@
      5
     ],
     "text": [
-     "10 to <15",
-     "15 to <20",
-     "20 to <25",
-     "25 to 30"
+     "[10, 15]",
+     "(15, 20]",
+     "(20, 25]",
+     "(25, 30]"
     ],
     "hoverinfo": "text+y",
     "marker": {
@@ -28494,8 +28494,8 @@
      1,
      2,
      1,
-     1,
-     1,
+     2,
+     0,
      1
     ],
     "width": [
@@ -28507,12 +28507,12 @@
      0.5
     ],
     "text": [
-     "13.5 to <14",
-     "14 to <14.5",
-     "14.5 to <15",
-     "15 to <15.5",
-     "15.5 to <16",
-     "16 to 16.5"
+     "[13.5, 14]",
+     "(14, 14.5]",
+     "(14.5, 15]",
+     "(15, 15.5]",
+     "(15.5, 16]",
+     "(16, 16.5]"
     ],
     "hoverinfo": "text+y",
     "marker": {
@@ -28545,10 +28545,10 @@
      1
     ],
     "text": [
-     "18 to <19",
-     "19 to <20",
-     "20 to <21",
-     "21 to 22"
+     "[18, 19]",
+     "(19, 20]",
+     "(20, 21]",
+     "(21, 22]"
     ],
     "hoverinfo": "text+y",
     "marker": {
@@ -28569,8 +28569,8 @@
     ],
     "y": [
      1,
-     1,
-     2
+     2,
+     1
     ],
     "width": [
      1,
@@ -28578,9 +28578,9 @@
      1
     ],
     "text": [
-     "9 to <10",
-     "10 to <11",
-     "11 to 12"
+     "[9, 10]",
+     "(10, 11]",
+     "(11, 12]"
     ],
     "hoverinfo": "text+y",
     "marker": {
@@ -28664,12 +28664,12 @@
     ],
     "y": [
      10,
-     10,
-     30,
-     10,
-     10,
-     0,
      20,
+     20,
+     10,
+     10,
+     10,
+     10,
      10
     ],
     "width": [
@@ -28683,14 +28683,14 @@
      5
     ],
     "text": [
-     "58 to <63",
-     "63 to <68",
-     "68 to <73",
-     "73 to <78",
-     "78 to <83",
-     "83 to <88",
-     "88 to <93",
-     "93 to 98"
+     "[58, 63]",
+     "(63, 68]",
+     "(68, 73]",
+     "(73, 78]",
+     "(78, 83]",
+     "(83, 88]",
+     "(88, 93]",
+     "(93, 98]"
     ],
     "hoverinfo": "text+y",
     "marker": {
@@ -28714,11 +28714,11 @@
     ],
     "y": [
      11.11111111,
-     11.11111111,
      22.22222222,
      22.22222222,
      11.11111111,
-     22.22222222
+     22.22222222,
+     11.11111111
     ],
     "width": [
      5,
@@ -28729,12 +28729,12 @@
      5
     ],
     "text": [
-     "160 to <165",
-     "165 to <170",
-     "170 to <175",
-     "175 to <180",
-     "180 to <185",
-     "185 to 190"
+     "[160, 165]",
+     "(165, 170]",
+     "(170, 175]",
+     "(175, 180]",
+     "(180, 185]",
+     "(185, 190]"
     ],
     "hoverinfo": "text+y",
     "marker": {
@@ -28760,8 +28760,8 @@
      20,
      20,
      10,
-     10,
      20,
+     10,
      20
     ],
     "width": [
@@ -28773,12 +28773,12 @@
      5
     ],
     "text": [
-     "25 to <30",
-     "30 to <35",
-     "35 to <40",
-     "40 to <45",
-     "45 to <50",
-     "50 to 55"
+     "[25, 30]",
+     "(30, 35]",
+     "(35, 40]",
+     "(40, 45]",
+     "(45, 50]",
+     "(50, 55]"
     ],
     "hoverinfo": "text+y",
     "marker": {
@@ -28802,7 +28802,7 @@
      5
     ],
     "text": [
-     "1 to 6"
+     "[1, 6]"
     ],
     "hoverinfo": "text+y",
     "marker": {
@@ -31421,8 +31421,8 @@
     "y": [
      3,
      3,
-     2,
-     2
+     3,
+     1
     ],
     "width": [
      2,
@@ -31431,10 +31431,10 @@
      2
     ],
     "text": [
-     "2 to <4",
-     "4 to <6",
-     "6 to <8",
-     "8 to 10"
+     "[2, 4]",
+     "(4, 6]",
+     "(6, 8]",
+     "(8, 10]"
     ],
     "hoverinfo": "text+y",
     "marker": {
