@@ -46,7 +46,8 @@ export type AnalysisType =
   | "frequency-distribution"
   | "monte-carlo"
   | "transform-data"
-  | "transform-concentrations";
+  | "transform-concentrations"
+  | "normalize";
 
 /** What the New Analysis picker offers: a test, or "Compare more than two groups",
  *  which its wizard resolves to one-way ANOVA, Kruskal-Wallis, repeated-measures ANOVA
@@ -650,6 +651,55 @@ export interface TransformConcentrationsParams {
   fromUnit: ConcentrationUnit;
   toUnit: ConcentrationUnit;
 }
+/** The scale definitions "normalize" offers (Prism's Normalize): each value
+ *  as a percent/fraction of a reference — the largest value in each data
+ *  set, the smallest value, the first value, the mean of control column(s),
+ *  or a constant you enter — or on a 0–100% scale, with 0% and 100% defined
+ *  separately. */
+export const NORMALIZE_METHODS = [
+  "percent-of-largest",
+  "percent-of-smallest",
+  "percent-of-first",
+  "percent-of-mean-controls",
+  "percent-of-constant",
+  "zero-to-hundred",
+] as const;
+export type NormalizeMethod = (typeof NORMALIZE_METHODS)[number];
+/** What 0% is, for "zero-to-hundred": the smallest value in each data set,
+ *  the value in the first row of each data set, or a value you enter. */
+export const NORMALIZE_ZERO_DEFS = ["smallest", "first", "constant"] as const;
+export type NormalizeZeroDef = (typeof NORMALIZE_ZERO_DEFS)[number];
+/** What 100% is, for "zero-to-hundred": the largest value in each data set,
+ *  the value in the last row of each data set, a value you enter, or the sum
+ *  of all values in the column. */
+export const NORMALIZE_HUNDRED_DEFS = ["largest", "last", "constant", "sum"] as const;
+export type NormalizeHundredDef = (typeof NORMALIZE_HUNDRED_DEFS)[number];
+
+/** Params for "normalize": which columns to rescale (`ys`), how the scale
+ *  is defined, and — for XY tables — the X column whose values label the
+ *  result rows. `asPercent` is percent (×100) vs fraction (×1) for the
+ *  percent-of-* methods (zero-to-hundred is always percent); the wizard
+ *  always sets the method's own fields, the runner defaults the rest. */
+export interface NormalizeParams {
+  /** Omitted: every numeric column except `x` — the wizard always sets it. */
+  ys?: string[];
+  /** XY tables only: the X column, for the result rows' X values. */
+  x?: string;
+  normalizeMethod: NormalizeMethod;
+  asPercent?: boolean;
+  /** Control columns whose values are averaged (method "percent-of-mean-controls"). */
+  controls?: string[];
+  /** The 100% reference value (method "percent-of-constant"). */
+  constant?: number;
+  /** What 0% is (method "zero-to-hundred"). */
+  zeroDef?: NormalizeZeroDef;
+  /** The 0% value (zeroDef "constant"). */
+  zeroConstant?: number;
+  /** What 100% is (method "zero-to-hundred"). */
+  hundredDef?: NormalizeHundredDef;
+  /** The 100% value (hundredDef "constant"). */
+  hundredConstant?: number;
+}
 
 /** Params for "mixed-effects" (Column or Grouped table): a repeated-measures
  *  model fit with lme4::lmer + lmerTest Satterthwaite p-values (plan 20).
@@ -888,6 +938,7 @@ export type AnalysisParams = DataSetsParam &
     | MonteCarloParams
     | TransformDataParams
     | TransformConcentrationsParams
+    | NormalizeParams
   );
 
 /** Params for "survival" (Survival table): the test comparing the curves — log-rank,
@@ -1135,6 +1186,33 @@ export interface ConvertedColumn {
   toUnit: ConcentrationUnit;
   values: ConvertedValueRow[];
 }
+/** One normalized value ("normalize"): the original value and the rescaled
+ *  one. `normalized` is null when the value could not be normalized (a zero
+ *  100% reference, or a 0–100% scale with no range) — a blank, never NaN.
+ *  `row` is the row title, or the row number when the table has none; `x`
+ *  is the X value at that row (XY tables only). */
+export interface NormalizedRow {
+  row: string;
+  x?: number | null;
+  original: number;
+  normalized: number | null;
+}
+
+/** One column's normalized values ("normalize"): the scale used for the
+ *  column (recorded so the operation is auditable) — `reference` is the
+ *  100% reference for the percent-of-* methods, or the 0% value for
+ *  zero-to-hundred, whose 100% value is `hundred`; `asPercent` is percent
+ *  (×100) vs fraction (×1), always percent for zero-to-hundred. */
+export interface NormalizedColumn {
+  column: string;
+  method: string;
+  reference: number;
+  hundred?: number;
+  asPercent: boolean;
+  /** The scale as written in the notes, e.g. "Largest value: 16". */
+  referenceDescription: string;
+  rows: NormalizedRow[];
+}
 
 /** One row of a K-means clustering's clusters table ("k-means"): one
  *  cluster's centre (in the ORIGINAL units — back-transformed when the
@@ -1274,6 +1352,9 @@ export interface AnalysisResult {
   /** Optional converted concentrations ("transform-concentrations"): one
    *  entry per converted column, each value paired with its original. */
   convertedColumns?: ConvertedColumn[];
+  /** Optional per-column normalized values ("normalize"): one table per
+   *  column, each with the scale used recorded. */
+  normalized?: NormalizedColumn[];
   /** Optional ROC points ("roc-curve"): one row per threshold (unique score
    *  values, descending); Youden's J is computed at render time. */
   rocCurve?: RocPoint[];

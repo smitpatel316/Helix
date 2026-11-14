@@ -48,6 +48,9 @@ import {
   MONTE_CARLO_STATISTICS,
   MONTE_CARLO_TARGETS,
   NONLINEAR_MODELS,
+  NORMALIZE_HUNDRED_DEFS,
+  NORMALIZE_METHODS,
+  NORMALIZE_ZERO_DEFS,
   POSTHOC_TARGETS,
   RANK_POSTHOCS,
   REMOVE_BASELINE_METHODS,
@@ -223,6 +226,9 @@ const PARAMS = {
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q, lambda: "number",
   // Remove baseline (v2): how the baseline is defined, and the values it needs.
   baselineMethod: REMOVE_BASELINE_METHODS, firstN: "number", controls: "names", constant: "number",
+  // Normalize (v2): how each value is rescaled, and the values it needs.
+  normalizeMethod: NORMALIZE_METHODS, asPercent: "yes/no", zeroDef: NORMALIZE_ZERO_DEFS, hundredDef: NORMALIZE_HUNDRED_DEFS,
+  zeroConstant: "number", hundredConstant: "number",
   alpha: { min: 0.001, max: 0.5 }, iterate: "yes/no",
   f: "number", spar: "number", df: "number",
   y: "name-or-names", y2: "name", ys: "names", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names",

@@ -30,6 +30,7 @@ import type {
   MultipleTTestsParams,
   NestedAnovaParams,
   NonlinearRegressionParams,
+  NormalizeParams,
   OneSampleTParams,
   RemoveBaselineParams,
   SurvivalParams,
@@ -1212,6 +1213,99 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         ...(a.baselineMethod === "mean-first-n" ? { firstN: a.firstN as number } : {}),
         ...(a.baselineMethod === "mean-of-controls" ? { controls: a.controls as string[] } : {}),
         ...(a.baselineMethod === "constant" ? { constant: a.constant as number } : {}),
+      },
+    }),
+  },
+
+  "normalize": {
+    questions: (a, table, tableType) => {
+      const targets = tableType === "xy" ? yNames(table) : dataNames(table);
+      if (!targets.length) return [];
+      const method = a.normalizeMethod as string | undefined;
+      return [
+        {
+          id: "ys",
+          ask: "Which data sets should be normalized?",
+          kind: "names",
+          options: targets,
+          min: 1,
+        },
+        choice("normalizeMethod", "How should each value be rescaled?", [
+          ["percent-of-largest", "Percent of the largest value in each data set (100% = largest)"],
+          ["percent-of-smallest", "Percent of the smallest value in each data set (100% = smallest)"],
+          ["percent-of-first", "Percent of the first value in each data set (100% = first)"],
+          ["percent-of-mean-controls", "Percent of the mean of control column(s) (100% = control mean)"],
+          ["percent-of-constant", "Percent of a constant value you enter (100% = constant)"],
+          ["zero-to-hundred", "0–100% — define 0% and 100% separately"],
+        ]),
+        method !== undefined &&
+          method !== "zero-to-hundred" &&
+          choice("scale", "Express the results as a percent or a fraction?", [
+            ["percent", "Percent — multiply by 100"],
+            ["fraction", "Fraction — 1 = 100%"],
+          ]),
+        method === "percent-of-mean-controls" && {
+          id: "controls",
+          ask: "Which column(s) are the controls? Their values are averaged for the 100% reference.",
+          kind: "names",
+          options: dataNames(table),
+          min: 1,
+        },
+        method === "percent-of-constant" && {
+          id: "constant",
+          ask: "What value is 100%?",
+          kind: "number",
+          label: "100% reference value",
+          initial: 100,
+        },
+        method === "zero-to-hundred" &&
+          choice("zeroDef", "What is 0%?", [
+            ["smallest", "Smallest value in each data set"],
+            ["first", "Value in the first row of each data set"],
+            ["constant", "A value you enter"],
+          ]),
+        method === "zero-to-hundred" &&
+          a.zeroDef === "constant" && {
+            id: "zeroConstant",
+            ask: "What value is 0%?",
+            kind: "number",
+            label: "0% value",
+            initial: 0,
+          },
+        method === "zero-to-hundred" &&
+          choice("hundredDef", "What is 100%?", [
+            ["largest", "Largest value in each data set"],
+            ["last", "Value in the last row of each data set"],
+            ["constant", "A value you enter"],
+            ["sum", "Sum of all values in the column"],
+          ]),
+        method === "zero-to-hundred" &&
+          a.hundredDef === "constant" && {
+            id: "hundredConstant",
+            ask: "What value is 100%?",
+            kind: "number",
+            label: "100% value",
+            initial: 100,
+          },
+      ];
+    },
+    finish: (a, table, tableType) => ({
+      type: "normalize",
+      params: {
+        ys: a.ys as string[],
+        ...(tableType === "xy" ? { x: table.columns[0]?.name } : {}),
+        normalizeMethod: a.normalizeMethod as NormalizeParams["normalizeMethod"],
+        ...((a.normalizeMethod as string) !== "zero-to-hundred" ? { asPercent: a.scale !== "fraction" } : {}),
+        ...(a.normalizeMethod === "percent-of-mean-controls" ? { controls: a.controls as string[] } : {}),
+        ...(a.normalizeMethod === "percent-of-constant" ? { constant: a.constant as number } : {}),
+        ...(a.normalizeMethod === "zero-to-hundred"
+          ? {
+              zeroDef: a.zeroDef as NormalizeParams["zeroDef"],
+              hundredDef: a.hundredDef as NormalizeParams["hundredDef"],
+              ...(a.zeroDef === "constant" ? { zeroConstant: a.zeroConstant as number } : {}),
+              ...(a.hundredDef === "constant" ? { hundredConstant: a.hundredConstant as number } : {}),
+            }
+          : {}),
       },
     }),
   },
