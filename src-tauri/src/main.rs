@@ -402,7 +402,7 @@ fn save_cloud_registry(app: &AppHandle, accounts: &[cloud::CloudAccount]) -> Res
     if let Some(parent) = file.parent() {
         fs::create_dir_all(parent).map_err(|e| cloud::CloudError::provider(e.to_string()))?;
     }
-    write_atomically(&file, text.as_bytes())
+    write_atomically(&file, text.as_bytes()).map_err(|e| cloud::CloudError::provider(e))
 }
 
 fn decode_base64(base64: &str) -> Result<Vec<u8>, cloud::CloudError> {

@@ -21,6 +21,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tauri::Manager;
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader, Write},
@@ -91,7 +92,7 @@ impl CloudError {
     /// or a timeout is the network being gone; anything else is the
     /// provider's fault. Never includes the error's text (it can echo URLs
     /// with query strings).
-    pub fn from_http(err: &reqwest::Error) -> Self {
+    pub fn from_http(err: reqwest::Error) -> Self {
         if err.is_connect() || err.is_timeout() {
             CloudError::offline("Couldn't reach the cloud provider. Check the network and try again.")
         } else {
@@ -433,6 +434,8 @@ pub fn wait_for_code(port: u16, expected_state: &str, timeout: Duration) -> Resu
     let listener = TcpListener::bind(("127.0.0.1", port))
         .map_err(|e| CloudError::provider(format!("Couldn't start the sign-in listener: {e}")))?;
     let (tx, rx) = mpsc::channel::<Result<String, CloudError>>();
+    // The spawned thread must own the expected state ('static bound).
+    let expected_state = expected_state.to_owned();
     std::thread::spawn(move || {
         let result = (|| -> Result<String, CloudError> {
             let (mut stream, _) =
@@ -485,7 +488,7 @@ pub fn wait_for_code(port: u16, expected_state: &str, timeout: Duration) -> Resu
                 return Err(CloudError::Cancelled { message: format!("Sign-in was refused ({error}).") });
             }
             match (params.get("code"), params.get("state")) {
-                (Some(code), Some(state)) if state == expected_state => Ok(code.clone()),
+                (Some(code), Some(state)) if state.as_str() == expected_state => Ok(code.clone()),
                 (Some(_), Some(_)) => {
                     Err(CloudError::Cancelled { message: "Sign-in state didn't match. Try connecting again.".into() })
                 }
