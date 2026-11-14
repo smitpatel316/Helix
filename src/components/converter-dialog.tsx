@@ -123,7 +123,7 @@ export function ConverterDialog() {
     setProgress(`Writing ${project.rootOrder.length} tables as .prism…`);
     await paint();
     try {
-      const version = native.isNative ? await native.appVersion().catch(() => "1.1.0") : "1.1.0";
+      const version = native.isNative ? await native.appVersion().catch(() => "1.2.0") : "1.2.0";
       const written: PrismWriteResult = await writePrism(
         {
           nodes: project.nodes,
