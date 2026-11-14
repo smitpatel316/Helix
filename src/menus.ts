@@ -25,6 +25,11 @@ const COFFEE_URL = "https://www.buymeacoffee.com/smitpatel316";
 // coffee address: their native dialog renders comments and website instead
 // (muda drops credits on those platforms), hence the same text here —
 // comments as visible text, website as the clickable link.
+// NOTE: the Mac panel in practice renders the bundle's values, not this
+// metadata (v1.1 showed "Version 1.1.0 (1.1.0)" and the one-line bundle
+// copyright, no credits) — so the credits that actually show on macOS
+// come from src-tauri/Credits.rtf, shipped as a bundle resource. Keep
+// the two in sync: this metadata for Linux/Windows, the RTF for macOS.
 const ABOUT_CREDITS = `Scientific data analysis, simplified.\nBuy Me a Coffee: ${COFFEE_URL}`;
 const ABOUT = {
   name: "Titer", // spelled out: in development the process is named "titer"

@@ -3,7 +3,7 @@
 // resulting numbers. Every number an analysis shows comes from R, its groups'
 // descriptives too (`describe`): the same for every test.
 
-import type { TAILS, AnalysisType, AnalysisOutcome, Column, ComparisonRow, GroupDescriptives, StatRow } from "../types";
+import type { TAILS, AnalysisType, AnalysisOutcome, Column, ComparisonRow, GroupDescriptives, NormalityRow, StatRow } from "../types";
 import { evalNamedVector } from "../webr";
 
 /** A group as a test sees it: a name and its numbers. */
@@ -272,6 +272,11 @@ export interface ColumnTestSpec<P = unknown> {
   rCode: (groups: Group[], params: P | undefined) => string;
   /** Map the marshalled R values (+ descriptives) into display rows. */
   rows: (v: Record<string, number | null>, groups: GroupDescriptives[], params: P | undefined) => StatRow[];
+  /** The per-data-set normality table (`AnalysisOutcome.normality`), from the
+   *  same R values — the wizard's "Not sure — check for normality first"
+   *  reads it, and the results view renders it. Without it the wizard
+   *  reports the test couldn't run on any data. */
+  normality?: (v: Record<string, number | null>, groups: GroupDescriptives[], params: P | undefined) => NormalityRow[];
   /** The post-hoc comparisons that ran, as their table's heading ("Tukey's multiple
    *  comparisons test"); none, no table. Its R gives each pair's P value as `p_i_j`. */
   posthoc?: (params: P | undefined) => string | undefined;
@@ -333,6 +338,7 @@ export async function runColumnTest<P>(
     subtitle: spec.subtitle?.(params),
     equation: spec.equation?.(v, described, params),
     stats: spec.rows(v, described, params),
+    normality: spec.normality?.(v, described, params),
     groups: described,
     notes: typeof spec.notes === "function" ? spec.notes(params, groups, columns) : spec.notes,
     comparisons,

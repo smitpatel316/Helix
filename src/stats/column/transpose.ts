@@ -59,7 +59,7 @@ export async function runTranspose(
     groups: [],
     notes:
       `Transposed the table: each row became a column (data set) and each column became a row — ` +
-      `the ${rowCount}-row × ${columns.length}-column table became a ${columns.length}-row × ${rowCount}-column table. ` +
+      `the ${rowCount}-row × ${columns.length + 1}-column table became a ${columns.length}-row × ${rowCount + 1}-column table. ` +
       `The source table is unchanged; the transposed values below are a results sheet. ` +
       `Blank cells stay blank, and text stays text.`,
     transposed: {

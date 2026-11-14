@@ -21,7 +21,7 @@ import type {
   RegressionCoefficient,
   StatRow,
 } from "../types";
-import { describe, pRow, rVec } from "../column/base";
+import { describe, missingColumn, pRow, rVec } from "../column/base";
 import { routQError } from "../types";
 import { num } from "../../lib/format";
 import { pointKeyOf } from "../../lib/columns";
@@ -44,9 +44,11 @@ import {
   parseFit,
   prepareFit,
   startExpressions,
+  type AppliedFitOptions,
   type DerivedRow,
   type FitOptions,
   type ModelSpec,
+  type NonlinearFit,
 } from "./nonlinear-fit";
 import {
   runGlobalFit,
@@ -1388,7 +1390,8 @@ export async function runNonlinearRegression(
   // names its data set, not a column.
   const yCol =
     params?.y === undefined ? yCols[0]?.columns[0] : datasetColumns(yCols.flatMap((s) => s.columns), params.y)[0];
-  if (!xCol || !yCol) return { error: xyProblem(columns, params?.y)! };
+  if (!xCol || !yCol)
+    return { error: xyProblem(columns, params?.y) ?? missingColumn(params?.y ?? "Y") };
   // Binding competition (plan 28): Fit Ki needs [L] and Kd (the
   // Cheng–Prusoff divisor 1 + [L]/Kd); the homologous model needs [L] (a
   // constant of its equation). Refuse before calling R — a missing constant
@@ -1482,6 +1485,124 @@ export async function runNonlinearRegression(
       if (!spec.terms.includes(p)) return { error: `“${p}” is not a parameter of “${MODEL_LABEL[model]}”.` };
   }
 
+  // Several Y data sets fitted, each on its own (`params.ys`, the type's
+  // promise — the wizard's "which Y data sets" answer): one fit per set,
+  // coefficients named after their set ("Control — Bottom", the comparison
+  // path's convention, so the overlays draw each one's curve), fit rows one
+  // value per set. A comparison, a global fit, a model comparison or
+  // interpolation cannot combine with it — those take one set (or their own
+  // branch) and would silently fit only the first.
+  const multiYs = params?.ys !== undefined && params.ys.length > 1;
+  if (multiYs) {
+    if (comparingSets || comparingModels || global || params?.interpolate)
+      return {
+        error:
+          "Fitting several Y data sets cannot be combined with comparing data sets or models, a global fit, or interpolation — fit one data set for those, or fit each data set separately.",
+      };
+    if (new Set(params.ys!).size !== params.ys!.length)
+      return { error: "Each Y data set can be fitted once — pick each data set at most once." };
+    const yColsAll = yCols.flatMap((s) => s.columns);
+    const multiSets: { name: string; xs: number[]; ys: number[]; rows: number[]; columns: string[] }[] = [];
+    const multiParsed: { coefficients: RegressionCoefficient[]; derived: DerivedRow[]; stats: StatRow[] }[] = [];
+    const multiYCols: Column[] = [];
+    let routOutliers: CurveOutlier[] = [];
+    let anyRetried = false;
+    let retryMethod: string | undefined;
+    for (const name of params.ys!) {
+      let prep = prepareFit(columns, name, model, fixedNames.length);
+      if ("error" in prep) return prep;
+      const wr = computeWeights(weightsScheme, prep, yColsAll);
+      if ("error" in wr) return wr;
+      let setFitOpts: FitOptions = {
+        ...(wr.weights ? { weights: wr.weights } : {}),
+        ...(fixedNames.length ? { fixed } : {}),
+        ...(boundNames.length ? { bounds } : {}),
+      };
+      let applied: AppliedFitOptions;
+      try {
+        applied = applyFitOptions(spec, setFitOpts);
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+      if (useRout) {
+        let det: { out: boolean[] };
+        try {
+          det = await detectRoutOutliers(prep.xs, prep.ys, applied.spec, applied.extraAssignments, qPercent);
+        } catch (err) {
+          return { error: err instanceof Error ? err.message : String(err) };
+        }
+        const { kept, outliers } = excludeRoutOutliers(prep, det.out, name, titles);
+        if (kept.xs.length < applied.spec.terms.length + 1)
+          return {
+            error:
+              `ROUT (Q = ${qPercent}%) left only ${kept.xs.length} points in “${name}” — too few to fit this curve; try a larger Q, or fit every point.`,
+          };
+        prep = { ...prep, xs: kept.xs, ys: kept.ys, rows: kept.rows, columns: kept.columns };
+        routOutliers.push(...outliers);
+        if (wr.weights) {
+          setFitOpts = { ...setFitOpts, weights: wr.weights.filter((_, i) => !det.out[i]) };
+          try {
+            applied = applyFitOptions(spec, setFitOpts);
+          } catch (err) {
+            return { error: err instanceof Error ? err.message : String(err) };
+          }
+        }
+      }
+      let fitted: NonlinearFit;
+      try {
+        fitted = await fitModelSpec(prep.xs, prep.ys, spec, "", termLabel, setFitOpts);
+      } catch (err) {
+        if (isTwoSiteCompetition(model)) return twoSiteError;
+        const failed = fitError(err, model);
+        return { error: `“${name}”: ${"error" in failed ? failed.error : "could not be fitted."}` };
+      }
+      if (fitted.retried) {
+        anyRetried = true;
+        retryMethod = fitted.retryMethod;
+      }
+      // Fixed parameters are not in the fit — report them as coefficient
+      // rows with no standard error (the single-fit path's precedent).
+      for (const fixedName of fixedNames)
+        fitted.coefficients.push({
+          term: termLabel(fixedName),
+          estimate: fixed[fixedName]!,
+          stdError: null,
+          t: null,
+          p: null,
+          low: null,
+          high: null,
+        });
+      // Coefficients name their set, so the overlays draw each one's curve.
+      fitted.coefficients.forEach((c) => {
+        c.term = `${name} — ${c.term}`;
+      });
+      multiSets.push({ name, xs: prep.xs, ys: prep.ys, rows: prep.rows, columns: prep.columns });
+      multiParsed.push({ coefficients: fitted.coefficients, derived: fitted.derived, stats: fitted.stats });
+      multiYCols.push(prep.yCol);
+    }
+    return assembleResult(
+      model,
+      spec,
+      xCol,
+      multiYCols[0],
+      multiYCols[1],
+      multiSets,
+      multiParsed,
+      [],
+      [],
+      titles,
+      { xs: multiSets[0].xs, ys: multiSets[0].ys },
+      anyRetried || undefined,
+      retryMethod,
+      params,
+      [],
+      "",
+      false,
+      useRout ? { outliers: routOutliers, q: qPercent } : undefined,
+      false,
+    );
+  }
+
   const other = comparingSets ? yCols.find((c) => c.name === params.compareWith)?.columns[0] : undefined;
   if (comparingSets && !other) return { error: xyProblem(columns, params.compareWith)! };
   if (other && !spec.dose) return { error: "Only dose-response curves can be compared." };
@@ -1528,11 +1649,11 @@ export async function runNonlinearRegression(
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) };
     }
-    const { kept, outliers } = excludeRoutOutliers(first, det.out, yCol.name, titles);
+    const { kept, outliers } = excludeRoutOutliers(first, det.out, first.yCol.name, titles);
     if (kept.xs.length < effSpec.terms.length + 1)
       return {
         error:
-          `ROUT (Q = ${qPercent}%) left only ${kept.xs.length} points in “${yCol.name}” — too few to fit this curve; try a larger Q, or fit every point.`,
+          `ROUT (Q = ${qPercent}%) left only ${kept.xs.length} points in “${first.yCol.name}” — too few to fit this curve; try a larger Q, or fit every point.`,
       };
     first = { ...first, xs: kept.xs, ys: kept.ys, rows: kept.rows, columns: kept.columns };
     routOutliers.push(...outliers);
@@ -1562,11 +1683,11 @@ export async function runNonlinearRegression(
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
       }
-      const { kept, outliers } = excludeRoutOutliers(p, det.out, other.name, titles);
+      const { kept, outliers } = excludeRoutOutliers(p, det.out, params.compareWith!, titles);
       if (kept.xs.length < spec.terms.length + 1)
         return {
           error:
-            `ROUT (Q = ${qPercent}%) left only ${kept.xs.length} points in “${other.name}” — too few to fit this curve; try a larger Q, or fit every point.`,
+            `ROUT (Q = ${qPercent}%) left only ${kept.xs.length} points in “${params.compareWith}” — too few to fit this curve; try a larger Q, or fit every point.`,
         };
       second = kept;
       routOutliers.push(...outliers);
@@ -1574,13 +1695,28 @@ export async function runNonlinearRegression(
       second = p;
     }
   }
+  // The sets' names are the data sets' (prepareFit's pooled column carries
+  // the set's name; a replicate column's own name would misname it).
   const sets = [
-    { name: yCol.name, xs: first.xs, ys: first.ys },
-    ...(second && other ? [{ name: other.name, xs: second.xs, ys: second.ys }] : []),
+    { name: first.yCol.name, xs: first.xs, ys: first.ys },
+    ...(second && other ? [{ name: params.compareWith!, xs: second.xs, ys: second.ys }] : []),
   ];
 
   // The unknowns: the rows holding a Y but no X. A log X's is given as a concentration too.
-  const unknowns = params?.interpolate && !other ? yCol.rows.filter((r) => xCol.byRow[r] == null) : [];
+  // The fitted data set's columns (its replicates, when it has them): an
+  // unknown's Y is its row's mean across the set's replicates, as Prism
+  // reads an unknown off the mean — and the groups describe the pooled set,
+  // not one replicate column.
+  const ySetCols = yCols.find((s) => s.name === first.yCol.name)?.columns ?? [yCol];
+  const pooledY: Column = { ...yCol, name: first.yCol.name, values: ySetCols.flatMap((c) => c.values) };
+  const unknowns =
+    params?.interpolate && !other
+      ? [...new Set(ySetCols.flatMap((c) => c.rows))].sort((a, b) => a - b).filter((r) => xCol.byRow[r] == null)
+      : [];
+  const unknownY = unknowns.map((r) => {
+    const vals = ySetCols.flatMap((c) => (c.byRow[r] == null ? [] : [c.byRow[r]!]));
+    return vals.reduce((s, v) => s + v, 0) / vals.length;
+  });
   const logX = model.endsWith("-logx");
   const [lo, hi] = [Math.min(...first.xs), Math.max(...first.xs)];
   const rout = useRout ? { outliers: routOutliers, q: qPercent } : undefined;
@@ -1611,7 +1747,6 @@ export async function runNonlinearRegression(
       };
     }
   } else if (unknowns.length) {
-    const unknownY = unknowns.map((r) => yCol.byRow[r]!);
     // The whole vectors go in, names intact: re-tagging one element
     // (`ix_0=ix[1]`) would paste R's names together ("ix_0.ix_0") and the
     // lookup below would find nothing — upstream passes `ix` whole and
@@ -1653,7 +1788,7 @@ export async function runNonlinearRegression(
       // One R call already ran; reuse its entries by re-reading them out of
       // the same shape — simplest is to keep the parsed fit and build the
       // result from it (no second R call).
-      return assembleResult(model, spec, xCol, yCol, other, sets, [fitted], [], [], titles, first, fitted.retried, fitted.retryMethod, params, [], "", false, rout);
+      return assembleResult(model, spec, xCol, pooledY, other, sets, [fitted], [], [], titles, first, fitted.retried, fitted.retryMethod, params, [], "", false, rout);
     } catch (err) {
       if (isTwoSiteCompetition(model)) return twoSiteError;
       return fitError(err, model);
@@ -1696,7 +1831,7 @@ export async function runNonlinearRegression(
     if (inverted) invertedCI = true;
     return {
       label: rowName(titles, r),
-      y: yCol.byRow[r]!,
+      y: unknownY[i],
       x,
       ...(logX ? { concentration: v[`ic_${i}`] ?? null } : {}),
       extrapolated: x != null && (x < lo || x > hi),
@@ -1704,7 +1839,7 @@ export async function runNonlinearRegression(
       high: inverted ? null : high,
     };
   });
-  return assembleResult(model, spec, xCol, yCol, other, sets, parsed, interpolated, v, titles, first, retried, retryMethod, params, [], "", invertedCI, rout);
+  return assembleResult(model, spec, xCol, pooledY, other, sets, parsed, interpolated, v, titles, first, retried, retryMethod, params, [], "", invertedCI, rout);
 }
 
 /** The notes' weighting / fixed-parameter / bounds sentences (plan 26): a
@@ -1776,8 +1911,11 @@ async function assembleResult(
   invertedCI = false,
   /** ROUT's result, when the fit ran with it: the flagged points and Q. */
   rout?: { outliers: CurveOutlier[]; q: number },
+  /** A comparison (extra-sum-of-squares F test) between the sets, rather
+   *  than several sets fitted on their own: defaults to sets.length > 1. */
+  comparison = sets.length > 1,
 ): Promise<AnalysisOutcome> {
-  const other = sets.length > 1;
+  const other = comparison;
   // Plan 29: the segmental breakpoint is a derived value, not a fitted
   // coefficient — report it as a coefficient row with no standard error
   // (the fixed-parameter precedent in runNonlinearRegression), so the
@@ -1847,6 +1985,7 @@ async function assembleResult(
     `95% CIs are asymptotic (from each parameter's standard error${spec.terms.includes("S") ? "; the asymmetry S's, on its log" : ""}).` +
     frameworkNotes(params, coefficients, first) +
     (other ? ` Extra sum-of-squares F test: ${question} ${answer}` : "") +
+    (sets.length > 1 && !other ? " Each data set is fitted on its own." : "") +
     (comparisonNotes ? ` ${comparisonNotes}` : "") +
     interpolation +
     (rout ? routNotes(rout.q, rout.outliers, sets.map((s) => s.name)) : "");

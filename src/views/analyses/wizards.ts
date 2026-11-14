@@ -241,11 +241,12 @@ const choice = (
 const names = (list: string[]) => list.map((n): [string, string] => [n, n]);
 
 /** The Y data sets to fit, all ticked at first (asked when there is a choice); one answered
- *  is the regression's `y`, several its `ys`. */
+ *  is the regression's `y`, several its `ys`. A lone `y` answer (the pre-1.0.9 shape, and
+ *  what a caller passing one data set writes) counts as that one set. */
 const ysQuestion = (table: Dataset, ask: string): Question | false =>
   yNames(table).length > 1 && { id: "ys", ask, kind: "names", options: yNames(table), min: 1 };
 const fittedYs = (a: Answers) => {
-  const ys = a.ys as string[] | undefined;
+  const ys = (a.ys as string[] | undefined) ?? (a.y !== undefined ? [a.y as string] : undefined);
   return ys === undefined ? {} : ys.length === 1 ? { y: ys[0] } : { ys };
 };
 const yNames = (table: Dataset) => splitXY(table.columns).ys.map((c) => c.name);
@@ -1102,14 +1103,20 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         ["yes", "Yes — assume Y = 0 when X = 0"],
       ]),
       // Plan 26: weighting (1/SD² needs the replicate columns this runner
-      // never sees, so it is not offered here).
-      choice("weights", "Weight the points?", [
-        ["none", "No weighting (recommended unless scatter grows with Y)"],
-        ["1/y", "Weight by 1/Y"],
-        ["1/y2", "Weight by 1/Y²"],
-        ["1/x", "Weight by 1/X"],
-        ["1/x2", "Weight by 1/X²"],
-      ]),
+      // never sees, so it is not offered here). Only an XY table's regression
+      // on X is weighted — a Multiple Variables table regresses two named
+      // columns, and asks no weighting question.
+      ...(type === "xy"
+        ? [
+            choice("weights", "Weight the points?", [
+              ["none", "No weighting (recommended unless scatter grows with Y)"],
+              ["1/y", "Weight by 1/Y"],
+              ["1/y2", "Weight by 1/Y²"],
+              ["1/x", "Weight by 1/X"],
+              ["1/x2", "Weight by 1/X²"],
+            ]),
+          ]
+        : []),
     ],
     finish: (a) => ({
       type: "linear-regression",

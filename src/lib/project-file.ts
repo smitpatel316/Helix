@@ -460,8 +460,8 @@ function readData(raw: Obj, type: unknown): {
       )
     : {};
   const rowGroups = readRowGroups(d.rowGroups);
-  // Groups of sub-columns: a Grouped table's, or an XY table's data sets of replicates (after X).
-  const grouping = (type === "grouped" || type === "xy") && isCount(d.groups) && isCount(d.replicates);
+  // Groups of sub-columns: a Grouped table's, a Nested table's, or an XY table's data sets of replicates (after X).
+  const grouping = (type === "grouped" || type === "xy" || type === "nested") && isCount(d.groups) && isCount(d.replicates);
   let data = defined({
     ...d,
     columns,
@@ -475,13 +475,17 @@ function readData(raw: Obj, type: unknown): {
     freezeTitle: d.freezeTitle === true || undefined,
   } as TableData);
   const regroupDroppedNames: string[] = [];
-  const lead = type === "xy" ? 2 : 1;
+  // Where the groups start: an XY table's X column comes first — unless the
+  // second column is itself a sub-column ("A:Y1"), i.e. grouped-shaped data
+  // (a hand-built or pre-1.0.9 file), whose groups start right after Title.
+  const lead = type === "xy" && !columns[1]?.includes(":") ? 2 : 1;
+  const kind = lead === 2 ? "xy" : "grouped";
   if (isGrouped(data) && columns.length > lead) {
     const groups = [...new Set(columns.slice(lead).map(seriesKeyOf))];
     const replicates = Math.max(...groups.map((g) => columns.slice(lead).filter((c) => seriesKeyOf(c) === g).length));
     if (groups.length !== data.groups || replicates !== data.replicates) {
-      regroupDroppedNames.push(...regroupDropped(data, groups.length, replicates, type === "xy" ? "xy" : "grouped"));
-      data = defined(regroupTable(data, groups.length, replicates, type === "xy" ? "xy" : "grouped"));
+      regroupDroppedNames.push(...regroupDropped(data, groups.length, replicates, kind));
+      data = defined(regroupTable(data, groups.length, replicates, kind));
     }
   }
   if (isNested(data) && columns.length > 1) {

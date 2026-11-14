@@ -137,6 +137,29 @@ const testFn = (test: NormalityTest) => {
   }
 };
 
+/** One test on one column, from the marshalled R values: the statistic and
+ *  P — or the D'Agostino–Pearson moments computed in TypeScript. Shared by
+ *  the display rows and the normality table (`AnalysisOutcome.normality`). */
+const normalityPair = (
+  v: Record<string, number | null>,
+  test: NormalityTest,
+  i: number,
+  logged: boolean,
+): { stat: number | null; p: number | null } => {
+  if (test === "dagostino-pearson") {
+    const n = logged ? v[`nl${i}`] : v[`n${i}`];
+    const m2 = logged ? v[`m2l_${i}`] : v[`m2_${i}`];
+    const m3 = logged ? v[`m3l_${i}`] : v[`m3_${i}`];
+    const m4 = logged ? v[`m4l_${i}`] : v[`m4_${i}`];
+    const dp = n != null && m2 != null && m3 != null && m4 != null ? dagostinoPearson(n, m2, m3, m4) : null;
+    return { stat: dp?.k2 ?? null, p: dp?.p ?? null };
+  }
+  return {
+    stat: v[logged ? `sl${i}` : `s${i}`] ?? null,
+    p: v[logged ? `pl${i}` : `p${i}`] ?? null,
+  };
+};
+
 export const shapiroWilkSpec: ColumnTestSpec<ShapiroWilkParams> = {
   testType: "shapiro-wilk",
   minGroups: 1,
@@ -166,20 +189,7 @@ export const shapiroWilkSpec: ColumnTestSpec<ShapiroWilkParams> = {
   rows: (v, groups, params) => {
     const { test, lognormal } = resolveNormalityParams(params);
     const stat = STAT_LABEL[test];
-    const one = (i: number, logged: boolean): { stat: number | null; p: number | null } => {
-      if (test === "dagostino-pearson") {
-        const n = logged ? v[`nl${i}`] : v[`n${i}`];
-        const m2 = logged ? v[`m2l_${i}`] : v[`m2_${i}`];
-        const m3 = logged ? v[`m3l_${i}`] : v[`m3_${i}`];
-        const m4 = logged ? v[`m4l_${i}`] : v[`m4_${i}`];
-        const dp = n != null && m2 != null && m3 != null && m4 != null ? dagostinoPearson(n, m2, m3, m4) : null;
-        return { stat: dp?.k2 ?? null, p: dp?.p ?? null };
-      }
-      return {
-        stat: v[logged ? `sl${i}` : `s${i}`] ?? null,
-        p: v[logged ? `pl${i}` : `p${i}`] ?? null,
-      };
-    };
+    const one = (i: number, logged: boolean) => normalityPair(v, test, i, logged);
     return groups.flatMap((g, i) => {
       const raw = one(i, false);
       const out = [
@@ -194,6 +204,17 @@ export const shapiroWilkSpec: ColumnTestSpec<ShapiroWilkParams> = {
         );
       }
       return out;
+    });
+  },
+  /** The per-data-set normality table the wizard's "Not sure" check reads
+   *  (and the results view renders): one row per group, nulls where the
+   *  test can't take the column — the same values as the display rows. */
+  normality: (v, groups, params) => {
+    const { test, lognormal } = resolveNormalityParams(params);
+    return groups.map((g, i) => {
+      const raw = normalityPair(v, test, i, false);
+      const log = lognormal ? normalityPair(v, test, i, true) : { stat: null, p: null };
+      return { group: g.name, w: raw.stat, p: raw.p, logW: log.stat, logP: log.p };
     });
   },
   subtitle: (params) => TEST_NAME[resolveNormalityParams(params).test],

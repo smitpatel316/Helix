@@ -26,6 +26,7 @@ export interface LinearFit {
   sxx: number; // Σw(x-x̄)² (or Σwx² when forced through the origin)
   s: number; // residual standard error
   wSum: number; // Σw (n when unweighted)
+  weighted: boolean; // a weighting scheme applied (no Pearson r is reported for a weighted fit)
 }
 
 /** The weight for one point under a weighting scheme, or null when the scheme
@@ -93,7 +94,7 @@ export function fitLinear(
   const [dx, dy] = [centered(x, xbar), centered(y, ybar)];
   const dot = (a: number[], b: number[]) => a.reduce((sum, ai, i) => sum + ai * b[i], 0);
   const r = dot(dx, dy) / Math.sqrt(dot(dx, dx) * dot(dy, dy));
-  return { slope, intercept, forceOrigin, n, dof, r, r2: 1 - ssRes / ssTot, p: tTwoSidedP(t, dof), xbar, sxx, s, wSum };
+  return { slope, intercept, forceOrigin, n, dof, r, r2: 1 - ssRes / ssTot, p: tTwoSidedP(t, dof), xbar, sxx, s, wSum, weighted: weights !== "none" };
 }
 
 /** Points across the data's X range (see `curveXs`) with the fit line + 95% confidence
@@ -123,7 +124,9 @@ function regressionCurve(
   return { x, yFit, yLo, yHi };
 }
 
-/** "Y = 2.927*X − 0.3322<br>r = 0.9346, R² = 0.8734, P = 0.0021" (no r through the origin) annotation text — Plotly-ready
+/** "Y = 2.927*X − 0.3322<br>r = 0.9346, R² = 0.8734, P = 0.0021" (no r through the origin, and
+ *  none for a weighted fit — R's lm reports no Pearson r for one, and the unweighted r
+ *  would describe the wrong fit) annotation text — Plotly-ready
  *  (line break as `<br>`), formatted the same way as the Analysis panel's equation.
  *  Always uses literal "Y"/"X" rather than the actual column names, for simplicity. */
 function regressionLabel(fit: LinearFit): string {
@@ -131,7 +134,7 @@ function regressionLabel(fit: LinearFit): string {
   const eq = fit.forceOrigin
     ? `Y = ${term}`
     : `Y = ${term} ${fit.intercept < 0 ? "−" : "+"} ${num(Math.abs(fit.intercept))}`;
-  return `${eq}<br>${fit.forceOrigin ? "" : `r = ${num(fit.r)}, `}R² = ${num(fit.r2)}, ${pText(fit.p)}`;
+  return `${eq}<br>${fit.forceOrigin || fit.weighted ? "" : `r = ${num(fit.r)}, `}R² = ${num(fit.r2)}, ${pText(fit.p)}`;
 }
 
 /** Draws a linear-regression analysis's fit on an XY scatter (`columns` = X, then

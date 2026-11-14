@@ -6174,14 +6174,19 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
     { time: "Time", status: "Status", covariates: ["Trt"], ties: "efron" },
   );
   // The menu offers Descriptive statistics first on Multiple Variables
-  // tables, Principal component analysis after Multiple regression,
-  // K-means clustering after that, Outliers after that, Multiple logistic
-  // regression after that, Poisson regression after that, and Cox after that.
+  // tables, Shapiro-Wilk and Linear regression after it (1.0.9: Shapiro-Wilk
+  // is its own entry now, and two variables of a Multiple Variables table
+  // regress on each other), Principal component analysis after Multiple
+  // regression, K-means clustering after that, Outliers after that, Multiple
+  // logistic regression after that, Poisson regression after that, and Cox
+  // after that.
   deepStrictEqual(
     analysisOptionsForTable("multiple").map((o) => o.value),
     [
       "descriptive-statistics",
+      "shapiro-wilk",
       "correlation-matrix",
+      "linear-regression",
       "multiple-regression",
       "principal-component-analysis",
       "k-means",
@@ -6191,12 +6196,12 @@ check("the Cox wizard asks time, status, covariates, stratifier and ties, with b
       "cox-proportional-hazards",
     ],
   );
-  // Multiple Variables tables offer the scatter plot, the forest plot, the
-  // observed-vs-fitted graph, the scree plot, the scores biplot, the
-  // cluster scatter, and survival curves.
+  // Multiple Variables tables offer the scatter plot, the histogram, the
+  // forest plot, the observed-vs-fitted graph, the scree plot, the scores
+  // biplot, the cluster scatter, and survival curves.
   deepStrictEqual(
     GRAPH_OPTIONS_BY_TABLE["multiple"].map((o) => o.value),
-    ["xy-scatter", "heatmap", "volcano", "forest-plot", "observed-fitted", "scree-plot", "pca-biplot", "kmeans-scatter", "survival"],
+    ["xy-scatter", "histogram", "heatmap", "volcano", "forest-plot", "observed-fitted", "scree-plot", "pca-biplot", "kmeans-scatter", "survival"],
   );
   // Renaming a column follows the Cox analysis's params.
   const renamed = followTable(
@@ -8537,6 +8542,51 @@ check("cancelling the Shapiro-Wilk check stops R and reports nothing", async () 
     // healthy either way.
     await startR(fileURLToPath(new URL("../node_modules/webr/dist/", import.meta.url)));
     deepStrictEqual(await evalNamedVector("c(a=1)"), { a: 1 });
+  } finally {
+    if (prevWindow === undefined) delete (globalThis as { window?: unknown }).window;
+    else (globalThis as { window?: unknown }).window = prevWindow;
+  }
+});
+
+// The "Not sure — check for normality first" wizard step must return a
+// verdict on real data, not the empty "Couldn't Run the Shapiro-Wilk
+// Test" alert: the rebase left `AnalysisOutcome.normality` unpopulated
+// (nothing in the runner set it), so the check read zero rows on any
+// data. The runner now fills the per-data-set normality table, and the
+// check judges from it — Gaussian data says so, skewed data says not.
+check("the Shapiro-Wilk check returns a verdict on real data", async () => {
+  const alerts: string[] = [];
+  const prevWindow = (globalThis as { window?: unknown }).window;
+  (globalThis as { window?: unknown }).window = { alert: (msg: string) => alerts.push(msg) };
+  try {
+    // Symmetric sample: the runner's normality table holds its P value.
+    const gaussian: TableData = {
+      columns: ["Title", "A"],
+      rows: [
+        ["", "-1.8"], ["", "-1.2"], ["", "-0.9"], ["", "-0.5"], ["", "-0.2"], ["", "0"],
+        ["", "0.2"], ["", "0.5"], ["", "0.9"], ["", "1.2"], ["", "1.8"], ["", "2.4"],
+      ],
+    };
+    const outcome = await runAnalysis("shapiro-wilk", gaussian);
+    ok(!("error" in outcome), `shapiro-wilk failed: ${"error" in outcome ? outcome.error : ""}`);
+    strictEqual(outcome.normality?.length, 1, `expected one normality row, got ${JSON.stringify(outcome.normality)}`);
+    const p = outcome.normality[0].p;
+    ok(p != null && p > 0.05, `expected a non-significant P, got ${p}`);
+    strictEqual(await checkNormality(gaussian), true);
+    strictEqual(alerts.length, 1, `expected one alert, got ${JSON.stringify(alerts)}`);
+    ok(alerts[0].startsWith("Consistent with a Normal Distribution"), `unexpected alert: ${alerts[0]}`);
+    // Strongly skewed sample: the verdict flips, still no failure alert.
+    alerts.length = 0;
+    const skewed: TableData = {
+      columns: ["Title", "A"],
+      rows: [
+        ["", "0.1"], ["", "0.15"], ["", "0.2"], ["", "0.3"], ["", "0.4"], ["", "0.6"],
+        ["", "0.9"], ["", "1.5"], ["", "2.5"], ["", "4.0"], ["", "6.5"],
+      ],
+    };
+    strictEqual(await checkNormality(skewed), false);
+    strictEqual(alerts.length, 1, `expected one alert, got ${JSON.stringify(alerts)}`);
+    ok(alerts[0].startsWith("Not Consistent with a Normal Distribution"), `unexpected alert: ${alerts[0]}`);
   } finally {
     if (prevWindow === undefined) delete (globalThis as { window?: unknown }).window;
     else (globalThis as { window?: unknown }).window = prevWindow;

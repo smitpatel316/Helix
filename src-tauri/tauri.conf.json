@@ -57,7 +57,8 @@
     "resources": {
       "../samples/Titer Sample.hlx": "Titer Sample.hlx",
       "../LICENSE": "LICENSE",
-      "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md"
+      "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md",
+      "Credits.rtf": "Credits.rtf"
     },
     "fileAssociations": [{ "ext": ["hlx"], "name": "Titer Project", "role": "Editor" }],
     "macOS": {

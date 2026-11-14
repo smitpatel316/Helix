@@ -417,8 +417,11 @@ export function runAnalysis(
       (name) =>
         name !== undefined &&
         // A Y data set's replicates pool (see datasetColumns): "Control"
-        // names "Control_1..3", so it counts as present.
+        // names "Control_1..3", so it counts as present — as does a set's
+        // own name ("A" for an XY table's "A:Y1" replicates), which is how
+        // the runners address a data set.
         !table.columns.some((c) => c.name === name) &&
+        !table.sets.some((s) => s.name === name) &&
         datasetColumns(table.columns, name).length === 0,
     );
   if (gone) return Promise.resolve({ error: missingColumn(gone) });

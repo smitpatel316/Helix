@@ -5,8 +5,8 @@
 // gene-name column. On an XY table, X is the X column and Y a chosen Y column. On a
 // grouped table, graph-view first computes them from two groups (lib/deg.ts). Genes are
 // named by the gene-name column, else by their row titles. Y holds P values
-// (`volcanoYIsPValue`: plotted as their -log10; a P of 0, which has none, one unit above
-// the most significant gene) or values that are -log10 already (plotted as they are):
+// (`volcanoYIsPValue`: plotted as their -log10, a P of 0 one unit above the
+// most significant other gene, never above the capped -log10) or values that are -log10 already (plotted as they are):
 // either way, the higher a gene, the more significant.
 //
 // Rendered as a `scattergl` (WebGL) trace with per-point arrays so tens of thousands
@@ -125,21 +125,35 @@ function build(columns: Column[], options: GraphOptions, paint: Paint, titles?: 
   const labels: Name[] = [];
   const named: Name[] = []; // the genes asked to show their name
 
-  // A P of 0 (as DESeq2 writes its smallest) has no -log10: it goes one unit above the
-  // most significant of the others.
-  const top = yIsP ? yCol.values.reduce((max, p) => (p > 0 ? Math.max(max, -Math.log10(p)) : max), 0) + 1 : 0;
-
   const n = Math.max(xCol.cells.length, yCol.cells.length);
+  // A p / FDR of exactly 0 plots one unit above the most significant other
+  // gene, never above the cap: with ordinary data that is one above the
+  // others' best (3 → 4); with subnormal p values crowding the cap it is
+  // the cap itself. (No other p: the cap — a lone 0 is the most significant
+  // gene there is.) R underflows very small p values to 0, and BH adjustment
+  // can return 0 too — so 0 is plotted, not dropped; only genuinely invalid
+  // values (negative, NaN, ±Infinity) are skipped.
+  let top = VOLCANO_MAX_LOG10;
+  if (yIsP) {
+    let best = -Infinity;
+    for (let r = 0; r < n; r++) {
+      const xv = xCol.byRow[r] ?? null;
+      const yv = yCol.byRow[r] ?? null;
+      if (xv == null || yv == null || yv <= 0 || !Number.isFinite(yv)) continue;
+      best = Math.max(best, Math.min(-Math.log10(yv), VOLCANO_MAX_LOG10));
+    }
+    if (best > -Infinity) top = Math.min(best + 1, VOLCANO_MAX_LOG10);
+  }
   for (let r = 0; r < n; r++) {
     const xv = xCol.byRow[r] ?? null;
     const held = yCol.byRow[r] ?? null;
     if (xv == null || held == null) continue;
-    // A p / FDR of exactly 0 is the most significant gene there is, not a
-    // missing one: R underflows very small p values to 0, and BH adjustment
-    // can return 0 too. It plots one unit above the most significant of the
-    // others (`top`); only genuinely invalid values (negative, NaN,
-    // ±Infinity) are skipped.
-    if (yIsP && (held < 0 || !Number.isFinite(held))) continue;
+    if (yIsP) {
+      if (held < 0 || !Number.isFinite(held)) continue;
+    }
+    // A p of 0 plots at `top` (one above the most significant other, never
+    // above the cap); its hover says the raw value, "padj: 0", not the
+    // plotted height.
     const yv = !yIsP ? held : held === 0 ? top : Math.min(-Math.log10(held), VOLCANO_MAX_LOG10);
     const sig = Math.abs(xv) >= fc && yv >= sigY;
     // A gene is its row; its own style wins over its up / down / not significant look.

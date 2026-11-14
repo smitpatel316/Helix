@@ -1045,7 +1045,9 @@ export function prepareFit(
     yName === undefined
       ? (yCols[0] ? yCols[0].columns : [])
       : (yCols.find((s) => s.name === yName)?.columns ?? datasetColumns(yCols.flatMap((s) => s.columns), yName));
-  const yCol = cols.length === 1 ? cols[0] : cols.length > 1 ? { ...cols[0], name: yName! } : undefined;
+  // The pooled column keeps the data set's name (its first replicate's own
+  // name would misname it — a set fitted with no `y` names its set, not a column).
+  const yCol = cols.length === 1 ? cols[0] : cols.length > 1 ? { ...cols[0], name: yName ?? cols[0].set ?? cols[0].name } : undefined;
   if (!xCol || !yCol) return { error: xyProblem(columns, yName)! };
 
   const complete =
