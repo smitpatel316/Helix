@@ -1,6 +1,6 @@
 # Helix Bug Report
 
-Review of `smitpatel316/Helix` (`85f6c91`) with 28 verified findings grouped by severity (14 High, 12 Medium, 2 Low).
+Review of `smitpatel316/Titer` (`85f6c91`) with 28 verified findings grouped by severity (14 High, 12 Medium, 2 Low).
 
 ---
 

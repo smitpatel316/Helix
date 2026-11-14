@@ -160,7 +160,7 @@ the applied logo, don't assume one.
 | Check | Expected | Plat | Status |
 |---|---|---|---|
 | LICENSE in the DMG | DMG contains LICENSE (GPL-3.0) | M | Branch `release-paperwork` (8f5d0a9) ready, unmerged. **Needs a Mac DMG build to prove the bundling — verify post-merge** |
-| README download links → our releases, exact commit tagged | README links resolve to `smitpatel316/Helix` releases with the launch commit tagged | S | Same branch. Verify post-merge |
+| README download links → our releases, exact commit tagged | README links resolve to `smitpatel316/Titer` releases with the launch commit tagged | S | Same branch. Verify post-merge |
 | Modified-fork notice | README carries the notice crediting the original Helix author (mickaphd) | S | Same branch. Verify post-merge |
 
 ## §7. Suite gate (runs before any GUI work)

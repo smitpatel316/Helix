@@ -16,13 +16,13 @@ statistics (through [webR](https://github.com/r-wasm/webr), R compiled to WebAss
 This is a modified fork of mickaphd/Helix,
 the original Helix by mickaphd (© 2026 mickaphd). On top of upstream it adds
 Prism-file import, a wider analysis catalogue, multi-panel figures, and bug
-fixes — see the [release notes](https://github.com/smitpatel316/Helix/releases)
+fixes — see the [release notes](https://github.com/smitpatel316/Titer/releases)
 and the git history for what changed and when. Like upstream, it is licensed
 under the [GNU General Public License](LICENSE), version 3 or later.
 
 ## Download
 
-Get the latest version from the [Releases page](https://github.com/smitpatel316/Helix/releases):
+Get the latest version from the [Releases page](https://github.com/smitpatel316/Titer/releases):
 
 - `Titer_…_aarch64.dmg` for Macs with Apple Silicon (M1 and later)
 - `Titer_…_x64.dmg` for Macs with an Intel processor

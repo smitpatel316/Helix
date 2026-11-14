@@ -420,8 +420,8 @@ fn accent_color() -> Option<String> {
 #[tauri::command]
 fn open_link(link: String) {
     let url = match link.as_str() {
-        "github" => c"https://github.com/smitpatel316/Helix",
-        "releases" => c"https://github.com/smitpatel316/Helix/releases/latest",
+        "github" => c"https://github.com/smitpatel316/Titer",
+        "releases" => c"https://github.com/smitpatel316/Titer/releases/latest",
         "coffee" => c"https://www.buymeacoffee.com/smitpatel316",
         _ => return,
     };
@@ -560,8 +560,8 @@ fn accent_color() -> Option<String> {
 #[tauri::command]
 fn open_link(link: String) {
     let url = match link.as_str() {
-        "github" => "https://github.com/smitpatel316/Helix",
-        "releases" => "https://github.com/smitpatel316/Helix/releases/latest",
+        "github" => "https://github.com/smitpatel316/Titer",
+        "releases" => "https://github.com/smitpatel316/Titer/releases/latest",
         "coffee" => "https://www.buymeacoffee.com/smitpatel316",
         _ => return,
     };

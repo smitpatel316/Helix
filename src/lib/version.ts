@@ -21,7 +21,7 @@ export function isNewer(a: string, b: string): boolean {
 // release only while that release is being built, so it can only ever
 // produce an optional offer, never a forced one.
 const MAIN_PACKAGE =
-  "https://raw.githubusercontent.com/smitpatel316/Helix/main/package.json";
+  "https://raw.githubusercontent.com/smitpatel316/Titer/main/package.json";
 
 /** The latest version out ("1.1.0"); throws when GitHub refuses the read. */
 export async function latestVersion(): Promise<unknown> {

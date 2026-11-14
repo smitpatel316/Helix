@@ -6585,7 +6585,7 @@ check("the update check reads main's package.json, never the GitHub API", async 
     const asked = answers(json({ version: "1.2.0" }));
     strictEqual(await latestVersion(), "1.2.0");
     strictEqual(asked.length, 1);
-    ok(asked[0].startsWith("https://raw.githubusercontent.com/smitpatel316/Helix/main/"));
+    ok(asked[0].startsWith("https://raw.githubusercontent.com/smitpatel316/Titer/main/"));
     ok(!asked.some((url) => url.includes("api.github.com")), "the GitHub API is never asked");
     // A refused read throws (the caller falls back to the cached channel
     // manifest); there is no 404-means-no-release path any more.
@@ -8058,7 +8058,7 @@ check("a multi-file Prism drop names the skipped files", () => {
 // prompt, the import alert and the import/write reports. This pins the
 // rebranded strings and fails if "Helix" ever creeps back into the surface.
 // src/lib/version.ts is deliberately NOT covered: its GitHub URLs point at
-// the repo, which is still named smitpatel316/Helix.
+// the repo (smitpatel316/Titer) — infrastructure, not user-visible surface.
 check("prism-format surface strings say Titer, not Helix (FL-rebrand)", () => {
   const root = fileURLToPath(new URL("../", import.meta.url));
   const surface = [
