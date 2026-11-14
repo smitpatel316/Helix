@@ -33,7 +33,8 @@ target-triple suffix Tauri's `externalBin` requires):
 # Normal use — the client launches it; nothing to type.
 titer-stdio-bridge
 
-# Check the pipe end to end (side-effect-free MCP ping). Exit 0 = reachable.
+# Check the pipe end to end (initialize handshake, then close the session).
+# Exit 0 = reachable.
 titer-stdio-bridge --check
 
 # Dev: point at a test server without touching Titer's discovery file.
@@ -52,7 +53,13 @@ TITER_MCP_URL=http://127.0.0.1:PORT/mcp TITER_MCP_TOKEN=test-token titer-stdio-b
 
 1. `TITER_MCP_URL` / `TITER_MCP_TOKEN` env vars (dev override).
 2. Discovery file: `--discovery <path>`, else `TITER_MCP_DISCOVERY`, else
-   `<app-data>/mcp.json` — `{"url", "token", "protocol_version"}`.
+   `<app-data>/mcp/discovery.json` — `{"endpoint", "token",
+   "protocol_versions"}` (see `docs/mcp-server-contract.md` §2).
    App-data dir: macOS `~/Library/Application Support/net.smitpatel.helix`,
    Windows `%APPDATA%\net.smitpatel.helix`,
    Linux `${XDG_DATA_HOME:-~/.local/share}/net.smitpatel.helix`.
+
+The bridge sends an `MCP-Protocol-Version` header on every request (the
+server answers 400 without one): the revision the client's `initialize`
+named, when it is one the server speaks (2025-06-18 / 2025-11-25), else
+2025-11-25. On stdin EOF it closes the server session with DELETE.

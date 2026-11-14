@@ -26,7 +26,7 @@
   "name": "titer",
   "repository": {
     "type": "git",
-    "url": "https://github.com/smitpatel316/Helix.git"
+    "url": "https://github.com/smitpatel316/Titer.git"
   },
   "server": {
     "entry_point": "server/titer-stdio-bridge",
@@ -44,7 +44,7 @@
     },
     "type": "binary"
   },
-  "support": "https://github.com/smitpatel316/Helix/issues",
+  "support": "https://github.com/smitpatel316/Titer/issues",
   "tools_generated": true,
   "version": "1.0.0"
 }

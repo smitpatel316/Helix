@@ -11,13 +11,19 @@
 // loopback.
 //
 // Token discovery (the decision — see docs/stdio-bridge.md §2 for the full
-// reasoning): the app writes a discovery file, `<app_data_dir>/mcp.json`
-// (`{"url", "token", "protocol_version"}`), atomically with mode 0600, when
-// the user turns on AI connections in Settings; the bridge reads it at
-// startup. No token is ever baked into the .mcpb bundle or into any AI
-// client's config. `TITER_MCP_URL` / `TITER_MCP_TOKEN` / `TITER_MCP_DISCOVERY`
-// env vars override individual fields, for dev and for Claude Code users who
-// run the bridge by hand.
+// reasoning): the app writes a discovery file, `<app_data_dir>/mcp/discovery.json`
+// (`{"endpoint", "token", "protocol_versions", ...}` — see
+// docs/mcp-server-contract.md §2, owned by the v3/mcp-server lane), atomically
+// with mode 0600, when the user turns on AI connections in Settings; the
+// bridge reads it at startup. No token is ever baked into the .mcpb bundle or
+// into any AI client's config. `TITER_MCP_URL` / `TITER_MCP_TOKEN` /
+// `TITER_MCP_DISCOVERY` env vars override individual fields, for dev and for
+// Claude Code users who run the bridge by hand.
+//
+// The server REQUIRES an `MCP-Protocol-Version` header on every request
+// (its auth middleware answers 400 without one — contract §3). The bridge
+// sends it on every POST, taking the value from the client's `initialize`
+// request when it names a 2025 revision the server speaks, else 2025-11-25.
 //
 // Failure behaviour (a requirement, not an accident):
 //   * Discovery file missing/unreadable, or no token: print a clear message
@@ -41,9 +47,10 @@
 //     any spec revision the server speaks (2025-06-18 / 2025-11-25 per the
 //     roadmap; NOT 2026-07-28 until the clients adopt it).
 //
-// BUILD STATUS: code only — no cargo build/check is allowed in this lane
-// (v1 owns the box). `cargo fmt --check` only. Build + live verification
-// against the real server is pending v1 clear; see docs/stdio-bridge.md §6.
+// BUILD STATUS: built + verified in the v3/claude-desktop lane (cargo test,
+// smoke test against a contract-faithful fake server, mcpb validate/pack).
+// See docs/stdio-bridge.md §6 and
+// ~/workspace/.helix-mcp-claude-desktop/investigations.md.
 
 use reqwest::blocking::Client;
 use serde::Deserialize;
@@ -60,10 +67,18 @@ use std::{
 /// it, exactly as the app's own `app.path().app_data_dir()` does.
 const APP_IDENTIFIER: &str = "net.smitpatel.helix";
 
-/// Name of the discovery file inside the app-data directory. Written by the
-/// app (v3/mcp-server lane); read by this bridge. Contract pinned in
-/// docs/stdio-bridge.md §2 and docs/mcp-server-contract.md.
-const DISCOVERY_FILE: &str = "mcp.json";
+/// Name of the discovery-file directory inside the app-data directory, and
+/// of the file itself. Written by the app (v3/mcp-server lane); read by this
+/// bridge. Contract pinned in docs/mcp-server-contract.md §2 (the file is
+/// `<app_data>/mcp/discovery.json`). The `mcp/` subdir also holds the token
+/// file and the Activity log — all of them owner-only.
+const DISCOVERY_DIR: &str = "mcp";
+const DISCOVERY_FILE: &str = "discovery.json";
+
+/// The protocol version sent in the `MCP-Protocol-Version` header when the
+/// client has not (yet) named one in `initialize`. The server speaks
+/// 2025-06-18 / 2025-11-25 only (contract §1); 2025-11-25 is its newest.
+const DEFAULT_PROTOCOL_VERSION: &str = "2025-11-25";
 
 /// One request may run a slow analysis; 5 minutes is generous without
 /// letting a wedged server hang the client forever.
@@ -71,31 +86,53 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// The message the user sees whenever the server is not reachable. It must
-/// name the exact fix (enable AI connections in Titer Settings) and the exact
-/// place to do it. Keep in sync with the Settings label owned by the
-/// v3/mcp-server lane.
+/// Protocol revisions the server negotiates. A client offering anything else
+/// (e.g. 2026-07-28, which Claude Desktop does not speak yet) still gets a
+/// 2025 header from the bridge — the server answers `initialize` with the
+/// highest revision both sides support.
+const SUPPORTED_PROTOCOL_VERSIONS: [&str; 2] = ["2025-11-25", "2025-06-18"];
+
+/// The message the user sees whenever the server is not reachable. Wording
+/// is the contract's (§1) canonical message, so the bridge, the Settings
+/// page and the docs all name the same fix in the same words.
 const SERVER_OFF_MESSAGE: &str = "Titer's AI connections are off or Titer isn't running. \
-    In Titer, open Settings -> AI connections and turn on 'Allow AI apps to connect', \
+    Turn on 'Allow AI apps to connect' in Titer → Settings → AI connections, \
     then try again.";
 
-/// What the app writes to `<app_data_dir>/mcp.json` when AI connections are
-/// enabled. `protocol_version` is informational only — the bridge forwards
-/// bytes and does not negotiate versions itself.
+/// Surfaced when the server answers 401 after a discovery re-read (contract
+/// §3): the token in the discovery file no longer matches the running server.
+const TOKEN_CHANGED_MESSAGE: &str = "The token changed — restart the bridge \
+    (or re-check Titer → Settings → AI connections).";
+
+/// What the app writes to `<app_data_dir>/mcp/discovery.json` when AI
+/// connections are enabled. `endpoint` is the contract field (§2); `url`
+/// and the singular `protocol_version` are the pre-contract draft names,
+/// still accepted so a bridge built against the draft keeps working.
+/// `protocol_versions` is informational only — the bridge forwards bytes
+/// and negotiates nothing itself, but it sends the first listed revision
+/// as the `MCP-Protocol-Version` header until the client's `initialize`
+/// names one.
 #[derive(Debug, Deserialize)]
 struct Discovery {
-    url: String,
+    endpoint: Option<String>,
+    #[serde(default)]
+    url: Option<String>,
     token: String,
+    #[serde(default)]
+    protocol_versions: Option<Vec<String>>,
     #[serde(default)]
     protocol_version: Option<String>,
 }
 
 /// Resolved runtime config: where to POST, and with which bearer token.
+/// `explicit_discovery` is remembered so a 401 can re-read the file and
+/// retry once with a rotated token instead of failing the session.
 #[derive(Debug)]
 struct BridgeConfig {
     url: String,
     token: String,
     protocol_version: Option<String>,
+    explicit_discovery: Option<PathBuf>,
 }
 
 /// Where Tauri puts the app-data directory for this bundle id, per OS.
@@ -123,7 +160,7 @@ fn default_app_data_dir() -> Option<PathBuf> {
 }
 
 /// Resolve the discovery file location: `--discovery <path>`, else
-/// `TITER_MCP_DISCOVERY`, else `<app_data_dir>/mcp.json`.
+/// `TITER_MCP_DISCOVERY`, else `<app_data_dir>/mcp/discovery.json`.
 fn discovery_path(explicit: Option<&Path>) -> Option<PathBuf> {
     if let Some(p) = explicit {
         return Some(p.to_path_buf());
@@ -133,7 +170,7 @@ fn discovery_path(explicit: Option<&Path>) -> Option<PathBuf> {
             return Some(PathBuf::from(p));
         }
     }
-    default_app_data_dir().map(|d| d.join(DISCOVERY_FILE))
+    default_app_data_dir().map(|d| d.join(DISCOVERY_DIR).join(DISCOVERY_FILE))
 }
 
 /// Load the config. Env vars override individual fields of the discovery
@@ -167,18 +204,22 @@ fn load_config(explicit_discovery: Option<&Path>) -> Result<BridgeConfig, String
             )
         })?;
         if url.is_none() {
-            url = Some(disc.url);
+            // Contract field first, pre-contract draft name as fallback.
+            url = disc.endpoint.or(disc.url);
         }
         if token.is_none() {
             token = Some(disc.token);
         }
-        protocol_version = disc.protocol_version;
+        protocol_version = disc.protocol_versions.and_then(|vs| vs.into_iter().next()).or(disc.protocol_version);
     }
 
     match (url, token) {
-        (Some(url), Some(token)) if !url.is_empty() && !token.is_empty() => {
-            Ok(BridgeConfig { url, token, protocol_version })
-        }
+        (Some(url), Some(token)) if !url.is_empty() && !token.is_empty() => Ok(BridgeConfig {
+            url,
+            token,
+            protocol_version,
+            explicit_discovery: explicit_discovery.map(Path::to_path_buf),
+        }),
         _ => Err(format!("Titer's AI connection has no server URL or token. {SERVER_OFF_MESSAGE}")),
     }
 }
@@ -237,29 +278,76 @@ enum ForwardOutcome {
     Failed(String),
 }
 
+/// One HTTP POST to the server. The `MCP-Protocol-Version` header is
+/// REQUIRED by the server's auth middleware (contract §3): without it the
+/// server answers 400 before rmcp ever sees the request. The value is the
+/// revision the client's `initialize` named, else the server's advertised
+/// revision, else 2025-11-25 (see `initialize_protocol_version`).
+fn post_once(
+    client: &Client,
+    cfg: &BridgeConfig,
+    session_id: &Option<String>,
+    protocol_version: &str,
+    line: &str,
+) -> Result<reqwest::blocking::Response, reqwest::Error> {
+    let mut req = client
+        .post(cfg.url.as_str())
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .header("MCP-Protocol-Version", protocol_version)
+        .header("Authorization", format!("Bearer {}", cfg.token))
+        .body(line.to_string());
+    if let Some(sid) = session_id.as_deref() {
+        req = req.header("Mcp-Session-Id", sid);
+    }
+    req.send()
+}
+
+/// The protocol version the client names in `initialize` (contract §4),
+/// when it is one the server speaks. The bridge forwards bytes and does not
+/// negotiate — but the `MCP-Protocol-Version` header it sends must name a
+/// revision the server accepts, so an unrecognised offer (e.g. 2026-07-28,
+/// which no Desktop client speaks yet) falls back to the default instead of
+/// being echoed back at a server that would reject it.
+fn initialize_protocol_version(value: &Value) -> Option<String> {
+    if value.get("method").and_then(Value::as_str) != Some("initialize") {
+        return None;
+    }
+    let offered = value.get("params")?.get("protocolVersion")?.as_str()?;
+    if SUPPORTED_PROTOCOL_VERSIONS.contains(&offered) {
+        Some(offered.to_string())
+    } else {
+        None
+    }
+}
+
+/// Close the server session when the client goes away (contract §4.5):
+/// DELETE the endpoint with the session id. Best-effort — the server also
+/// expires idle sessions — so every failure mode here is silent.
+fn close_session(client: &Client, cfg: &BridgeConfig, protocol_version: &str, session_id: &str) {
+    let _ = client
+        .delete(cfg.url.as_str())
+        .header("Accept", "application/json, text/event-stream")
+        .header("MCP-Protocol-Version", protocol_version)
+        .header("Authorization", format!("Bearer {}", cfg.token))
+        .header("Mcp-Session-Id", session_id)
+        .send();
+}
+
 /// Forward one raw JSON-RPC line to the Streamable HTTP endpoint.
 /// `session_id` is the `Mcp-Session-Id` the server returned at initialize
 /// (if any); it is sent on every subsequent request and refreshed whenever
 /// the server returns a new one.
 fn forward(
     client: &Client,
-    cfg: &BridgeConfig,
+    cfg: &mut BridgeConfig,
     session_id: &mut Option<String>,
+    protocol_version: &str,
     line: &str,
     request_id: &Value,
     is_notification: bool,
 ) -> ForwardOutcome {
-    let mut req = client
-        .post(cfg.url.as_str())
-        .header("Content-Type", "application/json")
-        .header("Accept", "application/json, text/event-stream")
-        .header("Authorization", format!("Bearer {}", cfg.token))
-        .body(line.to_string());
-    if let Some(sid) = session_id.as_deref() {
-        req = req.header("Mcp-Session-Id", sid);
-    }
-
-    let resp = match req.send() {
+    let mut resp = match post_once(client, cfg, session_id, protocol_version, line) {
         Ok(r) => r,
         Err(e) => {
             // The server is down (or never started): the client gets the
@@ -280,6 +368,30 @@ fn forward(
             return ForwardOutcome::Failed(jsonrpc_error(request_id, -32000, &message));
         }
     };
+
+    // 401: the token may have rotated since this bridge started (contract
+    // §2). Re-read the discovery file once and retry once with the fresh
+    // token; a second 401 gets the contract's token-changed message, not
+    // the server's plain-text body.
+    if resp.status().as_u16() == 401 {
+        let mut retried = false;
+        if let Ok(fresh) = load_config(cfg.explicit_discovery.as_deref()) {
+            if fresh.token != cfg.token || fresh.url != cfg.url {
+                *cfg = fresh;
+                if let Ok(r) = post_once(client, cfg, session_id, protocol_version, line) {
+                    resp = r;
+                    retried = true;
+                }
+            }
+        }
+        if !retried || resp.status().as_u16() == 401 {
+            if is_notification {
+                eprintln!("titer-stdio-bridge: notification failed: {TOKEN_CHANGED_MESSAGE}");
+                return ForwardOutcome::NoResponse;
+            }
+            return ForwardOutcome::Failed(jsonrpc_error(request_id, -32000, TOKEN_CHANGED_MESSAGE));
+        }
+    }
 
     if let Some(sid) = resp.headers().get("mcp-session-id").and_then(|v| v.to_str().ok()) {
         *session_id = Some(sid.to_string());
@@ -371,13 +483,16 @@ fn write_line(out: &mut impl Write, line: &str) -> bool {
     }
 }
 
-/// The main loop: read stdin lines, forward each, write replies.
-fn run_loop(client: &Client, cfg: &BridgeConfig) -> i32 {
+/// The main loop: read stdin lines, forward each, write replies. On stdin
+/// EOF the client's session is closed on the server (contract §4.5) before
+/// exiting 0.
+fn run_loop(client: &Client, cfg: &mut BridgeConfig) -> i32 {
     let stdin = io::stdin();
     let mut lines = BufReader::new(stdin.lock()).lines();
     let stdout = io::stdout();
     let mut out = BufWriter::new(stdout.lock());
     let mut session_id: Option<String> = None;
+    let mut negotiated_protocol: Option<String> = None;
 
     while let Some(next) = lines.next() {
         let line = match next {
@@ -423,7 +538,18 @@ fn run_loop(client: &Client, cfg: &BridgeConfig) -> i32 {
 
         let request_id = value.get("id").cloned().unwrap_or(Value::Null);
         let is_notification = value.get("method").is_some() && value.get("id").is_none();
-        match forward(client, cfg, &mut session_id, &line, &request_id, is_notification) {
+        // Remember the protocol revision the client offered at initialize —
+        // it becomes the `MCP-Protocol-Version` header from here on.
+        // Owned (not a borrow of cfg): forward() takes &mut cfg for the
+        // 401 retry, so a borrowed header value would not compile (E0502).
+        if let Some(v) = initialize_protocol_version(&value) {
+            negotiated_protocol = Some(v);
+        }
+        let protocol_version: String = negotiated_protocol
+            .clone()
+            .or(cfg.protocol_version.clone())
+            .unwrap_or_else(|| DEFAULT_PROTOCOL_VERSION.to_string());
+        match forward(client, cfg, &mut session_id, &protocol_version, &line, &request_id, is_notification) {
             ForwardOutcome::Messages(messages) => {
                 for m in messages {
                     if !write_line(&mut out, &m) {
@@ -439,21 +565,48 @@ fn run_loop(client: &Client, cfg: &BridgeConfig) -> i32 {
             }
         }
     }
+    if let Some(sid) = session_id.as_deref() {
+        let protocol_version =
+            negotiated_protocol.as_deref().or(cfg.protocol_version.as_deref()).unwrap_or(DEFAULT_PROTOCOL_VERSION);
+        close_session(client, cfg, protocol_version, sid);
+    }
     0
 }
 
-/// `--check`: verify the bridge can reach the server, with a side-effect-free
-/// MCP `ping`. Exit 0 = ok, 1 = server unreachable, 2 = no discovery/token.
-fn probe(client: &Client, cfg: &BridgeConfig) -> i32 {
-    let ping = serde_json::json!({
+/// `--check`: verify the bridge can reach the server with a real
+/// `initialize` handshake (protocolVersion 2025-11-25), then close the
+/// session again. A bare `ping` is NOT a reliable probe: the server's
+/// session manager rejects non-initialize requests without a session, so a
+/// ping would report a healthy server as unreachable. Exit 0 = ok,
+/// 1 = server unreachable or handshake refused, 2 = no discovery/token.
+fn probe(client: &Client, cfg: &mut BridgeConfig) -> i32 {
+    let init = serde_json::json!({
         "jsonrpc": "2.0",
         "id": "titer-bridge-check",
-        "method": "ping",
+        "method": "initialize",
+        "params": {
+            "protocolVersion": DEFAULT_PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": { "name": "titer-stdio-bridge", "version": VERSION },
+        },
     });
-    let line = ping.to_string();
+    let line = init.to_string();
     let mut session_id = None;
-    match forward(client, cfg, &mut session_id, &line, &Value::Null, false) {
-        ForwardOutcome::Messages(_) => {
+    match forward(client, cfg, &mut session_id, DEFAULT_PROTOCOL_VERSION, &line, &Value::Null, false) {
+        ForwardOutcome::Messages(messages) => {
+            // A valid initialize result proves the pipe end to end; a
+            // JSON-RPC error means the server answered but refused the
+            // handshake — still a failure, but a different one.
+            let ok = messages
+                .iter()
+                .any(|m| serde_json::from_str::<Value>(m).map(|v| v.get("result").is_some()).unwrap_or(false));
+            if !ok {
+                eprintln!("titer-stdio-bridge: server refused the initialize handshake.");
+                return 1;
+            }
+            if let Some(sid) = session_id.as_deref() {
+                close_session(client, cfg, DEFAULT_PROTOCOL_VERSION, sid);
+            }
             println!(
                 "ok: Titer MCP server reachable at {}{}",
                 cfg.url,
@@ -462,7 +615,7 @@ fn probe(client: &Client, cfg: &BridgeConfig) -> i32 {
             0
         }
         ForwardOutcome::NoResponse => {
-            eprintln!("titer-stdio-bridge: server accepted ping but returned no response.");
+            eprintln!("titer-stdio-bridge: server accepted initialize but returned no response.");
             1
         }
         ForwardOutcome::Failed(err) => {
@@ -489,8 +642,9 @@ fn print_usage() {
          \n\
          OPTIONS\n\
          \x20 --discovery <path>  Read server URL + token from this file instead of\n\
-         \x20                     <app-data>/mcp.json (TITER_MCP_DISCOVERY does the same).\n\
-         \x20 --check             Ping the server once and exit (0 = reachable).\n\
+         \x20                     <app-data>/mcp/discovery.json (TITER_MCP_DISCOVERY does the same).\n\
+         \x20 --check             Initialize-handshake probe, then close the session\n\
+         \x20                     and exit (0 = reachable).\n\
          \x20 --help              Show this help.\n\
          \x20 --version           Show the version.\n\
          \n\
@@ -499,7 +653,7 @@ fn print_usage() {
          \x20 TITER_MCP_TOKEN     Override the bearer token from the discovery file.\n\
          \x20 TITER_MCP_DISCOVERY Override the discovery file path.\n\
          \n\
-         The server URL and token normally come from <app-data>/mcp.json, written\n\
+         The server URL and token normally come from <app-data>/mcp/discovery.json, written\n\
          by Titer when AI connections are enabled in Settings. If that file is\n\
          missing, the bridge exits 2 with instructions instead of hanging."
     );
@@ -540,7 +694,7 @@ fn main() -> ExitCode {
         i += 1;
     }
 
-    let cfg = match load_config(explicit_discovery.as_deref()) {
+    let mut cfg = match load_config(explicit_discovery.as_deref()) {
         Ok(c) => c,
         Err(message) => {
             eprintln!("titer-stdio-bridge: {message}");
@@ -556,9 +710,9 @@ fn main() -> ExitCode {
     };
 
     if check {
-        return ExitCode::from(probe(&client, &cfg) as u8);
+        return ExitCode::from(probe(&client, &mut cfg) as u8);
     }
-    ExitCode::from(run_loop(&client, &cfg) as u8)
+    ExitCode::from(run_loop(&client, &mut cfg) as u8)
 }
 
 #[cfg(test)]
@@ -593,17 +747,57 @@ mod tests {
     }
 
     #[test]
-    fn discovery_parses_with_and_without_protocol_version() {
-        // The port below is arbitrary test data — the real port always comes
-        // from the discovery file, never from a constant in this crate.
+    fn discovery_parses_contract_shape() {
+        // The shape the server actually writes (docs/mcp-server-contract.md
+        // §2): <app_data>/mcp/discovery.json with `endpoint` +
+        // `protocol_versions`. The port below is arbitrary test data — the
+        // real port always comes from the discovery file, never from a
+        // constant in this crate.
+        let full: Discovery = serde_json::from_str(
+            r#"{"endpoint":"http://127.0.0.1:18741/mcp","token":"abc","protocol_versions":["2025-11-25","2025-06-18"],"server":"titer","version":"1.2.0"}"#,
+        )
+        .unwrap();
+        assert_eq!(full.endpoint.as_deref(), Some("http://127.0.0.1:18741/mcp"));
+        assert_eq!(full.token, "abc");
+        assert_eq!(
+            full.protocol_versions.as_deref(),
+            Some(["2025-11-25".to_string(), "2025-06-18".to_string()].as_slice())
+        );
+    }
+
+    #[test]
+    fn discovery_parses_legacy_shape() {
+        // Pre-contract draft names (`url`, singular `protocol_version`) are
+        // still accepted so a bridge built against the draft keeps working.
         let full: Discovery = serde_json::from_str(
             r#"{"url":"http://127.0.0.1:47231/mcp","token":"abc","protocol_version":"2025-06-18"}"#,
         )
         .unwrap();
-        assert_eq!(full.url, "http://127.0.0.1:47231/mcp");
+        assert_eq!(full.url.as_deref(), Some("http://127.0.0.1:47231/mcp"));
         assert_eq!(full.protocol_version.as_deref(), Some("2025-06-18"));
         let minimal: Discovery = serde_json::from_str(r#"{"url":"http://127.0.0.1:47231/mcp","token":"abc"}"#).unwrap();
         assert!(minimal.protocol_version.is_none());
+        assert!(minimal.protocol_versions.is_none());
+    }
+
+    #[test]
+    fn initialize_tracks_supported_version_only() {
+        let init_2025 = serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {} },
+        });
+        assert_eq!(initialize_protocol_version(&init_2025).as_deref(), Some("2025-06-18"));
+        // A revision the server does not speak is NOT echoed back — the
+        // bridge falls back to the default header instead.
+        let init_2026 = serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "protocolVersion": "2026-07-28", "capabilities": {}, "clientInfo": {} },
+        });
+        assert_eq!(initialize_protocol_version(&init_2026), None);
+        let other = serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {},
+        });
+        assert_eq!(initialize_protocol_version(&other), None);
     }
 
     #[test]
