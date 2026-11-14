@@ -1,0 +1,28 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "author": {
+    "name": "Smit Patel",
+    "url": "https://smitpatel.net"
+  },
+  "description": "Read open Titer projects, tables, and analysis results from Antigravity — Titer runs on your own machine, so your data never leaves it.",
+  "displayName": "Titer",
+  "homepage": "https://github.com/smitpatel316/Titer",
+  "keywords": [
+    "titer",
+    "prism",
+    "statistics",
+    "graphing",
+    "mcp",
+    "research"
+  ],
+  "license": "GPL-3.0",
+  "logo": "assets/logo.png",
+  "name": "titer",
+  "repository": "https://github.com/smitpatel316/Titer",
+  "suggestedPrompts": [
+    "List my open Titer projects and their tables",
+    "Summarise the data in my current Titer table",
+    "What analyses have I run in this Titer project, and what did they find?"
+  ],
+  "version": "0.1.0"
+}

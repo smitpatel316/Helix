@@ -2,6 +2,7 @@ node_modules/
 dist/
 r-packages/
 src-tauri/target/
+src-tauri/mcp-bridge/target/
 src-tauri/gen/
 .DS_Store
 
