@@ -8460,6 +8460,89 @@ check("a nonlinear fit pools a Y data set's replicates, and a column name still 
   ok("error" in prepareFit(columns, "Nope", "sigmoidal-4pl-x"));
 });
 
+// Transpose rows/columns (v2): flip a table's orientation — each row becomes
+// a column (data set) and each column becomes a row — as a results sheet;
+// the source table is never touched (Prism's Analyze > Transpose).
+check("transpose flips rows and columns, keeps text and blanks, and leaves the source alone", async () => {
+  const table: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["A", "0", "10", "5"],
+      ["B", "1", "12", "7"],
+      ["C", "2", "14", "9"],
+    ],
+  };
+  const out = await runAnalysis("transpose", table);
+  if ("error" in out) throw new Error(out.error);
+  strictEqual(out.testType, "transpose");
+  // Row titles become the new column titles; column names become the new
+  // row titles (Prism: the first row becomes the first data set).
+  deepStrictEqual(out.transposed?.columns, ["Title", "A", "B", "C"]);
+  deepStrictEqual(out.transposed?.rows, [
+    ["Time", 0, 1, 2],
+    ["Y1", 10, 12, 14],
+    ["Y2", 5, 7, 9],
+  ]);
+  // A transpose has no key statistics or descriptives to report.
+  deepStrictEqual(out.stats, []);
+  deepStrictEqual(out.groups, []);
+  ok(out.notes.includes("3-row × 4-column table"));
+  ok(out.notes.includes("source table is unchanged"));
+  // The source table is untouched by the run.
+  deepStrictEqual(table.rows, [
+    ["A", "0", "10", "5"],
+    ["B", "1", "12", "7"],
+    ["C", "2", "14", "9"],
+  ]);
+  // Text stays text, blanks stay blank, and a title-less row is "Row N".
+  const mixed: TableData = {
+    columns: ["Title", "Group", "Score"],
+    rows: [
+      ["", "ctrl", "10"],
+      ["", "trt", ""],
+      ["", "ctrl", "30"],
+    ],
+  };
+  const mixedOut = await runAnalysis("transpose", mixed);
+  if ("error" in mixedOut) throw new Error(mixedOut.error);
+  deepStrictEqual(mixedOut.transposed?.columns, ["Title", "Row 1", "Row 2", "Row 3"]);
+  deepStrictEqual(mixedOut.transposed?.rows, [
+    ["Group", "ctrl", "trt", "ctrl"],
+    ["Score", 10, null, 30],
+  ]);
+  // Offered on XY and Column tables — the data-operation tables — not grouped.
+  ok(analysisOptionsForTable("xy").some((o) => o.value === "transpose"));
+  ok(analysisOptionsForTable("column").some((o) => o.value === "transpose"));
+  ok(!analysisOptionsForTable("grouped").some((o) => o.value === "transpose"));
+  // No wizard: picking it runs at once, with no params to ask for.
+  strictEqual(ANALYSES.transpose.label, "Transpose rows/columns");
+});
+
+check("transpose refuses a table Prism could not transpose", async () => {
+  // Prism cannot create a table with more than 256 columns, so a table with
+  // more than 256 rows cannot be transposed (Prism 8/9 User Guide).
+  const tooMany: TableData = {
+    columns: ["Title", "Y"],
+    rows: Array.from({ length: 257 }, (_, r) => ["", String(r)]),
+  };
+  deepStrictEqual(await runAnalysis("transpose", tooMany), {
+    error: "A table with 257 rows cannot be transposed — Prism cannot create a table with more than 256 columns.",
+  });
+  // 256 rows is the cap, not over it.
+  const atCap: TableData = {
+    columns: ["Title", "Y"],
+    rows: Array.from({ length: 256 }, (_, r) => ["", String(r)]),
+  };
+  const capped = await runAnalysis("transpose", atCap);
+  if ("error" in capped) throw new Error(capped.error);
+  strictEqual(capped.transposed?.columns.length, 257);
+  // A table holding nothing has nothing to flip.
+  deepStrictEqual(
+    await runAnalysis("transpose", { columns: ["Title", "Y"], rows: [["", ""]] }),
+    { error: "No cell holds a value yet." },
+  );
+});
+
 // ── Run ──────────────────────────────────────────────────────────────────
 
 // Descriptives are computed by R since the v1.0.7 rebase, so checks that run

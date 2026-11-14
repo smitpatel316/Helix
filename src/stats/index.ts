@@ -78,6 +78,7 @@ import { runMixedEffects } from "./mixed/mixed-effects";
 import { runBlandAltman } from "./column/bland-altman";
 import { runRocCurve } from "./column/roc-curve";
 import { runFrequencyDistribution } from "./column/frequency-distribution";
+import { runTranspose } from "./column/transpose";
 import { runMonteCarlo } from "./simulation/monte-carlo";
 import type { MonteCarloParams } from "./types";
 import type { TableData } from "../store/types";
@@ -312,6 +313,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Monte Carlo simulation",
     minColumns: 1,
     run: (c, p) => runMonteCarlo(c, p as MonteCarloParams),
+  },
+  "transpose": {
+    label: "Transpose rows/columns",
+    minColumns: 1,
+    run: (c, _p, t) => runTranspose(c, t),
   },
 };
 

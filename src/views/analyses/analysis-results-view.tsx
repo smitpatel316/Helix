@@ -237,6 +237,26 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
+      {result.transposed && (
+        <Table
+          title="Transposed table"
+          columns={result.transposed.columns.map((label, i) => ({ label, numeric: i > 0 }))}
+          rows={result.transposed.rows.map((row) =>
+            row.map((cell, j) =>
+              j === 0 ? (
+                cell
+              ) : cell == null ? (
+                <span className="text-secondary">—</span>
+              ) : typeof cell === "number" ? (
+                num(cell)
+              ) : (
+                cell
+              ),
+            ),
+          )}
+        />
+      )}
+
       {result.comparisons && result.comparisons.length > 0 && (
         <Table
           title={result.comparisonsLabel ?? "Multiple comparisons"}

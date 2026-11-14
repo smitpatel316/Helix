@@ -43,7 +43,8 @@ export type AnalysisType =
   | "bland-altman"
   | "roc-curve"
   | "frequency-distribution"
-  | "monte-carlo";
+  | "monte-carlo"
+  | "transpose";
 
 /** What the New Analysis picker offers: a test, or "Compare more than two groups",
  *  which its wizard resolves to one-way ANOVA, Kruskal-Wallis, repeated-measures ANOVA
@@ -1022,6 +1023,20 @@ export interface FrequencyBins {
   bins: FrequencyBinRow[];
 }
 
+/** One cell of a transposed table ("transpose"): a number where the source
+ *  cell held one, the raw text where it held text, null where it was blank
+ *  (or excluded). */
+export type TransposedCell = string | number | null;
+
+/** The transposed table ("transpose"): the source table with rows and
+ *  columns swapped. `columns` are the new column titles — "Title", then one
+ *  per source row (its title, or "Row N" when it has none) — and `rows` are
+ *  one per source data column, each starting with that column's name. */
+export interface TransposedTable {
+  columns: string[];
+  rows: TransposedCell[][];
+}
+
 /** One row of a K-means clustering's clusters table ("k-means"): one
  *  cluster's centre (in the ORIGINAL units — back-transformed when the
  *  variables were standardised), its size, and its within-cluster sum of
@@ -1151,6 +1166,10 @@ export interface AnalysisResult {
   hazardRatios?: HazardRatioRow[];
   /** Optional per-column frequency-distribution bins ("frequency-distribution"). */
   frequencyBins?: FrequencyBins[];
+  /** Optional transposed table ("transpose"): the source table with rows
+   *  and columns swapped — one column per source row, one row per source
+   *  data column. */
+  transposed?: TransposedTable;
   /** Optional ROC points ("roc-curve"): one row per threshold (unique score
    *  values, descending); Youden's J is computed at render time. */
   rocCurve?: RocPoint[];
