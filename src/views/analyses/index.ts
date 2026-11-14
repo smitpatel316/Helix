@@ -32,6 +32,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
   column: optionsFor([
     "descriptive-statistics",
     "frequency-distribution",
+    "transform-data",
     "compare-two-groups",
     "compare-many-groups",
     "mixed-effects",
@@ -49,6 +50,7 @@ export const ANALYSIS_OPTIONS_BY_TABLE: Record<TableType, SelectorOption<Analysi
     "deming-regression",
     "simple-logistic-regression",
     "area-under-curve",
+    "transform-data",
     "nonlinear-regression",
     "dose-response-special",
     "binding-saturation",

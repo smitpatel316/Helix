@@ -216,6 +216,34 @@ export function AnalysisResultsView({ result }: { result: AnalysisResult }) {
         />
       )}
 
+      {result.transformed &&
+        result.transformed.map((t) => (
+          <Table
+            key={t.column}
+            title={
+              result.transformed!.length > 1
+                ? `Transformed values — ${t.column}`
+                : `Transformed values — ${t.label}(${t.column})`
+            }
+            columns={[
+              { label: "Row" },
+              { label: t.column, numeric: true },
+              { label: `${t.label}(${t.column})`, numeric: true },
+            ]}
+            rows={t.original.flatMap((original, i) =>
+              original == null
+                ? []
+                : [
+                    [
+                      String(i + 1),
+                      num(original),
+                      t.values[i] == null ? <span className="text-secondary">—</span> : num(t.values[i]),
+                    ],
+                  ],
+            )}
+          />
+        ))}
+
       {/* The equation is its own wrapping block, not a row of the stats table:
           a long equation (the Operational model's is 183 chars) in a
           whitespace-nowrap table stretches the table past the window and

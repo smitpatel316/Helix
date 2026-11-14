@@ -37,6 +37,7 @@ import type {
   ShapiroWilkParams,
   SplineLowessParams,
   ThreeWayAnovaParams,
+  TransformFunction,
   TwoWayAnovaParams,
   XYCorrelationParams,
 } from "../../stats/types";
@@ -750,6 +751,29 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
             ? { binCount: a.binCount as number, startAt: a.startAt as number }
             : {}),
       }),
+    }),
+  },
+
+  // Transform data (v2, item 1): one function applied to every value of the
+  // chosen columns. Prism's standard set (log10, ln, log2, sqrt, reciprocal,
+  // exp, square); a value the function is undefined for is left blank in
+  // the results sheet, never NaN — the runner states the reason in its notes.
+  "transform-data": {
+    questions: (_, table) => [
+      ...someSets(table, 1),
+      choice("function", "Which function should be applied to the values?", [
+        ["log10", "log10(Y) — logarithm, base 10"],
+        ["ln", "ln(Y) — natural logarithm"],
+        ["log2", "log2(Y) — logarithm, base 2"],
+        ["sqrt", "sqrt(Y) — square root"],
+        ["reciprocal", "1/Y — reciprocal"],
+        ["exp", "exp(Y) — e to the power of Y"],
+        ["square", "Y² — square"],
+      ]),
+    ],
+    finish: (a) => ({
+      type: "transform-data",
+      params: withSets(a, { function: (a.function as TransformFunction | undefined) ?? "log10" }),
     }),
   },
 

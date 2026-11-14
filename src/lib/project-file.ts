@@ -52,6 +52,7 @@ import {
   ROUT_Q,
   TAILS,
   THREE_WAY_TERMS,
+  TRANSFORM_FUNCTIONS,
   TWO_WAY_DESIGNS,
 } from "../stats/types";
 import { NAMED_COLORS, paletteNamed, savedPalette } from "./palettes";
@@ -255,6 +256,8 @@ const PARAMS = {
   groupMeans: "numbers-by-name",
   groupSds: "numbers-by-name",
   rout: "yes/no", x: "name",
+  // Transform data (v2): which function to apply.
+  function: TRANSFORM_FUNCTIONS,
 } satisfies Record<ParamKey, ParamKind>;
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);

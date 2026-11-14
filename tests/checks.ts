@@ -124,6 +124,7 @@ import {
   prettyBreaks,
   sturgesCount,
 } from "../src/stats/column/frequency-distribution";
+import { transformValue } from "../src/stats/column/transform-data";
 import { makeInitialState, reducer } from "../src/store/use-project-store";
 import { isNewer, latestVersion } from "../src/lib/version";
 import { decideUpdate, type ChannelManifest } from "../src/lib/channel";
@@ -7429,6 +7430,64 @@ check("Sturges, pretty breaks and nice widths match R's rules", () => {
   strictEqual(niceWidthUp(2), 2);
   strictEqual(niceWidthUp(2.01), 5);
   strictEqual(niceWidthUp(0.06), 0.1);
+});
+
+// ── Transform data (v2, item 1) ─────────────────────────────────────────
+
+check("transformValue applies Prism's standard functions, and leaves undefined values blank", () => {
+  strictEqual(transformValue("log10", 100), 2);
+  strictEqual(transformValue("log10", 1), 0);
+  strictEqual(transformValue("ln", Math.E), 1);
+  strictEqual(transformValue("log2", 8), 3);
+  strictEqual(transformValue("sqrt", 16), 4);
+  strictEqual(transformValue("reciprocal", 4), 0.25);
+  strictEqual(transformValue("exp", 0), 1);
+  strictEqual(transformValue("square", -3), 9);
+  // Undefined for the input: blank (null), never NaN — log of ≤ 0, square
+  // root of a negative, reciprocal of 0, an overflowing exp/square.
+  strictEqual(transformValue("log10", 0), null);
+  strictEqual(transformValue("log10", -5), null);
+  strictEqual(transformValue("ln", 0), null);
+  strictEqual(transformValue("log2", -1), null);
+  strictEqual(transformValue("sqrt", -4), null);
+  strictEqual(transformValue("reciprocal", 0), null);
+  strictEqual(transformValue("exp", 1000), null);
+  strictEqual(transformValue("square", 1e200), null);
+});
+
+check("transform-data returns log10 values as a results sheet and never touches the source", async () => {
+  const table = (values: (number | string)[]): TableData => ({
+    columns: ["Title", "V"],
+    rows: values.map((v) => [null, String(v)]),
+  });
+  const out = await runAnalysis("transform-data", table([1, 10, 100]), { function: "log10" });
+  if ("error" in out) throw new Error(out.error);
+  deepStrictEqual(out.transformed?.[0].values, [0, 1, 2]);
+  deepStrictEqual(out.transformed?.[0].original, [1, 10, 100]);
+  strictEqual(out.transformed?.[0].excluded, 0);
+  strictEqual(out.subtitle, "Transform data — log10(Y)");
+  // The source values are still the source values: the transform only
+  // reports, it never rewrites the table.
+  deepStrictEqual(table([1, 10, 100]).rows, [[null, "1"], [null, "10"], [null, "100"]]);
+
+  // log of ≤ 0 is left blank and counted, with the reason in the notes.
+  const logged = await runAnalysis("transform-data", table([0, -2, 10]), { function: "log10" });
+  if ("error" in logged) throw new Error(logged.error);
+  deepStrictEqual(logged.transformed?.[0].values, [null, null, 1]);
+  strictEqual(logged.transformed?.[0].excluded, 2);
+  if (!logged.notes.includes("log10 is undefined for values ≤ 0"))
+    throw new Error(`expected the exclusion reason in the notes, got ${JSON.stringify(logged.notes)}`);
+  // A column with nothing transformable reports no descriptives group.
+  const none = await runAnalysis("transform-data", table([-1, 0]), { function: "log10" });
+  if ("error" in none) throw new Error(none.error);
+  if (none.groups.length !== 0)
+    throw new Error(`expected no descriptives group, got ${JSON.stringify(none.groups)}`);
+  if (!none.notes.includes("no value could be transformed"))
+    throw new Error(`expected the all-excluded note, got ${JSON.stringify(none.notes)}`);
+
+  const few = await runAnalysis("transform-data", table([]), { function: "log10" });
+  if (!("error" in few) || !few.error.includes("at least 1 column"))
+    throw new Error(`expected the no-data error, got ${JSON.stringify(few)}`);
 });
 
 // ── Simulate data + Monte Carlo (plan 22) ───────────────────────────────
