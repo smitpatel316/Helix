@@ -1,0 +1,37 @@
+{
+  "mcpServers": {
+    "local": {
+      "enabledTools": [
+        "titer_list_projects",
+        "titer_list_tables",
+        "titer_read_table_summary",
+        "titer_read_results",
+        "titer_read_graph"
+      ],
+      "headers": {
+        "Authorization": "Bearer ${TITER_MCP_TOKEN}"
+      },
+      "timeoutSeconds": 300,
+      "tools": {
+        "titer_list_projects": {
+          "eager": true
+        }
+      },
+      "url": "${TITER_MCP_URL}",
+      "variables": [
+        {
+          "description": "The endpoint shown in Titer → Settings → AI connections while the server is on (usually http://127.0.0.1:18741/mcp). Copy it from Settings — do not guess the port.",
+          "link": "https://github.com/smitpatel316/Titer/blob/main/docs/antigravity.md",
+          "name": "TITER_MCP_URL",
+          "title": "Titer MCP endpoint"
+        },
+        {
+          "description": "The local token shown in Titer → Settings → AI connections (Show → Copy). It stays valid until you regenerate it in Settings. Keep it private — never share it or commit it.",
+          "link": "https://github.com/smitpatel316/Titer/blob/main/docs/antigravity.md",
+          "name": "TITER_MCP_TOKEN",
+          "title": "Titer local token"
+        }
+      ]
+    }
+  }
+}

@@ -52,7 +52,9 @@ TITER_MCP_URL=http://127.0.0.1:PORT/mcp TITER_MCP_TOKEN=test-token titer-stdio-b
 
 1. `TITER_MCP_URL` / `TITER_MCP_TOKEN` env vars (dev override).
 2. Discovery file: `--discovery <path>`, else `TITER_MCP_DISCOVERY`, else
-   `<app-data>/mcp.json` — `{"url", "token", "protocol_version"}`.
+   `<app-data>/mcp/discovery.json` — `{"endpoint", "token",
+   "protocol_versions", "server", "version"}` (the draft `{"url", "token",
+   "protocol_version"}` shape is still accepted).
    App-data dir: macOS `~/Library/Application Support/net.smitpatel.helix`,
    Windows `%APPDATA%\net.smitpatel.helix`,
    Linux `${XDG_DATA_HOME:-~/.local/share}/net.smitpatel.helix`.
