@@ -452,17 +452,56 @@ fn run_loop(client: &Client, cfg: &BridgeConfig) -> i32 {
     0
 }
 
+/// Pull the human-readable message out of a JSON-RPC error reply the bridge
+/// built (or return the raw string when it is not one).
+fn error_text(err: &str) -> String {
+    serde_json::from_str::<Value>(err)
+        .ok()
+        .and_then(|v| v.get("error")?.get("message")?.as_str().map(str::to_string))
+        .unwrap_or_else(|| err.to_string())
+}
+
 /// `--check`: verify the bridge can reach the server, with a side-effect-free
 /// MCP `ping`. Exit 0 = ok, 1 = server unreachable, 2 = no discovery/token.
+///
+/// A 2025-11-25 Streamable HTTP server only creates a session on
+/// `initialize` — a bare `ping` first gets HTTP 400 ("Session ID is
+/// required") — so initialize first (forward captures the session id from
+/// the response), then ping on that session. (Fixed 2026-11-14 by the
+/// v3/claude-code lane: the original --check pinged first and could never
+/// succeed against the real server.)
 fn probe(client: &Client, cfg: &BridgeConfig) -> i32 {
+    let version = cfg.protocol_version.as_deref().unwrap_or("2025-11-25");
+    let init = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": "titer-bridge-check-init",
+        "method": "initialize",
+        "params": {
+            "protocolVersion": version,
+            "capabilities": {},
+            "clientInfo": {"name": "titer-stdio-bridge", "version": VERSION},
+        },
+    });
+    let mut session_id = None;
+    match forward(client, cfg, &mut session_id, &init.to_string(), &serde_json::json!("titer-bridge-check-init"), false)
+    {
+        ForwardOutcome::Messages(_) => {}
+        ForwardOutcome::NoResponse => {
+            eprintln!("titer-stdio-bridge: server accepted initialize but returned no response.");
+            return 1;
+        }
+        ForwardOutcome::Failed(err) => {
+            eprintln!("titer-stdio-bridge: {}", error_text(&err));
+            return 1;
+        }
+    }
     let ping = serde_json::json!({
         "jsonrpc": "2.0",
         "id": "titer-bridge-check",
         "method": "ping",
     });
     let line = ping.to_string();
-    let mut session_id = None;
-    match forward(client, cfg, &mut session_id, &line, &Value::Null, false) {
+    match forward(client, cfg, &mut session_id, &line, &serde_json::json!("titer-bridge-check"), false) {
         ForwardOutcome::Messages(_) => {
             println!(
                 "ok: Titer MCP server reachable at {}{}",
@@ -476,11 +515,7 @@ fn probe(client: &Client, cfg: &BridgeConfig) -> i32 {
             1
         }
         ForwardOutcome::Failed(err) => {
-            let message = serde_json::from_str::<Value>(&err)
-                .ok()
-                .and_then(|v| v.get("error")?.get("message")?.as_str().map(str::to_string))
-                .unwrap_or(err);
-            eprintln!("titer-stdio-bridge: {message}");
+            eprintln!("titer-stdio-bridge: {}", error_text(&err));
             1
         }
     }
