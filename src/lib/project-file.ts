@@ -48,6 +48,7 @@ import {
   MONTE_CARLO_TARGETS,
   NONLINEAR_MODELS,
   POSTHOC_TARGETS,
+  PRUNE_ROWS_CONDITIONS,
   RANK_POSTHOCS,
   ROUT_Q,
   TAILS,
@@ -218,6 +219,8 @@ const PARAMS = {
   fixed: "numbers-by-name",
   bounds: "number-pairs-by-name",
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q, lambda: "number",
+  // Prune rows (v2): the condition, and the threshold/range it needs.
+  condition: PRUNE_ROWS_CONDITIONS, threshold: "number", low: "number", high: "number",
   alpha: { min: 0.001, max: 0.5 }, iterate: "yes/no",
   f: "number", spar: "number", df: "number",
   y: "name-or-names", y2: "name", ys: "names", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names",

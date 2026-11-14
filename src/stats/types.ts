@@ -15,6 +15,7 @@ export type AnalysisType =
   | "linear-regression"
   | "deming-regression"
   | "area-under-curve"
+  | "prune-rows"
   | "nonlinear-regression"
   | "logistic-regression"
   | "two-way-anova"
@@ -255,6 +256,28 @@ export interface LogisticRegressionParams {
 export interface AreaUnderCurveParams {
   /** Baseline Y value the area is measured from (peaks are heights above it). */
   baseline: number;
+}
+
+/** The conditions "prune-rows" drops rows on: a row holding no value in
+ *  any chosen column, or a row whose every held value is below a
+ *  threshold, above a threshold, or outside a range. */
+export const PRUNE_ROWS_CONDITIONS = ["empty", "below", "above", "outside"] as const;
+export type PruneRowsCondition = (typeof PRUNE_ROWS_CONDITIONS)[number];
+
+/** Params for "prune-rows": which columns to prune on (`ys`), the
+ *  condition, and — for XY tables — the X column whose values label the
+ *  result rows. */
+export interface PruneRowsParams {
+  /** Omitted: every numeric column except `x` — the wizard always sets it. */
+  ys?: string[];
+  /** XY tables only: the X column, for the result rows' X values. */
+  x?: string;
+  condition: PruneRowsCondition;
+  /** The threshold (conditions "below" / "above"). */
+  threshold?: number;
+  /** The range's ends (condition "outside"). */
+  low?: number;
+  high?: number;
 }
 
 /** The curves a nonlinear regression fits. `-logx`/`-x` say whether X is log(concentration)
@@ -798,6 +821,7 @@ export type AnalysisParams = DataSetsParam &
     | LinearRegressionParams
     | DemingRegressionParams
     | AreaUnderCurveParams
+    | PruneRowsParams
     | NonlinearRegressionParams
     | BindingSaturationParams
     | BindingKineticsParams
@@ -977,6 +1001,24 @@ export interface AreaUnderCurveRow {
   n: number;
 }
 
+/** One kept or pruned row ("prune-rows"): the row title (or row number),
+ *  the X value at that row (XY tables only), and the value held in each
+ *  chosen column (`null`: blank). */
+export interface PrunedRowsRow {
+  row: string;
+  x?: number | null;
+  values: (number | null)[];
+}
+
+/** The rows "prune-rows" kept and dropped: the chosen columns, then the
+ *  kept rows and the pruned rows — the pruned ones listed so what was
+ *  dropped stays visible, and recoverable from the untouched source. */
+export interface PrunedRowsResult {
+  columns: string[];
+  kept: PrunedRowsRow[];
+  pruned: PrunedRowsRow[];
+}
+
 /** One row of "outliers" results: one column's outlier count, with ROUT's robust mean
  *  (ROUT), or the mean after removing flagged outliers (`mean`, Grubbs). */
 interface OutlierGroupRow {
@@ -1141,6 +1183,9 @@ export interface AnalysisResult {
   correlations?: CorrelationRow[];
   /** Optional per-Y area-under-curve table ("area-under-curve"). */
   areas?: AreaUnderCurveRow[];
+  /** Optional kept and pruned rows ("prune-rows"): the kept rows, then
+   *  the pruned rows listed so what was dropped stays visible. */
+  prunedRows?: PrunedRowsResult;
   /** Optional per-column outlier summary ("outliers"). */
   outlierGroups?: OutlierGroupRow[];
   /** Optional per-group survival summary ("survival"). */

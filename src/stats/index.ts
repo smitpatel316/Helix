@@ -15,6 +15,7 @@ import type {
   DoseResponseSpecialParams,
   EnzymeInhibitionParams,
   FrequencyDistributionParams,
+  PruneRowsParams,
   KMeansParams,
   McNemarParams,
   MixedEffectsParams,
@@ -53,6 +54,7 @@ import { linearRegressionSpec, runLinearRegressions } from "./xy/linear-regressi
 import { demingRegressionSpec } from "./xy/deming-regression";
 import { runLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
+import { runPruneRows } from "./xy/prune-rows";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
 import { runBindingKinetics, runBindingSaturation } from "./xy/binding";
 import { runEnzymeInhibition } from "./xy/enzyme-inhibition";
@@ -170,6 +172,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Area under the curve",
     minColumns: 2,
     run: (c, p) => runAreaUnderCurve(c, p as AreaUnderCurveParams),
+  },
+  "prune-rows": {
+    label: "Prune rows",
+    minColumns: 1,
+    run: (c, p, t) => runPruneRows(c, p as PruneRowsParams, t),
   },
   "nonlinear-regression": {
     label: "Nonlinear regression",
