@@ -5,6 +5,14 @@ src-tauri/target/
 src-tauri/gen/
 .DS_Store
 
+# v3 stdio bridge (Phase 1): staged sidecar binaries + built .mcpb bundles are
+# build artefacts, never committed. Sources: src-tauri/mcp-bridge/,
+# mcpb/manifest.json; staging: scripts/build-stdio-bridge.sh, scripts/pack-mcpb.sh.
+src-tauri/binaries/
+src-tauri/mcp-bridge/target/
+mcpb/server/
+*.mcpb
+
 # Linux dev/test run artefacts (logs, pid files, probe scripts)
 logs/
 

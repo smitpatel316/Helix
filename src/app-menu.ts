@@ -275,6 +275,16 @@ export function useAppMenu(doc: DocumentActions) {
         ],
       },
       {
+        text: "Settings",
+        items: [
+          {
+            text: "AI Connections…",
+            accelerator: "CmdOrCtrl+,",
+            action: () => latest.current.store.openSelector({ kind: "ai-connections" }),
+          },
+        ],
+      },
+      {
         text: "View",
         items: [
           {
