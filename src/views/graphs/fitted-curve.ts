@@ -152,9 +152,10 @@ function curveLabel(fit: AnalysisResult): string {
  *  under the points, in its color (`ys`, the graph's Y series, places it in the palette),
  *  and their note when `note`: one data set's values one per line, several's one line
  *  each, after its name. (Upstream 1.0.9, with our fittedCurve's grid; the ROUT
- *  hollow-out is skipped — our fits carry no curveOutliers until the ROUT-in-fit
- *  follow-up lands, so it would be the identity. The multi-Y reference check
- *  drives this; the app's scatter uses addFittedCurve for the same curves.) */
+ *  hollow-out is still skipped — the fits now carry curveOutliers, but hollowing
+ *  out the excluded points on the scatter is GUI work for the v2 combined
+ *  verification. The multi-Y reference check drives this; the app's scatter uses
+ *  addFittedCurve for the same curves.) */
 export function addFittedCurves(
   fig: GraphFigure,
   x: Column,

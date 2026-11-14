@@ -11,6 +11,7 @@
 // binding / enzyme-inhibition / global-fit runners.
 import type {
   AnalysisOutcome,
+  AnalysisResult,
   Column,
   FitRow,
   InterpolatedRow,
@@ -21,7 +22,9 @@ import type {
   StatRow,
 } from "../types";
 import { describe, pRow, rVec } from "../column/base";
+import { routQError } from "../types";
 import { num } from "../../lib/format";
+import { pointKeyOf } from "../../lib/columns";
 import { datasetColumns, splitXY, xyProblem } from "../../lib/dataset";
 import { evalNamedVector, type RVector } from "../webr";
 import { rowName } from "../grouped/base";
@@ -636,10 +639,11 @@ function fitRows(derivedSets: DerivedRow[][], statsSets: StatRow[][]): FitRow[] 
  *  RSDR)²)); then, the points ranked by their distance to it, from the 70th percentile on:
  *  the first whose P (t = |residual| / RSDR, N − K df, two-sided) is under Q(N − (i − 1)) / N
  *  is an outlier, and every point farther. `out`: the outliers; `rsdr`, `m`: the robust fit.
- *  (Upstream 1.0.9, verbatim — its ROUT-in-nonlinear-fit wiring is NOT yet ported:
- *  our runner fits via nonlinear-fit.ts, not upstream's inline `fit()`; a follow-up
- *  lane wires `params.rout`/`q` through it, reports `curveOutliers` and the
- *  "Outliers (ROUT)" fit row. The `rout`/`q` params are already in types.) */
+ *  (Upstream 1.0.9, verbatim — wired by `detectRoutOutliers` below: the runner's
+ *  effective spec (fixed/bounded parameters, weights) is rewired as the `fit`
+ *  function ROUT calls, each fitted set's outliers are found and left out of
+ *  its fit, and the result reports `curveOutliers` and the "Outliers (ROUT)"
+ *  fit row. The `rout`/`q` params are already in types.) */
 export const R_ROUT_CURVE =
   `routOf<-function(x,y,K,q){n<-length(y);none<-list(out=rep(FALSE,n),rsdr=NA)\n` +
   `rsdr<-function(m)quantile(abs(y-fitted(m)),0.6827,type=6,names=FALSE)*n/(n-K)\n` +
@@ -650,6 +654,116 @@ export const R_ROUT_CURVE =
   `s<-rsdr(m);if(!is.finite(s)||s<=0)return(none);r<-abs(y-fitted(m));o<-order(r);out<-rep(FALSE,n)\n` +
   `for(i in max(1,floor(0.7*n)):n)if(2*pt(-r[o[i]]/s,n-K)<q*(n-(i-1))/n){out[o[i:n]]<-TRUE;break}\n` +
   `list(out=out,rsdr=s,m=m)}`;
+
+/** One point ROUT left out, as the result reports it (`curveOutliers`). */
+type CurveOutlier = NonNullable<AnalysisResult["curveOutliers"]>[number];
+
+/** R defining `fit(x, y, rw)` — the spec's fit as a function `routOf` can
+ *  call with its robust weights (`rw`, the reweighting pass's weights).
+ *  Upstream 1.0.9's spec fits already carry `weights=w`, so its `fit` is
+ *  the fit statement as-is; ours do not (weights are added by
+ *  `applyFitOptions`), so the weights go on here: appended to the fit's
+ *  final call (its outer nls/lm — the 5PL's inner start-fit needs none, it
+ *  only supplies starts). With user weights the fit is weighted by them
+ *  alone on the first pass, by their product with the robust weights after
+ *  (`w` is in scope from `extraAssignments`); without them, by `rw` alone
+ *  (`rw = NULL` is unweighted). The segmental line's breakpoint is
+ *  profiled unweighted (its `optimize` call takes no weights) while its
+ *  final lm takes `rw` — an approximation, confined to ROUT detection. */
+function routFitFunction(spec: ModelSpec, userWeighted: boolean): string {
+  const fit = spec.fit;
+  if (!fit.endsWith(")")) throw new Error("Cannot wire ROUT into this fit.");
+  if (userWeighted) {
+    if (!fit.endsWith(",weights=w)")) throw new Error("Cannot wire ROUT into a weighted fit.");
+    const body = fit.slice(0, -",weights=w)".length) + ",weights=ww)";
+    return `fit<-function(x,y,rw=NULL){ww<-if(is.null(rw))w else w*rw;${body};m}`;
+  }
+  return `fit<-function(x,y,rw=NULL){${fit.slice(0, -1)},weights=rw);m}`;
+}
+
+/** Run upstream 1.0.9's ROUT (`R_ROUT_CURVE`) on one fitted series: a
+ *  robust fit of `spec` (its effective spec — fixed/bounded parameters and
+ *  weights already applied, `extraAssignments` assigning the user's weights
+ *  `w` when weighted), then the FDR-ranked outlier test at Q `qPercent`
+ *  (in %). Returns which points are outliers, in fit order. A series
+ *  ROUT cannot fit (too few points, or the robust fit fails) has none —
+ *  `routOf` says so itself — while an R error in the detection is a
+ *  failure, not a silent pass: the fit must not proceed as if ROUT ran. */
+async function detectRoutOutliers(
+  xs: number[],
+  ys: number[],
+  spec: ModelSpec,
+  extraAssignments: string,
+  qPercent: number,
+): Promise<{ out: boolean[] }> {
+  const k = spec.terms.length;
+  const q = qPercent / 100;
+  const code =
+    `x<-${rVec(xs)};y<-${rVec(ys)};${extraAssignments}${R_ROUT_CURVE}\n` +
+    `${routFitFunction(spec, extraAssignments.includes("w<-"))}\n` +
+    `o<-routOf(x,y,${k},${q});c(rsdr=o$rsdr,idx=which(o$out))`;
+  let v: RVector;
+  try {
+    v = await evalNamedVector(code);
+  } catch (err) {
+    throw new Error(
+      `ROUT outlier detection failed (${err instanceof Error ? err.message : String(err)}). Turn ROUT off or try another model.`,
+    );
+  }
+  const flagged = new Set(
+    Object.entries(v)
+      .filter(([name]) => /^idx\d*$/.test(name))
+      .map(([, value]) => value)
+      .filter((n): n is number => n != null),
+  );
+  return { out: xs.map((_, i) => flagged.has(i + 1)) };
+}
+
+/** Drop a prepared fit's ROUT-flagged points (xs/ys/rows/columns together)
+ *  and the outlier records for the result (`curveOutliers`): the data set,
+ *  the row's label, X/Y, and the point's key (its exact Y column + row). */
+function excludeRoutOutliers(
+  prep: { xs: number[]; ys: number[]; rows: number[]; columns: string[] },
+  out: boolean[],
+  setName: string,
+  titles: (string | null)[],
+): {
+  kept: { xs: number[]; ys: number[]; rows: number[]; columns: string[] };
+  outliers: CurveOutlier[];
+} {
+  const kept = { xs: [] as number[], ys: [] as number[], rows: [] as number[], columns: [] as string[] };
+  const outliers: CurveOutlier[] = [];
+  prep.xs.forEach((x, i) => {
+    if (out[i])
+      outliers.push({
+        set: setName,
+        label: rowName(titles, prep.rows[i]),
+        x,
+        y: prep.ys[i],
+        key: pointKeyOf(prep.columns[i], prep.rows[i]),
+      });
+    else {
+      kept.xs.push(x);
+      kept.ys.push(prep.ys[i]);
+      kept.rows.push(prep.rows[i]);
+      kept.columns.push(prep.columns[i]);
+    }
+  });
+  return { kept, outliers };
+}
+
+/** The notes' ROUT sentence (upstream 1.0.9's wording): what Q was, and
+ *  that the flagged points were left out — or that none were found. */
+function routNotes(q: number, outliers: CurveOutlier[], setNames: string[]): string {
+  if (!outliers.length)
+    return ` ROUT (Q = ${q}%; Motulsky & Brown, 2006) found no outliers — every point is in the fit.`;
+  const per = setNames
+    .map((n) => ({ name: n, n: outliers.filter((o) => o.set === n).length }))
+    .filter((p) => p.n > 0);
+  const where =
+    per.length === 1 ? ` from the “${per[0].name}” fit` : `: ${per.map((p) => `${p.n} from “${p.name}”`).join(", ")}`;
+  return ` Outliers found by ROUT (Q = ${q}%; Motulsky & Brown, 2006), each left out of its data set's fit${where}.`;
+}
 
 /** R: `interp(m, yu, lo, hi, pos)`, the X the fitted curve `m` gives each Y of `yu` (`ix_i`):
  *  the lowest one within the standards' X (`lo` to `hi`), else below them, else above them, as
@@ -926,21 +1040,54 @@ async function runGlobalNonlinear(
   params: NonlinearRegressionParams | undefined,
   model: NonlinearModel,
   spec: ModelSpec,
-  first: { xCol: Column; yCol: Column; xs: number[]; ys: number[]; rows: number[] },
+  first: { xCol: Column; yCol: Column; xs: number[]; ys: number[]; rows: number[]; columns: string[] },
   xCol: Column,
+  rout?: { q: number; titles: (string | null)[] },
 ): Promise<AnalysisOutcome> {
   const fixed = params?.fixed ?? {};
   const bounds = params?.bounds ?? {};
   const extraNames = params!.globalY!;
-  const series: { name: string; xs: number[]; ys: number[] }[] = [
-    { name: first.yCol.name, xs: first.xs, ys: first.ys },
+  const series: { name: string; xs: number[]; ys: number[]; rows: number[]; columns: string[] }[] = [
+    { name: first.yCol.name, xs: first.xs, ys: first.ys, rows: first.rows, columns: first.columns },
   ];
   const yCols: Column[] = [first.yCol];
   for (const name of extraNames) {
     const p = prepareFit(columns, name, model, Object.keys(fixed).length);
     if ("error" in p) return p;
-    series.push({ name, xs: p.xs, ys: p.ys });
+    series.push({ name, xs: p.xs, ys: p.ys, rows: p.rows, columns: p.columns });
     yCols.push(p.yCol);
+  }
+  // ROUT (upstream 1.0.9): each series' outliers found on its own
+  // constrained fit, then left out of the stacked fit — the singles below
+  // and the global fit both run on the kept points. A global fit refuses
+  // weighting, so the detection spec carries fixed/bounds only.
+  let routOutliers: CurveOutlier[] = [];
+  if (rout) {
+    let effSpec: ModelSpec;
+    try {
+      effSpec = applyFitOptions(spec, { fixed, bounds }).spec;
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+    for (const s of series) {
+      let det: { out: boolean[] };
+      try {
+        det = await detectRoutOutliers(s.xs, s.ys, effSpec, "", rout.q);
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+      const { kept, outliers } = excludeRoutOutliers(s, det.out, s.name, rout.titles);
+      if (kept.xs.length < effSpec.terms.length + 1)
+        return {
+          error:
+            `ROUT (Q = ${rout.q}%) left only ${kept.xs.length} points in “${s.name}” — too few to fit this curve; try a larger Q, or fit every point.`,
+        };
+      s.xs = kept.xs;
+      s.ys = kept.ys;
+      s.rows = kept.rows;
+      s.columns = kept.columns;
+      routOutliers.push(...outliers);
+    }
   }
   // A series that will not fit alone will not fit globally either. The
   // starts come from the same constrained fits (fixed/bounded parameters
@@ -1181,6 +1328,11 @@ async function runGlobalNonlinear(
   }
   rows.push({ label: "R squared", values: result.perSeries.map((p) => p.rSquared) });
   rows.push({ label: "N", values: result.perSeries.map((p) => p.n) });
+  if (rout)
+    rows.push({
+      label: "Outliers (ROUT)",
+      values: sets.map((s) => routOutliers.filter((o) => o.set === s).length),
+    });
   const statOf = (label: string) => result.stats.find((s) => s.label === label)?.value ?? null;
   const stats: StatRow[] = [
     { label: "R squared (all series)", value: statOf("R squared") },
@@ -1205,7 +1357,8 @@ async function runGlobalNonlinear(
       ? ` Bounded: ${Object.entries(bounds)
           .map(([n, [lo, hi]]) => `${termLabel(n)} in [${num(lo)}, ${num(hi)}]`)
           .join(", ")}.`
-      : "");
+      : "") +
+    (rout ? routNotes(rout.q, routOutliers, sets) : "");
   return {
     testType: "nonlinear-regression",
     subtitle: MODEL_LABEL[model],
@@ -1214,6 +1367,7 @@ async function runGlobalNonlinear(
     groups,
     notes,
     coefficients,
+    ...(routOutliers.length ? { curveOutliers: routOutliers } : {}),
     // The homologous curve needs [L] to draw (the overlay reads it off
     // the result) — without it the curve is undefined.
     ...(params?.ligandConcentration != null ? { ligandConcentration: params.ligandConcentration } : {}),
@@ -1265,6 +1419,14 @@ export async function runNonlinearRegression(
   const twoSiteError: AnalysisOutcome = {
     error: "Two-site fit did not converge — try the one-site fit first, or check that the curve shows two clear phases.",
   };
+  // ROUT (upstream 1.0.9): Q defaults to 1% — the wizard offers no Q, its
+  // choice says "Q = 1%". A bad Q is refused before R runs.
+  const useRout = params?.rout === true;
+  const qPercent = params?.q ?? 1;
+  if (useRout) {
+    const qErr = routQError(qPercent);
+    if (qErr) return { error: qErr };
+  }
 
   // ── Plan 26 validation (all combinations refused up front, plainly) ──
   const weightsScheme = params?.weights ?? "none";
@@ -1295,6 +1457,8 @@ export async function runNonlinearRegression(
     return { error: "Fixed parameters and bounds can't be combined with comparing models — compare the unconstrained fits." };
   if (comparingModels && params?.interpolate)
     return { error: "Interpolation can't be combined with comparing models — fit the model first, then interpolate from it." };
+  if (comparingModels && useRout)
+    return { error: "ROUT can't be combined with comparing models yet — fit the model with ROUT first, then compare it with the other model." };
   if (global && comparingSets)
     return { error: "A global fit can't be combined with comparing two data sets — the global fit already fits them together." };
   if (global && params?.interpolate)
@@ -1322,13 +1486,13 @@ export async function runNonlinearRegression(
   if (comparingSets && !other) return { error: xyProblem(columns, params.compareWith)! };
   if (other && !spec.dose) return { error: "Only dose-response curves can be compared." };
 
-  const first = prepareFit(columns, params?.y, model, fixedNames.length);
+  let first = prepareFit(columns, params?.y, model, fixedNames.length);
   if ("error" in first) return first;
   // Weighting needs the fitted points (and, for 1/SD², their rows).
   const weightResult = computeWeights(weightsScheme, first, yCols.flatMap((s) => s.columns));
   if ("error" in weightResult) return weightResult;
-  const weights = weightResult.weights;
-  const fitOpts: FitOptions = {
+  let weights = weightResult.weights;
+  let fitOpts: FitOptions = {
     ...(weights ? { weights } : {}),
     ...(fixedNames.length ? { fixed } : {}),
     ...(boundNames.length ? { bounds } : {}),
@@ -1344,18 +1508,71 @@ export async function runNonlinearRegression(
   }
 
   // The global fit is its own branch (one stacked nls call, not the
-  // single-curve paths below).
-  if (global) return runGlobalNonlinear(columns, params, model, spec, first, xCol);
+  // single-curve paths below) — it filters its own series, first included.
+  if (global)
+    return runGlobalNonlinear(columns, params, model, spec, first, xCol, useRout ? { q: qPercent, titles } : undefined);
 
   // Comparing two models on the same data (plan 26's `compareModel` — the
   // plan's `compareWith` name is already the other data set's column).
   if (comparingModels) return compareModels(params, model, spec, first, xCol, weights, titles, columns);
 
-  let second: { xs: number[]; ys: number[] } | undefined;
+  // ROUT (upstream 1.0.9): the first set's outliers found, then left out of
+  // its fit. Detection runs on the unfiltered points with the effective spec
+  // (weights included), so the weights are re-subset to the kept points and
+  // the effective spec rebuilt on them.
+  let routOutliers: CurveOutlier[] = [];
+  if (useRout) {
+    let det: { out: boolean[] };
+    try {
+      det = await detectRoutOutliers(first.xs, first.ys, effSpec, extraAssignments, qPercent);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+    const { kept, outliers } = excludeRoutOutliers(first, det.out, yCol.name, titles);
+    if (kept.xs.length < effSpec.terms.length + 1)
+      return {
+        error:
+          `ROUT (Q = ${qPercent}%) left only ${kept.xs.length} points in “${yCol.name}” — too few to fit this curve; try a larger Q, or fit every point.`,
+      };
+    first = { ...first, xs: kept.xs, ys: kept.ys, rows: kept.rows, columns: kept.columns };
+    routOutliers.push(...outliers);
+    if (weights) {
+      weights = weights.filter((_, i) => !det.out[i]);
+      fitOpts = { ...fitOpts, weights };
+      try {
+        const applied = applyFitOptions(spec, fitOpts);
+        effSpec = applied.spec;
+        extraAssignments = applied.extraAssignments;
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  }
+
+  let second: { xs: number[]; ys: number[]; rows: number[]; columns: string[] } | undefined;
   if (other) {
     const p = prepareFit(columns, params.compareWith, model);
     if ("error" in p) return p;
-    second = p;
+    // ROUT: the second set's outliers found on its own fit, then left out —
+    // a comparison refuses weights/fixed/bounds, so the plain spec fits it.
+    if (useRout) {
+      let det: { out: boolean[] };
+      try {
+        det = await detectRoutOutliers(p.xs, p.ys, spec, "", qPercent);
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+      const { kept, outliers } = excludeRoutOutliers(p, det.out, other.name, titles);
+      if (kept.xs.length < spec.terms.length + 1)
+        return {
+          error:
+            `ROUT (Q = ${qPercent}%) left only ${kept.xs.length} points in “${other.name}” — too few to fit this curve; try a larger Q, or fit every point.`,
+        };
+      second = kept;
+      routOutliers.push(...outliers);
+    } else {
+      second = p;
+    }
   }
   const sets = [
     { name: yCol.name, xs: first.xs, ys: first.ys },
@@ -1366,6 +1583,7 @@ export async function runNonlinearRegression(
   const unknowns = params?.interpolate && !other ? yCol.rows.filter((r) => xCol.byRow[r] == null) : [];
   const logX = model.endsWith("-logx");
   const [lo, hi] = [Math.min(...first.xs), Math.max(...first.xs)];
+  const rout = useRout ? { outliers: routOutliers, q: qPercent } : undefined;
 
   let v: RVector;
   let retried: boolean | undefined;
@@ -1435,7 +1653,7 @@ export async function runNonlinearRegression(
       // One R call already ran; reuse its entries by re-reading them out of
       // the same shape — simplest is to keep the parsed fit and build the
       // result from it (no second R call).
-      return assembleResult(model, spec, xCol, yCol, other, sets, [fitted], [], [], titles, first, fitted.retried, fitted.retryMethod, params);
+      return assembleResult(model, spec, xCol, yCol, other, sets, [fitted], [], [], titles, first, fitted.retried, fitted.retryMethod, params, [], "", false, rout);
     } catch (err) {
       if (isTwoSiteCompetition(model)) return twoSiteError;
       return fitError(err, model);
@@ -1486,7 +1704,7 @@ export async function runNonlinearRegression(
       high: inverted ? null : high,
     };
   });
-  return assembleResult(model, spec, xCol, yCol, other, sets, parsed, interpolated, v, titles, first, retried, retryMethod, params, [], "", invertedCI);
+  return assembleResult(model, spec, xCol, yCol, other, sets, parsed, interpolated, v, titles, first, retried, retryMethod, params, [], "", invertedCI, rout);
 }
 
 /** The notes' weighting / fixed-parameter / bounds sentences (plan 26): a
@@ -1556,6 +1774,8 @@ async function assembleResult(
   extraStats: StatRow[] = [],
   comparisonNotes = "",
   invertedCI = false,
+  /** ROUT's result, when the fit ran with it: the flagged points and Q. */
+  rout?: { outliers: CurveOutlier[]; q: number },
 ): Promise<AnalysisOutcome> {
   const other = sets.length > 1;
   // Plan 29: the segmental breakpoint is a derived value, not a fitted
@@ -1580,6 +1800,13 @@ async function assembleResult(
   }
   const coefficients = parsed.flatMap((p) => p.coefficients);
   const fit = { sets: sets.map((s) => s.name), rows: fitRows(parsed.map((p) => p.derived), parsed.map((p) => p.stats)) };
+  // ROUT's row (upstream 1.0.9): one count per data set, 0 when it found
+  // none — the row says ROUT ran, even when it left nothing out.
+  if (rout)
+    fit.rows.push({
+      label: "Outliers (ROUT)",
+      values: sets.map((s) => rout.outliers.filter((o) => o.set === s.name).length),
+    });
   const stats: StatRow[] = [
     ...(other
       ? [
@@ -1621,7 +1848,8 @@ async function assembleResult(
     frameworkNotes(params, coefficients, first) +
     (other ? ` Extra sum-of-squares F test: ${question} ${answer}` : "") +
     (comparisonNotes ? ` ${comparisonNotes}` : "") +
-    interpolation;
+    interpolation +
+    (rout ? routNotes(rout.q, rout.outliers, sets.map((s) => s.name)) : "");
   const eq =
     isExponential(model) || isEnzyme(model) || isCompetition(model)
       ? equation(model, coefficients, params?.ligandConcentration)
@@ -1715,6 +1943,7 @@ async function assembleResult(
     notes: notes + (extraNotes.length ? ` ${extraNotes.join(" ")}` : ""),
     coefficients,
     ...(params?.interpolate ? { interpolated } : {}),
+    ...(rout?.outliers.length ? { curveOutliers: rout.outliers } : {}),
     // The overlays need [L] to evaluate a homologous curve (plan 28).
     ...(params?.ligandConcentration != null ? { ligandConcentration: params.ligandConcentration } : {}),
   };

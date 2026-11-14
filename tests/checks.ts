@@ -2570,7 +2570,7 @@ check("fitting a curve asks its kind, then its model, then what to compare", () 
   // framework questions (weights, compareModel, global, constrain) before
   // the Fit-Ki toggle, in that order.
   deepStrictEqual(asked({ y: "A", kind: "dose", model: "inhibitor-3pl-logx" }).map((q) => q.id), [
-    "y",
+    "ys",
     "kind",
     "model",
     "weights",
@@ -2583,7 +2583,7 @@ check("fitting a curve asks its kind, then its model, then what to compare", () 
   deepStrictEqual(
     asked({ y: "A", kind: "dose", model: "inhibitor-3pl-logx", fitKi: "yes" }).map((q) => q.id),
     [
-      "y",
+      "ys",
       "kind",
       "model",
       "weights",
@@ -2598,18 +2598,18 @@ check("fitting a curve asks its kind, then its model, then what to compare", () 
   );
   deepStrictEqual(
     asked({ y: "A", kind: "dose", model: "homologous-competition-logx" }).map((q) => q.id),
-    ["y", "kind", "model", "weights", "compareWith", "compareModel", "global", "constrain", "ligandConcentration"],
+    ["ys", "kind", "model", "weights", "compareWith", "compareModel", "global", "constrain", "ligandConcentration"],
   );
   ok(!asked({ y: "A", kind: "dose", model: "sigmoidal-4pl-logx" }).some((q) => q.id === "fitKi"));
   deepStrictEqual(
     wizard.finish(
-      { y: "A", kind: "dose", model: "inhibitor-3pl-logx", fitKi: "yes", ligandConcentration: "1", ligandKd: "0.5" },
+      { ys: ["A"], kind: "dose", model: "inhibitor-3pl-logx", fitKi: "yes", ligandConcentration: "1", ligandKd: "0.5" },
       table,
     ).params,
     { y: "A", model: "inhibitor-3pl-logx", fitKi: true, ligandConcentration: 1, ligandKd: 0.5 },
   );
   deepStrictEqual(
-    wizard.finish({ y: "A", kind: "dose", model: "homologous-competition-logx", ligandConcentration: "1" }, table)
+    wizard.finish({ ys: ["A"], kind: "dose", model: "homologous-competition-logx", ligandConcentration: "1" }, table)
       .params,
     { y: "A", model: "homologous-competition-logx", ligandConcentration: 1 },
   );
@@ -3028,6 +3028,110 @@ check("closed-form inverses read unknowns off the fitted curve", async () => {
   strictEqual(invertMethod("segmental-linear"), "numeric");
   strictEqual(invertMethod("sigmoidal-4pl-logx"), "closed-form");
   strictEqual(invertModel("quadratic", dose.coefficients, 50), null);
+});
+
+// ROUT-in-fit (v2, upstream 1.0.9): a gross outlier in a 4PL dose-response
+// fit is flagged by ROUT, left out of the fit, and reported — the fit then
+// recovers the clean curve, where the rout-off fit is pulled 11× off it.
+// (Reference values from WebR: clean EC50 0.14389, corrupted rout-off 1.632,
+// corrupted rout-on 0.14362.)
+check("ROUT leaves a flagged outlier out of a 4PL fit and the fit recovers the clean curve", async () => {
+  const doseLog: TableData = {
+    columns: ["Title", "X", "Response"],
+    rows: [
+      ["", "-3", "2.1"],
+      ["", "-2.5", "3.4"],
+      ["", "-2", "8.2"],
+      ["", "-1.5", "19.5"],
+      ["", "-1", "41.2"],
+      ["", "-0.5", "68.9"],
+      ["", "0", "86.1"],
+      ["", "0.5", "94.2"],
+      ["", "1", "97.8"],
+      ["", "1.5", "99.1"],
+    ],
+  };
+  const corrupted: TableData = {
+    ...doseLog,
+    rows: doseLog.rows.map((r) => (r[1] === "0" ? ["", "0", "20"] : r)),
+  };
+  const clean = await runAnalysis("nonlinear-regression", doseLog, { model: "sigmoidal-4pl-logx" });
+  ok(!("error" in clean) && clean.coefficients);
+  const cleanEC50 = clean.fit?.rows.find((r) => r.label === "EC50")?.values?.[0];
+  ok(cleanEC50 != null && Math.abs(cleanEC50 - 0.14389) < 0.002);
+  const off = await runAnalysis("nonlinear-regression", corrupted, { model: "sigmoidal-4pl-logx" });
+  ok(!("error" in off) && off.coefficients);
+  const offEC50 = off.fit?.rows.find((r) => r.label === "EC50")?.values?.[0];
+  ok(offEC50 != null && Math.abs(offEC50 - 1.632) < 0.01);
+  const on = await runAnalysis("nonlinear-regression", corrupted, { model: "sigmoidal-4pl-logx", rout: true });
+  ok(!("error" in on) && on.coefficients);
+  // Exactly the corrupted point is flagged, with its table position.
+  deepStrictEqual(on.curveOutliers, [{ set: "Response", label: "Row 7", x: 0, y: 20, key: "Response#6" }]);
+  deepStrictEqual(on.fit?.rows.find((r) => r.label === "Outliers (ROUT)")?.values, [1]);
+  strictEqual(on.fit?.rows.find((r) => r.label === "N")?.values?.[0], 9);
+  const onEC50 = on.fit?.rows.find((r) => r.label === "EC50")?.values?.[0];
+  ok(onEC50 != null && Math.abs(onEC50 - 0.14362) < 0.002);
+  // The rout-on fit recovers the clean curve; the rout-off fit does not.
+  ok(onEC50 != null && cleanEC50 != null && offEC50 != null);
+  ok(Math.abs(onEC50 - cleanEC50) < Math.abs(offEC50 - cleanEC50));
+  ok(on.notes.includes("Outliers found by ROUT (Q = 1%"));
+  // A Q outside 0.01–50 is refused before R runs.
+  deepStrictEqual(
+    await runAnalysis("nonlinear-regression", corrupted, { model: "sigmoidal-4pl-logx", rout: true, q: 60 }),
+    { error: "Q must be between 0.01 and 50." },
+  );
+});
+
+// ROUT-in-fit (v2, upstream 1.0.9): the global fit finds each series'
+// outliers on its own fit, and a line (lm) fit's ROUT works through the
+// same wrapper — both recover the clean curve. (Reference values from WebR:
+// global EC50 0.14377 shared; line slope 2.0 with ROUT, 3.393 without.)
+check("ROUT excludes outliers per series in a global fit, and from a line fit", async () => {
+  const ys = ["2.1", "3.4", "8.2", "19.5", "41.2", "68.9", "86.1", "94.2", "97.8", "99.1"];
+  const xs = ["-3", "-2.5", "-2", "-1.5", "-1", "-0.5", "0", "0.5", "1", "1.5"];
+  const globalTable: TableData = {
+    columns: ["Title", "X", "A", "B"],
+    rows: xs.map((x, i) => ["", x, ys[i], i === 6 ? "20" : ys[i]]),
+  };
+  const g = await runAnalysis("nonlinear-regression", globalTable, {
+    model: "sigmoidal-4pl-logx",
+    globalY: ["B"],
+    rout: true,
+  });
+  ok(!("error" in g) && g.coefficients);
+  // Only B's corrupted point is flagged; A keeps all ten.
+  deepStrictEqual(g.curveOutliers, [{ set: "B", label: "Row 7", x: 0, y: 20, key: "B#6" }]);
+  deepStrictEqual(g.fit?.rows.find((r) => r.label === "Outliers (ROUT)")?.values, [0, 1]);
+  deepStrictEqual(g.fit?.rows.find((r) => r.label === "N")?.values, [10, 9]);
+  const ec50 = g.fit?.rows.find((r) => r.label === "EC50")?.values;
+  ok(ec50?.length === 2 && ec50.every((v) => v != null && Math.abs(v - 0.14377) < 0.002));
+  ok(g.notes.includes("Outliers found by ROUT (Q = 1%"));
+  // A line fit's ROUT: the same wrapper, an lm fit — slope 2, not the
+  // outlier-pulled 3.39.
+  const lineTable: TableData = {
+    columns: ["Title", "X", "Y1"],
+    rows: [
+      ["", "0", "1"],
+      ["", "1", "3"],
+      ["", "2", "5"],
+      ["", "3", "7"],
+      ["", "4", "9"],
+      ["", "5", "50"],
+      ["", "6", "13"],
+      ["", "7", "15"],
+    ],
+  };
+  const l = await runAnalysis("nonlinear-regression", lineTable, { y: "Y1", model: "line", rout: true });
+  ok(!("error" in l) && l.coefficients);
+  deepStrictEqual(l.curveOutliers, [{ set: "Y1", label: "Row 6", x: 5, y: 50, key: "Y1#5" }]);
+  deepStrictEqual(l.fit?.rows.find((r) => r.label === "Outliers (ROUT)")?.values, [1]);
+  strictEqual(l.fit?.rows.find((r) => r.label === "N")?.values?.[0], 7);
+  const slope = l.coefficients?.find((c) => c.term === "Slope")?.estimate;
+  ok(slope != null && Math.abs(slope - 2) < 0.001);
+  const lOff = await runAnalysis("nonlinear-regression", lineTable, { y: "Y1", model: "line" });
+  ok(!("error" in lOff) && lOff.coefficients);
+  const offSlope = lOff.coefficients?.find((c) => c.term === "Slope")?.estimate;
+  ok(offSlope != null && Math.abs(offSlope - 3.393) < 0.01);
 });
 
 // R2-m10: band inversion on a non-monotonic standard curve can return an
