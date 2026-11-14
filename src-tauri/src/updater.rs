@@ -17,7 +17,9 @@
 //! re-offer the same update forever — so a mismatch refuses the swap before
 //! anything is moved, and the second launch after a good swap is quiet.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+#[cfg(target_os = "macos")]
+use std::path::Path;
 use std::process::Command;
 
 /// Runs a command, returning its stdout on success, or the command's
@@ -43,7 +45,9 @@ fn staging_dir(purpose: &str) -> PathBuf {
     std::env::temp_dir().join(format!("titer-update-{safe}"))
 }
 
-/// A path, quoted for a double-quoted shell string.
+/// A path, quoted for a double-quoted shell string. macOS only: the
+/// Linux `apply_update` is a stub, so nothing there quotes a path.
+#[cfg(target_os = "macos")]
 fn sh_quote(path: &Path) -> String {
     let raw = path.to_string_lossy();
     let mut out = String::with_capacity(raw.len() + 2);

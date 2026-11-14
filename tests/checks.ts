@@ -124,6 +124,7 @@ import {
 } from "../src/stats/column/frequency-distribution";
 import { makeInitialState, reducer } from "../src/store/use-project-store";
 import { isNewer, latestVersion } from "../src/lib/version";
+import { decideUpdate, type ChannelManifest } from "../src/lib/channel";
 import { titleCase } from "../src/lib/format";
 import { loadRecents } from "../src/store/recents";
 import { largestAt, PX_PER_INCH, withDpi } from "../src/lib/image-dpi";
@@ -6537,7 +6538,41 @@ check("a graph too wide for its pane is fitted to the pane, never enlarged", () 
   deepStrictEqual(saved, DEFAULT_GRAPH_OPTIONS);
 });
 
-check("the update check still answers when GitHub refuses it", async () => {
+check("a newer channel manifest offers the update", () => {
+  // Node has no Mac user agent, so decideUpdate reads the linux platform
+  // entry when present; a manifest with no platforms falls back to its
+  // top-level version, which is what these pins exercise.
+  deepStrictEqual(decideUpdate("1.1.0", { version: "1.2.0" }), { kind: "optional", version: "1.2.0" });
+});
+
+check("an equal or older channel manifest stays quiet", () => {
+  deepStrictEqual(decideUpdate("1.1.0", { version: "1.1.0" }), { kind: "quiet" });
+  deepStrictEqual(decideUpdate("1.1.0", { version: "1.0.7" }), { kind: "quiet" });
+});
+
+check("a channel manifest floor below this version forces the update", () => {
+  const manifest: ChannelManifest = {
+    version: "1.2.0",
+    startup: { platforms: { linux: { latestVersion: "1.2.0", minVersion: "1.1.1" } } },
+  };
+  deepStrictEqual(decideUpdate("1.1.0", manifest), { kind: "forced", version: "1.2.0" });
+  // At or above the floor, the same manifest is only optional.
+  const atFloor: ChannelManifest = {
+    version: "1.2.0",
+    startup: { platforms: { linux: { latestVersion: "1.2.0", minVersion: "1.1.0" } } },
+  };
+  deepStrictEqual(decideUpdate("1.1.0", atFloor), { kind: "optional", version: "1.2.0" });
+});
+
+check("a paused channel manifest disables updates", () => {
+  const manifest: ChannelManifest = {
+    version: "1.2.0",
+    startup: { enabled: false, disabledMessage: "Paused for the weekend." },
+  };
+  deepStrictEqual(decideUpdate("1.1.0", manifest), { kind: "disabled", message: "Paused for the weekend." });
+});
+
+check("the update check reads main's package.json, never the GitHub API", async () => {
   const answers = (...responses: Response[]) => {
     const asked: string[] = [];
     globalThis.fetch = async (url) => (asked.push(String(url)), responses.shift()!);
@@ -6546,14 +6581,16 @@ check("the update check still answers when GitHub refuses it", async () => {
   const json = (body: object) => new Response(JSON.stringify(body));
   const realFetch = globalThis.fetch;
   try {
-    let asked = answers(json({ tag_name: "v1.2.0" }));
-    strictEqual(await latestVersion(), "v1.2.0");
+    // The fallback is one static file read: the version on main.
+    const asked = answers(json({ version: "1.2.0" }));
+    strictEqual(await latestVersion(), "1.2.0");
     strictEqual(asked.length, 1);
-    answers(new Response(null, { status: 404 }));
-    strictEqual(await latestVersion(), null);
-    asked = answers(new Response(null, { status: 403 }), json({ version: "1.3.0" }));
-    strictEqual(await latestVersion(), "1.3.0");
-    ok(asked[1].startsWith("https://raw.githubusercontent.com/"));
+    ok(asked[0].startsWith("https://raw.githubusercontent.com/smitpatel316/Helix/main/"));
+    ok(!asked.some((url) => url.includes("api.github.com")), "the GitHub API is never asked");
+    // A refused read throws (the caller falls back to the cached channel
+    // manifest); there is no 404-means-no-release path any more.
+    answers(new Response(null, { status: 403 }));
+    await rejects(latestVersion(), /GitHub answered 403/);
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -8153,7 +8190,7 @@ check("the release pipeline builds webr-repo/, and the CSP allows the CDN fallba
 // With no project window open, the hidden engine window sets the menu bar
 // (engine.ts), so "Check for Updates…" and the missing-file alert
 // (menus.ts: sayGone) run there — and both go through the dialog plugin
-// (native.ts: alert/askToDownload → message()). The engine capability
+// (native.ts: alert/askToUpdate → message()). The engine capability
 // granted only "core:default", so those calls failed with a permission
 // error whenever no project window was open. The project windows already
 // had "dialog:default" (capabilities/default.json); this pins the engine

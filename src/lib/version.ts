@@ -14,19 +14,18 @@ export function isNewer(a: string, b: string): boolean {
   return false;
 }
 
-// The version on the release branch's package.json: the fallback when the
-// update channel has never answered (its manifest is the authority once it
+// The version on main's package.json: the fallback when the update
+// channel has never answered (its manifest is the authority once it
 // exists). A plain static file, never the GitHub API: the API answers 60
 // checks an hour per network (a lab's Macs share one). It runs ahead of a
 // release only while that release is being built, so it can only ever
 // produce an optional offer, never a forced one.
-// TODO(v2 rebase): retarget at main once feat/prism-import-survival merges.
-const BRANCH_PACKAGE =
-  "https://raw.githubusercontent.com/smitpatel316/Helix/feat/prism-import-survival/package.json";
+const MAIN_PACKAGE =
+  "https://raw.githubusercontent.com/smitpatel316/Helix/main/package.json";
 
-/** The latest version out ("v1.0.4"); null when none is released yet. */
+/** The latest version out ("1.1.0"); throws when GitHub refuses the read. */
 export async function latestVersion(): Promise<unknown> {
-  const main = await fetch(BRANCH_PACKAGE);
+  const main = await fetch(MAIN_PACKAGE);
   if (!main.ok) throw new Error(`GitHub answered ${main.status}`);
   return (await main.json()).version;
 }
