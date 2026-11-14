@@ -1034,7 +1034,7 @@ export function prepareFit(
   /** Parameters held fixed (plan 26): they are not fitted, so they do not
    *  count toward the minimum-points rule. */
   fixedCount = 0,
-): { xCol: Column; yCol: Column; xs: number[]; ys: number[]; rows: number[] } | { error: string } {
+): { xCol: Column; yCol: Column; xs: number[]; ys: number[]; rows: number[]; columns: string[] } | { error: string } {
   const { x: xCol, ys: yCols } = splitXY(columns);
   // A Y data set's replicates pool into one fit (see datasetColumns): a name
   // that is no column but is a data set ("Control" → "Control_1..3") fits
@@ -1050,13 +1050,21 @@ export function prepareFit(
 
   const complete =
     cols.length <= 1
-      ? pairUp(xCol, yCol)
+      ? (() => {
+          const p = pairUp(xCol, yCol);
+          return { ...p, columns: p.rows.map(() => yCol.name) };
+        })()
       : cols.reduce(
           (acc, c) => {
             const p = pairUp(xCol, c);
-            return { x: [...acc.x, ...p.x], y: [...acc.y, ...p.y], rows: [...acc.rows, ...p.rows] };
+            return {
+              x: [...acc.x, ...p.x],
+              y: [...acc.y, ...p.y],
+              rows: [...acc.rows, ...p.rows],
+              columns: [...acc.columns, ...p.rows.map(() => c.name)],
+            };
           },
-          { x: [] as number[], y: [] as number[], rows: [] as number[] },
+          { x: [] as number[], y: [] as number[], rows: [] as number[], columns: [] as string[] },
         );
   const spec = modelSpec(model);
   const nParams = spec.terms.length - fixedCount;
@@ -1112,11 +1120,15 @@ export function prepareFit(
     }
   }
   // The fitted points' rows, in fit order (plan 26: 1/SD² weights need the
-  // row's replicate values, not just the fitted pair).
+  // row's replicate values, not just the fitted pair) — and, per point, the
+  // Y column it came from (ROUT's outlier records name it exactly).
   const rows = complete.rows.filter(
     (_, i) => (!spec.positiveX && !spec.nonNegativeX) || (spec.positiveX ? complete.x[i] > 0 : complete.x[i] >= 0),
   );
-  return { xCol, yCol, xs, ys, rows };
+  const pointColumns = complete.columns.filter(
+    (_, i) => (!spec.positiveX && !spec.nonNegativeX) || (spec.positiveX ? complete.x[i] > 0 : complete.x[i] >= 0),
+  );
+  return { xCol, yCol, xs, ys, rows, columns: pointColumns };
 }
 
 /** R statements that, after `m` is fitted, compute the summary quantities

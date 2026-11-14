@@ -1146,6 +1146,12 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
             ["ec50", `Is the ${midpoint} different between the two data sets?`],
             ["all", "Does one curve fit both data sets?"],
           ]),
+        // Outliers are looked for in a curve fitted on its own, not in two compared.
+        (!dose || ys.length > 1 || others.length === 0 || a.compareWith === "none") &&
+          choice("rout", "Identify outliers, points too far from the curve, and leave them out of the fit?", [
+            ["no", "No — fit every point"],
+            ["yes", "Yes — ROUT method (Q = 1%)"],
+          ]),
         choice("compareModel", "Also fit another model to the same data and compare (F test + AICc)?", [
           ["none", "No comparison — fit this model only"],
           ...models
@@ -1283,6 +1289,7 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
           ...fittedYs(a),
           model: a.model as NonlinearModel,
           ...compare,
+          ...(a.rout === "yes" && !compare.compareWith ? { rout: true } : {}),
           ...weights,
           ...compareModel,
           ...global,
