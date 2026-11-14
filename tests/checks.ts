@@ -3108,6 +3108,148 @@ check("a smoothing spline fits tied X values, one fitted value per observation (
   });
 });
 
+// Remove baseline (v2): subtract a baseline — first value, mean of the first
+// N, mean of control column(s), or a constant — from every value in the
+// chosen columns, recording the baseline used per column; the source data
+// is never touched.
+check("remove baseline subtracts the first value and records the baseline used", async () => {
+  const table: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "10", "5"],
+      ["", "1", "12", "7"],
+      ["", "2", "14", "9"],
+      ["", "3", "16", "11"],
+    ],
+  };
+  const out = await runAnalysis("remove-baseline", table, {
+    ys: ["Y1", "Y2"],
+    x: "Time",
+    baselineMethod: "first-value",
+  });
+  if ("error" in out) throw new Error(out.error);
+  strictEqual(out.testType, "remove-baseline");
+  deepStrictEqual(
+    out.baselineRemoved?.map((c) => [c.column, c.baseline, c.method]),
+    [
+      ["Y1", 10, "First value"],
+      ["Y2", 5, "First value"],
+    ],
+  );
+  deepStrictEqual(
+    out.baselineRemoved?.[0].rows.map((r) => [r.x, r.original, r.subtracted]),
+    [
+      [0, 10, 0],
+      [1, 12, 2],
+      [2, 14, 4],
+      [3, 16, 6],
+    ],
+  );
+  // The baseline is also in the stats, so it survives without the rows.
+  deepStrictEqual(
+    out.stats.map((s) => [s.label, s.value]),
+    [
+      ["Baseline for “Y1”", 10],
+      ["Baseline for “Y2”", 5],
+    ],
+  );
+  ok(out.notes.includes("first value"));
+  // The descriptives are of the subtracted values, not the originals.
+  deepStrictEqual(
+    out.groups.map((g) => [g.name, g.mean, g.n]),
+    [
+      ["Y1", 3, 4],
+      ["Y2", 3, 4],
+    ],
+  );
+  // Mean of the first N, and a constant, use the same rows.
+  const meanFirst = await runAnalysis("remove-baseline", table, {
+    ys: ["Y1"],
+    x: "Time",
+    baselineMethod: "mean-first-n",
+    firstN: 2,
+  });
+  if ("error" in meanFirst) throw new Error(meanFirst.error);
+  strictEqual(meanFirst.baselineRemoved?.[0].baseline, 11);
+  deepStrictEqual(
+    meanFirst.baselineRemoved?.[0].rows.map((r) => r.subtracted),
+    [-1, 1, 3, 5],
+  );
+  const constant = await runAnalysis("remove-baseline", table, {
+    ys: ["Y1"],
+    x: "Time",
+    baselineMethod: "constant",
+    constant: 10,
+  });
+  if ("error" in constant) throw new Error(constant.error);
+  strictEqual(constant.baselineRemoved?.[0].baseline, 10);
+  // Mean of the controls averages every value in the control column(s).
+  const controls = await runAnalysis("remove-baseline", table, {
+    ys: ["Y1"],
+    x: "Time",
+    baselineMethod: "mean-of-controls",
+    controls: ["Y2"],
+  });
+  if ("error" in controls) throw new Error(controls.error);
+  strictEqual(controls.baselineRemoved?.[0].baseline, 8);
+  // Errors name the problem instead of subtracting something wrong.
+  deepStrictEqual(
+    await runAnalysis("remove-baseline", table, {
+      ys: ["Y1"],
+      x: "Time",
+      baselineMethod: "mean-first-n",
+      firstN: 9,
+    }),
+    { error: "“Y1” holds only 4 values, but the baseline is the mean of the first 9." },
+  );
+  deepStrictEqual(
+    await runAnalysis("remove-baseline", table, {
+      ys: ["Y1"],
+      x: "Time",
+      baselineMethod: "mean-of-controls",
+      controls: ["Nope"],
+    }),
+    { error: "The column “Nope” is no longer in the table. Create this analysis again to choose another." },
+  );
+});
+
+check("remove-baseline wizard asks for the baseline and finishes with its params", () => {
+  const data: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "10", "5"],
+      ["", "1", "12", "7"],
+    ],
+  };
+  const table = readTable(data);
+  const wizard = WIZARDS["remove-baseline"]!;
+  // The follow-up question depends on the method answered.
+  deepStrictEqual(
+    wizard.questions({ baselineMethod: "mean-first-n", ys: ["Y1"] }, table, "xy").filter(Boolean).map((q) => (q as Question).id),
+    ["ys", "baselineMethod", "firstN"],
+  );
+  deepStrictEqual(
+    wizard.questions({ baselineMethod: "mean-of-controls", ys: ["Y1"] }, table, "xy").filter(Boolean).map((q) => (q as Question).id),
+    ["ys", "baselineMethod", "controls"],
+  );
+  deepStrictEqual(wizard.finish({ ys: ["Y1", "Y2"], baselineMethod: "first-value" }, table, "xy"), {
+    type: "remove-baseline",
+    params: { ys: ["Y1", "Y2"], x: "Time", baselineMethod: "first-value" },
+  });
+  deepStrictEqual(
+    wizard.finish({ ys: ["Y1"], baselineMethod: "mean-of-controls", controls: ["Y2"] }, table, "xy"),
+    {
+      type: "remove-baseline",
+      params: { ys: ["Y1"], x: "Time", baselineMethod: "mean-of-controls", controls: ["Y2"] },
+    },
+  );
+  // A Column table has no X column to carry into the result rows.
+  deepStrictEqual(wizard.finish({ ys: ["Y1"], baselineMethod: "constant", constant: 3 }, table, "column"), {
+    type: "remove-baseline",
+    params: { ys: ["Y1"], baselineMethod: "constant", constant: 3 },
+  });
+});
+
 // R3-10: standard-curve interpolation on enzyme models. Their formulas
 // are defined at X = 0, so they set neither positiveX nor nonNegativeX —
 // and the interpolation grid extended a full width BELOW zero, into

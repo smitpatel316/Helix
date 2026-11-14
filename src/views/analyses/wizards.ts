@@ -31,6 +31,7 @@ import type {
   NestedAnovaParams,
   NonlinearRegressionParams,
   OneSampleTParams,
+  RemoveBaselineParams,
   SurvivalParams,
   CoxParams,
   PrincipalComponentAnalysisParams,
@@ -1152,6 +1153,67 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
       },
     ],
     finish: (a) => ({ type: "area-under-curve", params: { baseline: a.baseline as number } }),
+  },
+
+  // Remove baseline (v2): subtract a baseline from a curve — Prism's Analyze >
+  // Remove Baseline. The X column (XY tables) is carried into the result
+  // rows; on a Column table every chosen column is its own data set.
+  "remove-baseline": {
+    questions: (a, table, tableType) => {
+      const targets = tableType === "xy" ? yNames(table) : dataNames(table);
+      if (!targets.length) return [];
+      const method = a.baselineMethod as string | undefined;
+      return [
+        {
+          id: "ys",
+          ask: "Which data sets should have the baseline removed?",
+          kind: "names",
+          options: targets,
+          min: 1,
+        },
+        choice("baselineMethod", "What should be subtracted from each value?", [
+          ["first-value", "First value — each data set's first value"],
+          ["mean-first-n", "Mean of the first N values"],
+          ["mean-of-controls", "Mean of control column(s)"],
+          ["constant", "A constant value"],
+        ]),
+        method === "mean-first-n" && {
+          id: "firstN",
+          ask: "How many first values should be averaged for the baseline?",
+          kind: "number",
+          label: "Number of first values (N)",
+          initial: 3,
+          min: 1,
+          validate: (v) =>
+            Number.isInteger(v) && v >= 1 ? undefined : "Enter a whole number of 1 or more.",
+        },
+        method === "mean-of-controls" && {
+          id: "controls",
+          ask: "Which column(s) are the controls? Their values are averaged for the baseline.",
+          kind: "names",
+          options: dataNames(table),
+          min: 1,
+        },
+        method === "constant" && {
+          id: "constant",
+          ask: "What constant value should be subtracted from each value?",
+          kind: "number",
+          label: "Constant baseline value",
+          initial: 0,
+        },
+      ];
+    },
+    finish: (a, table, tableType) => ({
+      type: "remove-baseline",
+      params: {
+        ys: a.ys as string[],
+        ...(tableType === "xy" ? { x: table.columns[0]?.name } : {}),
+        baselineMethod: a.baselineMethod as RemoveBaselineParams["baselineMethod"],
+        ...(a.baselineMethod === "mean-first-n" ? { firstN: a.firstN as number } : {}),
+        ...(a.baselineMethod === "mean-of-controls" ? { controls: a.controls as string[] } : {}),
+        ...(a.baselineMethod === "constant" ? { constant: a.constant as number } : {}),
+      },
+    }),
   },
 
   "nonlinear-regression": {

@@ -50,6 +50,7 @@ import {
   NONLINEAR_MODELS,
   POSTHOC_TARGETS,
   RANK_POSTHOCS,
+  REMOVE_BASELINE_METHODS,
   ROUT_Q,
   TAILS,
   THREE_WAY_TERMS,
@@ -220,6 +221,8 @@ const PARAMS = {
   fixed: "numbers-by-name",
   bounds: "number-pairs-by-name",
   hypotheticalValue: "number", baseline: "number", q: ROUT_Q, lambda: "number",
+  // Remove baseline (v2): how the baseline is defined, and the values it needs.
+  baselineMethod: REMOVE_BASELINE_METHODS, firstN: "number", controls: "names", constant: "number",
   alpha: { min: 0.001, max: 0.5 }, iterate: "yes/no",
   f: "number", spar: "number", df: "number",
   y: "name-or-names", y2: "name", ys: "names", dependent: "name", reference: "name", control: "name", compareWith: "name", datasets: "names", predictors: "names", sets: "names",
