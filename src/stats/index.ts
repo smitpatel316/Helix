@@ -18,6 +18,7 @@ import type {
   FrequencyDistributionParams,
   TransformDataParams,
   PruneRowsParams,
+  FractionOfTotalParams,
   KMeansParams,
   McNemarParams,
   MixedEffectsParams,
@@ -60,6 +61,7 @@ import { runSimpleLogisticRegression } from "./xy/logistic-regression";
 import { runAreaUnderCurve } from "./xy/area-under-curve";
 import { runRemoveBaseline } from "./xy/remove-baseline";
 import { runPruneRows } from "./xy/prune-rows";
+import { runFractionOfTotal } from "./xy/fraction-of-total";
 import { runNonlinearRegression } from "./xy/nonlinear-regression";
 import { runBindingKinetics, runBindingSaturation } from "./xy/binding";
 import { runEnzymeInhibition } from "./xy/enzyme-inhibition";
@@ -191,6 +193,11 @@ export const ANALYSES: Record<AnalysisType, Analysis> = {
     label: "Prune rows",
     minColumns: 1,
     run: (c, p, t) => runPruneRows(c, p as PruneRowsParams, t),
+  },
+  "fraction-of-total": {
+    label: "Fraction of total",
+    minColumns: 1,
+    run: (c, p, t) => runFractionOfTotal(c, p as FractionOfTotalParams, t),
   },
   "nonlinear-regression": {
     label: "Nonlinear regression",

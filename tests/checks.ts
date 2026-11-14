@@ -6673,6 +6673,273 @@ check("an XY table without numbers in X or Y says which, in every XY analysis", 
   }
 });
 
+// Fraction of total (v2): express each value as a fraction or a percent of
+// its column total, its row total, or the grand total; the source data is
+// never touched, and a value whose total is 0 is blank, counted, and
+// explained — never NaN or Infinity.
+check("fraction of total divides each value by its column, row, or grand total", async () => {
+  const table: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "10", "30"],
+      ["", "1", "30", "20"],
+    ],
+  };
+  // Column totals: Y1 = 40, Y2 = 50; row totals: 40, 50; grand total 90.
+  const out = await runAnalysis("fraction-of-total", table, {
+    ys: ["Y1", "Y2"],
+    x: "Time",
+    totalBy: "column",
+    format: "fraction",
+  });
+  if ("error" in out) throw new Error(out.error);
+  strictEqual(out.testType, "fraction-of-total");
+  deepStrictEqual(
+    out.fractionsOfTotal?.map((c) => [c.column, c.total, c.format]),
+    [
+      ["Y1", 40, "fraction"],
+      ["Y2", 50, "fraction"],
+    ],
+  );
+  deepStrictEqual(
+    out.fractionsOfTotal?.[0].rows.map((r) => [r.x, r.original, r.total, r.value]),
+    [
+      [0, 10, 40, 0.25],
+      [1, 30, 40, 0.75],
+    ],
+  );
+  deepStrictEqual(
+    out.fractionsOfTotal?.[1].rows.map((r) => r.value),
+    [0.6, 0.4],
+  );
+  // The totals are also in the stats, so they survive without the rows.
+  deepStrictEqual(
+    out.stats.map((s) => [s.label, s.value]),
+    [
+      ["Total for “Y1”", 40],
+      ["Total for “Y2”", 50],
+    ],
+  );
+  ok(out.notes.includes("column total"));
+  ok(out.notes.includes("fraction"));
+  // The descriptives are of the fractions, not the originals.
+  deepStrictEqual(
+    out.groups.map((g) => [g.name, g.mean, g.n]),
+    [
+      ["Y1", 0.5, 2],
+      ["Y2", 0.5, 2],
+    ],
+  );
+  // Row totals divide by the row's sum across the chosen data sets, and the
+  // stats carry no per-column total then (each row has its own).
+  const rows = await runAnalysis("fraction-of-total", table, {
+    ys: ["Y1", "Y2"],
+    x: "Time",
+    totalBy: "row",
+    format: "fraction",
+  });
+  if ("error" in rows) throw new Error(rows.error);
+  deepStrictEqual(
+    rows.fractionsOfTotal?.map((c) => [c.column, c.total]),
+    [
+      ["Y1", null],
+      ["Y2", null],
+    ],
+  );
+  deepStrictEqual(
+    rows.fractionsOfTotal?.[0].rows.map((r) => [r.total, r.value]),
+    [
+      [40, 0.25],
+      [50, 0.6],
+    ],
+  );
+  deepStrictEqual(
+    rows.fractionsOfTotal?.[1].rows.map((r) => r.value),
+    [0.75, 0.4],
+  );
+  deepStrictEqual(rows.stats, []);
+  ok(rows.notes.includes("row total"));
+  // The grand total is one number for every value; percentages scale by 100.
+  // (A table whose total is 80, so every percent is exact in binary.)
+  const grandTable: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "10", "30"],
+      ["", "1", "30", "10"],
+    ],
+  };
+  const grand = await runAnalysis("fraction-of-total", grandTable, {
+    ys: ["Y1", "Y2"],
+    x: "Time",
+    totalBy: "grand",
+    format: "percent",
+  });
+  if ("error" in grand) throw new Error(grand.error);
+  deepStrictEqual(
+    grand.stats.map((s) => [s.label, s.value]),
+    [["Grand total", 80]],
+  );
+  deepStrictEqual(
+    grand.fractionsOfTotal?.[0].rows.map((r) => [r.total, r.value]),
+    [
+      [80, 12.5],
+      [80, 37.5],
+    ],
+  );
+  deepStrictEqual(
+    grand.groups.map((g) => [g.name, g.mean, g.n]),
+    [
+      ["Y1", 25, 2],
+      ["Y2", 25, 2],
+    ],
+  );
+  ok(grand.notes.includes("grand total"));
+  ok(grand.notes.includes("percentage"));
+  // Errors name the problem instead of dividing by something wrong.
+  deepStrictEqual(
+    await runAnalysis("fraction-of-total", table, {
+      ys: ["Y1"],
+      x: "Time",
+      totalBy: "bogus" as never,
+      format: "fraction",
+    }),
+    { error: "Unknown total to divide by: “bogus”." },
+  );
+  deepStrictEqual(
+    await runAnalysis("fraction-of-total", table, {
+      ys: ["Y1"],
+      x: "Time",
+      totalBy: "column",
+      format: "bogus" as never,
+    }),
+    { error: "Unknown result format: “bogus”." },
+  );
+  deepStrictEqual(
+    await runAnalysis("fraction-of-total", table, {
+      ys: ["Nope"],
+      x: "Time",
+      totalBy: "column",
+      format: "fraction",
+    }),
+    { error: "The column “Nope” is no longer in the table. Create this analysis again to choose another." },
+  );
+});
+
+check("fraction of total leaves a zero-total value blank instead of dividing by zero", async () => {
+  const table: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "5", "10"],
+      ["", "1", "-5", "10"],
+    ],
+  };
+  // Y1 sums to 0, so both of its values are blank; Y2 is unaffected.
+  const out = await runAnalysis("fraction-of-total", table, {
+    ys: ["Y1", "Y2"],
+    x: "Time",
+    totalBy: "column",
+    format: "fraction",
+  });
+  if ("error" in out) throw new Error(out.error);
+  deepStrictEqual(
+    out.fractionsOfTotal?.map((c) => c.rows.map((r) => r.value)),
+    [
+      [null, null],
+      [0.5, 0.5],
+    ],
+  );
+  deepStrictEqual(
+    out.stats.map((s) => [s.label, s.value]),
+    [
+      ["Total for “Y1”", 0],
+      ["Total for “Y2”", 20],
+    ],
+  );
+  // A column with no dividable values gets an empty descriptives group, not
+  // R's mean-of-nothing (NaN).
+  deepStrictEqual(
+    out.groups.map((g) => [g.name, g.mean, g.n]),
+    [
+      ["Y1", null, 0],
+      ["Y2", 0.5, 2],
+    ],
+  );
+  ok(out.notes.includes("2 values are blank"));
+  ok(out.notes.includes("total is 0"));
+  // A grand total of 0 blanks every value.
+  const zeros: TableData = {
+    columns: ["Title", "Time", "Y1"],
+    rows: [
+      ["", "0", "0"],
+      ["", "1", "0"],
+    ],
+  };
+  const grand = await runAnalysis("fraction-of-total", zeros, {
+    ys: ["Y1"],
+    x: "Time",
+    totalBy: "grand",
+    format: "fraction",
+  });
+  if ("error" in grand) throw new Error(grand.error);
+  deepStrictEqual(grand.fractionsOfTotal?.[0].rows.map((r) => r.value), [null, null]);
+  deepStrictEqual(
+    grand.stats.map((s) => [s.label, s.value]),
+    [["Grand total", 0]],
+  );
+  // A named column holding no numbers is named, not silently skipped.
+  const empty: TableData = {
+    columns: ["Title", "Time", "Y1", "Y3"],
+    rows: [
+      ["", "0", "10", ""],
+      ["", "1", "30", ""],
+    ],
+  };
+  deepStrictEqual(
+    await runAnalysis("fraction-of-total", empty, {
+      ys: ["Y3"],
+      x: "Time",
+      totalBy: "column",
+      format: "fraction",
+    }),
+    { error: "“Y3” holds no numbers yet." },
+  );
+});
+
+check("fraction-of-total wizard asks for the total and the format, and finishes with its params", () => {
+  const data: TableData = {
+    columns: ["Title", "Time", "Y1", "Y2"],
+    rows: [
+      ["", "0", "10", "30"],
+      ["", "1", "30", "20"],
+    ],
+  };
+  const table = readTable(data);
+  const wizard = WIZARDS["fraction-of-total"]!;
+  deepStrictEqual(
+    wizard.questions({}, table, "xy").filter(Boolean).map((q) => (q as Question).id),
+    ["ys", "totalBy", "format"],
+  );
+  deepStrictEqual(
+    wizard.questions({}, table, "xy").filter(Boolean).map((q) => (q as Question).kind),
+    ["names", "choice", "choice"],
+  );
+  deepStrictEqual(wizard.finish({ ys: ["Y1"], totalBy: "row", format: "percent" }, table, "xy"), {
+    type: "fraction-of-total",
+    params: { ys: ["Y1"], x: "Time", totalBy: "row", format: "percent" },
+  });
+  // A Column table has no X column to carry into the result rows.
+  deepStrictEqual(wizard.finish({ ys: ["Y1", "Y2"], totalBy: "grand", format: "fraction" }, table, "column"), {
+    type: "fraction-of-total",
+    params: { ys: ["Y1", "Y2"], totalBy: "grand", format: "fraction" },
+  });
+  // The menu offers it after Frequency distribution on column tables, and
+  // after Area under the curve on XY tables.
+  const columnOrder = analysisOptionsForTable("column").map((o) => o.value);
+  strictEqual(columnOrder[columnOrder.indexOf("fraction-of-total") - 1], "frequency-distribution");
+  const xyOrder = analysisOptionsForTable("xy").map((o) => o.value);
+  strictEqual(xyOrder[xyOrder.indexOf("fraction-of-total") - 1], "area-under-curve");
+});
+
 // ── Undo and names ───────────────────────────────────────────────────────
 
 check("Undo and Redo take back and replay every kind of change", () => {

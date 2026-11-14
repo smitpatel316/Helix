@@ -34,6 +34,7 @@ import type {
   OneSampleTParams,
   RemoveBaselineParams,
   PruneRowsParams,
+  FractionOfTotalParams,
   SurvivalParams,
   CoxParams,
   PrincipalComponentAnalysisParams,
@@ -1271,6 +1272,40 @@ export const WIZARDS: Partial<Record<AnalysisPickerValue, Wizard>> = {
         condition: a.condition as PruneRowsParams["condition"],
         ...(a.condition === "below" || a.condition === "above" ? { threshold: a.threshold as number } : {}),
         ...(a.condition === "outside" ? { low: a.low as number, high: a.high as number } : {}),
+      },
+    }),
+  },
+
+  "fraction-of-total": {
+    questions: (_, table, tableType) => {
+      const targets = tableType === "xy" ? yNames(table) : dataNames(table);
+      if (!targets.length) return [];
+      return [
+        {
+          id: "ys",
+          ask: "Which data sets should be expressed as a fraction of their total?",
+          kind: "names",
+          options: targets,
+          min: 1,
+        },
+        choice("totalBy", "Divide each value by…", [
+          ["column", "Its column total — each value as a share of its data set"],
+          ["row", "Its row total — each value as a share of its row"],
+          ["grand", "The grand total — each value as a share of all the chosen values"],
+        ]),
+        choice("format", "Show the result as…", [
+          ["fraction", "Fractions (0 to 1)"],
+          ["percent", "Percentages (0 to 100)"],
+        ]),
+      ];
+    },
+    finish: (a, table, tableType) => ({
+      type: "fraction-of-total",
+      params: {
+        ys: a.ys as string[],
+        ...(tableType === "xy" ? { x: table.columns[0]?.name } : {}),
+        totalBy: a.totalBy as FractionOfTotalParams["totalBy"],
+        format: a.format as FractionOfTotalParams["format"],
       },
     }),
   },
