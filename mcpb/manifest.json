@@ -21,7 +21,7 @@
     "prism"
   ],
   "license": "GPL-3.0-or-later",
-  "long_description": "Titer is a free, open-source (GPL-3.0) statistics and graphing app for researchers. This extension lets Claude Desktop drive Titer through its built-in MCP server: list projects and tables, read results, run analyses, and build figures \u2014 all on your machine, over loopback only.\n\nBefore installing: in Titer, open Settings \u2192 AI connections and turn on 'Allow AI apps to connect'. The bridge reads Titer's local connection file to find the server; no token or setup is needed here.",
+  "long_description": "Titer is a free, open-source (GPL-3.0) statistics and graphing app for researchers. This extension lets Claude Desktop read what is open in Titer through its built-in MCP server: list projects and tables, read results and graphs \u2014 all on your machine, over loopback only.\n\nBefore installing: in Titer, open Settings \u2192 AI connections and turn on 'Allow AI apps to connect'. The bridge reads Titer's local connection file to find the server; no token or setup is needed here.",
   "manifest_version": "0.3",
   "name": "titer",
   "repository": {

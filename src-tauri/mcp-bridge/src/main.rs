@@ -11,9 +11,10 @@
 // loopback.
 //
 // Token discovery (the decision — see docs/stdio-bridge.md §2 for the full
-// reasoning): the app writes a discovery file, `<app_data_dir>/mcp.json`
-// (`{"url", "token", "protocol_version"}`), atomically with mode 0600, when
-// the user turns on AI connections in Settings; the bridge reads it at
+// reasoning): the app writes a discovery file,
+// `<app_data_dir>/mcp/discovery.json`
+// (`{"endpoint", "token", "protocol_versions"}`), atomically with mode 0600,
+// when the user turns on AI connections in Settings; the bridge reads it at
 // startup. No token is ever baked into the .mcpb bundle or into any AI
 // client's config. `TITER_MCP_URL` / `TITER_MCP_TOKEN` / `TITER_MCP_DISCOVERY`
 // env vars override individual fields, for dev and for Claude Code users who
@@ -62,8 +63,14 @@ const APP_IDENTIFIER: &str = "net.smitpatel.helix";
 
 /// Name of the discovery file inside the app-data directory. Written by the
 /// app (v3/mcp-server lane); read by this bridge. Contract pinned in
-/// docs/stdio-bridge.md §2 and docs/mcp-server-contract.md.
-const DISCOVERY_FILE: &str = "mcp.json";
+/// docs/mcp-server-contract.md §2 — the server writes
+/// `<app_data_dir>/mcp/discovery.json` with keys `endpoint`, `token`,
+/// `protocol_versions`. (Reconciled in v3/codex: the bridge lane originally
+/// assumed `<app_data_dir>/mcp.json` with `url` / `protocol_version`; the
+/// server contract wins, and `url` / `protocol_version` are still accepted
+/// as serde aliases so a stale file fails soft instead of hard.)
+const DISCOVERY_DIR: &str = "mcp";
+const DISCOVERY_FILE: &str = "discovery.json";
 
 /// One request may run a slow analysis; 5 minutes is generous without
 /// letting a wedged server hang the client forever.
@@ -79,13 +86,18 @@ const SERVER_OFF_MESSAGE: &str = "Titer's AI connections are off or Titer isn't 
     In Titer, open Settings -> AI connections and turn on 'Allow AI apps to connect', \
     then try again.";
 
-/// What the app writes to `<app_data_dir>/mcp.json` when AI connections are
-/// enabled. `protocol_version` is informational only — the bridge forwards
-/// bytes and does not negotiate versions itself.
+/// What the app writes to `<app_data_dir>/mcp/discovery.json` when AI
+/// connections are enabled (docs/mcp-server-contract.md §2).
+/// `protocol_versions` is informational only — the bridge forwards bytes
+/// and does not negotiate versions itself. The `url` / `protocol_version`
+/// aliases accept the bridge lane's original draft shape.
 #[derive(Debug, Deserialize)]
 struct Discovery {
-    url: String,
+    #[serde(alias = "url")]
+    endpoint: String,
     token: String,
+    #[serde(default)]
+    protocol_versions: Option<Vec<String>>,
     #[serde(default)]
     protocol_version: Option<String>,
 }
@@ -123,7 +135,7 @@ fn default_app_data_dir() -> Option<PathBuf> {
 }
 
 /// Resolve the discovery file location: `--discovery <path>`, else
-/// `TITER_MCP_DISCOVERY`, else `<app_data_dir>/mcp.json`.
+/// `TITER_MCP_DISCOVERY`, else `<app_data_dir>/mcp/discovery.json`.
 fn discovery_path(explicit: Option<&Path>) -> Option<PathBuf> {
     if let Some(p) = explicit {
         return Some(p.to_path_buf());
@@ -133,7 +145,7 @@ fn discovery_path(explicit: Option<&Path>) -> Option<PathBuf> {
             return Some(PathBuf::from(p));
         }
     }
-    default_app_data_dir().map(|d| d.join(DISCOVERY_FILE))
+    default_app_data_dir().map(|d| d.join(DISCOVERY_DIR).join(DISCOVERY_FILE))
 }
 
 /// Load the config. Env vars override individual fields of the discovery
@@ -167,12 +179,12 @@ fn load_config(explicit_discovery: Option<&Path>) -> Result<BridgeConfig, String
             )
         })?;
         if url.is_none() {
-            url = Some(disc.url);
+            url = Some(disc.endpoint);
         }
         if token.is_none() {
             token = Some(disc.token);
         }
-        protocol_version = disc.protocol_version;
+        protocol_version = disc.protocol_version.or_else(|| disc.protocol_versions.and_then(|v| v.into_iter().next()));
     }
 
     match (url, token) {
@@ -489,7 +501,7 @@ fn print_usage() {
          \n\
          OPTIONS\n\
          \x20 --discovery <path>  Read server URL + token from this file instead of\n\
-         \x20                     <app-data>/mcp.json (TITER_MCP_DISCOVERY does the same).\n\
+         \x20                     <app-data>/mcp/discovery.json (TITER_MCP_DISCOVERY does the same).\n\
          \x20 --check             Ping the server once and exit (0 = reachable).\n\
          \x20 --help              Show this help.\n\
          \x20 --version           Show the version.\n\
@@ -499,7 +511,7 @@ fn print_usage() {
          \x20 TITER_MCP_TOKEN     Override the bearer token from the discovery file.\n\
          \x20 TITER_MCP_DISCOVERY Override the discovery file path.\n\
          \n\
-         The server URL and token normally come from <app-data>/mcp.json, written\n\
+         The server URL and token normally come from <app-data>/mcp/discovery.json, written\n\
          by Titer when AI connections are enabled in Settings. If that file is\n\
          missing, the bridge exits 2 with instructions instead of hanging."
     );
@@ -596,14 +608,30 @@ mod tests {
     fn discovery_parses_with_and_without_protocol_version() {
         // The port below is arbitrary test data — the real port always comes
         // from the discovery file, never from a constant in this crate.
+        // Contract shape (docs/mcp-server-contract.md §2): `endpoint` +
+        // `protocol_versions` array.
         let full: Discovery = serde_json::from_str(
+            r#"{"endpoint":"http://127.0.0.1:47231/mcp","token":"abc","protocol_versions":["2025-11-25","2025-06-18"]}"#,
+        )
+        .unwrap();
+        assert_eq!(full.endpoint, "http://127.0.0.1:47231/mcp");
+        assert_eq!(full.protocol_versions.as_deref(), Some(&["2025-11-25".to_string(), "2025-06-18".to_string()][..]));
+        let minimal: Discovery =
+            serde_json::from_str(r#"{"endpoint":"http://127.0.0.1:47231/mcp","token":"abc"}"#).unwrap();
+        assert!(minimal.protocol_versions.is_none());
+        assert!(minimal.protocol_version.is_none());
+    }
+
+    #[test]
+    fn discovery_accepts_legacy_url_shape() {
+        // The bridge lane's original draft shape still parses (serde
+        // aliases), so a stale discovery file fails soft instead of hard.
+        let legacy: Discovery = serde_json::from_str(
             r#"{"url":"http://127.0.0.1:47231/mcp","token":"abc","protocol_version":"2025-06-18"}"#,
         )
         .unwrap();
-        assert_eq!(full.url, "http://127.0.0.1:47231/mcp");
-        assert_eq!(full.protocol_version.as_deref(), Some("2025-06-18"));
-        let minimal: Discovery = serde_json::from_str(r#"{"url":"http://127.0.0.1:47231/mcp","token":"abc"}"#).unwrap();
-        assert!(minimal.protocol_version.is_none());
+        assert_eq!(legacy.endpoint, "http://127.0.0.1:47231/mcp");
+        assert_eq!(legacy.protocol_version.as_deref(), Some("2025-06-18"));
     }
 
     #[test]

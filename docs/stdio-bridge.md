@@ -21,12 +21,19 @@ reconciliation. Nothing here is a merge: branch only, no merges anywhere.
 ## 2. Token discovery — the decision
 
 **Decision: a token file in the app-data dir.** When the user turns on AI
-connections in Titer Settings, the app writes `<app_data_dir>/mcp.json`
+connections in Titer Settings, the app writes `<app_data_dir>/mcp/discovery.json`
 atomically (temp file + rename), mode `0600`:
 
 ```json
-{"url": "http://127.0.0.1:<port>/mcp", "token": "<opaque bearer>", "protocol_version": "2025-06-18"}
+{"endpoint": "http://127.0.0.1:<port>/mcp", "token": "<opaque bearer>", "protocol_versions": ["2025-11-25", "2025-06-18"], "server": "titer", "version": "<app version>"}
 ```
+
+**Reconciled in v3/codex (Nov 14, 2026):** the bridge lane originally
+assumed `<app_data_dir>/mcp.json` with `url` / `protocol_version`; the
+server lane's contract (`docs/mcp-server-contract.md` §2) writes
+`mcp/discovery.json` with `endpoint` / `protocol_versions`, and the
+contract wins. The bridge now reads the contract shape and still accepts
+the draft shape (`url`, single `protocol_version`) as serde aliases.
 
 The bridge reads it at startup. The app removes the file when AI
 connections are turned off, and generates a fresh token on each enable
@@ -71,7 +78,7 @@ Tauri, and the match is verified at integration time.
 | # | Assumption in this lane | Owner / reconcile with |
 |---|---|---|
 | A1 | Server is Streamable HTTP on `127.0.0.1`, endpoint path `/mcp`, bearer token required. | Roadmap §1 + `docs/mcp-server-contract.md` when it lands. |
-| A2 | Discovery file `<app_data_dir>/mcp.json` with `url`, `token`, optional `protocol_version`; atomic write, mode 0600; removed on disable; fresh token per enable. | `v3/mcp-server` lane (server writes it). |
+| A2 | Discovery file `<app_data_dir>/mcp/discovery.json` with `endpoint`, `token`, `protocol_versions`; atomic write, mode 0600; removed on disable; fresh token per enable. | `v3/mcp-server` lane (server writes it). **RECONCILED in v3/codex:** bridge updated to this shape (was `mcp.json` / `url` / `protocol_version`); draft shape still accepted as aliases. |
 | A3 | Port is the server lane's choice, published in the file — the bridge is port-agnostic. No fixed port is assumed anywhere in this lane. | `v3/mcp-server` lane. |
 | A4 | Spec revisions 2025-06-18 / 2025-11-25; NOT 2026-07-28 until clients adopt it. Bridge is transport-only and version-agnostic. | Roadmap §1. |
 | A5 | Settings label the error message names: "AI connections" / "Allow AI apps to connect". The bridge's `SERVER_OFF_MESSAGE` must match the UI wording at merge time. | `v3/mcp-server` lane (Settings UI). |
@@ -113,7 +120,7 @@ The requirement is a **clear error, not a hang or a crash**:
 - **At startup** (discovery file missing/unreadable/invalid, or no token):
   print to stderr and exit **2**. Example:
   `titer-stdio-bridge: Titer's AI connection file was not found
-  (…/net.smitpatel.helix/mcp.json). Titer's AI connections are off or Titer
+  (…/net.smitpatel.helix/mcp/discovery.json). Titer's AI connections are off or Titer
   isn't running. In Titer, open Settings -> AI connections and turn on
   'Allow AI apps to connect', then try again.`
 - **Mid-session** (app closed after the bridge started): each affected
